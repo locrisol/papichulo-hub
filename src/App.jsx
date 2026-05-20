@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAuth } from './context/AuthContext'
+import LoginPage from './pages/auth/LoginPage'
 
 // ── Google Fonts ──────────────────────────────────────────────────────────────
 const fontLink = document.createElement("link");
@@ -787,6 +789,12 @@ export default function App() {
       </div>
     </div>
   );
+
+  const { session, loading } = useAuth()
+
+  if (loading) return null
+
+  if (!session) return <LoginPage />
 
   const Screen = screens[active]?.component || DashboardScreen;
   const sections = [...new Set(navItems.map(n => n.section))];
