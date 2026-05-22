@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { useRestaurant } from '../../context/RestaurantContext'
 
 const navItems = [
   { path:'/dashboard',  label:'Cost Dashboard',   icon:'costs',    section:'Overview' },
@@ -30,6 +31,7 @@ export default function AppLayout({ children }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -96,10 +98,21 @@ export default function AppLayout({ children }) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-15 bg-white border-b border-border flex items-center justify-between px-7 flex-shrink-0">
+        <header className="h-16 bg-white border-b border-border flex items-center justify-between px-7 flex-shrink-0">
           <h1 className="font-serif text-xl font-bold text-gray-900">
             {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
           </h1>
+          {(user?.role === 'super_admin' || user?.role === 'owner') && (
+            <select
+              value={activeRestaurant?.id || ''}
+              onChange={e => switchRestaurant(restaurants.find(r => r.id === e.target.value))}
+              className="text-sm border border-border rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {restaurants.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          )}
         </header>
         <main className="flex-1 overflow-y-auto p-7">
           {children}
