@@ -11,6 +11,7 @@ const navItems = [
     { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
     { path: '/stocktake', label: 'Stock Take', icon: 'stock', section: 'Inventory' },
     { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
+    { path:'/catalogue/products', label:'Products', icon:'cat', section:'Catalogue' },
     { path: '/catalogue/suppliers', label:'Suppliers', icon:'suppliers', section:'Catalogue' },
     { path: '/allergens', label: 'Allergens', icon: 'alg', section: 'Inventory' },
     { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
