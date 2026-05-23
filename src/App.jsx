@@ -5,6 +5,7 @@ import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
 import UsersPage from './pages/settings/UsersPage'
 import RestaurantPage from './pages/settings/RestaurantPage'
+import SuppliersPage from './pages/inventory/SuppliersPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 
@@ -25,6 +26,7 @@ export default function App() {
                 <Route path="/waste" element={<WasteScreen />} />
                 <Route path="/stocktake" element={<StockTakeScreen />} />
                 <Route path="/catalogue" element={<CatalogueScreen />} />
+                <Route path="/catalogue/suppliers" element={<SuppliersPage />} />
                 <Route path="/allergens" element={<AllergenScreen />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />
