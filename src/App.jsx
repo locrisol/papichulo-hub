@@ -3,7 +3,9 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
+import UsersPage from './pages/settings/UsersPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
+
 
 export default function App() {
   return (
@@ -24,6 +26,7 @@ export default function App() {
                 <Route path="/catalogue" element={<CatalogueScreen />} />
                 <Route path="/allergens" element={<AllergenScreen />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
+                <Route path="/settings/users" element={<UsersPage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </AppLayout>
