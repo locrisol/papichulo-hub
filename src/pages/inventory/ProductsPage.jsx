@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
+import ProductForm from '../../components/ProductForm'
 
 export default function ProductsPage() {
   const { user } = useAuth()
@@ -12,6 +13,7 @@ export default function ProductsPage() {
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
   const [activeSection, setActiveSection] = useState('All')
   const [showForm, setShowForm] = useState(false)
@@ -78,14 +80,45 @@ export default function ProductsPage() {
     return suppliers.find(s => s.id === supplierId)?.name || '—'
   }
 
+  function handleFieldChange(field, value) {
+    setFormData({ ...formData, [field]: value })
+  }
+
+  function validate() {
+    const newErrors = {}
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required'
+    }
+
+    const weightLoss = parseFloat(formData.weight_loss_pct)
+    if (isNaN(weightLoss) || weightLoss < 0 || weightLoss > 100) {
+      newErrors.weight_loss_pct = 'Weight loss must be between 0 and 100'
+    }
+
+    return newErrors
+  }
+
   async function handleSave(e) {
     e.preventDefault()
     setError('')
 
+    const newErrors = validate()
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
+      return
+    }
+    setErrors({})
+
+    const payload = {
+      ...formData,
+      weight_loss_pct: parseFloat(formData.weight_loss_pct),
+    }
+
     if (editingProduct) {
       const { error } = await supabase
         .from('products')
-        .update(formData)
+        .update(payload)
         .eq('id', editingProduct.id)
 
       if (error) setError(error.message)
@@ -93,7 +126,7 @@ export default function ProductsPage() {
     } else {
       const { error } = await supabase
         .from('products')
-        .insert(formData)
+        .insert(payload)
 
       if (error) setError(error.message)
       else { fetchProducts(); resetForm() }
@@ -104,6 +137,7 @@ export default function ProductsPage() {
     setFormData({ name: '', section: 'Freezer', unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true })
     setEditingProduct(null)
     setShowForm(false)
+    setErrors({})
   }
 
   function startEdit(product) {
@@ -118,6 +152,7 @@ export default function ProductsPage() {
     })
     setEditingProduct(product)
     setShowForm(true)
+    setErrors({})
   }
 
   async function toggleActive(product) {
@@ -175,93 +210,14 @@ export default function ProductsPage() {
       {showForm && !editingProduct && (
         <div className="bg-white rounded-xl border border-border p-6 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
-          <form onSubmit={handleSave}>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Section</label>
-                <select
-                  value={formData.section}
-                  onChange={e => setFormData({ ...formData, section: e.target.value })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option>Freezer</option>
-                  <option>Cold Room</option>
-                  <option>Dry</option>
-                  <option>Packaging</option>
-                  <option>Cleaning</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Unit</label>
-                <select
-                  value={formData.unit}
-                  onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option>KG</option>
-                  <option>Each</option>
-                  <option>Litre</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Weight Loss %</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  value={formData.weight_loss_pct}
-                  onChange={e => setFormData({ ...formData, weight_loss_pct: e.target.value })}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-              </div>
-            </div>
-            <div className="mb-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_mix}
-                  onChange={e => setFormData({ ...formData, is_mix: e.target.checked })}
-                  className="w-4 h-4 accent-accent"
-                />
-                <span className="text-sm text-gray-700">This is a MIX product (house-made, cost calculated from recipe)</span>
-              </label>
-            </div>
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-              <textarea
-                value={formData.notes}
-                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                rows={2}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-              >
-                Add Product
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+          <ProductForm
+            formData={formData}
+            onChange={handleFieldChange}
+            onSubmit={handleSave}
+            onCancel={resetForm}
+            submitLabel="Add Product"
+            errors={errors}
+          />
         </div>
       )}
 
@@ -312,8 +268,8 @@ export default function ProductsPage() {
               {filteredProducts.map((p, i) => {
                 const price = getPreferredPrice(p.id)
                 return (
-                  <>
-                    <tr key={p.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <Fragment key={p.id}>
+                    <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
@@ -363,99 +319,20 @@ export default function ProductsPage() {
                       </td>
                     </tr>
                     {editingProduct?.id === p.id && (
-                      <tr key={`${p.id}-edit`}>
+                      <tr>
                         <td colSpan={8} className="px-4 py-4 bg-amber-50 border-b border-border">
-                          <form onSubmit={handleSave}>
-                            <div className="grid grid-cols-2 gap-4 mb-4">
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                                <input
-                                  type="text"
-                                  value={formData.name}
-                                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                  required
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Section</label>
-                                <select
-                                  value={formData.section}
-                                  onChange={e => setFormData({ ...formData, section: e.target.value })}
-                                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                >
-                                  <option>Freezer</option>
-                                  <option>Cold Room</option>
-                                  <option>Dry</option>
-                                  <option>Packaging</option>
-                                  <option>Cleaning</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Unit</label>
-                                <select
-                                  value={formData.unit}
-                                  onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                >
-                                  <option>KG</option>
-                                  <option>Each</option>
-                                  <option>Litre</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Weight Loss %</label>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  min="0"
-                                  max="100"
-                                  value={formData.weight_loss_pct}
-                                  onChange={e => setFormData({ ...formData, weight_loss_pct: e.target.value })}
-                                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                />
-                              </div>
-                            </div>
-                            <div className="mb-4">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.is_mix}
-                                  onChange={e => setFormData({ ...formData, is_mix: e.target.checked })}
-                                  className="w-4 h-4 accent-accent"
-                                />
-                                <span className="text-sm text-gray-700">MIX product</span>
-                              </label>
-                            </div>
-                            <div className="mb-4">
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-                              <textarea
-                                value={formData.notes}
-                                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                rows={2}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                              />
-                            </div>
-                            <div className="flex gap-3">
-                              <button
-                                type="submit"
-                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                              >
-                                Save Changes
-                              </button>
-                              <button
-                                type="button"
-                                onClick={resetForm}
-                                className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </form>
+                          <ProductForm
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Save Changes"
+                            errors={errors}
+                          />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>
