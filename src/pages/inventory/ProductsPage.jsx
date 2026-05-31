@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -7,6 +8,7 @@ import ProductForm from '../../components/ProductForm'
 export default function ProductsPage() {
   const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
+  const navigate = useNavigate()
 
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
@@ -304,7 +306,10 @@ export default function ProductsPage() {
                           <button className="text-xs font-medium text-gray-500 hover:text-gray-700">
                             Allergens
                           </button>
-                          <button className="text-xs font-medium text-gray-500 hover:text-gray-700">
+                          <button
+                            onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
+                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                          >
                             Prices
                           </button>
                           <button
