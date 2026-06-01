@@ -12,6 +12,7 @@ import RecipePage from './pages/inventory/RecipePage'
 import AllergenPage from './pages/inventory/AllergenPage'
 import MenuItemsPage from './pages/inventory/MenuItemsPage'
 import MenuItemPage from './pages/inventory/MenuItemPage'
+import PublicAllergensPage from './pages/PublicAllergensPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 
@@ -20,6 +21,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/unauthorised" element={<UnauthorisedPage />} />
+      <Route path="/allergens/:slug" element={<PublicAllergensPage />} />
       <Route
         path="/*"
         element={
@@ -39,7 +41,6 @@ export default function App() {
                 <Route path="/catalogue/products/:id/allergens" element={<AllergenPage />} />
                 <Route path="/catalogue/menu-items" element={<MenuItemsPage />} />
                 <Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} />
-                <Route path="/allergens" element={<AllergenScreen />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />
                 <Route path="/settings/restaurant" element={<RestaurantPage />} />
