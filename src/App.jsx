@@ -9,6 +9,7 @@ import SuppliersPage from './pages/inventory/SuppliersPage'
 import ProductsPage from './pages/inventory/ProductsPage'
 import ProductPricesPage from './pages/inventory/ProductPricesPage'
 import RecipePage from './pages/inventory/RecipePage'
+import AllergenPage from './pages/inventory/AllergenPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 
@@ -33,6 +34,9 @@ export default function App() {
                 <Route path="/catalogue/products" element={<ProductsPage />} />
                 <Route path="/catalogue/products/:id/prices" element={<ProductPricesPage />} />
                 <Route path="/catalogue/products/:id/recipe" element={<RecipePage />} />
+                <Route path="/catalogue/products/:id/recipe" element={<RecipePage />} />
+                <Route path="/catalogue/products/:id/allergens" element={<AllergenPage />} />
+                <Route path="/allergens" element={<AllergenScreen />} />
                 <Route path="/allergens" element={<AllergenScreen />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />
