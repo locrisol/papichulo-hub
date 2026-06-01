@@ -1,15 +1,64 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 
 export default function RecipeIngredientForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
   const ingredientSelectRef = useRef(null)
+  const [displayUnit, setDisplayUnit] = useState(ingredientUnit)
 
   useEffect(() => {
     if (!formData.ingredient_product_id && ingredientSelectRef.current) {
+      const scrollContainer = ingredientSelectRef.current.closest('main')
+      const scrollTop = scrollContainer ? scrollContainer.scrollTop : 0
       ingredientSelectRef.current.focus({ preventScroll: true })
+      if (scrollContainer) scrollContainer.scrollTop = scrollTop
     }
   }, [formData.ingredient_product_id])
+
+  // When the ingredient changes (and so the canonical unit), reset the
+  // display unit to the canonical one. The user can then switch to g/ml
+  // if they prefer typing in smaller units.
+  useEffect(() => {
+    if (ingredientUnit === 'KG') setDisplayUnit('g')
+    else if (ingredientUnit === 'Litre') setDisplayUnit('ml')
+    else setDisplayUnit(ingredientUnit)
+  }, [ingredientUnit])
+
+  // Converts the canonical stored value to what should appear in the input,
+  // based on the current display unit. KG stored as 0.04 with display unit
+  // 'g' shows as 40.
+  function getDisplayValue() {
+    if (!formData.quantity) return ''
+    const stored = parseFloat(formData.quantity)
+    if (isNaN(stored)) return formData.quantity
+    if (displayUnit === 'g' || displayUnit === 'ml') {
+      return (stored * 1000).toString()
+    }
+    return formData.quantity
+  }
+
+  // The reverse: user types in the display unit, we store in the canonical
+  // unit. User types 40 with display unit 'g', we store 0.04.
+  function handleDisplayChange(value) {
+    if (value === '') {
+      onChange('quantity', '')
+      return
+    }
+    const num = parseFloat(value)
+    if (isNaN(num)) {
+      onChange('quantity', value)
+      return
+    }
+    if (displayUnit === 'g' || displayUnit === 'ml') {
+      onChange('quantity', (num / 1000).toString())
+    } else {
+      onChange('quantity', value)
+    }
+  }
+
+  const stepValue = (displayUnit === 'g' || displayUnit === 'ml') ? '1'
+    : (displayUnit === 'KG' || displayUnit === 'Litre') ? '0.001'
+    : '1'
 
   return (
     <form onSubmit={onSubmit}>
@@ -33,17 +82,40 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Quantity ({ingredientUnit})
-          </label>
-          <input
-            type="number"
-            step={ingredientUnit === 'KG' || ingredientUnit === 'Litre' ? '0.001' : '1'}
-            min="0"
-            value={formData.quantity}
-            onChange={e => onChange('quantity', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-          />
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              step={stepValue}
+              min="0"
+              value={getDisplayValue()}
+              onChange={e => handleDisplayChange(e.target.value)}
+              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            />
+            {(ingredientUnit === 'KG' || ingredientUnit === 'Litre') ? (
+              <select
+                value={displayUnit}
+                onChange={e => setDisplayUnit(e.target.value)}
+                className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              >
+                {ingredientUnit === 'KG' ? (
+                  <>
+                    <option value="KG">KG</option>
+                    <option value="g">g</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Litre">Litre</option>
+                    <option value="ml">ml</option>
+                  </>
+                )}
+              </select>
+            ) : (
+              <span className="px-3 py-2 text-sm text-gray-500 border border-border rounded-lg bg-gray-50">
+                {ingredientUnit}
+              </span>
+            )}
+          </div>
           {errors.quantity && <p className="text-xs text-red-600 mt-1">{errors.quantity}</p>}
         </div>
       </div>
