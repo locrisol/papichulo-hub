@@ -114,7 +114,7 @@ export default function RecipePage() {
   // already added to this recipe (unless we're editing that specific line)
   const availableProducts = products.filter(p => {
     if (editingLine && editingLine.ingredient_product_id === p.id) return true
-    return !recipeLines.some(l => l.ingredient_product_id === p.id)
+    return !recipeLines.some(l => l.ingredient_product_id === p.id && l.mix_product_id === id)
   })
 
   function handleFieldChange(field, value) {
