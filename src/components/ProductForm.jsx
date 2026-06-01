@@ -36,7 +36,7 @@ export default function ProductForm({ formData, onChange, onSubmit, onCancel, su
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           >
             <option>KG</option>
-            <option>Each</option>
+            <option>Units</option>
             <option>Litre</option>
           </select>
         </div>
