@@ -167,10 +167,17 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
+  const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     .filter(p => activeSection === 'All' || p.section === activeSection)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const sectionDiff = sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section)
+      if (sectionDiff !== 0) return sectionDiff
+      return a.name.localeCompare(b.name)
+  })
 
   return (
     <div>
@@ -271,28 +278,34 @@ export default function ProductsPage() {
                 const price = getPreferredPrice(p.id)
                 return (
                   <Fragment key={p.id}>
-                    <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
+                    <tr className={`border-b border-border ${!p.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          p.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                        }`}>
                           {p.section}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{p.unit}</td>
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          p.is_mix ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'
+                          !p.is_active
+                            ? 'bg-gray-100 text-gray-400'
+                            : p.is_mix
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-green-50 text-green-700'
                         }`}>
                           {p.is_mix ? 'MIX' : 'Purchased'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {getSupplierName(price?.supplier_id)}
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                      <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                         {price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
                       <td className="px-4 py-3">

@@ -20,6 +20,16 @@ export default function SuppliersPage() {
         return localStorage.getItem('suppliersShowInactive') === 'true'
     })
 
+    const categoryOrder = ['food', 'packaging', 'cleaning', 'other']
+
+    const filteredSuppliers = suppliers
+        .filter(s => showInactive || s.is_active)
+        .sort((a, b) => {
+            const categoryDiff = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+            if (categoryDiff !== 0) return categoryDiff
+            return a.name.localeCompare(b.name)
+    })
+
     useEffect(() => {
         fetchSuppliers()
     }, [])
@@ -221,22 +231,22 @@ export default function SuppliersPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {suppliers
-                                    .filter(s => showInactive || s.is_active)
-                                    .map((s, i) => (
+                                {filteredSuppliers.map((s, i) => (
                                         <>
-                                            <tr key={s.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                                <td className="px-4 py-3 font-medium text-gray-900">
+                                            <tr key={s.id} className={`border-b border-border ${!s.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                                <td className={`px-4 py-3 font-medium ${s.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                                                     {s.name}
                                                     {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 capitalize">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${
+                                                        s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                                    }`}>
                                                         {s.category}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-gray-500">{s.contact_email || '—'}</td>
-                                                <td className="px-4 py-3 text-gray-500">{s.contact_phone || '—'}</td>
+                                                <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_email || '—'}</td>
+                                                <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_phone || '—'}</td>
                                                 <td className="px-4 py-3">
                                                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
                                                         }`}>
