@@ -1,6 +1,15 @@
+import { useRef, useEffect } from 'react'
+
 export default function RecipeIngredientForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
+  const ingredientSelectRef = useRef(null)
+
+  useEffect(() => {
+    if (!formData.ingredient_product_id && ingredientSelectRef.current) {
+      ingredientSelectRef.current.focus({ preventScroll: true })
+    }
+  }, [formData.ingredient_product_id])
 
   return (
     <form onSubmit={onSubmit}>
@@ -8,6 +17,7 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ingredient</label>
           <select
+            ref={ingredientSelectRef}
             value={formData.ingredient_product_id}
             onChange={e => onChange('ingredient_product_id', e.target.value)}
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
@@ -59,9 +69,9 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
+          className="px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 bg-white transition-colors"
         >
-          Cancel
+          Done
         </button>
       </div>
     </form>

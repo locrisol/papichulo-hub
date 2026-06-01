@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 
 export default function RecipePage() {
@@ -69,11 +70,9 @@ export default function RecipePage() {
   }
 
   async function fetchRecipeLines() {
-    setLoading(true)
     const { data, error } = await supabase
       .from('mix_recipes')
       .select('*')
-      .eq('mix_product_id', id)
       .order('id')
 
     if (error) setError(error.message)
@@ -95,13 +94,18 @@ export default function RecipePage() {
     return products.find(p => p.id === productId)
   }
 
-  function getPreferredUnitCost(productId) {
-    const price = prices.find(p => p.product_id === productId)
-    return price ? parseFloat(price.price_per_unit) : null
+  function getIngredientUnitCost(ingredientProduct) {
+    // Uses the recursive helper. For raw ingredients it returns the preferred
+    // price. For MIX ingredients it recursively computes the per-unit cost
+    // from the nested recipe.
+    if (!ingredientProduct) return null
+    const result = calculateMixCost(ingredientProduct, products, recipeLines, prices)
+    return result.cost
   }
 
   function getLineCost(line) {
-    const unitCost = getPreferredUnitCost(line.ingredient_product_id)
+    const ingredient = getProduct(line.ingredient_product_id)
+    const unitCost = getIngredientUnitCost(ingredient)
     if (unitCost === null) return null
     return parseFloat(line.quantity) * unitCost
   }
@@ -164,7 +168,12 @@ export default function RecipePage() {
         .insert(payload)
 
       if (error) setError(error.message)
-      else { fetchRecipeLines(); resetForm() }
+      else {
+        fetchRecipeLines()
+        setFormData(emptyForm())
+        setErrors({})
+        // Form stays open for rapid bulk entry. User clicks Done to close.
+      }
     }
   }
 
@@ -223,26 +232,28 @@ export default function RecipePage() {
     setBatchYieldSaving(false)
   }
 
-  // Recipe summary: total cost and per-unit cost. Per-unit is total / batch_yield.
-  // Returns null if any ingredient is missing a preferred price (incomplete data).
+  // Recipe summary uses the shared calculateMixCost helper. The helper handles
+  // nested MIXes recursively, so a MIX ingredient like Salsa Verde in Lime
+  // Crema is costed correctly rather than flagged as missing a price.
   const summary = (() => {
-    if (recipeLines.length === 0) return null
+    if (!product || recipeLines.length === 0) return null
 
-    let total = 0
-    let anyMissing = false
-    for (const line of recipeLines) {
-      const lineCost = getLineCost(line)
-      if (lineCost === null) {
-        anyMissing = true
-        continue
-      }
-      total += lineCost
-    }
-
+    const result = calculateMixCost(product, products, recipeLines, prices)
     const batchYield = product?.batch_yield ? parseFloat(product.batch_yield) : null
-    const perUnit = (batchYield && batchYield > 0) ? total / batchYield : null
 
-    return { total, perUnit, anyMissing, batchYield }
+    // For display we also want the absolute batch total (cost × batch_yield),
+    // which is the per-unit cost scaled back up to one whole batch.
+    const total = (result.cost !== null && batchYield)
+      ? result.cost * batchYield
+      : null
+
+    return {
+      perUnit: result.cost,
+      total,
+      batchYield,
+      status: result.status,
+      missing: result.missing || [],
+    }
   })()
 
   return (
@@ -331,7 +342,7 @@ export default function RecipePage() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading recipe...</div>
-      ) : recipeLines.length === 0 ? (
+      ) : recipeLines.filter(line => line.mix_product_id === id).length === 0 ? (
         <div className="bg-white rounded-xl border border-border p-8 text-center">
           <p className="text-sm text-gray-500">
             No ingredients yet. Click "+ Add Ingredient" to start building the recipe.
@@ -352,9 +363,9 @@ export default function RecipePage() {
                 </tr>
               </thead>
               <tbody>
-                {recipeLines.map((line, i) => {
+                {recipeLines.filter(line => line.mix_product_id === id).map((line, i) => {
                   const ingredient = getProduct(line.ingredient_product_id)
-                  const unitCost = getPreferredUnitCost(line.ingredient_product_id)
+                  const unitCost = getIngredientUnitCost(ingredient)
                   const lineCost = getLineCost(line)
                   return (
                     <Fragment key={line.id}>
@@ -366,7 +377,7 @@ export default function RecipePage() {
                           {parseFloat(line.quantity)} {ingredient?.unit || ''}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
-                          {unitCost !== null ? `€${unitCost.toFixed(4)} / ${ingredient?.unit}` : <span className="text-amber-600">No preferred price</span>}
+                          {unitCost !== null ? `€${unitCost.toFixed(4)} / ${ingredient?.unit}` : <span className="text-amber-600">No cost available</span>}
                         </td>
                         <td className="px-4 py-3 font-medium text-gray-900">
                           {lineCost !== null ? `€${lineCost.toFixed(2)}` : '—'}
@@ -417,7 +428,9 @@ export default function RecipePage() {
               <div className="grid grid-cols-3 gap-6">
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Cost per Batch</p>
-                  <p className="text-2xl font-semibold text-gray-900">€{summary.total.toFixed(2)}</p>
+                  <p className="text-2xl font-semibold text-gray-900">
+                    {summary.total !== null ? `€${summary.total.toFixed(2)}` : '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Batch Yield</p>
@@ -432,9 +445,19 @@ export default function RecipePage() {
                   </p>
                 </div>
               </div>
-              {summary.anyMissing && (
+              {summary.status === 'missing_price' && (
                 <p className="text-xs text-amber-700 mt-3">
-                  Some ingredients have no preferred price set for {activeRestaurant?.name}. The total above only counts ingredients that do.
+                  Some ingredients (or nested MIX ingredients) have no preferred price set for {activeRestaurant?.name}. The cost above cannot be calculated until all ingredient prices are configured.
+                </p>
+              )}
+              {summary.status === 'no_batch_yield' && (
+                <p className="text-xs text-amber-700 mt-3">
+                  Set a batch yield above to see the cost per {product?.unit}.
+                </p>
+              )}
+              {summary.status === 'cycle' && (
+                <p className="text-xs text-red-600 mt-3">
+                  This recipe references itself somewhere in the chain (a MIX appearing in its own recipe, directly or via another MIX). The cost cannot be calculated until the cycle is removed.
                 </p>
               )}
             </div>
