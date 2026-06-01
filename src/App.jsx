@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
@@ -17,6 +17,15 @@ import PublicAllergensPreviewPage from './pages/inventory/PublicAllergensPreview
 import StockTakesListPage from './pages/inventory/StockTakesListPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
+function StockTakeCountPlaceholder() {
+  const { id } = useParams()
+  return (
+    <div className="p-6 max-w-2xl">
+      <h1 className="font-serif text-2xl font-bold text-gray-900 mb-2">Stock take #{id}</h1>
+      <p className="text-sm text-muted">Count screen coming in the next step.</p>
+    </div>
+  )
+}
 
 export default function App() {
   return (
@@ -44,6 +53,7 @@ export default function App() {
                 <Route path="/catalogue/menu-items" element={<MenuItemsPage />} />
                 <Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} />
                 <Route path="/inventory/stock-takes" element={<StockTakesListPage />} />
+                <Route path="/inventory/stock-takes/:id" element={<StockTakeCountPlaceholder />} />
                 <Route path="/inventory/public-allergens" element={<PublicAllergensPreviewPage />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { useAuth } from '../../context/AuthContext'
+import StartStockTakeModal from '../../components/StartStockTakeModal'
 
 export default function StockTakesListPage() {
   const navigate = useNavigate()
@@ -302,22 +303,16 @@ export default function StockTakesListPage() {
         )}
       </section>
 
-      {/* TODO: StartStockTakeModal goes here. For now placeholder. */}
       {showStartModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
-            <p className="text-sm text-gray-700 mb-4">
-              Start modal not built yet — coming in next step.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowStartModal(false)}
-              className="text-sm font-semibold text-accent"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <StartStockTakeModal
+          restaurantId={activeRestaurant.id}
+          userId={user.id}
+          onClose={() => setShowStartModal(false)}
+          onCreated={(session) => {
+            setShowStartModal(false)
+            navigate(`/inventory/stock-takes/${session.id}`)
+          }}
+        />
       )}
     </div>
   )
