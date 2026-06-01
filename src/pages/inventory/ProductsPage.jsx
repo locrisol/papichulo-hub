@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 
 export default function ProductsPage() {
   const { user } = useAuth()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
-
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
+  const [recipeLines, setRecipeLines] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -44,6 +45,7 @@ export default function ProductsPage() {
   useEffect(() => {
     if (!activeRestaurant) return
     fetchPrices()
+    fetchRecipeLines()
   }, [activeRestaurant])
 
   async function fetchProducts() {
@@ -72,6 +74,14 @@ export default function ProductsPage() {
       .eq('is_preferred', true)
 
     if (data) setPrices(data)
+  }
+
+  async function fetchRecipeLines() {
+    const { data } = await supabase
+      .from('mix_recipes')
+      .select('*')
+
+    if (data) setRecipeLines(data)
   }
 
   function getPreferredPrice(productId) {
@@ -275,6 +285,7 @@ export default function ProductsPage() {
             <tbody>
               {filteredProducts.map((p, i) => {
                 const price = getPreferredPrice(p.id)
+                const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
                 return (
                   <Fragment key={p.id}>
                     <tr className={`border-b border-border ${!p.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
@@ -299,10 +310,14 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {getSupplierName(price?.supplier_id)}
+                        {p.is_mix ? <span className="italic">House-made</span> : getSupplierName(price?.supplier_id)}
                       </td>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
-                        {price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : '—'}
+                        {p.is_mix
+                          ? (mixResult?.cost !== null
+                              ? `€${mixResult.cost.toFixed(4)}`
+                              : <span className="text-amber-600 text-xs">Incomplete</span>)
+                          : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : '—')}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
