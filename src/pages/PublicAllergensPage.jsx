@@ -10,8 +10,9 @@ const ALLERGEN_LABELS = {
   lupin: 'Lupin', molluscs: 'Molluscs',
 }
 
-export default function PublicAllergensPage() {
-  const { slug } = useParams()
+export default function PublicAllergensPage({ slugOverride }) {
+  const params = useParams()
+  const slug = slugOverride ?? params.slug
 
   const [restaurant, setRestaurant] = useState(null)
   const [categories, setCategories] = useState([])
