@@ -7,7 +7,9 @@
 -- 3. Add a type enum to stock_takes (daily/weekly/monthly), defaulting to
 --    monthly so existing/future behaviour matches v1 expectations.
 -- 4. Enforce at most one active session per restaurant at any time via a
---    partial unique index.
+--    partial unique index. We match on status = 'in_progress' (not on
+--    completed_at IS NULL) so cancelled or otherwise-non-progressing
+--    sessions don't block a new one from starting.
 
 -- First, find and drop whatever unique constraint exists on (stock_take_id, product_id).
 -- The original constraint name isn't deterministic if it was auto-generated, so we
@@ -48,4 +50,4 @@ CHECK (count_frequency IS NULL OR count_frequency IN ('daily', 'weekly', 'monthl
 -- don't compete for the slot.
 CREATE UNIQUE INDEX IF NOT EXISTS stock_takes_one_active_per_restaurant
 ON stock_takes (restaurant_id)
-WHERE closed_at IS NULL;
+WHERE status = 'in_progress';
