@@ -34,6 +34,7 @@ export default function ProductsPage() {
   })
 
   const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+  const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
   useEffect(() => {
     fetchProducts()
@@ -167,8 +168,6 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
-  const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     .filter(p => activeSection === 'All' || p.section === activeSection)
@@ -177,7 +176,7 @@ export default function ProductsPage() {
       const sectionDiff = sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section)
       if (sectionDiff !== 0) return sectionDiff
       return a.name.localeCompare(b.name)
-  })
+    })
 
   return (
     <div>
@@ -319,6 +318,14 @@ export default function ProductsPage() {
                           <button className="text-xs font-medium text-gray-500 hover:text-gray-700">
                             Allergens
                           </button>
+                          {p.is_mix && (
+                            <button
+                              onClick={() => navigate(`/catalogue/products/${p.id}/recipe`)}
+                              className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                            >
+                              Recipe
+                            </button>
+                          )}
                           <button
                             onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
                             className="text-xs font-medium text-gray-500 hover:text-gray-700"
