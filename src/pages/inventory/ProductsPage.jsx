@@ -330,7 +330,10 @@ export default function ProductsPage() {
                           >
                             {editingProduct?.id === p.id ? 'Cancel' : 'Edit'}
                           </button>
-                          <button className="text-xs font-medium text-gray-500 hover:text-gray-700">
+                          <button
+                            onClick={() => navigate(`/catalogue/products/${p.id}/allergens`)}
+                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                          >
                             Allergens
                           </button>
                           {p.is_mix && (
