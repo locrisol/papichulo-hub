@@ -8,12 +8,12 @@ import { useRestaurant } from '../../context/RestaurantContext'
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 const SECTION_COLOURS = {
-  'Freezer':   { text: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200',   solid: 'bg-blue-600' },
-  'Cold Room': { text: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-200',  solid: 'bg-green-600' },
-  'Dry':       { text: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200',  solid: 'bg-amber-600' },
-  'Packaging': { text: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200',    solid: 'bg-red-600' },
-  'Cleaning':  { text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600' },
-  'Other':     { text: 'text-gray-700',   bg: 'bg-gray-50',   border: 'border-gray-200',   solid: 'bg-gray-600' },
+  'Freezer': { text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600' },
+  'Cold Room': { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600' },
+  'Dry': { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600' },
+  'Packaging': { text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600' },
+  'Cleaning': { text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600' },
+  'Other': { text: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600' },
 }
 function sectionColour(s) { return SECTION_COLOURS[s] || SECTION_COLOURS['Other'] }
 function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
@@ -97,6 +97,31 @@ export default function StockTakeSummaryPage() {
 
   function getSectionValue(items) {
     return items.reduce((s, p) => s + getProductValue(p.id), 0)
+  }
+
+  // Return a line's unit_breakdown as sorted parts (biggest format left,
+  // loose last), or null for old-style lines without a breakdown.
+  function breakdownParts(line, product) {
+    const b = line.unit_breakdown
+    if (!b || typeof b !== 'object') return null
+    const parts = []
+    for (const [label, info] of Object.entries(b)) {
+      const qty = info?.qty
+      if (qty == null) continue
+      const factor = Number(info.factor ?? 1)
+      if (label === 'loose') {
+        parts.push({ key: 'loose', text: `${fmtQty(qty)} ${product.unit}`, factor, isLoose: true })
+      } else {
+        parts.push({ key: label, text: `${fmtQty(qty)} ${label}`, factor, isLoose: false })
+      }
+    }
+    if (parts.length === 0) return null
+    parts.sort((a, b) => {
+      if (a.isLoose && !b.isLoose) return 1
+      if (!a.isLoose && b.isLoose) return -1
+      return b.factor - a.factor
+    })
+    return parts
   }
 
   // Sections containing only counted products, grouped and ordered
@@ -278,13 +303,32 @@ export default function StockTakeSummaryPage() {
                           <p className="text-xs text-muted">{fmtMoney(value)}</p>
                         </div>
                       </div>
-                      {productLines.length > 1 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {productLines.map(line => (
-                            <span key={line.id} className="text-xs bg-white border border-border rounded-full px-2 py-0.5 text-gray-600">
-                              {fmtQty(line.quantity_counted)} {product.unit}{line.location_note ? ` · ${line.location_note}` : ''}
-                            </span>
-                          ))}
+                      {(productLines.length > 1 || productLines.some(l => breakdownParts(l, product))) && (
+                        <div className="mt-2 space-y-1.5">
+                          {productLines.map(line => {
+                            const parts = breakdownParts(line, product)
+                            return (
+                              <div key={line.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                {parts ? (
+                                  <>
+                                    {parts.map(part => (
+                                      <span key={part.key} className="bg-white border border-border rounded-md px-2 py-0.5 font-medium text-gray-700">
+                                        {part.text}
+                                      </span>
+                                    ))}
+                                    <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                  </>
+                                ) : (
+                                  <span className="bg-white border border-border rounded-full px-2 py-0.5 text-gray-600">
+                                    {fmtQty(line.quantity_counted)} {product.unit}
+                                  </span>
+                                )}
+                                {line.location_note && (
+                                  <span className="text-muted">· {line.location_note}</span>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>

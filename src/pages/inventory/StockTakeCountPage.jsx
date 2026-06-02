@@ -39,11 +39,13 @@ export default function StockTakeCountPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [expandedProductId, setExpandedProductId] = useState(null)
-    const [draftQty, setDraftQty] = useState('')
+    // draftCounts: { [formatId or 'loose']: stringValue }
+    const [draftCounts, setDraftCounts] = useState({})
     const [draftLocation, setDraftLocation] = useState('')
     const [savingLine, setSavingLine] = useState(false)
     const [showUncountedOnly, setShowUncountedOnly] = useState(false)
     const [filterSnapshot, setFilterSnapshot] = useState(null)
+    const [formatsByProductId, setFormatsByProductId] = useState({})
 
     const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
@@ -91,6 +93,32 @@ export default function StockTakeCountPage() {
             .select('*')
             .eq('is_preferred', true)
         setPreferredPrices(pricesData || [])
+
+        // Fetch pack formats for the preferred prices, build a per-product lookup.
+        const preferredPriceIds = (pricesData || []).map(p => p.id)
+        let countUnitsData = []
+        if (preferredPriceIds.length > 0) {
+            const { data: cuData } = await supabase
+                .from('price_count_units')
+                .select('*')
+                .in('price_id', preferredPriceIds)
+                .eq('is_active', true)
+                .order('sort_order', { ascending: true })
+            countUnitsData = cuData || []
+        }
+
+        // Map: product_id -> { formats: [...], allowLoose: bool }
+        const priceByProduct = {}
+        for (const p of (pricesData || [])) priceByProduct[p.product_id] = p
+        const formatsMap = {}
+        for (const product_id in priceByProduct) {
+            const price = priceByProduct[product_id]
+            formatsMap[product_id] = {
+                formats: countUnitsData.filter(cu => cu.price_id === price.id),
+                allowLoose: price.allow_loose_count ?? true,
+            }
+        }
+        setFormatsByProductId(formatsMap)
 
         const { data: recipesData } = await supabase
             .from('mix_recipes')
@@ -147,21 +175,19 @@ export default function StockTakeCountPage() {
             setExpandedProductId(null)
         } else {
             setExpandedProductId(productId)
-            setDraftQty('')
+            setDraftCounts({})
             setDraftLocation('')
         }
     }
 
     async function handleAddLine(product) {
-        const qty = parseFloat(draftQty)
-        if (isNaN(qty) || qty < 0) {
-            return // ignore invalid; the input guards this but double-check
-        }
+        const { total, breakdown, hasAny } = computeDraft(product)
+        if (!hasAny || total < 0) return
 
         setSavingLine(true)
 
         const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
-        const lineTotal = unitCost != null ? qty * unitCost : null
+        const lineTotal = unitCost != null ? total * unitCost : null
 
         const { data, error: insertErr } = await supabase
             .from('stock_take_lines')
@@ -169,25 +195,21 @@ export default function StockTakeCountPage() {
                 stock_take_id: id,
                 product_id: product.id,
                 section: product.section || null,
-                quantity_counted: qty,
+                quantity_counted: total,
                 unit_cost: unitCost,
                 line_total: lineTotal,
                 counted_by: user.id,
                 location_note: draftLocation.trim() || null,
+                unit_breakdown: Object.keys(breakdown).length > 0 ? breakdown : null,
             })
             .select()
             .single()
 
         setSavingLine(false)
+        if (insertErr) { setError(insertErr.message); return }
 
-        if (insertErr) {
-            setError(insertErr.message)
-            return
-        }
-
-        // Optimistic: add the new line to local state, keep row open, clear inputs.
         setLines(prev => [...prev, data])
-        setDraftQty('')
+        setDraftCounts({})
         setDraftLocation('')
     }
 
@@ -223,6 +245,68 @@ export default function StockTakeCountPage() {
     // floating-point display artefacts like 11.799999999999999.
     function fmtQty(n) {
         return parseFloat(Number(n).toFixed(3)).toString()
+    }
+
+    // Return the breakdown as an array of { key, text, factor } parts, sorted
+    // by factor descending (biggest format left), with loose always last.
+    function breakdownParts(line, product) {
+        const b = line.unit_breakdown
+        if (!b || typeof b !== 'object') return null
+        const parts = []
+        for (const [label, info] of Object.entries(b)) {
+            const qty = info?.qty
+            if (qty == null) continue
+            const factor = Number(info.factor ?? 1)
+            if (label === 'loose') {
+                parts.push({ key: 'loose', text: `${fmtQty(qty)} ${product.unit}`, factor, isLoose: true })
+            } else {
+                parts.push({ key: label, text: `${fmtQty(qty)} ${label}`, factor, isLoose: false })
+            }
+        }
+        if (parts.length === 0) return null
+
+        parts.sort((a, b) => {
+            // Loose always goes last
+            if (a.isLoose && !b.isLoose) return 1
+            if (!a.isLoose && b.isLoose) return -1
+            // Otherwise biggest factor first
+            return b.factor - a.factor
+        })
+
+        return parts
+    }
+
+    // Given a product's format config and the draft inputs, compute the base-unit
+    // total and the breakdown to store. Returns { total, breakdown, hasAny }.
+    function computeDraft(product) {
+        const config = formatsByProductId[product.id] || { formats: [], allowLoose: true }
+        let total = 0
+        const breakdown = {}
+        let hasAny = false
+
+        for (const fmt of config.formats) {
+            const raw = draftCounts[fmt.id]
+            const qty = parseFloat(raw)
+            if (!isNaN(qty) && qty > 0) {
+                total += qty * Number(fmt.factor)
+                breakdown[fmt.label] = { qty, factor: Number(fmt.factor) }
+                hasAny = true
+            }
+        }
+
+        // Loose (base unit). Offered if allowLoose, or if there are no formats at all.
+        const looseAllowed = config.allowLoose || config.formats.length === 0
+        if (looseAllowed) {
+            const looseRaw = draftCounts['loose']
+            const looseQty = parseFloat(looseRaw)
+            if (!isNaN(looseQty) && looseQty > 0) {
+                total += looseQty
+                breakdown['loose'] = { qty: looseQty, factor: 1 }
+                hasAny = true
+            }
+        }
+
+        return { total, breakdown, hasAny }
     }
 
     const sections = useMemo(() => {
@@ -489,11 +573,33 @@ export default function StockTakeCountPage() {
                                                                         className="flex items-center justify-between gap-2 text-sm bg-white border border-border rounded-lg px-3 py-2.5 shadow-sm"
                                                                     >
                                                                         <div className="flex-1 min-w-0">
-                                                                            <span className="font-semibold text-gray-900">
-                                                                                {fmtQty(line.quantity_counted)} {product.unit}
-                                                                            </span>
+                                                                            {(() => {
+                                                                                const parts = breakdownParts(line, product)
+                                                                                if (parts) {
+                                                                                    return (
+                                                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                                                            {parts.map(part => (
+                                                                                                <span
+                                                                                                    key={part.key}
+                                                                                                    className="inline-block bg-gray-100 border border-border rounded-md px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                                                                >
+                                                                                                    {part.text}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                            <span className="text-xs text-muted">
+                                                                                                = {fmtQty(line.quantity_counted)} {product.unit}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )
+                                                                                }
+                                                                                return (
+                                                                                    <span className="font-semibold text-gray-900">
+                                                                                        {fmtQty(line.quantity_counted)} {product.unit}
+                                                                                    </span>
+                                                                                )
+                                                                            })()}
                                                                             {line.location_note && (
-                                                                                <span className="text-muted"> · {line.location_note}</span>
+                                                                                <span className="text-xs text-muted block mt-1"> · {line.location_note}</span>
                                                                             )}
                                                                         </div>
                                                                         {canModify && (
@@ -514,47 +620,78 @@ export default function StockTakeCountPage() {
                                                         </div>
                                                     )}
 
-                                                    {/* Add a count */}
-                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-                                                        <div className="flex-1">
-                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                Quantity ({product.unit})
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={draftQty}
-                                                                onChange={e => {
-                                                                    // Allow only numbers and a single decimal point
-                                                                    const v = e.target.value.replace(/[^0-9.]/g, '')
-                                                                    setDraftQty(v)
-                                                                }}
-                                                                placeholder="0"
-                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
-                                                            />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <label className="block text-xs font-medium text-muted mb-1">
-                                                                Location <span className="font-normal">(optional)</span>
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                value={draftLocation}
-                                                                onChange={e => setDraftLocation(e.target.value)}
-                                                                placeholder="e.g. back cold room"
-                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
-                                                            />
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAddLine(product)}
-                                                            disabled={savingLine || draftQty === '' || isNaN(parseFloat(draftQty))}
-                                                            className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors flex-shrink-0"
-                                                            style={{ minHeight: '44px' }}
-                                                        >
-                                                            Add
-                                                        </button>
-                                                    </div>
+                                                    {/* Add a count — per-format fields + optional loose */}
+                                                    {(() => {
+                                                        const config = formatsByProductId[product.id] || { formats: [], allowLoose: true }
+                                                        const looseAllowed = config.allowLoose || config.formats.length === 0
+                                                        const { total, hasAny } = computeDraft(product)
+                                                        return (
+                                                            <div className="space-y-2">
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {config.formats.map(fmt => (
+                                                                        <div key={fmt.id} className="flex-1 min-w-[120px]">
+                                                                            <label className="block text-xs font-medium text-muted mb-1">
+                                                                                {fmt.label} <span className="font-normal">({fmtQty(fmt.factor)} {product.unit})</span>
+                                                                            </label>
+                                                                            <input
+                                                                                type="text"
+                                                                                inputMode="decimal"
+                                                                                value={draftCounts[fmt.id] || ''}
+                                                                                onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                placeholder="0"
+                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                            />
+                                                                        </div>
+                                                                    ))}
+                                                                    {looseAllowed && (
+                                                                        <div className="flex-1 min-w-[120px]">
+                                                                            <label className="block text-xs font-medium text-muted mb-1">
+                                                                                {config.formats.length > 0 ? 'Loose' : 'Quantity'} <span className="font-normal">({product.unit})</span>
+                                                                            </label>
+                                                                            <input
+                                                                                type="text"
+                                                                                inputMode="decimal"
+                                                                                value={draftCounts['loose'] || ''}
+                                                                                onChange={e => setDraftCounts(prev => ({ ...prev, loose: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                                placeholder="0"
+                                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                                                                    <div className="flex-1">
+                                                                        <label className="block text-xs font-medium text-muted mb-1">
+                                                                            Location <span className="font-normal">(optional)</span>
+                                                                        </label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={draftLocation}
+                                                                            onChange={e => setDraftLocation(e.target.value)}
+                                                                            placeholder="e.g. back cold room"
+                                                                            className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                                        />
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleAddLine(product)}
+                                                                        disabled={savingLine || !hasAny}
+                                                                        className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                                                                        style={{ minHeight: '44px' }}
+                                                                    >
+                                                                        Add
+                                                                    </button>
+                                                                </div>
+
+                                                                {hasAny && (
+                                                                    <p className="text-sm text-muted">
+                                                                        = <span className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</span>
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>
