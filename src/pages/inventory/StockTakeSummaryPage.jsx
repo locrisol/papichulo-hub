@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { exportStockTakePdf } from '../../lib/stockTakePdf'
+import { useRestaurant } from '../../context/RestaurantContext'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -38,6 +40,8 @@ export default function StockTakeSummaryPage() {
   const [showReopen, setShowReopen] = useState(false)
   const [reopenReason, setReopenReason] = useState('')
   const [reopening, setReopening] = useState(false)
+
+  const { activeRestaurant } = useRestaurant()
 
   const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
@@ -120,6 +124,17 @@ export default function StockTakeSummaryPage() {
     return `${typeWord} Stock Take (${monthYear})`
   }
 
+  function handleExportPdf() {
+    exportStockTakePdf({
+      session,
+      restaurant: activeRestaurant || { name: 'Papi Chulo' },
+      products,
+      lines,
+      generatedBy: user?.full_name || 'Unknown',
+      title: sessionTitle(),
+    })
+  }
+
   async function handleReopen() {
     setReopening(true)
     setError('')
@@ -199,6 +214,19 @@ export default function StockTakeSummaryPage() {
           </p>
         )}
       </header>
+
+      {isManager && (
+        <button
+          type="button"
+          onClick={handleExportPdf}
+          className="inline-flex items-center gap-2 bg-white border border-border hover:bg-gray-50 text-gray-900 text-sm font-semibold px-4 py-2 rounded-lg transition-colors mb-5"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Download PDF
+        </button>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3 mb-6">
