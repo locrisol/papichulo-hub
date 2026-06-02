@@ -106,6 +106,17 @@ export default function StockTakeCountPage() {
             .reduce((sum, l) => sum + Number(l.quantity_counted || 0), 0)
     }
 
+    function getProductValue(productId) {
+        return lines
+            .filter(l => l.product_id === productId)
+            .reduce((s, l) => s + Number(l.line_total || 0), 0)
+    }
+
+    function fmtMoney(n) {
+        if (n == null || isNaN(n)) return '—'
+        return '€' + Number(n).toFixed(2)
+    }
+
     function getProductLineCount(productId) {
         return lines.filter(l => l.product_id === productId).length
     }
@@ -244,6 +255,10 @@ export default function StockTakeCountPage() {
         total: products.length,
     }
 
+    const totalValue = useMemo(() => {
+        return lines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
+    }, [lines])
+
     if (loading) {
         return (
             <div className="p-6">
@@ -295,6 +310,9 @@ export default function StockTakeCountPage() {
                         </h1>
                         <p className="text-xs text-muted">
                             {progress.counted}/{progress.total} products counted
+                            {isManager && (
+                                <span className="text-gray-700 font-semibold"> · {fmtMoney(totalValue)} counted</span>
+                            )}
                         </p>
                     </div>
                     {isManager && !isClosed && (
@@ -339,6 +357,32 @@ export default function StockTakeCountPage() {
 
             {/* Scrolling body */}
             <div className="flex-1 overflow-y-auto px-4 md:px-7 pb-20">
+                {isManager && totalValue > 0 && (
+                    <div className="pt-4">
+                        <div className="bg-white border border-border rounded-xl p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
+                                <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                {sections.map(({ section, items }) => {
+                                    const sectionValue = items.reduce((s, p) => s + getProductValue(p.id), 0)
+                                    if (sectionValue === 0) return null
+                                    const colour = sectionColour(section)
+                                    return (
+                                        <div key={section} className="flex items-center justify-between text-sm">
+                                            <span className="flex items-center gap-2">
+                                                <span className={`w-2 h-2 rounded-full ${colour.bar}`}></span>
+                                                <span className="text-gray-700">{section}</span>
+                                            </span>
+                                            <span className="font-medium text-gray-900">{fmtMoney(sectionValue)}</span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {isClosed && (
                     <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
                         This stock take is closed. Counts are read-only.
@@ -357,8 +401,18 @@ export default function StockTakeCountPage() {
                                     </svg>
                                     <h2 className="font-serif text-base font-bold text-white">{section}</h2>
                                 </div>
-                                <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
-                                    {sectionCounted}/{items.length}
+                                <span className="flex items-center gap-2">
+                                    {isManager && (() => {
+                                        const sectionValue = items.reduce((s, p) => s + getProductValue(p.id), 0)
+                                        return sectionValue > 0 ? (
+                                            <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                                {fmtMoney(sectionValue)}
+                                            </span>
+                                        ) : null
+                                    })()}
+                                    <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
+                                        {sectionCounted}/{items.length}
+                                    </span>
                                 </span>
                             </div>
                             <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
@@ -393,8 +447,15 @@ export default function StockTakeCountPage() {
                                                             {isCounted ? (
                                                                 <>
                                                                     <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                                                                    {lineCount > 1 && (
-                                                                        <p className="text-xs text-muted">{lineCount} entries</p>
+                                                                    {isManager ? (
+                                                                        <p className="text-xs text-muted">
+                                                                            {fmtMoney(getProductValue(product.id))}
+                                                                            {lineCount > 1 ? ` · ${lineCount} entries` : ''}
+                                                                        </p>
+                                                                    ) : (
+                                                                        lineCount > 1 && (
+                                                                            <p className="text-xs text-muted">{lineCount} entries</p>
+                                                                        )
                                                                     )}
                                                                 </>
                                                             ) : (
