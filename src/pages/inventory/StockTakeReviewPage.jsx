@@ -3,21 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
+import { fmtMoney, fmtQty } from '../../lib/format'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 function sectionRank(section) {
   const i = SECTION_ORDER.indexOf(section)
   return i === -1 ? SECTION_ORDER.length : i
-}
-
-function fmtQty(n) {
-  return parseFloat(Number(n).toFixed(3)).toString()
-}
-
-function fmtMoney(n) {
-  if (n == null || isNaN(n)) return '—'
-  return '€' + Number(n).toFixed(2)
 }
 
 export default function StockTakeReviewPage() {
