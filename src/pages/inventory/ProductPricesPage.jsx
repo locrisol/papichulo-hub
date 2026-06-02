@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PriceForm from '../../components/PriceForm'
+import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 
 export default function ProductPricesPage() {
     const { id } = useParams()
@@ -18,6 +19,7 @@ export default function ProductPricesPage() {
     const [showForm, setShowForm] = useState(false)
     const [editingPrice, setEditingPrice] = useState(null)
     const [formData, setFormData] = useState(emptyForm())
+    const [formatsForPriceId, setFormatsForPriceId] = useState(null)
 
     function emptyForm() {
         return {
@@ -307,17 +309,17 @@ export default function ProductPricesPage() {
                                 <Fragment key={p.id}>
                                     <tr
                                         className={`border-b border-border ${p.is_preferred
-                                                ? 'bg-green-50'
-                                                : i % 2 === 0
-                                                    ? 'bg-white'
-                                                    : 'bg-gray-50'
+                                            ? 'bg-green-50'
+                                            : i % 2 === 0
+                                                ? 'bg-white'
+                                                : 'bg-gray-50'
                                             }`}
                                     >
                                         <td className="px-4 py-3 font-medium text-gray-900">{getSupplierName(p.supplier_id)}</td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.purchase_type === 'case'
-                                                    ? 'bg-purple-50 text-purple-700'
-                                                    : 'bg-amber-50 text-amber-700'
+                                                ? 'bg-purple-50 text-purple-700'
+                                                : 'bg-amber-50 text-amber-700'
                                                 }`}>
                                                 {p.purchase_type === 'case' ? 'Case' : 'Loose'}
                                             </span>
@@ -352,6 +354,12 @@ export default function ProductPricesPage() {
                                                     {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
                                                 </button>
                                                 <button
+                                                    onClick={() => setFormatsForPriceId(formatsForPriceId === p.id ? null : p.id)}
+                                                    className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                                                >
+                                                    {formatsForPriceId === p.id ? 'Hide formats' : 'Formats'}
+                                                </button>
+                                                <button
                                                     onClick={() => removePrice(p)}
                                                     className="text-xs font-medium text-red-500 hover:text-red-700"
                                                 >
@@ -372,6 +380,17 @@ export default function ProductPricesPage() {
                                                     errors={errors}
                                                     suppliers={suppliers}
                                                     unit={product?.unit}
+                                                />
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {formatsForPriceId === p.id && (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-4 bg-gray-50 border-b border-border">
+                                                <PriceCountUnitsEditor
+                                                    price={p}
+                                                    unit={product?.unit}
+                                                    onClose={() => setFormatsForPriceId(null)}
                                                 />
                                             </td>
                                         </tr>
