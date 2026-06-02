@@ -10,11 +10,11 @@ const navItems = [
     // { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
     // { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
-    { path:'/catalogue/products', label:'Products', icon:'cat', section:'Catalogue' },
-    { path:'/catalogue/menu-items', label:'Menu Items', icon:'menu', section:'Catalogue' },
+    { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue' },
+    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue' },
     { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory' },
     { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory' },
-    { path: '/catalogue/suppliers', label:'Suppliers', icon:'suppliers', section:'Catalogue' },
+    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue' },
     { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings' },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings' },
@@ -64,11 +64,11 @@ export default function AppLayout({ children }) {
 
             {/* Sidebar — fixed on mobile, static on desktop */}
             <aside className={`
-        fixed inset-y-0 left-0 z-30 w-56 bg-sidebar flex flex-col flex-shrink-0
-        transform transition-transform duration-200
-        md:static md:translate-x-0
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+                fixed inset-y-0 left-0 z-30 w-56 bg-sidebar flex flex-col flex-shrink-0
+                transform transition-transform duration-200
+                md:static md:translate-x-0
+                ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+            `}>
                 <div className="px-5 py-7 border-b border-sidebar-active">
                     <p className="font-serif text-xl font-bold text-white tracking-tight">Papi Chulo Hub</p>
                     <p className="text-xs text-green-400 mt-1 tracking-widest uppercase">
@@ -136,7 +136,8 @@ export default function AppLayout({ children }) {
                             </svg>
                         </button>
                         <h1 className="font-serif text-xl font-bold text-gray-900">
-                            {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
+                            {navItems.find(n => n.path === location.pathname)?.label
+                                || (location.pathname.startsWith('/inventory/stock-takes') ? 'Stock Takes' : 'Papi Chulo Hub')}
                         </h1>
                     </div>
                     {(user?.role === 'super_admin' || user?.role === 'owner') && (
