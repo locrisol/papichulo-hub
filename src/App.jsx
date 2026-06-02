@@ -17,6 +17,7 @@ import PublicAllergensPreviewPage from './pages/inventory/PublicAllergensPreview
 import StockTakesListPage from './pages/inventory/StockTakesListPage'
 import StockTakeCountPage from './pages/inventory/StockTakeCountPage'
 import StockTakeReviewPage from './pages/inventory/StockTakeReviewPage'
+import StockTakeSummaryPage from './pages/inventory/StockTakeSummaryPage'
 import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
                 <Route path="/inventory/stock-takes" element={<StockTakesListPage />} />
                 <Route path="/inventory/stock-takes/:id" element={<StockTakeCountPage />} />
                 <Route path="/inventory/stock-takes/:id/review" element={<StockTakeReviewPage />} />
+                <Route path="/inventory/stock-takes/:id/summary" element={<StockTakeSummaryPage />} />
                 <Route path="/inventory/public-allergens" element={<PublicAllergensPreviewPage />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />
