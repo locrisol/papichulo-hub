@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { calculateMixCost } from '../../lib/mixCost'
+import { calculateMixCost, resolveUnitCost } from '../../lib/mixCost'
 
 // Section display order. Products whose section isn't in this list sort last.
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -34,10 +34,16 @@ export default function StockTakeCountPage() {
     const [session, setSession] = useState(null)
     const [products, setProducts] = useState([])
     const [lines, setLines] = useState([])
-    const [preferredPrices, setPreferredPrices] = useState({})
+    const [preferredPrices, setPreferredPrices] = useState([])
     const [recipeLines, setRecipeLines] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const [expandedProductId, setExpandedProductId] = useState(null)
+    const [draftQty, setDraftQty] = useState('')
+    const [draftLocation, setDraftLocation] = useState('')
+    const [savingLine, setSavingLine] = useState(false)
+    const [showUncountedOnly, setShowUncountedOnly] = useState(false)
+    const [filterSnapshot, setFilterSnapshot] = useState(null)
 
     const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
@@ -84,11 +90,7 @@ export default function StockTakeCountPage() {
             .from('product_supplier_prices')
             .select('*')
             .eq('is_preferred', true)
-        const priceMap = {}
-        for (const p of pricesData || []) {
-            priceMap[p.product_id] = p
-        }
-        setPreferredPrices(priceMap)
+        setPreferredPrices(pricesData || [])
 
         const { data: recipesData } = await supabase
             .from('mix_recipes')
@@ -123,9 +125,104 @@ export default function StockTakeCountPage() {
         return `${typeWord} Stock Take (${monthYear})`
     }
 
+    function getProductLines(productId) {
+        return lines
+            .filter(l => l.product_id === productId)
+            .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
+    }
+
+    function toggleExpand(productId) {
+        if (expandedProductId === productId) {
+            setExpandedProductId(null)
+        } else {
+            setExpandedProductId(productId)
+            setDraftQty('')
+            setDraftLocation('')
+        }
+    }
+
+    async function handleAddLine(product) {
+        const qty = parseFloat(draftQty)
+        if (isNaN(qty) || qty < 0) {
+            return // ignore invalid; the input guards this but double-check
+        }
+
+        setSavingLine(true)
+
+        const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
+        const lineTotal = unitCost != null ? qty * unitCost : null
+
+        const { data, error: insertErr } = await supabase
+            .from('stock_take_lines')
+            .insert({
+                stock_take_id: id,
+                product_id: product.id,
+                section: product.section || null,
+                quantity_counted: qty,
+                unit_cost: unitCost,
+                line_total: lineTotal,
+                counted_by: user.id,
+                location_note: draftLocation.trim() || null,
+            })
+            .select()
+            .single()
+
+        setSavingLine(false)
+
+        if (insertErr) {
+            setError(insertErr.message)
+            return
+        }
+
+        // Optimistic: add the new line to local state, keep row open, clear inputs.
+        setLines(prev => [...prev, data])
+        setDraftQty('')
+        setDraftLocation('')
+    }
+
+    async function handleDeleteLine(lineId) {
+        const { error: delErr } = await supabase
+            .from('stock_take_lines')
+            .delete()
+            .eq('id', lineId)
+
+        if (delErr) {
+            setError(delErr.message)
+            return
+        }
+        setLines(prev => prev.filter(l => l.id !== lineId))
+    }
+
+    function toggleUncountedFilter() {
+        if (showUncountedOnly) {
+            // Turning off
+            setShowUncountedOnly(false)
+            setFilterSnapshot(null)
+        } else {
+            // Turning on: snapshot the currently-uncounted product IDs
+            const uncounted = new Set(
+                products.filter(p => !countedProductIds.has(p.id)).map(p => p.id)
+            )
+            setFilterSnapshot(uncounted)
+            setShowUncountedOnly(true)
+        }
+    }
+
+    // Round to at most 3 decimals and strip trailing zeros, to avoid
+    // floating-point display artefacts like 11.799999999999999.
+    function fmtQty(n) {
+        return parseFloat(Number(n).toFixed(3)).toString()
+    }
+
     const sections = useMemo(() => {
+        // When the uncounted filter is on, show only products that were
+        // uncounted at the moment the filter was switched on (sticky snapshot).
+        const visibleProducts = showUncountedOnly && filterSnapshot
+            ? products.filter(p => filterSnapshot.has(p.id))
+            : products
+
         const grouped = {}
-        for (const product of products) {
+        for (const product of visibleProducts) {
             const section = product.section || 'Other'
             if (!grouped[section]) grouped[section] = []
             grouped[section].push(product)
@@ -136,7 +233,7 @@ export default function StockTakeCountPage() {
                 items: items.sort((a, b) => a.name.localeCompare(b.name)),
             }))
             .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-    }, [products])
+    }, [products, showUncountedOnly, filterSnapshot])
 
     const countedProductIds = useMemo(() => {
         return new Set(lines.map(l => l.product_id))
@@ -210,6 +307,28 @@ export default function StockTakeCountPage() {
                         </button>
                     )}
                 </div>
+                {!isClosed && (
+                    <div className="pb-2 flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleUncountedFilter}
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${showUncountedOnly
+                                ? 'bg-accent text-white border-accent'
+                                : 'bg-white text-gray-700 border-border hover:bg-gray-50'
+                                }`}
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                            {showUncountedOnly ? 'Showing uncounted' : 'Show uncounted only'}
+                        </button>
+                        {showUncountedOnly && filterSnapshot && (
+                            <span className="text-xs text-muted">
+                                {filterSnapshot.size} to count
+                            </span>
+                        )}
+                    </div>
+                )}
                 <div className="w-full bg-gray-200 h-1">
                     <div
                         className="bg-accent h-full transition-all"
@@ -245,33 +364,138 @@ export default function StockTakeCountPage() {
                             <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
                                 {items.map((product, i) => {
                                     const total = getProductTotal(product.id)
-                                    const lineCount = getProductLineCount(product.id)
+                                    const productLines = getProductLines(product.id)
+                                    const lineCount = productLines.length
                                     const isCounted = lineCount > 0
+                                    const isExpanded = expandedProductId === product.id
+
                                     return (
                                         <div
                                             key={product.id}
-                                            className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}
+                                            className={`${i < items.length - 1 ? 'border-b border-border' : ''} ${isExpanded ? 'bg-white' : ''} ${!isCounted ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
                                         >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-medium text-gray-900">
-                                                        {product.name}
-                                                        <span className="text-xs text-muted ml-2">{product.unit}</span>
-                                                    </p>
-                                                </div>
-                                                <div className="text-right flex-shrink-0">
-                                                    {isCounted ? (
-                                                        <>
-                                                            <p className="font-semibold text-gray-900">{total} {product.unit}</p>
-                                                            {lineCount > 1 && (
-                                                                <p className="text-xs text-muted">{lineCount} entries</p>
+                                            {/* Row header — tap to expand */}
+                                            <button
+                                                type="button"
+                                                onClick={() => !isClosed && toggleExpand(product.id)}
+                                                className="w-full text-left px-4 py-3"
+                                                style={{ minHeight: '56px' }}
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-gray-900">
+                                                            {product.name}
+                                                            <span className="text-xs text-muted ml-2">{product.unit}</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                                        <div>
+                                                            {isCounted ? (
+                                                                <>
+                                                                    <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
+                                                                    {lineCount > 1 && (
+                                                                        <p className="text-xs text-muted">{lineCount} entries</p>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <p className="text-sm font-medium text-amber-600">Not counted</p>
                                                             )}
-                                                        </>
-                                                    ) : (
-                                                        <p className="text-sm text-gray-400">Not counted</p>
-                                                    )}
+                                                        </div>
+                                                        {!isClosed && (
+                                                            <svg
+                                                                className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
+                                                            >
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </button>
+
+                                            {/* Expanded section */}
+                                            {isExpanded && (
+                                                <div className="px-4 pb-4 bg-white">
+                                                    {/* Existing lines */}
+                                                    {/* Existing lines */}
+                                                    {productLines.length > 0 && (
+                                                        <div className="space-y-2 mb-3">
+                                                            {productLines.map(line => {
+                                                                const canModify = isManager || line.counted_by === user.id
+                                                                return (
+                                                                    <div
+                                                                        key={line.id}
+                                                                        className="flex items-center justify-between gap-2 text-sm bg-white border border-border rounded-lg px-3 py-2.5 shadow-sm"
+                                                                    >
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <span className="font-semibold text-gray-900">
+                                                                                {fmtQty(line.quantity_counted)} {product.unit}
+                                                                            </span>
+                                                                            {line.location_note && (
+                                                                                <span className="text-muted"> · {line.location_note}</span>
+                                                                            )}
+                                                                        </div>
+                                                                        {canModify && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleDeleteLine(line.id)}
+                                                                                className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-2.5 py-1.5 rounded-md transition-colors"
+                                                                            >
+                                                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                                </svg>
+                                                                                Delete
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Add a count */}
+                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-medium text-muted mb-1">
+                                                                Quantity ({product.unit})
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={draftQty}
+                                                                onChange={e => {
+                                                                    // Allow only numbers and a single decimal point
+                                                                    const v = e.target.value.replace(/[^0-9.]/g, '')
+                                                                    setDraftQty(v)
+                                                                }}
+                                                                placeholder="0"
+                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-medium text-muted mb-1">
+                                                                Location <span className="font-normal">(optional)</span>
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={draftLocation}
+                                                                onChange={e => setDraftLocation(e.target.value)}
+                                                                placeholder="e.g. back cold room"
+                                                                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleAddLine(product)}
+                                                            disabled={savingLine || draftQty === '' || isNaN(parseFloat(draftQty))}
+                                                            className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors flex-shrink-0"
+                                                            style={{ minHeight: '44px' }}
+                                                        >
+                                                            Add
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )
                                 })}
