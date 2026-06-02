@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf'
+import { fmtMoney, fmtQty } from './format'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -25,8 +26,6 @@ const SECTION_RGB_LIGHT = {
 function sectionRgbLight(s) { return SECTION_RGB_LIGHT[s] || SECTION_RGB_LIGHT['Other'] }
 
 function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
-function fmtQty(n) { return parseFloat(Number(n).toFixed(3)).toString() }
-function fmtMoney(n) { if (n == null || isNaN(n)) return '—'; return '€' + Number(n).toFixed(2) }
 function fmtDate(iso) {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })

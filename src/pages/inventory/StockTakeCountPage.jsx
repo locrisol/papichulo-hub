@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { calculateMixCost, resolveUnitCost } from '../../lib/mixCost'
+import { fmtMoney, fmtQty } from '../../lib/format'
 
 // Section display order. Products whose section isn't in this list sort last.
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -140,11 +141,6 @@ export default function StockTakeCountPage() {
             .reduce((s, l) => s + Number(l.line_total || 0), 0)
     }
 
-    function fmtMoney(n) {
-        if (n == null || isNaN(n)) return '—'
-        return '€' + Number(n).toFixed(2)
-    }
-
     function getProductLineCount(productId) {
         return lines.filter(l => l.product_id === productId).length
     }
@@ -239,12 +235,6 @@ export default function StockTakeCountPage() {
             setFilterSnapshot(uncounted)
             setShowUncountedOnly(true)
         }
-    }
-
-    // Round to at most 3 decimals and strip trailing zeros, to avoid
-    // floating-point display artefacts like 11.799999999999999.
-    function fmtQty(n) {
-        return parseFloat(Number(n).toFixed(3)).toString()
     }
 
     // Return the breakdown as an array of { key, text, factor } parts, sorted

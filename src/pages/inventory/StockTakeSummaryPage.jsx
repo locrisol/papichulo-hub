@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { fmtMoney, fmtQty } from '../../lib/format'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -17,8 +18,6 @@ const SECTION_COLOURS = {
 }
 function sectionColour(s) { return SECTION_COLOURS[s] || SECTION_COLOURS['Other'] }
 function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
-function fmtQty(n) { return parseFloat(Number(n).toFixed(3)).toString() }
-function fmtMoney(n) { if (n == null || isNaN(n)) return '—'; return '€' + Number(n).toFixed(2) }
 function fmtDateTime(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
