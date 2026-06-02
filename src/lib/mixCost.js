@@ -73,3 +73,22 @@ export function calculateMixCost(product, allProducts, allRecipeLines, preferred
 
   return { cost: total / batchYield, status: 'ok' }
 }
+
+// Resolve the per-unit cost of any product (raw or MIX) for stock valuation.
+// preferredPrices is an ARRAY of preferred price records (same shape that
+// calculateMixCost expects).
+// Returns a number (euros per the product's unit), or null if unknown.
+export function resolveUnitCost(product, allProducts, allRecipeLines, preferredPrices) {
+  if (!product) return null
+
+  if (product.is_mix) {
+    const result = calculateMixCost(product, allProducts, allRecipeLines, preferredPrices)
+    return result && result.status === 'ok' ? result.cost : null
+  }
+
+  const price = preferredPrices.find(p => p.product_id === product.id)
+  if (!price) return null
+
+  const perUnit = Number(price.price_per_unit)
+  return isNaN(perUnit) ? null : perUnit
+}
