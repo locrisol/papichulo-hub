@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
+import SalesPlatformsModal from '../../components/SalesPlatformsModal'
 
 export default function RestaurantPage() {
     const { user } = useAuth()
@@ -22,6 +23,7 @@ export default function RestaurantPage() {
     const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
     const [activeOverrides, setActiveOverrides] = useState([])
+    const [showPlatformsModal, setShowPlatformsModal] = useState(false)
 
     useEffect(() => {
         if (!activeRestaurant) return
@@ -306,6 +308,29 @@ export default function RestaurantPage() {
                     {loading ? 'Saving...' : 'Save Settings'}
                 </button>
             </form>
+            {/* Sales platforms management */}
+            <div className="bg-white rounded-xl border border-border p-6 mt-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Configure the delivery and catering platforms used for sales entry.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowPlatformsModal(true)}
+                        className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                    >
+                        Manage platforms
+                    </button>
+                </div>
+            </div>
+            {showPlatformsModal && (
+                <SalesPlatformsModal
+                    onClose={() => setShowPlatformsModal(false)}
+                />
+            )}
         </div>
     )
 }
