@@ -28,13 +28,11 @@ export default function SalesPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // Existing record id for this date (to detect overwrite / update)
   const [recordId, setRecordId] = useState(null)
+  const [isClosed, setIsClosed] = useState(false)
 
-  // Active platforms grouped by bucket
   const [platforms, setPlatforms] = useState([])
 
-  // Core sales figures
   const [grossSales, setGrossSales] = useState('')
   const [netSales, setNetSales] = useState('')
   const [cashSales, setCashSales] = useState('')
@@ -42,15 +40,12 @@ export default function SalesPage() {
   const [kioskSales, setKioskSales] = useState('')
   const [staffFood, setStaffFood] = useState('')
 
-  // Cash drawer
   const [startFloat, setStartFloat] = useState('200')
   const [endFloat, setEndFloat] = useState('200')
   const [cashBanked, setCashBanked] = useState('')
 
-  // Per-platform amounts: { [platformName]: "12.50" }
   const [platformSales, setPlatformSales] = useState({})
 
-  // Petty cash entries for this date
   const [pettyEntries, setPettyEntries] = useState([])
   const [pcCategory, setPcCategory] = useState('Expense')
   const [pcReason, setPcReason] = useState('')
@@ -66,7 +61,6 @@ export default function SalesPage() {
     setError('')
     setSuccess('')
 
-    // Active platforms
     const { data: plats, error: pErr } = await supabase
       .from('sales_platforms')
       .select('*')
@@ -79,7 +73,6 @@ export default function SalesPage() {
     )
     setPlatforms(sortedPlats)
 
-    // Existing sales record for this date
     const { data: rec, error: rErr } = await supabase
       .from('sales_records')
       .select('*')
@@ -91,6 +84,7 @@ export default function SalesPage() {
 
     if (rec) {
       setRecordId(rec.id)
+      setIsClosed(rec.is_closed || false)
       setGrossSales(rec.gross_sales ?? '')
       setNetSales(rec.net_sales ?? '')
       setCashSales(rec.cash_sales ?? '')
@@ -100,21 +94,19 @@ export default function SalesPage() {
       setStartFloat(rec.start_float ?? '200')
       setEndFloat(rec.end_float ?? '200')
       setCashBanked(rec.cash_banked ?? '')
-      // platform_sales jsonb -> strings
       const ps = {}
       if (rec.platform_sales && typeof rec.platform_sales === 'object') {
         for (const [k, v] of Object.entries(rec.platform_sales)) ps[k] = String(v)
       }
       setPlatformSales(ps)
     } else {
-      // reset to blank for a new day
       setRecordId(null)
+      setIsClosed(false)
       setGrossSales(''); setNetSales(''); setCashSales(''); setCardSales('')
       setKioskSales(''); setStaffFood(''); setStartFloat('200'); setEndFloat('200')
       setCashBanked(''); setPlatformSales({})
     }
 
-    // Petty cash for this date
     const { data: petty, error: pcErr } = await supabase
       .from('petty_cash_entries')
       .select('*')
@@ -128,7 +120,6 @@ export default function SalesPage() {
     setLoading(false)
   }
 
-  // ----- derived values -----
   function bucketPlatforms(bucket) {
     return platforms.filter(p => p.bucket === bucket)
   }
@@ -139,11 +130,9 @@ export default function SalesPage() {
   const cateringTotal = bucketTotal('catering')
   const pettyTotal = pettyEntries.reduce((s, e) => s + Number(e.amount || 0), 0)
 
-  // Sales reconciliation: (cash + card + kiosk + online + catering) - gross
   const salesVariance =
     num(cashSales) + num(cardSales) + num(kioskSales) + onlineTotal + cateringTotal - num(grossSales)
 
-  // Cash drawer: end_float - (start_float + cash - petty - banked)
   const cashVariance =
     num(endFloat) - (num(startFloat) + num(cashSales) - pettyTotal - num(cashBanked))
 
@@ -160,7 +149,6 @@ export default function SalesPage() {
     setSaleDate(d.toISOString().split('T')[0])
   }
 
-  // ----- petty cash add/delete (writes immediately, like its own log) -----
   async function addPetty(e) {
     e.preventDefault()
     setError('')
@@ -181,7 +169,6 @@ export default function SalesPage() {
       })
     if (e1) { setError(e1.message); return }
     setPcReason(''); setPcAmount(''); setPcCategory('Expense')
-    // refresh just petty cash
     const { data } = await supabase
       .from('petty_cash_entries')
       .select('*')
@@ -197,7 +184,6 @@ export default function SalesPage() {
     setPettyEntries(prev => prev.filter(e => e.id !== id))
   }
 
-  // ----- save the sales record (insert or update) -----
   async function handleSave() {
     setError(''); setSuccess('')
 
@@ -208,32 +194,44 @@ export default function SalesPage() {
 
     setSaving(true)
 
-    // build platform_sales jsonb (only active platforms with a value)
     const ps = {}
     for (const p of platforms) {
       const v = num(platformSales[p.name])
       if (v !== 0) ps[p.name] = v
     }
 
-    const payload = {
-      restaurant_id: activeRestaurant.id,
-      sale_date: saleDate,
-      gross_sales: num(grossSales),
-      net_sales: num(netSales),
-      cash_sales: num(cashSales),
-      card_sales: num(cardSales),
-      kiosk_sales: num(kioskSales),
-      online_sales: onlineTotal,
-      catering_sales: cateringTotal,
-      platform_sales: ps,
-      start_float: num(startFloat),
-      end_float: num(endFloat),
-      cash_banked: num(cashBanked),
-      staff_food: num(staffFood),
-      instore_variance: salesVariance,
-      upload_method: 'manual',
-      created_by: user.id,
-    }
+    const payload = isClosed
+      ? {
+          restaurant_id: activeRestaurant.id,
+          sale_date: saleDate,
+          is_closed: true,
+          gross_sales: 0, net_sales: 0, cash_sales: 0, card_sales: 0, kiosk_sales: 0,
+          online_sales: 0, catering_sales: 0, platform_sales: {},
+          start_float: num(startFloat), end_float: num(endFloat), cash_banked: 0,
+          staff_food: 0, instore_variance: 0,
+          upload_method: 'manual',
+          created_by: user.id,
+        }
+      : {
+          restaurant_id: activeRestaurant.id,
+          sale_date: saleDate,
+          is_closed: false,
+          gross_sales: num(grossSales),
+          net_sales: num(netSales),
+          cash_sales: num(cashSales),
+          card_sales: num(cardSales),
+          kiosk_sales: num(kioskSales),
+          online_sales: onlineTotal,
+          catering_sales: cateringTotal,
+          platform_sales: ps,
+          start_float: num(startFloat),
+          end_float: num(endFloat),
+          cash_banked: num(cashBanked),
+          staff_food: num(staffFood),
+          instore_variance: salesVariance,
+          upload_method: 'manual',
+          created_by: user.id,
+        }
 
     let resErr
     if (recordId) {
@@ -246,7 +244,7 @@ export default function SalesPage() {
 
     setSaving(false)
     if (resErr) { setError(resErr.message); return }
-    setSuccess(`Sales for ${saleDate} saved.`)
+    setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
     loadDay()
   }
 
@@ -281,123 +279,145 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* Sales figures */}
-      <div className="bg-white rounded-xl border border-border p-5 mb-3">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Sales figures</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className={labelCls}>Gross sales</label><input type="number" step="0.01" inputMode="decimal" value={grossSales} onChange={e => setGrossSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-          <div><label className={labelCls}>Net sales</label><input type="number" step="0.01" inputMode="decimal" value={netSales} onChange={e => setNetSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-        </div>
-      </div>
-
-      {/* Payment methods */}
-      <div className="bg-white rounded-xl border border-border p-5 mb-3">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment methods</h3>
-        <div className="grid grid-cols-3 gap-3">
-          <div><label className={labelCls}>Cash</label><input type="number" step="0.01" inputMode="decimal" value={cashSales} onChange={e => setCashSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-          <div><label className={labelCls}>Card</label><input type="number" step="0.01" inputMode="decimal" value={cardSales} onChange={e => setCardSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-          <div><label className={labelCls}>Kiosk</label><input type="number" step="0.01" inputMode="decimal" value={kioskSales} onChange={e => setKioskSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-        </div>
-      </div>
-
-      {/* Online Platform bucket */}
-      <PlatformBucket
-        title="Online Platform"
-        total={onlineTotal}
-        platforms={bucketPlatforms('online_platform')}
-        platformSales={platformSales}
-        setPlatformAmount={setPlatformAmount}
-        fieldCls={fieldCls}
-        labelCls={labelCls}
-      />
-
-      {/* Catering bucket */}
-      <PlatformBucket
-        title="Catering"
-        total={cateringTotal}
-        platforms={bucketPlatforms('catering')}
-        platformSales={platformSales}
-        setPlatformAmount={setPlatformAmount}
-        fieldCls={fieldCls}
-        labelCls={labelCls}
-      />
-
-      {/* Cash drawer + petty cash */}
-      <div className="bg-white rounded-xl border border-border p-5 mb-3">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Cash drawer</h3>
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div><label className={labelCls}>Start float</label><input type="number" step="0.01" inputMode="decimal" value={startFloat} onChange={e => setStartFloat(e.target.value)} className={fieldCls} /></div>
-          <div><label className={labelCls}>End float</label><input type="number" step="0.01" inputMode="decimal" value={endFloat} onChange={e => setEndFloat(e.target.value)} className={fieldCls} /></div>
-          <div><label className={labelCls}>Cash banked</label><input type="number" step="0.01" inputMode="decimal" value={cashBanked} onChange={e => setCashBanked(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-        </div>
-
-        {/* Petty cash */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-700">Petty cash (cash out)</span>
-            <span className="text-xs text-gray-500">total: <span className="font-semibold text-gray-900">{fmtMoney(pettyTotal)}</span></span>
+      {/* Store closed toggle */}
+      <div className="bg-white rounded-xl border border-border p-4 mb-3">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isClosed}
+            onChange={e => setIsClosed(e.target.checked)}
+            className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Marks the day as not trading. Closed days are excluded from daily averages.
+            </p>
           </div>
+        </label>
+      </div>
 
-          {pettyEntries.length > 0 && (
-            <div className="mb-2 divide-y divide-border">
-              {pettyEntries.map(e => (
-                <div key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
-                  <span className="w-20 text-gray-500 text-xs">{e.category || 'Other'}</span>
-                  <span className="flex-1 text-gray-700">{e.reason}</span>
-                  <span className="text-gray-900">{fmtMoney(e.amount)}</span>
-                  <button onClick={() => deletePetty(e.id)} className="text-gray-400 hover:text-red-600 text-base leading-none px-1" aria-label="Delete entry">×</button>
-                </div>
-              ))}
+      {!isClosed && (
+        <>
+          {/* Sales figures */}
+          <div className="bg-white rounded-xl border border-border p-5 mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Sales figures</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={labelCls}>Gross sales</label><input type="number" step="0.01" inputMode="decimal" value={grossSales} onChange={e => setGrossSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+              <div><label className={labelCls}>Net sales</label><input type="number" step="0.01" inputMode="decimal" value={netSales} onChange={e => setNetSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
             </div>
-          )}
-
-          <form onSubmit={addPetty} className="flex gap-2 items-center">
-            <select value={pcCategory} onChange={e => setPcCategory(e.target.value)} className="w-24 border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent bg-white">
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="text" value={pcReason} onChange={e => setPcReason(e.target.value)} placeholder="Reason" className="flex-1 border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent bg-white" />
-            <input type="number" step="0.01" min="0" inputMode="decimal" value={pcAmount} onChange={e => setPcAmount(e.target.value)} placeholder="Amount" className="w-20 border border-border rounded-md px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white" />
-            <button type="submit" className="px-3 py-1.5 bg-accent text-white text-xs font-medium rounded-md hover:bg-orange-600 transition-colors">Add</button>
-          </form>
-        </div>
-      </div>
-
-      {/* Staff food */}
-      <div className="bg-white rounded-xl border border-border p-5 mb-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className={labelCls}>Staff food</label><input type="number" step="0.01" inputMode="decimal" value={staffFood} onChange={e => setStaffFood(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-        </div>
-      </div>
-
-      {/* Variances */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className={`rounded-xl p-4 ${salesVarianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
-          <div className={`text-xs mb-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>Sales reconciliation</div>
-          <div className={`text-xl font-semibold ${salesVarianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(salesVariance)}</div>
-          <div className={`text-xs mt-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>
-            {salesVarianceWarn ? `Over €${VARIANCE_WARN_THRESHOLD} — check figures` : 'tenders − gross'}
           </div>
-        </div>
-        <div className={`rounded-xl p-4 ${cashVarianceWarn ? 'bg-red-50' : 'bg-amber-50'}`}>
-          <div className={`text-xs mb-1 ${cashVarianceWarn ? 'text-red-600' : 'text-amber-700'}`}>Cash drawer variance</div>
-          <div className={`text-xl font-semibold ${cashVarianceWarn ? 'text-red-700' : 'text-amber-700'}`}>{fmtMoney(cashVariance)}</div>
-          <div className={`text-xs mt-1 ${cashVarianceWarn ? 'text-red-600' : 'text-amber-700'}`}>
-            {cashVarianceWarn ? `Over €${VARIANCE_WARN_THRESHOLD} — count again` : 'end − (start + cash − petty − banked)'}
+
+          {/* Payment methods */}
+          <div className="bg-white rounded-xl border border-border p-5 mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment methods</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className={labelCls}>Cash</label><input type="number" step="0.01" inputMode="decimal" value={cashSales} onChange={e => setCashSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+              <div><label className={labelCls}>Card</label><input type="number" step="0.01" inputMode="decimal" value={cardSales} onChange={e => setCardSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+              <div><label className={labelCls}>Kiosk</label><input type="number" step="0.01" inputMode="decimal" value={kioskSales} onChange={e => setKioskSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+            </div>
           </div>
-        </div>
-      </div>
+
+          <PlatformBucket
+            title="Online Platform"
+            total={onlineTotal}
+            platforms={bucketPlatforms('online_platform')}
+            platformSales={platformSales}
+            setPlatformAmount={setPlatformAmount}
+            fieldCls={fieldCls}
+            labelCls={labelCls}
+          />
+
+          <PlatformBucket
+            title="Catering"
+            total={cateringTotal}
+            platforms={bucketPlatforms('catering')}
+            platformSales={platformSales}
+            setPlatformAmount={setPlatformAmount}
+            fieldCls={fieldCls}
+            labelCls={labelCls}
+          />
+
+          {/* Cash drawer + petty cash */}
+          <div className="bg-white rounded-xl border border-border p-5 mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Cash drawer</h3>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div><label className={labelCls}>Start float</label><input type="number" step="0.01" inputMode="decimal" value={startFloat} onChange={e => setStartFloat(e.target.value)} className={fieldCls} /></div>
+              <div><label className={labelCls}>End float</label><input type="number" step="0.01" inputMode="decimal" value={endFloat} onChange={e => setEndFloat(e.target.value)} className={fieldCls} /></div>
+              <div><label className={labelCls}>Cash banked</label><input type="number" step="0.01" inputMode="decimal" value={cashBanked} onChange={e => setCashBanked(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-700">Petty cash (cash out)</span>
+                <span className="text-xs text-gray-500">total: <span className="font-semibold text-gray-900">{fmtMoney(pettyTotal)}</span></span>
+              </div>
+
+              {pettyEntries.length > 0 && (
+                <div className="mb-2 divide-y divide-border">
+                  {pettyEntries.map(e => (
+                    <div key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
+                      <span className="w-20 text-gray-500 text-xs">{e.category || 'Other'}</span>
+                      <span className="flex-1 text-gray-700">{e.reason}</span>
+                      <span className="text-gray-900">{fmtMoney(e.amount)}</span>
+                      <button onClick={() => deletePetty(e.id)} className="text-gray-400 hover:text-red-600 text-base leading-none px-1" aria-label="Delete entry">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={addPetty} className="flex gap-2 items-center">
+                <select value={pcCategory} onChange={e => setPcCategory(e.target.value)} className="w-24 border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent bg-white">
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input type="text" value={pcReason} onChange={e => setPcReason(e.target.value)} placeholder="Reason" className="flex-1 border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent bg-white" />
+                <input type="number" step="0.01" min="0" inputMode="decimal" value={pcAmount} onChange={e => setPcAmount(e.target.value)} placeholder="Amount" className="w-20 border border-border rounded-md px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white" />
+                <button type="submit" className="px-3 py-1.5 bg-accent text-white text-xs font-medium rounded-md hover:bg-orange-600 transition-colors">Add</button>
+              </form>
+            </div>
+          </div>
+
+          {/* Staff food */}
+          <div className="bg-white rounded-xl border border-border p-5 mb-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={labelCls}>Staff food</label><input type="number" step="0.01" inputMode="decimal" value={staffFood} onChange={e => setStaffFood(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+            </div>
+          </div>
+
+          {/* Variances */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className={`rounded-xl p-4 ${salesVarianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
+              <div className={`text-xs mb-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>Sales reconciliation</div>
+              <div className={`text-xl font-semibold ${salesVarianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(salesVariance)}</div>
+              <div className={`text-xs mt-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>
+                {salesVarianceWarn ? `Over €${VARIANCE_WARN_THRESHOLD} — check figures` : 'tenders − gross'}
+              </div>
+            </div>
+            <div className={`rounded-xl p-4 ${cashVarianceWarn ? 'bg-red-50' : 'bg-amber-50'}`}>
+              <div className={`text-xs mb-1 ${cashVarianceWarn ? 'text-red-600' : 'text-amber-700'}`}>Cash drawer variance</div>
+              <div className={`text-xl font-semibold ${cashVarianceWarn ? 'text-red-700' : 'text-amber-700'}`}>{fmtMoney(cashVariance)}</div>
+              <div className={`text-xs mt-1 ${cashVarianceWarn ? 'text-red-600' : 'text-amber-700'}`}>
+                {cashVarianceWarn ? `Over €${VARIANCE_WARN_THRESHOLD} — count again` : 'end − (start + cash − petty − banked)'}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Save */}
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
-          {saving ? 'Saving...' : (recordId ? 'Update day' : 'Save day')}
+          {saving
+            ? 'Saving...'
+            : isClosed
+              ? (recordId ? 'Update as closed' : 'Mark day closed')
+              : (recordId ? 'Update day' : 'Save day')}
         </button>
       </div>
     </div>
   )
 }
 
-// ----- platform bucket sub-component -----
 function PlatformBucket({ title, total, platforms, platformSales, setPlatformAmount, fieldCls, labelCls }) {
   return (
     <div className="bg-white rounded-xl border border-border p-5 mb-3">
