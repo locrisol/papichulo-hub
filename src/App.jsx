@@ -18,7 +18,8 @@ import StockTakesListPage from './pages/inventory/StockTakesListPage'
 import StockTakeCountPage from './pages/inventory/StockTakeCountPage'
 import StockTakeReviewPage from './pages/inventory/StockTakeReviewPage'
 import StockTakeSummaryPage from './pages/inventory/StockTakeSummaryPage'
-import { DashboardScreen, StockTakeScreen, SalesScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
+import SalesPage from './pages/sales/SalesPage'
+import { DashboardScreen, StockTakeScreen, InvoiceScreen, WasteScreen, ForecastScreen, AllergenScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -33,7 +34,7 @@ export default function App() {
             <AppLayout>
               <Routes>
                 <Route path="/dashboard" element={<DashboardScreen />} />
-                <Route path="/sales" element={<SalesScreen />} />
+                <Route path="/sales" element={<SalesPage />} />
                 <Route path="/invoices" element={<InvoiceScreen />} />
                 <Route path="/waste" element={<WasteScreen />} />
                 <Route path="/stocktake" element={<StockTakeScreen />} />
