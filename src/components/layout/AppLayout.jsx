@@ -18,7 +18,7 @@ const navItems = [
     // the link would appear to do nothing.
     { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations' },
     { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations' },
-
+    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations' },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
     // { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
 
