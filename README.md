@@ -128,11 +128,12 @@ There are four roles. The rules are stored directly in the database as row level
 
 | | Employee | Store Manager | Owner | Super Admin |
 | --- | --- | --- | --- | --- |
-| Catalogue, menu, allergens | Read | Everything | Everything | Everything |
-| Stock takes | Count, and edit their own counts | Everything | Everything | Everything |
-| Waste | Log it, and see today's | Everything | Everything | Everything |
+| Catalogue, menu, allergens | Read the lists | Everything | Everything | Everything |
+| Prices, recipes, allergen tagging | No | Everything | Everything | Everything |
+| Stock takes | Count, and edit their own counts | Everything, including review and close | Everything | Everything |
+| Waste | Log it, and see today's | Everything, including the weekly summary | Everything | Everything |
 | Sales, invoices, labour, costs | No access | Everything | Everything | Everything |
-| Restaurant settings | No | Yes | Yes | Yes |
+| Restaurant settings | No | Yes | No | Yes |
 | Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
 
 An employee can start counting but cannot open or close a stock take session, and can modify their own count lines but not the ones other employees have created.

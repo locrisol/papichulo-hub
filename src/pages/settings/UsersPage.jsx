@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { canManageUser } from '../../lib/access'
 
 export default function UsersPage() {
   const { user } = useAuth()
@@ -40,8 +41,8 @@ export default function UsersPage() {
   }
 
   function getRestaurantName(restaurantId) {
-    if (!restaurantId) return '—'
-    return restaurants.find(r => r.id === restaurantId)?.name || '—'
+    if (!restaurantId) return '-'
+    return restaurants.find(r => r.id === restaurantId)?.name || '-'
   }
 
   return (
@@ -51,10 +52,12 @@ export default function UsersPage() {
           <h2 className="text-lg font-semibold text-gray-900">User Management</h2>
           <p className="text-sm text-gray-500 mt-1">Manage user accounts and access levels</p>
         </div>
-        {/* TODO: Add user button disabled pending Issue #81 — Edge Function for secure user creation */}
+        {/* Adding a user is not built yet. Creating an account needs the service
+            role key, which cannot go in the browser, so the plan is to let people
+            sign themselves up and have a manager approve them. That is #81. */}
         <button
           disabled
-          title="User creation requires a server-side Edge Function. See Issue #81."
+          title="Adding a user is not built yet. See issue #81."
           className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg opacity-50 cursor-not-allowed"
         >
           + Add User
@@ -84,7 +87,10 @@ export default function UsersPage() {
             <tbody>
               {users.map((u, i) => (
                 <tr key={u.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                  <td className="px-4 py-3 font-medium text-gray-900">{u.full_name}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    {u.full_name}
+                    {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 capitalize">
                       {u.role.replace('_', ' ')}
@@ -99,7 +105,10 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {u.id !== user?.id && (
+                    {/* Only show the button if this person can actually use it.
+                        Before, it showed on every row and did nothing on most of
+                        them, because the database refused the change. */}
+                    {canManageUser(user, u) && (
                       <button
                         onClick={() => toggleUserActive(u.id, u.is_active)}
                         className={`text-xs font-medium ${
