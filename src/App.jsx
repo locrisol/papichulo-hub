@@ -21,6 +21,7 @@ import StockTakeSummaryPage from './pages/inventory/StockTakeSummaryPage'
 import SalesPage from './pages/sales/SalesPage'
 import WeeklySalesPage from './pages/sales/WeeklySalesPage'
 import InvoicesPage from './pages/invoices/InvoicesPage'
+import InvoiceHistoryPage from './pages/invoices/InvoiceHistoryPage'
 import { DashboardScreen, WasteScreen, ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/sales/weekly" element={<WeeklySalesPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
+                <Route path="/invoices/history" element={<InvoiceHistoryPage />} />
                 <Route path="/waste" element={<WasteScreen />} />
                 <Route path="/catalogue" element={<CatalogueScreen />} />
                 <Route path="/catalogue/suppliers" element={<SuppliersPage />} />
