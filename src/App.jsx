@@ -23,7 +23,8 @@ import WeeklySalesPage from './pages/sales/WeeklySalesPage'
 import InvoicesPage from './pages/invoices/InvoicesPage'
 import InvoiceHistoryPage from './pages/invoices/InvoiceHistoryPage'
 import LabourPage from './pages/costs/LabourPage'
-import { DashboardScreen, WasteScreen, ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
+import WasteLogPage from './pages/waste/WasteLogPage'
+import { DashboardScreen, ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -42,7 +43,7 @@ export default function App() {
                 <Route path="/sales/weekly" element={<WeeklySalesPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/history" element={<InvoiceHistoryPage />} />
-                <Route path="/waste" element={<WasteScreen />} />
+                <Route path="/waste" element={<WasteLogPage />} />
                 <Route path="/catalogue" element={<CatalogueScreen />} />
                 <Route path="/catalogue/suppliers" element={<SuppliersPage />} />
                 <Route path="/catalogue/products" element={<ProductsPage />} />
