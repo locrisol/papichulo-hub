@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
 import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
+import { todayISO, weekStartOf } from '../../lib/dates'
 
 export default function RestaurantPage() {
     const { user } = useAuth()
@@ -72,7 +73,7 @@ export default function RestaurantPage() {
     }
 
     async function fetchActiveOverrides() {
-        const today = new Date().toISOString().split('T')[0]
+        const today = todayISO()
         const { data } = await supabase
             .from('cost_target_overrides')
             .select('*')
@@ -84,11 +85,10 @@ export default function RestaurantPage() {
     }
 
     function getCurrentWeekStart() {
-        const today = new Date()
-        const day = today.getDay()
-        const sunday = new Date(today)
-        sunday.setDate(today.getDate() - day)
-        return sunday.toISOString().split('T')[0]
+        // Was building this with toISOString, which converts to UTC and so
+        // lands on the wrong day here in the evening. Cost targets are stored
+        // by week, so that quietly filed a target against the week before.
+        return weekStartOf(todayISO())
     }
 
     async function handleSave(e) {

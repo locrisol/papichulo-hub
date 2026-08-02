@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { RECEIPT_ROWS, resolveRowOrder } from './WeeklySalesPage'
+import { todayISO, addDays } from '../../lib/dates'
 
 // Threshold above which the reconciliation is flagged for review.
 const VARIANCE_WARN_THRESHOLD = 10
@@ -25,20 +26,6 @@ const VARIANCE_WARN_THRESHOLD = 10
 // sheet and cash flow, so that work is deferred. The supporting schema is left
 // in place (petty_cash_entries, sales_records.cash_banked) so it can be
 // re-enabled without a migration. "Cash" below is a payment method.
-
-// Format a Date as YYYY-MM-DD using local time. Do not use toISOString here: it
-// converts to UTC, so local midnight becomes the previous day in any timezone
-// ahead of UTC, silently shifting every date back by one.
-function toISODate(d) {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-}
-
-function todayISO() {
-    return toISODate(new Date())
-}
 
 // Parse a money input string to a number, treating blank as 0.
 function num(v) {
@@ -170,9 +157,7 @@ export default function SalesPage() {
     }
 
     function shiftDate(days) {
-        const d = new Date(saleDate + 'T00:00:00')
-        d.setDate(d.getDate() + days)
-        setSaleDate(toISODate(d))
+        setSaleDate(addDays(saleDate, days))
     }
 
     // ---- derived values -------------------------------------------------
