@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -16,8 +17,18 @@ const VARIANCE_WARN_THRESHOLD = 10
 // without a migration once the new process is settled.
 // "Cash" below is a payment method (how the customer paid), not drawer reconciliation.
 
+// Format a Date as YYYY-MM-DD using local time. Do not use toISOString here:
+// it converts to UTC, so local midnight becomes the previous day in any
+// timezone ahead of UTC, which silently shifts every date back by one.
+function toISODate(d) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 function todayISO() {
-    return new Date().toISOString().split('T')[0]
+    return toISODate(new Date())
 }
 
 // Parse a money input string to a number, treating blank as 0.
@@ -30,6 +41,23 @@ function num(v) {
 export default function SalesPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
+    const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+
+    // On a wide screen the week grid is the more useful default, so send the
+    // user there unless they explicitly asked for the day view (?view=day) or
+    // previously chose one. The choice is remembered so this never fights them.
+    useEffect(() => {
+        const requested = searchParams.get('view')
+        if (requested) {
+            localStorage.setItem('salesView', requested)
+            return
+        }
+        const remembered = localStorage.getItem('salesView')
+        const preferWeek = remembered ? remembered === 'week' : window.innerWidth >= 1024
+        if (preferWeek) navigate('/sales/weekly', { replace: true })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const [saleDate, setSaleDate] = useState(todayISO())
     const [loading, setLoading] = useState(true)
@@ -146,7 +174,7 @@ export default function SalesPage() {
     function shiftDate(days) {
         const d = new Date(saleDate)
         d.setDate(d.getDate() + days)
-        setSaleDate(d.toISOString().split('T')[0])
+        setSaleDate(toISODate(d))
     }
 
     async function handleSave() {
@@ -222,9 +250,21 @@ export default function SalesPage() {
 
     return (
         <div className="max-w-2xl">
-            <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
-                <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
+            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
+                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
+                </div>
+                {/* Switch to the whole-week grid, better suited to a laptop */}
+                <button
+                    onClick={() => {
+                        localStorage.setItem('salesView', 'week')
+                        navigate('/sales/weekly')
+                    }}
+                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                >
+                    Week view
+                </button>
             </div>
 
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}

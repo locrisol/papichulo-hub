@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
+import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
 
 export default function RestaurantPage() {
     const { user } = useAuth()
@@ -25,6 +26,10 @@ export default function RestaurantPage() {
     const [activeOverrides, setActiveOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
 
+    // Order of the till receipt rows in the weekly sales grid.
+    const [rowOrder, setRowOrder] = useState(RECEIPT_ROWS.map(r => r.key))
+    const [orderSaving, setOrderSaving] = useState(false)
+
     useEffect(() => {
         if (!activeRestaurant) return
         setFormData({
@@ -34,12 +39,37 @@ export default function RestaurantPage() {
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
         })
+        setRowOrder(resolveRowOrder(activeRestaurant.sales_row_order).map(r => r.key))
     }, [activeRestaurant])
 
     useEffect(() => {
         if (!activeRestaurant) return
         fetchActiveOverrides()
     }, [activeRestaurant])
+
+    // Swap a row with its neighbour. Arrows rather than drag and drop: this is
+    // set once and rarely revisited, and arrows work on touch without a library.
+    function moveRow(index, direction) {
+        const target = index + direction
+        if (target < 0 || target >= rowOrder.length) return
+        const next = [...rowOrder]
+        const [moved] = next.splice(index, 1)
+        next.splice(target, 0, moved)
+        setRowOrder(next)
+    }
+
+    async function saveRowOrder() {
+        setOrderSaving(true)
+        setError('')
+        setSuccess('')
+        const { error: e1 } = await supabase
+            .from('restaurants')
+            .update({ sales_row_order: rowOrder })
+            .eq('id', activeRestaurant.id)
+        setOrderSaving(false)
+        if (e1) setError(e1.message)
+        else setSuccess('Sales row order saved. Reload the weekly sales page to see it.')
+    }
 
     async function fetchActiveOverrides() {
         const today = new Date().toISOString().split('T')[0]
@@ -326,6 +356,66 @@ export default function RestaurantPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Order of the receipt rows in the weekly sales grid */}
+            <div className="bg-white rounded-xl border border-border p-6 mt-4">
+                <h3 className="text-sm font-semibold text-gray-900">Weekly sales row order</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-4">
+                    Arrange the till receipt rows to match how you read the POS receipt. Platform rows are ordered
+                    separately, in Manage platforms.
+                </p>
+
+                <ul className="border border-border rounded-lg divide-y divide-border mb-3">
+                    {rowOrder.map((key, i) => {
+                        const row = RECEIPT_ROWS.find(r => r.key === key)
+                        if (!row) return null
+                        return (
+                            <li key={key} className="flex items-center justify-between px-3 py-2">
+                                <span className="text-sm text-gray-700">{row.label}</span>
+                                <div className="flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => moveRow(i, -1)}
+                                        disabled={i === 0}
+                                        className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                        aria-label={`Move ${row.label} up`}
+                                    >
+                                        &uarr;
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => moveRow(i, 1)}
+                                        disabled={i === rowOrder.length - 1}
+                                        className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                        aria-label={`Move ${row.label} down`}
+                                    >
+                                        &darr;
+                                    </button>
+                                </div>
+                            </li>
+                        )
+                    })}
+                </ul>
+
+                <div className="flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setRowOrder(RECEIPT_ROWS.map(r => r.key))}
+                        className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                        Reset to default
+                    </button>
+                    <button
+                        type="button"
+                        onClick={saveRowOrder}
+                        disabled={orderSaving}
+                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                    >
+                        {orderSaving ? 'Saving...' : 'Save order'}
+                    </button>
+                </div>
+            </div>
+
             {showPlatformsModal && (
                 <SalesPlatformsModal
                     onClose={() => setShowPlatformsModal(false)}

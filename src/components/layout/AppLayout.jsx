@@ -4,26 +4,46 @@ import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 
+// Sidebar navigation.
+// Items are grouped by `section`; the sections render in the order they first
+// appear in this array. Entries for modules that are not built yet are left
+// commented out so the sidebar never links to a mockup screen.
 const navItems = [
     // { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
-    // { path: '/sales', label: 'Sales Recording', icon: 'sales', section: 'Operations' },
+
+    // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
+    // Sunday to Saturday grid where a whole week can be entered in one pass.
+    // `search` is appended when navigating: Daily Sales asks for the day view
+    // explicitly, otherwise the day form redirects wide screens to the grid and
+    // the link would appear to do nothing.
+    { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations' },
+    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations' },
+
     // { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
     // { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
+
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue' },
     { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue' },
+    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue' },
+
     { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory' },
     { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory' },
-    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue' },
-    { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
+
+    // Forecasting is not implemented yet (issues #57-#60) and currently routes to
+    // a mockup screen, so it stays hidden until the real module is built.
+    // { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
+
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings' },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings' },
 ]
 
-// Heroicons
+// Heroicons outline paths, referenced by the `icon` key on each nav item.
 const icons = {
     costs: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
     sales: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+    // Calendar icon, used for the weekly sales summary
+    weekly: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
     invoice: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     waste: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
     stock: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
@@ -37,6 +57,15 @@ const icons = {
     menu: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
 }
 
+// Detail pages are not in navItems (they are reached from their list pages), so
+// the header falls back to a prefix match to keep showing a sensible title.
+const titleFallbacks = [
+    { prefix: '/inventory/stock-takes', label: 'Stock Takes' },
+    { prefix: '/catalogue/products', label: 'Products' },
+    { prefix: '/catalogue/menu-items', label: 'Menu Items' },
+    { prefix: '/sales', label: 'Sales' },
+]
+
 export default function AppLayout({ children }) {
     const { user } = useAuth()
     const navigate = useNavigate()
@@ -49,12 +78,19 @@ export default function AppLayout({ children }) {
         navigate('/login')
     }
 
+    // Unique section names, in the order they first appear in navItems.
     const sections = [...new Set(navItems.map(n => n.section))]
+
+    // Page title: exact nav match first, then a prefix fallback for detail pages.
+    const pageTitle =
+        navItems.find(n => n.path === location.pathname)?.label
+        || titleFallbacks.find(f => location.pathname.startsWith(f.prefix))?.label
+        || 'Papi Chulo Hub'
 
     return (
         <div className="flex h-screen bg-app-bg overflow-hidden">
 
-            {/* Mobile overlay */}
+            {/* Mobile overlay: closes the sidebar when tapped */}
             {sidebarOpen && (
                 <div
                     className="fixed inset-0 bg-black/30 backdrop-blur-sm z-20 md:hidden"
@@ -62,7 +98,7 @@ export default function AppLayout({ children }) {
                 />
             )}
 
-            {/* Sidebar — fixed on mobile, static on desktop */}
+            {/* Sidebar — fixed and slide-in on mobile, static on desktop */}
             <aside className={`
                 fixed inset-y-0 left-0 z-30 w-56 bg-sidebar flex flex-col flex-shrink-0
                 transform transition-transform duration-200
@@ -87,7 +123,7 @@ export default function AppLayout({ children }) {
                                 return (
                                     <button
                                         key={item.path}
-                                        onClick={() => { navigate(item.path); setSidebarOpen(false) }}
+                                        onClick={() => { navigate(item.path + (item.search || '')); setSidebarOpen(false) }}
                                         className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors border-r-4 ${isActive
                                             ? 'bg-sidebar-active text-white border-accent'
                                             : 'text-green-300 border-transparent hover:text-white hover:bg-sidebar-active'
@@ -104,6 +140,7 @@ export default function AppLayout({ children }) {
                     ))}
                 </nav>
 
+                {/* Signed-in user and sign out */}
                 <div className="px-5 py-4 border-t border-sidebar-active">
                     <div className="flex items-center gap-3 mb-3">
                         <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
@@ -127,6 +164,7 @@ export default function AppLayout({ children }) {
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 md:px-7 flex-shrink-0">
                     <div className="flex items-center gap-3">
+                        {/* Hamburger: mobile only */}
                         <button
                             onClick={() => setSidebarOpen(!sidebarOpen)}
                             className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
@@ -135,11 +173,10 @@ export default function AppLayout({ children }) {
                                 <path d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
                         </button>
-                        <h1 className="font-serif text-xl font-bold text-gray-900">
-                            {navItems.find(n => n.path === location.pathname)?.label
-                                || (location.pathname.startsWith('/inventory/stock-takes') ? 'Stock Takes' : 'Papi Chulo Hub')}
-                        </h1>
+                        <h1 className="font-serif text-xl font-bold text-gray-900">{pageTitle}</h1>
                     </div>
+
+                    {/* Restaurant switcher: only for roles that span locations */}
                     {(user?.role === 'super_admin' || user?.role === 'owner') && (
                         <select
                             value={activeRestaurant?.id || ''}
