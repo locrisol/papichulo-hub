@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { todayISO, weekStartOf, shortDate, toISODate } from '../../lib/dates'
+import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -77,15 +77,14 @@ export default function InvoicesPage() {
             setSuppliers(sup || [])
 
             // The week runs Sunday to Saturday, so the end is six days on.
-            const end = new Date(weekStart + 'T00:00:00')
-            end.setDate(end.getDate() + 6)
+            const end = addDays(weekStart, 6)
 
             const { data: inv, error: iErr } = await supabase
                 .from('invoices')
                 .select('*, suppliers(name)')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', weekStart)
-                .lte('invoice_date', toISODate(end))
+                .lte('invoice_date', end)
                 .order('invoice_date', { ascending: false })
 
             if (iErr) { setError(iErr.message); setLoading(false); return }
