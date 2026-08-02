@@ -1,0 +1,6 @@
+ALTER TABLE product_supplier_prices
+DROP CONSTRAINT product_supplier_prices_product_id_supplier_id_restaurant_i_key;
+
+ALTER TABLE product_supplier_prices
+ADD CONSTRAINT product_supplier_prices_unique
+UNIQUE (product_id, supplier_id, restaurant_id, purchase_type, units_per_case);

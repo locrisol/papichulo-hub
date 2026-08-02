@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+@theme {
+  --color-sidebar: #182F24;
+  --color-sidebar-active: #224036;
+  --color-accent: #D4724A;
+  --color-accent-light: #F0E8E0;
+  --color-app-bg: #F7F5F0;
+  --color-border: #E8E3DB;
+  --color-muted: #7A7265;
+  --color-green-brand: #2E7D52;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-serif: 'Fraunces', serif;
+}
