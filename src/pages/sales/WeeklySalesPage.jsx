@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -24,41 +25,6 @@ import { fmtMoney } from '../../lib/format'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const VARIANCE_WARN_THRESHOLD = 10
-
-// Format a Date as YYYY-MM-DD using local time. Do not use toISOString here:
-// it converts to UTC, so local midnight becomes the previous day in any
-// timezone ahead of UTC, which silently shifts every date back by one.
-function toISODate(d) {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-}
-
-function todayISO() {
-    return toISODate(new Date())
-}
-
-// The Sunday that starts the week containing the given date.
-function weekStartOf(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00')
-    d.setDate(d.getDate() - d.getDay())
-    return toISODate(d)
-}
-
-// The seven dates, Sunday through Saturday, for a week starting at weekStart.
-function weekDates(weekStart) {
-    return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(weekStart + 'T00:00:00')
-        d.setDate(d.getDate() + i)
-        return toISODate(d)
-    })
-}
-
-function shortDate(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00')
-    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })
-}
 
 function num(v) {
     if (v === '' || v == null) return 0
@@ -298,9 +264,7 @@ export default function WeeklySalesPage() {
     }
 
     function shiftWeek(weeks) {
-        const d = new Date(weekStart + 'T00:00:00')
-        d.setDate(d.getDate() + weeks * 7)
-        goToWeek(toISODate(d))
+        goToWeek(addDays(weekStart, weeks * 7))
     }
 
     // ---- derived values -------------------------------------------------
