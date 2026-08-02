@@ -20,7 +20,13 @@ import StockTakeReviewPage from './pages/inventory/StockTakeReviewPage'
 import StockTakeSummaryPage from './pages/inventory/StockTakeSummaryPage'
 import SalesPage from './pages/sales/SalesPage'
 import WeeklySalesPage from './pages/sales/WeeklySalesPage'
-import { DashboardScreen, InvoiceScreen, WasteScreen, ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
+import InvoicesPage from './pages/invoices/InvoicesPage'
+import InvoiceHistoryPage from './pages/invoices/InvoiceHistoryPage'
+import LabourPage from './pages/costs/LabourPage'
+import WasteLogPage from './pages/waste/WasteLogPage'
+import WasteSummaryPage from './pages/waste/WasteSummaryPage'
+import CostDashboardPage from './pages/costs/CostDashboardPage'
+import { ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -34,12 +40,13 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <Routes>
-                <Route path="/dashboard" element={<DashboardScreen />} />
-                <Route path="/sales" element={<SalesPage />} />
+                <Route path="/dashboard" element={<CostDashboardPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/sales/weekly" element={<WeeklySalesPage />} />
-                <Route path="/invoices" element={<InvoiceScreen />} />
-                <Route path="/waste" element={<WasteScreen />} />
+                <Route path="/invoices" element={<InvoicesPage />} />
+                <Route path="/invoices/history" element={<InvoiceHistoryPage />} />
+                <Route path="/waste" element={<WasteLogPage />} />
+                <Route path="/waste/summary" element={<WasteSummaryPage />} />
                 <Route path="/catalogue" element={<CatalogueScreen />} />
                 <Route path="/catalogue/suppliers" element={<SuppliersPage />} />
                 <Route path="/catalogue/products" element={<ProductsPage />} />
@@ -53,6 +60,7 @@ export default function App() {
                 <Route path="/inventory/stock-takes/:id/review" element={<StockTakeReviewPage />} />
                 <Route path="/inventory/stock-takes/:id/summary" element={<StockTakeSummaryPage />} />
                 <Route path="/inventory/public-allergens" element={<PublicAllergensPreviewPage />} />
+                <Route path="/costs/labour" element={<LabourPage />} />
                 <Route path="/forecast" element={<ForecastScreen />} />
                 <Route path="/settings/users" element={<UsersPage />} />
                 <Route path="/settings/restaurant" element={<RestaurantPage />} />

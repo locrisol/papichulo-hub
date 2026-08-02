@@ -9,7 +9,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 // appear in this array. Entries for modules that are not built yet are left
 // commented out so the sidebar never links to a mockup screen.
 const navItems = [
-    // { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
+    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.
@@ -18,9 +18,10 @@ const navItems = [
     // the link would appear to do nothing.
     { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations' },
     { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations' },
-
-    // { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
-    // { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
+    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations' },
+    { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
+    { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations' },
+    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations' },
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue' },
