@@ -89,6 +89,7 @@ npm run dev -- --host
 | `npm run test` | Runs the tests and watches for changes |
 | `npm run test:run` | Runs the tests once and exits |
 | `npm run lint` | Runs ESLint |
+| `npm run schema` | Rebuilds `supabase/schema.sql` and `seed.sql` from the migrations |
 
 ## Tests
 
@@ -132,7 +133,7 @@ There are four roles. The rules are stored directly in the database as row level
 | Waste | Log it, and see today's | Everything | Everything | Everything |
 | Sales, invoices, labour, costs | No access | Everything | Everything | Everything |
 | Restaurant settings | No | Yes | Yes | Yes |
-| Users and restaurants | No | No | No | Yes |
+| Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
 
 An employee can start counting but cannot open or close a stock take session, and can modify their own count lines but not the ones other employees have created.
 
@@ -155,6 +156,8 @@ Add the Vercel address to the allowed URLs in Supabase under Authentication, or 
 ## How the work is organised
 
 Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is send to `development` through a pull request. Issues that were described but we decided not built at this tage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definetely want to implement soon some of them.
+
+When you add a migration, run `npm run schema` and commit the rebuilt `supabase/schema.sql` alongside it. That file is what a fresh install runs, so a migration missing from it would be missing from any new database.
 
 ## What is not built
 
