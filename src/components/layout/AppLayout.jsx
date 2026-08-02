@@ -3,40 +3,43 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 
 // Sidebar navigation.
 // Items are grouped by `section`; the sections render in the order they first
 // appear in this array. Entries for modules that are not built yet are left
 // commented out so the sidebar never links to a mockup screen.
 const navItems = [
-    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
+    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.
     // `search` is appended when navigating: Daily Sales asks for the day view
     // explicitly, otherwise the day form redirects wide screens to the grid and
     // the link would appear to do nothing.
-    { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations' },
-    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations' },
-    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations' },
-    { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
-    { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations' },
-    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations' },
+    { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
+    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations', roles: MANAGERS },
+    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations', roles: MANAGERS },
+    { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
+    { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
+    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
-    { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue' },
-    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue' },
-    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue' },
+    { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },
+    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue', roles: MANAGERS },
+    // Employees can see suppliers on purpose: if a delivery is wrong they need
+    // the rep's number. Nothing here is commercially sensitive.
+    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue', roles: ALL_ROLES },
 
-    { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory' },
-    { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory' },
+    { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory', roles: ALL_ROLES },
+    { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory', roles: MANAGERS },
 
     // Forecasting is not implemented yet (issues #57-#60) and currently routes to
     // a mockup screen, so it stays hidden until the real module is built.
     // { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
 
-    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings' },
-    { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings' },
+    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: MANAGERS },
+    { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 ]
 
 // Heroicons outline paths, referenced by the `icon` key on each nav item.
@@ -79,8 +82,10 @@ export default function AppLayout({ children }) {
         navigate('/login')
     }
 
-    // Unique section names, in the order they first appear in navItems.
-    const sections = [...new Set(navItems.map(n => n.section))]
+    // Only what this role can actually use. A section with nothing left in it
+    // disappears rather than showing an empty heading.
+    const visibleItems = navItems.filter(n => can(user, n.roles))
+    const sections = [...new Set(visibleItems.map(n => n.section))]
 
     // Page title: exact nav match first, then a prefix fallback for detail pages.
     const pageTitle =
@@ -119,7 +124,7 @@ export default function AppLayout({ children }) {
                             <p className="px-5 py-2 text-xs font-semibold text-green-700 uppercase tracking-widest">
                                 {section}
                             </p>
-                            {navItems.filter(n => n.section === section).map(item => {
+                            {visibleItems.filter(n => n.section === section).map(item => {
                                 const isActive = location.pathname === item.path
                                 return (
                                     <button
