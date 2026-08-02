@@ -9,7 +9,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 // appear in this array. Entries for modules that are not built yet are left
 // commented out so the sidebar never links to a mockup screen.
 const navItems = [
-    // { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
+    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview' },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.

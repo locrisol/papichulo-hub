@@ -25,7 +25,8 @@ import InvoiceHistoryPage from './pages/invoices/InvoiceHistoryPage'
 import LabourPage from './pages/costs/LabourPage'
 import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
-import { DashboardScreen, ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
+import CostDashboardPage from './pages/costs/CostDashboardPage'
+import { ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -39,7 +40,7 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <Routes>
-                <Route path="/dashboard" element={<DashboardScreen />} />
+                <Route path="/dashboard" element={<CostDashboardPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/sales/weekly" element={<WeeklySalesPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
