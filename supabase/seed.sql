@@ -1,8 +1,8 @@
 -- =====================================================================
 -- Papi Chulo Hub, seed data.
 --
--- The restaurants and the supplier list. Run this after schema.sql: with
--- no restaurant, nothing in the app will load.
+-- Built from the seed migrations by scripts/build-schema.mjs. Run this
+-- after schema.sql: with no restaurant, nothing in the app will load.
 --
 -- There is no check for rows that already exist, so running this twice
 -- gives you two of everything. It is meant for a fresh database only.

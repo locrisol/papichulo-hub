@@ -1,8 +1,8 @@
 -- =====================================================================
 -- Papi Chulo Hub, full schema.
 --
--- This is every migration in supabase/migrations/ joined together, so it
--- builds the database the same way it was really built.
+-- Built from supabase/migrations/ by scripts/build-schema.mjs. Do not edit
+-- this file by hand: add a migration and run "npm run schema" instead.
 --
 -- WARNING: this file DROPS EVERY TABLE before creating them. It is meant
 -- for setting up a new, empty database. Running it against a database
@@ -1278,6 +1278,7 @@ comment on column public.sales_records.cash_banked is
 -- ---------- indexes ----------
 create index if not exists idx_sales_platforms_restaurant on public.sales_platforms(restaurant_id);
 create index if not exists idx_petty_cash_restaurant_date on public.petty_cash_entries(restaurant_id, entry_date);
+
 -- =====================================================================
 -- Migration 016: RLS for sales_platforms + petty_cash_entries
 -- Branch: feature/43-sales-schema
@@ -1344,6 +1345,7 @@ create policy petty_cash_write on public.petty_cash_entries
 
 -- ---------- reload PostgREST schema cache ----------
 notify pgrst, 'reload schema';
+
 -- =====================================================================
 -- Migration 017: Add is_closed flag to sales_records
 -- Branch: feature/45-weekly-sales
@@ -1364,6 +1366,7 @@ comment on column public.sales_records.is_closed is
   'True if the restaurant was closed that day (no trading). Distinct from a day with no record entered. Closed days are excluded from per-day averages and trading-day counts so they do not depress typical-day figures or pollute forecasting data.';
 
 notify pgrst, 'reload schema';
+
 -- =====================================================================
 -- Migration 018: Configurable row order for the weekly sales grid
 -- Branch: feature/45-weekly-sales
@@ -1408,6 +1411,54 @@ create policy waste_logs_select_today on public.waste_logs
     get_my_role() = 'employee'
     and restaurant_id = get_my_restaurant_id()
     and log_date = current_date
+  );
+
+notify pgrst, 'reload schema';
+-- =====================================================================
+-- Migration 020: let a signed-in user read their own row
+--
+-- users_select allows super admin, owner and store manager, so an employee
+-- could not read any row in users, including their own. AuthContext loads
+-- that row to get the name, role and restaurant, so for an employee the
+-- query returned nothing, the app never knew who was signed in, and every
+-- role check read undefined. Counting stock crashed on a null user.
+--
+-- Data access was never affected: get_my_role() and get_my_restaurant_id()
+-- are security definer and read the table directly, which is why the
+-- policies still gave the right answers.
+--
+-- Postgres ORs permissive policies together, so this adds one narrow case
+-- and widens nothing else: you can read your own row, and only your own.
+-- =====================================================================
+
+drop policy if exists users_select_own on public.users;
+create policy users_select_own on public.users
+  for select
+  using (id = auth.uid());
+
+notify pgrst, 'reload schema';
+-- =====================================================================
+-- Migration 021: let an employee read their own restaurant
+--
+-- restaurants_select covers super admin, owner and store manager, and
+-- restaurants_public_select only applies when auth.uid() is null, which is
+-- the anonymous allergen page. A signed-in employee is neither, so they
+-- could not read the restaurants table at all.
+--
+-- RestaurantContext reads it to work out which restaurant they are in, so
+-- for an employee it came back empty, activeRestaurant stayed null, and
+-- every page that waits on it sat at Loading forever.
+--
+-- Same shape as migration 020: the database always knew who they were,
+-- the app did not. This adds one narrow case, their own restaurant only.
+-- =====================================================================
+
+drop policy if exists restaurants_select_own on public.restaurants;
+create policy restaurants_select_own on public.restaurants
+  for select
+  using (
+    get_my_role() = 'employee'
+    and id = get_my_restaurant_id()
   );
 
 notify pgrst, 'reload schema';

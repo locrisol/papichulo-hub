@@ -25,7 +25,14 @@ export function RestaurantProvider({ children }) {
 
         const { data, error } = await query
 
-        if (!error && data.length > 0) {
+        // Do not swallow this. If the restaurant cannot be read, every page
+        // that waits on activeRestaurant sits at Loading forever with nothing
+        // in the console to say why.
+        if (error) {
+            console.error('Could not load restaurants:', error.message)
+        } else if (data.length === 0) {
+            console.error('No restaurant found for this user. Check they have a restaurant_id and can read it.')
+        } else {
             setRestaurants(data)
 
             // check if there is a saved restaurant in localStorage
@@ -33,6 +40,8 @@ export function RestaurantProvider({ children }) {
             const match = data.find(r => r.id === saved)
             setActiveRestaurant(match || data[0])
         }
+
+        setLoading(false)
 
         setLoading(false)
     }

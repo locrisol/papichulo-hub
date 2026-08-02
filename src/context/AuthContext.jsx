@@ -28,15 +28,19 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function fetchUser(userId) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single()
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single()
 
-    if (!error) setUser(data)
-    setLoading(false)
-  }
+        // Do not swallow this. If the row cannot be read the app has no idea
+        // who is signed in, every role check reads undefined, and nothing says
+        // so. That is how an employee could sign in and quietly have no role.
+        if (error) console.error('Could not load the signed-in user:', error.message)
+        else setUser(data)
+        setLoading(false)
+    }
 
   return (
     <AuthContext.Provider value={{ session, user, loading }}>
