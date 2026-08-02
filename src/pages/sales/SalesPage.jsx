@@ -4,22 +4,31 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
+import { RECEIPT_ROWS, resolveRowOrder } from './WeeklySalesPage'
 
-// Threshold above which the sales reconciliation is flagged for review.
+// Threshold above which the reconciliation is flagged for review.
 const VARIANCE_WARN_THRESHOLD = 10
 
+// TWO RECORDS, DELIBERATELY SEPARATE
+// The till receipt block (gross, net, cash, card, kiosk, Online Sales, Outside
+// Catering) is entered directly and is the only block that reconciles, because
+// it is what the POS prints and what can be checked at close. The platform
+// figures below are a separate tracking record: platforms report commission and
+// VAT inconsistently, so forcing them to agree with the receipt would produce a
+// permanent false error. The difference is shown as information instead.
+// This matches the weekly grid exactly, so both screens mean the same thing by
+// the same columns.
+//
 // NOTE ON CASH RECONCILIATION
-// Cash drawer handling (start float, end float, cash banked, petty cash and the
-// cash drawer variance) is deliberately not exposed in this screen. The business
-// is changing how it handles the cash sheet and cash flow, so that work is
-// deferred. The supporting schema is intentionally left in place
-// (petty_cash_entries table, sales_records.cash_banked) so it can be re-enabled
-// without a migration once the new process is settled.
-// "Cash" below is a payment method (how the customer paid), not drawer reconciliation.
+// Cash drawer handling (start float, end float, cash banked, petty cash) is
+// deliberately not exposed. The business is changing how it handles the cash
+// sheet and cash flow, so that work is deferred. The supporting schema is left
+// in place (petty_cash_entries, sales_records.cash_banked) so it can be
+// re-enabled without a migration. "Cash" below is a payment method.
 
-// Format a Date as YYYY-MM-DD using local time. Do not use toISOString here:
-// it converts to UTC, so local midnight becomes the previous day in any
-// timezone ahead of UTC, which silently shifts every date back by one.
+// Format a Date as YYYY-MM-DD using local time. Do not use toISOString here: it
+// converts to UTC, so local midnight becomes the previous day in any timezone
+// ahead of UTC, silently shifting every date back by one.
 function toISODate(d) {
     const y = d.getFullYear()
     const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -71,25 +80,29 @@ export default function SalesPage() {
     // Marks a non-trading day. Closed days are excluded from per-day averages.
     const [isClosed, setIsClosed] = useState(false)
 
-    // Active platforms for this restaurant, grouped into buckets below.
     const [platforms, setPlatforms] = useState([])
 
-    const [grossSales, setGrossSales] = useState('')
-    const [netSales, setNetSales] = useState('')
-    const [cashSales, setCashSales] = useState('')
-    const [cardSales, setCardSales] = useState('')
-    const [kioskSales, setKioskSales] = useState('')
+    // Receipt values, keyed the same way as the weekly grid.
+    const [values, setValues] = useState({
+        gross: '', net: '', cash: '', card: '', kiosk: '',
+        onlineSales: '', cateringSales: '',
+    })
     const [staffFood, setStaffFood] = useState('')
 
     // Per-platform amounts, keyed by platform name: { Deliveroo: "120.50" }
     const [platformSales, setPlatformSales] = useState({})
 
-    useEffect(() => {
-        if (activeRestaurant) loadDay()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeRestaurant, saleDate])
+    const restaurantId = activeRestaurant?.id
 
-    // Loads the active platforms and any existing sales record for the selected date.
+    // Receipt row order, configurable per restaurant in Restaurant settings.
+    // Shared with the weekly grid so both screens present the same sequence.
+    const receiptRows = resolveRowOrder(activeRestaurant?.sales_row_order)
+
+    useEffect(() => {
+        if (restaurantId) loadDay()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [restaurantId, saleDate])
+
     async function loadDay() {
         setLoading(true)
         setError('')
@@ -98,7 +111,7 @@ export default function SalesPage() {
         const { data: plats, error: pErr } = await supabase
             .from('sales_platforms')
             .select('*')
-            .eq('restaurant_id', activeRestaurant.id)
+            .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
 
         if (pErr) { setError(pErr.message); setLoading(false); return }
@@ -112,7 +125,7 @@ export default function SalesPage() {
         const { data: rec, error: rErr } = await supabase
             .from('sales_records')
             .select('*')
-            .eq('restaurant_id', activeRestaurant.id)
+            .eq('restaurant_id', restaurantId)
             .eq('sale_date', saleDate)
             .maybeSingle()
 
@@ -121,66 +134,76 @@ export default function SalesPage() {
         if (rec) {
             setRecordId(rec.id)
             setIsClosed(rec.is_closed || false)
-            setGrossSales(rec.gross_sales ?? '')
-            setNetSales(rec.net_sales ?? '')
-            setCashSales(rec.cash_sales ?? '')
-            setCardSales(rec.card_sales ?? '')
-            setKioskSales(rec.kiosk_sales ?? '')
-            setStaffFood(rec.staff_food ?? '')
+            setValues({
+                gross: rec.gross_sales != null ? String(rec.gross_sales) : '',
+                net: rec.net_sales != null ? String(rec.net_sales) : '',
+                cash: rec.cash_sales != null ? String(rec.cash_sales) : '',
+                card: rec.card_sales != null ? String(rec.card_sales) : '',
+                kiosk: rec.kiosk_sales != null ? String(rec.kiosk_sales) : '',
+                onlineSales: rec.online_sales != null ? String(rec.online_sales) : '',
+                cateringSales: rec.catering_sales != null ? String(rec.catering_sales) : '',
+            })
+            setStaffFood(rec.staff_food != null ? String(rec.staff_food) : '')
 
-            // platform_sales is stored as JSONB; convert values to strings for the inputs.
             const ps = {}
             if (rec.platform_sales && typeof rec.platform_sales === 'object') {
                 for (const [k, v] of Object.entries(rec.platform_sales)) ps[k] = String(v)
             }
             setPlatformSales(ps)
         } else {
-            // No record yet for this date: reset the form.
             setRecordId(null)
             setIsClosed(false)
-            setGrossSales(''); setNetSales(''); setCashSales(''); setCardSales('')
-            setKioskSales(''); setStaffFood(''); setPlatformSales({})
+            setValues({ gross: '', net: '', cash: '', card: '', kiosk: '', onlineSales: '', cateringSales: '' })
+            setStaffFood('')
+            setPlatformSales({})
         }
 
         setLoading(false)
     }
 
-    function bucketPlatforms(bucket) {
-        return platforms.filter(p => p.bucket === bucket)
+    function setValue(key, v) {
+        setValues(prev => ({ ...prev, [key]: v }))
     }
-
-    // Bucket totals are derived from the individual platform amounts, never typed directly.
-    function bucketTotal(bucket) {
-        return bucketPlatforms(bucket).reduce((sum, p) => sum + num(platformSales[p.name]), 0)
-    }
-
-    const onlineTotal = bucketTotal('online_platform')
-    const cateringTotal = bucketTotal('catering')
-
-    // Sales reconciliation: everything taken across all channels should match gross sales.
-    const salesVariance =
-        num(cashSales) + num(cardSales) + num(kioskSales) + onlineTotal + cateringTotal - num(grossSales)
-    const salesVarianceWarn = Math.abs(salesVariance) > VARIANCE_WARN_THRESHOLD
-
-    // Share of total sales taken through each third-party bucket.
-    const gross = num(grossSales)
-    const onlinePct = gross > 0 ? (onlineTotal / gross) * 100 : 0
-    const cateringPct = gross > 0 ? (cateringTotal / gross) * 100 : 0
 
     function setPlatformAmount(name, value) {
         setPlatformSales(prev => ({ ...prev, [name]: value }))
     }
 
     function shiftDate(days) {
-        const d = new Date(saleDate)
+        const d = new Date(saleDate + 'T00:00:00')
         d.setDate(d.getDate() + days)
         setSaleDate(toISODate(d))
     }
 
+    // ---- derived values -------------------------------------------------
+
+    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
+    const cateringPlatforms = platforms.filter(p => p.bucket === 'catering')
+
+    // Sum of the tracking rows for a bucket, compared against the receipt figure
+    // for information only.
+    function platformSum(bucketPlatforms) {
+        return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.name]), 0)
+    }
+
+    // Reconciliation uses only the till receipt block.
+    const variance =
+        num(values.cash) + num(values.card) + num(values.kiosk)
+        + num(values.onlineSales) + num(values.cateringSales)
+        - num(values.gross)
+    const varianceWarn = Math.abs(variance) > VARIANCE_WARN_THRESHOLD
+
+    const gross = num(values.gross)
+    function pctOfGross(amount) {
+        return gross > 0 ? (amount / gross) * 100 : 0
+    }
+
+    // ---- saving ---------------------------------------------------------
+
     async function handleSave() {
         setError(''); setSuccess('')
 
-        // One record per date per restaurant, so confirm before replacing an existing one.
+        // One record per date per restaurant, so confirm before replacing one.
         if (recordId) {
             const ok = window.confirm(`A sales record already exists for ${saleDate}. Overwrite it?`)
             if (!ok) return
@@ -195,34 +218,37 @@ export default function SalesPage() {
             if (v !== 0) ps[p.name] = v
         }
 
-        // Cash drawer fields are deliberately omitted; those columns keep their defaults.
+        const base = {
+            restaurant_id: restaurantId,
+            sale_date: saleDate,
+            upload_method: 'manual',
+            created_by: user.id,
+        }
+
+        // Cash drawer fields are omitted; those columns keep their defaults.
         const payload = isClosed
             ? {
-                restaurant_id: activeRestaurant.id,
-                sale_date: saleDate,
+                ...base,
                 is_closed: true,
                 gross_sales: 0, net_sales: 0, cash_sales: 0, card_sales: 0, kiosk_sales: 0,
                 online_sales: 0, catering_sales: 0, platform_sales: {},
                 staff_food: 0, instore_variance: 0,
-                upload_method: 'manual',
-                created_by: user.id,
             }
             : {
-                restaurant_id: activeRestaurant.id,
-                sale_date: saleDate,
+                ...base,
                 is_closed: false,
-                gross_sales: num(grossSales),
-                net_sales: num(netSales),
-                cash_sales: num(cashSales),
-                card_sales: num(cardSales),
-                kiosk_sales: num(kioskSales),
-                online_sales: onlineTotal,
-                catering_sales: cateringTotal,
+                gross_sales: num(values.gross),
+                net_sales: num(values.net),
+                cash_sales: num(values.cash),
+                card_sales: num(values.card),
+                kiosk_sales: num(values.kiosk),
+                // Receipt figures, entered directly rather than derived.
+                online_sales: num(values.onlineSales),
+                catering_sales: num(values.cateringSales),
+                // Tracking detail, not required to match the two above.
                 platform_sales: ps,
                 staff_food: num(staffFood),
-                instore_variance: salesVariance,
-                upload_method: 'manual',
-                created_by: user.id,
+                instore_variance: variance,
             }
 
         let resErr
@@ -243,6 +269,47 @@ export default function SalesPage() {
     const fieldCls =
         'w-full border border-border rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white'
     const labelCls = 'text-xs text-gray-500 mb-1 block'
+
+    // One bucket of tracking platforms, with the gap against the receipt figure.
+    function trackingBucket(title, bucketPlatforms, receiptKey) {
+        if (bucketPlatforms.length === 0) return null
+        const sum = platformSum(bucketPlatforms)
+        const gap = sum - num(values[receiptKey])
+        return (
+            <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-sm font-semibold text-accent">
+                        {title}
+                        <span className="text-xs text-gray-400 font-normal ml-2">tracking only</span>
+                    </h3>
+                    <span className="text-sm text-gray-500">
+                        total: <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
+                        <span className="ml-2 text-gray-400">({pctOfGross(sum).toFixed(1)}% of sales)</span>
+                    </span>
+                </div>
+                {Math.abs(gap) >= 0.01 && (
+                    <p className="text-xs text-amber-600 mb-3">
+                        {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
+                        commission and VAT differently.
+                    </p>
+                )}
+                <div className="grid grid-cols-3 gap-3 mt-3">
+                    {bucketPlatforms.map(p => (
+                        <div key={p.id}>
+                            <label className={labelCls}>{p.name}</label>
+                            <input
+                                type="number" step="0.01" inputMode="decimal"
+                                value={platformSales[p.name] ?? ''}
+                                onChange={e => setPlatformAmount(p.name, e.target.value)}
+                                className={fieldCls}
+                                placeholder="0.00"
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )
+    }
 
     if (loading) {
         return <div className="max-w-2xl"><p className="text-sm text-gray-400">Loading...</p></div>
@@ -304,60 +371,52 @@ export default function SalesPage() {
             {/* Everything below is irrelevant on a closed day, so it is hidden. */}
             {!isClosed && (
                 <>
+                    {/* Till receipt block, in the order set in Restaurant settings */}
                     <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Sales figures</h3>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
                         <div className="grid grid-cols-2 gap-3">
-                            <div><label className={labelCls}>Gross sales</label><input type="number" step="0.01" inputMode="decimal" value={grossSales} onChange={e => setGrossSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-                            <div><label className={labelCls}>Net sales</label><input type="number" step="0.01" inputMode="decimal" value={netSales} onChange={e => setNetSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
+                            {receiptRows.map(row => (
+                                <div key={row.key}>
+                                    <label className={labelCls}>{row.label}</label>
+                                    <input
+                                        type="number" step="0.01" inputMode="decimal"
+                                        value={values[row.key] ?? ''}
+                                        onChange={e => setValue(row.key, e.target.value)}
+                                        className={fieldCls}
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    {/* In-house tenders. "Cash" here is how the customer paid. */}
-                    <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment methods</h3>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div><label className={labelCls}>Cash</label><input type="number" step="0.01" inputMode="decimal" value={cashSales} onChange={e => setCashSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-                            <div><label className={labelCls}>Card</label><input type="number" step="0.01" inputMode="decimal" value={cardSales} onChange={e => setCardSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-                            <div><label className={labelCls}>Kiosk</label><input type="number" step="0.01" inputMode="decimal" value={kioskSales} onChange={e => setKioskSales(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-                        </div>
-                    </div>
-
-                    <PlatformBucket
-                        title="Online Platform"
-                        total={onlineTotal}
-                        pct={onlinePct}
-                        platforms={bucketPlatforms('online_platform')}
-                        platformSales={platformSales}
-                        setPlatformAmount={setPlatformAmount}
-                        fieldCls={fieldCls}
-                        labelCls={labelCls}
-                    />
-
-                    <PlatformBucket
-                        title="Catering"
-                        total={cateringTotal}
-                        pct={cateringPct}
-                        platforms={bucketPlatforms('catering')}
-                        platformSales={platformSales}
-                        setPlatformAmount={setPlatformAmount}
-                        fieldCls={fieldCls}
-                        labelCls={labelCls}
-                    />
-
-                    <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div><label className={labelCls}>Staff food</label><input type="number" step="0.01" inputMode="decimal" value={staffFood} onChange={e => setStaffFood(e.target.value)} className={fieldCls} placeholder="0.00" /></div>
-                        </div>
-                    </div>
-
-                    {/* Sales reconciliation: tenders should equal gross sales. */}
-                    <div className={`rounded-xl p-4 mb-4 ${salesVarianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
-                        <div className={`text-xs mb-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>Sales reconciliation</div>
-                        <div className={`text-xl font-semibold ${salesVarianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(salesVariance)}</div>
-                        <div className={`text-xs mt-1 ${salesVarianceWarn ? 'text-red-600' : 'text-green-700'}`}>
-                            {salesVarianceWarn
+                    {/* Reconciliation closes the receipt block */}
+                    <div className={`rounded-xl p-4 mb-3 ${varianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
+                        <div className={`text-xs mb-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>Reconciliation</div>
+                        <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
+                        <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
+                            {varianceWarn
                                 ? `Over €${VARIANCE_WARN_THRESHOLD} — check the figures`
                                 : 'cash + card + kiosk + online + catering − gross'}
+                        </div>
+                    </div>
+
+                    {/* Platform detail, outside the reconciliation */}
+                    {trackingBucket('Online Platform', onlinePlatforms, 'onlineSales')}
+                    {trackingBucket('Catering', cateringPlatforms, 'cateringSales')}
+
+                    <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={labelCls}>Staff food</label>
+                                <input
+                                    type="number" step="0.01" inputMode="decimal"
+                                    value={staffFood}
+                                    onChange={e => setStaffFood(e.target.value)}
+                                    className={fieldCls}
+                                    placeholder="0.00"
+                                />
+                            </div>
                         </div>
                     </div>
                 </>
@@ -372,40 +431,6 @@ export default function SalesPage() {
                             : (recordId ? 'Update day' : 'Save day')}
                 </button>
             </div>
-        </div>
-    )
-}
-
-// One bucket of third-party platforms (Online Platform or Catering).
-// The bucket total and its share of gross sales are both derived, never typed.
-function PlatformBucket({ title, total, pct, platforms, platformSales, setPlatformAmount, fieldCls, labelCls }) {
-    return (
-        <div className="bg-white rounded-xl border border-border p-5 mb-3">
-            <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-accent">{title}</h3>
-                <span className="text-sm text-gray-500">
-                    total: <span className="font-semibold text-gray-900">{fmtMoney(total)}</span>
-                    <span className="ml-2 text-gray-400">({pct.toFixed(1)}% of sales)</span>
-                </span>
-            </div>
-            {platforms.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No active platforms in this bucket. Add them in Restaurant settings.</p>
-            ) : (
-                <div className="grid grid-cols-3 gap-3">
-                    {platforms.map(p => (
-                        <div key={p.id}>
-                            <label className={labelCls}>{p.name}</label>
-                            <input
-                                type="number" step="0.01" inputMode="decimal"
-                                value={platformSales[p.name] ?? ''}
-                                onChange={e => setPlatformAmount(p.name, e.target.value)}
-                                className={fieldCls}
-                                placeholder="0.00"
-                            />
-                        </div>
-                    ))}
-                </div>
-            )}
         </div>
     )
 }
