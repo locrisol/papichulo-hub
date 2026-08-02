@@ -20,7 +20,8 @@ const navItems = [
     { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations' },
     { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations' },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations' },
-    { path: '/waste', label: 'Waste Tracking', icon: 'waste', section: 'Operations' },
+    { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations' },
+    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations' },
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue' },

@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { useNavigate } from 'react-router-dom'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
+import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -21,25 +23,12 @@ import { calculateWasteValue } from '../../lib/wasteValue'
 // Employees can see everything logged today at their restaurant, so two people
 // do not log the same dropped tray twice. They cannot see any other day.
 
-// The value goes to the database, the label goes on screen. waste_logs has a
-// check constraint on reason, so the values have to match it exactly.
-const REASONS = [
-    { value: 'overproduction', label: 'Overproduction' },
-    { value: 'spoilage', label: 'Spoilage' },
-    { value: 'dropped', label: 'Dropped' },
-    { value: 'expired', label: 'Expired' },
-    { value: 'other', label: 'Other' },
-]
-
-function reasonLabel(value) {
-    return REASONS.find(r => r.value === value)?.label || value
-}
-
 export default function WasteLogPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
     const isManager = ['super_admin', 'owner', 'store_manager'].includes(user?.role)
+    const navigate = useNavigate()
 
     const [logDate, setLogDate] = useState(todayISO())
     const [products, setProducts] = useState([])
@@ -209,9 +198,19 @@ export default function WasteLogPage() {
 
     return (
         <div className="max-w-2xl">
-            <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
-                <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
+            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
+                    <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
+                </div>
+                {isManager && (
+                    <button
+                        onClick={() => navigate('/waste/summary')}
+                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    >
+                        Weekly summary
+                    </button>
+                )}
             </div>
 
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
