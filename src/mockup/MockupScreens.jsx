@@ -51,7 +51,7 @@ export const S = {
   badge:   (color) => ({ display:"inline-flex", alignItems:"center", padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:600, background: color+"20", color }),
   btn:     (variant="primary") => ({
     display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:8,
-    fontSize:13.5, fontWeight:600, cursor:"pointer", border:"none", transition:"all 0.15s",
+    fontSize:13.5, fontWeight:600, cursor:"pointer", transition:"all 0.15s",
     background: variant==="primary" ? T.accent : variant==="ghost" ? "transparent" : T.card,
     color: variant==="primary" ? "#fff" : variant==="ghost" ? T.muted : T.text,
     border: variant==="outline" ? `1px solid ${T.border}` : "none",

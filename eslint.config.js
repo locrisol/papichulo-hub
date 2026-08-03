@@ -18,4 +18,13 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Tests, config files and build scripts run in Node, not in a browser, so
+    // they use things like process.env. Without this they are checked against
+    // browser globals only and every process reference is reported as undefined.
+    files: ['tests/**/*.js', '*.config.js', 'scripts/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

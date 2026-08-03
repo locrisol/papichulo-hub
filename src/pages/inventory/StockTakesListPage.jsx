@@ -57,11 +57,7 @@ export default function StockTakesListPage() {
     // If there's an active session, compute progress: how many products
     // have at least one line, vs total active products in the restaurant.
     if (active) {
-      const [{ count: countedProducts }, { count: totalProducts }, { count: totalLines }] = await Promise.all([
-        supabase
-          .from('stock_take_lines')
-          .select('product_id', { count: 'exact', head: true })
-          .eq('stock_take_id', active.id),
+      const [{ count: totalProducts }, { count: totalLines }] = await Promise.all([
         supabase
           .from('products')
           .select('id', { count: 'exact', head: true })
@@ -72,8 +68,8 @@ export default function StockTakesListPage() {
           .eq('stock_take_id', active.id),
       ])
 
-      // countedProducts above actually counts all line rows, not distinct
-      // products. We need distinct. Do a follow-up fetch of distinct product_ids.
+      // A count of stock_take_lines gives all line rows, not distinct products,
+      // so fetch the product_ids and count the distinct ones instead.
       const { data: linesForDistinct } = await supabase
         .from('stock_take_lines')
         .select('product_id')

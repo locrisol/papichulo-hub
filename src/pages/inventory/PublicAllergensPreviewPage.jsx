@@ -1,24 +1,16 @@
 import { supabase } from '../../lib/supabase'
-import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
+import { deriveMenuItemAllergens } from '../../lib/allergens'
 import { useAuth } from '../../context/AuthContext'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 
-const ALLERGEN_LABELS = {
-    gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
-    peanuts: 'Peanuts', soybeans: 'Soybeans', milk: 'Milk', nuts: 'Nuts',
-    celery: 'Celery', mustard: 'Mustard', sesame: 'Sesame', sulphites: 'Sulphites',
-    lupin: 'Lupin', molluscs: 'Molluscs',
-}
-
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
     const [qrDataUrl, setQrDataUrl] = useState('')
-    const qrCanvasRef = useRef(null)
     const [menuData, setMenuData] = useState(null)
 
     const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin
@@ -175,7 +167,6 @@ export default function PublicAllergensPreviewPage() {
 
         let y = marginY
         let pageNumber = 1
-        let totalPages = 1 // will be re-stamped at the end
 
         function drawTitle() {
             pdf.setFont('helvetica', 'bold')
@@ -303,7 +294,6 @@ export default function PublicAllergensPreviewPage() {
             drawPageFooter()
             pdf.addPage()
             pageNumber++
-            totalPages++
             y = marginY
             drawTitle()
             drawTableHeader()
