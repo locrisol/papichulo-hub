@@ -28,6 +28,17 @@ export const iconButton =
 export const dateField =
     'bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm cursor-pointer transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// The heading row of a table.
+//
+// These used to be bg-gray-50, which is exactly the colour of every second
+// striped row, so the heading did not read as a heading at all. A darker grey
+// was tried first and it was still too close to tell apart.
+//
+// It is the dark sidebar green now. There is no mistaking it for a data row, and
+// it ties the tables to the rest of the app rather than adding another colour.
+export const tableHeadRow = 'bg-sidebar'
+export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wider'
+
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.
 export function jumpButton(isCurrent) {
