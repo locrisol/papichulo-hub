@@ -30,6 +30,41 @@ export function shortDate(dateStr) {
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })
 }
 
+// A full date with the year, for example 23/08/2026.
+//
+// Used on the sales and labour grids. "23 Aug" on its own is not enough when
+// the screen is full of numbers and you are trying to be sure which week you
+// are typing into. Built by hand rather than with toLocaleDateString, so the
+// format is the same on every machine whatever the browser locale is set to.
+export function fullDate(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    return `${day}/${month}/${d.getFullYear()}`
+}
+
+// The month and year a week belongs to, for a heading.
+//
+// Most weeks sit inside one month and read "August 2026". A week that runs into
+// the next one reads "August to September 2026", and the few that cross new year
+// read "December 2026 to January 2027".
+export function weekMonthLabel(weekStart) {
+    const start = new Date(weekStart + 'T00:00:00')
+    const end = new Date(weekStart + 'T00:00:00')
+    end.setDate(end.getDate() + 6)
+
+    const startMonth = start.toLocaleDateString('en-IE', { month: 'long' })
+    const endMonth = end.toLocaleDateString('en-IE', { month: 'long' })
+
+    if (start.getFullYear() !== end.getFullYear()) {
+        return `${startMonth} ${start.getFullYear()} to ${endMonth} ${end.getFullYear()}`
+    }
+    if (startMonth !== endMonth) {
+        return `${startMonth} to ${endMonth} ${end.getFullYear()}`
+    }
+    return `${startMonth} ${end.getFullYear()}`
+}
+
 // The seven dates, Sunday through Saturday, for a week starting at weekStart.
 export function weekDates(weekStart) {
     return Array.from({ length: 7 }, (_, i) => {

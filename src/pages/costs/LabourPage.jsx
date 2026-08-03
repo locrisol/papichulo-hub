@@ -4,9 +4,10 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
 
 // Labour hours, entered a week at a time.
 //
@@ -268,12 +269,17 @@ export default function LabourPage() {
             {/* Week navigation */}
             <div className="bg-white rounded-xl border border-border p-4 mb-4">
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => shiftWeek(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous week">‹</button>
-                    <span className="text-sm font-medium text-gray-900 px-2">
+                    <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
+                    {/* Fixed width, or the arrows shift sideways every time the
+                        text changes length. "3 Aug - 9 Aug" is a lot narrower
+                        than "31 Aug - 6 Sept", and clicking back through weeks
+                        moved the button out from under the mouse. The width is
+                        set for the longest case, a range crossing a month. */}
+                    <span className="text-sm font-medium text-gray-900 text-center w-44 flex-shrink-0">
                         {shortDate(dates[0])} - {shortDate(dates[6])}
                     </span>
-                    <button type="button" onClick={() => shiftWeek(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next week">›</button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">This week</button>
+                    <button type="button" onClick={() => shiftWeek(1)} className={iconButton} aria-label="Next week">›</button>
+                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className={`ml-1 ${jumpButton(weekStart === weekStartOf(todayISO()))}`}>This week</button>
 
                     {dirty && <span className="text-xs text-amber-600 font-medium ml-2">Unsaved changes</span>}
 
@@ -286,7 +292,7 @@ export default function LabourPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className="ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={`ml-auto ${dateField}`}
                         aria-label="Jump to week"
                     />
                 </div>
@@ -315,7 +321,7 @@ export default function LabourPage() {
                                     <tr key={d} className="border-b border-border">
                                         <td className="px-3 py-2">
                                             <div className="text-gray-900">{DAY_NAMES[i]}</div>
-                                            <div className="text-xs text-gray-400">{shortDate(d)}</div>
+                                            <div className="text-xs text-gray-400">{fullDate(d)}</div>
                                         </td>
                                         <td className="px-2 py-2">
                                             <input type="number" step="0.25" min="0" inputMode="decimal"
@@ -366,7 +372,7 @@ export default function LabourPage() {
                 People is a head count of who worked that day, not how many were on at once. It does not feed the
                 cost, which is hours times the hourly rate of {fmtMoney(currentRate)}.
                 {target
-                    ? ` The labour target for the week of ${shortDate(weekStart)} is ${target}% of net sales.`
+                    ? ` The labour target for the week of ${fullDate(weekStart)} is ${target}% of net sales.`
                     : ''}
             </p>
 

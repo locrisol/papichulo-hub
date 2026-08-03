@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel } from './dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -171,5 +171,44 @@ describe('addMonths', () => {
 describe('monthLabel', () => {
     it('gives the month and year', () => {
         expect(monthLabel('2026-08-01')).toBe('August 2026')
+    })
+})
+
+describe('fullDate', () => {
+    it('gives day, month and year with slashes', () => {
+        expect(fullDate('2026-08-23')).toBe('23/08/2026')
+    })
+
+    it('pads single digit days and months', () => {
+        expect(fullDate('2026-01-05')).toBe('05/01/2026')
+    })
+
+    // Same trap as toISODate. Building the string from the local getters means
+    // the date shown is the date that was asked for, not one shifted by UTC.
+    it('does not shift the date', () => {
+        expect(fullDate('2026-12-31')).toBe('31/12/2026')
+        expect(fullDate('2026-01-01')).toBe('01/01/2026')
+    })
+})
+
+describe('weekMonthLabel', () => {
+    it('gives one month when the week sits inside it', () => {
+        // Sunday 9 August 2026 to Saturday 15 August 2026
+        expect(weekMonthLabel('2026-08-09')).toBe('August 2026')
+    })
+
+    it('names both months when the week runs into the next one', () => {
+        // Sunday 30 August 2026 to Saturday 5 September 2026
+        expect(weekMonthLabel('2026-08-30')).toBe('August to September 2026')
+    })
+
+    it('names both years when the week crosses new year', () => {
+        // Sunday 27 December 2026 to Saturday 2 January 2027
+        expect(weekMonthLabel('2026-12-27')).toBe('December 2026 to January 2027')
+    })
+
+    it('uses the end year when the week crosses a month but not a year', () => {
+        // Sunday 29 November 2026 to Saturday 5 December 2026
+        expect(weekMonthLabel('2026-11-29')).toBe('November to December 2026')
     })
 })
