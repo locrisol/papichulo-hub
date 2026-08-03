@@ -16,7 +16,9 @@ export function RestaurantProvider({ children }) {
     }, [user])
 
     async function fetchRestaurants() {
-        let query = supabase.from('restaurants').select('*').eq('is_active', true)
+        // Ordered by name so the list in the switcher is always in the same
+        // order, and so the last fallback below is always the same restaurant.
+        let query = supabase.from('restaurants').select('*').eq('is_active', true).order('name')
 
         // owners and below only see their own restaurant
         if (user.role !== 'super_admin') {
@@ -35,13 +37,22 @@ export function RestaurantProvider({ children }) {
         } else {
             setRestaurants(data)
 
-            // check if there is a saved restaurant in localStorage
+            // Which restaurant to open on, in this order:
+            //   1. the one they picked last time, if they can still see it
+            //   2. their own restaurant, the one set on their user row
+            //   3. the first one by name, so at worst it is always the same
+            //
+            // This used to be the saved one or data[0], and the query had no
+            // order on it, so the database could return the rows in any order.
+            // That meant a browser with nothing saved could open on a
+            // restaurant the person does not even work in.
             const saved = localStorage.getItem('activeRestaurantId')
-            const match = data.find(r => r.id === saved)
-            setActiveRestaurant(match || data[0])
+            setActiveRestaurant(
+                data.find(r => r.id === saved)
+                || data.find(r => r.id === user.restaurant_id)
+                || data[0]
+            )
         }
-
-        setLoading(false)
 
         setLoading(false)
     }

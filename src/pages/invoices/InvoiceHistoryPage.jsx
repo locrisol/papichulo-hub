@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -117,7 +118,7 @@ export default function InvoiceHistoryPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <div className="max-w-4xl">
+        <PageContainer>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Invoice history</h2>
@@ -227,6 +228,6 @@ export default function InvoiceHistoryPage() {
                     </table>
                 )}
             </div>
-        </div>
+        </PageContainer>
     )
 }

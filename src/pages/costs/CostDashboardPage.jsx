@@ -6,6 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
+import PageContainer from '../../components/layout/PageContainer'
 import { friendlyError } from '../../lib/errors'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
@@ -265,7 +266,7 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     return (
-        <div className="max-w-5xl">
+        <PageContainer>
             {/* Header: the week, and what it has done so far */}
             <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
                 <div>
@@ -451,6 +452,6 @@ export default function CostDashboardPage() {
                     onSaved={() => setRefresh(n => n + 1)}
                 />
             )}
-        </div>
+        </PageContainer>
     )
 }

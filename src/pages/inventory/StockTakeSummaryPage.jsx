@@ -6,6 +6,7 @@ import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -189,12 +190,12 @@ export default function StockTakeSummaryPage() {
   }
 
   if (loading) {
-    return <div className="p-6"><p className="text-sm text-gray-500">Loading...</p></div>
+    return <div><p className="text-sm text-gray-500">Loading...</p></div>
   }
 
   if (error && !session) {
     return (
-      <div className="p-6">
+      <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
         <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent">← Back</button>
       </div>
@@ -204,7 +205,7 @@ export default function StockTakeSummaryPage() {
   const isClosed = session.status !== 'in_progress'
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl">
+    <PageContainer>
       <button
         type="button"
         onClick={() => navigate('/inventory/stock-takes')}
@@ -391,6 +392,6 @@ export default function StockTakeSummaryPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

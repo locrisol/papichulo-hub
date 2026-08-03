@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -157,12 +158,12 @@ export default function StockTakeReviewPage() {
   }
 
   if (loading) {
-    return <div className="p-6"><p className="text-sm text-gray-500">Loading...</p></div>
+    return <div><p className="text-sm text-gray-500">Loading...</p></div>
   }
 
   if (error && !session) {
     return (
-      <div className="p-6">
+      <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
         <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent">← Back</button>
       </div>
@@ -171,7 +172,7 @@ export default function StockTakeReviewPage() {
 
   if (!isManager) {
     return (
-      <div className="p-6">
+      <div>
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           Only managers can review and close a stock take.
         </div>
@@ -182,7 +183,7 @@ export default function StockTakeReviewPage() {
 
   if (session.status !== 'in_progress') {
     return (
-      <div className="p-6">
+      <div>
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           This stock take is already closed.
         </div>
@@ -194,7 +195,7 @@ export default function StockTakeReviewPage() {
   const countedCount = products.length - uncountedProducts.length
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl">
+    <PageContainer>
       <button
         type="button"
         onClick={() => navigate(`/inventory/stock-takes/${id}`)}
@@ -358,6 +359,6 @@ export default function StockTakeReviewPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

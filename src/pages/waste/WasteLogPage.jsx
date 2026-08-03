@@ -7,6 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
+import PageContainer from '../../components/layout/PageContainer'
 import { friendlyError } from '../../lib/errors'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
@@ -193,11 +194,11 @@ export default function WasteLogPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     if (loading) {
-        return <div className="max-w-2xl"><p className="text-sm text-gray-400">Loading...</p></div>
+        return <PageContainer width="form"><p className="text-sm text-gray-400">Loading...</p></PageContainer>
     }
 
     return (
-        <div className="max-w-2xl">
+        <PageContainer width="form">
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
@@ -216,205 +217,214 @@ export default function WasteLogPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
-            {/* Employees only ever see today, so there is nothing to move
-                between, but a manager can look back. */}
-            {isManager ? (
-                <div className="bg-white rounded-xl border border-border p-4 mb-3">
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setLogDate(addDays(logDate, -1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
-                        <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-                        <button type="button" onClick={() => setLogDate(addDays(logDate, 1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
-                        <button type="button" onClick={() => setLogDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
-                    </div>
-                </div>
-            ) : (
-                <p className="text-sm text-gray-500 mb-3">{shortDate(logDate)}</p>
-            )}
-
-            {/* Adding items. Bigger touch targets than the rest of the app,
-                because this gets used one-handed on the floor. */}
-            {!reviewing && (
-                <form onSubmit={addToBasket} className="bg-white rounded-xl border border-border p-5 mb-3">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
-
-                    <div className="mb-3 relative">
-                        <label className={labelCls}>Product</label>
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={e => { setSearch(e.target.value); setProductId('') }}
-                            className={fieldCls}
-                            placeholder="Start typing a product name"
-                        />
-                        {filtered.length > 0 && !productId && (
-                            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-sm overflow-hidden">
-                                {filtered.map(p => (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => pickProduct(p)}
-                                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-border last:border-0"
-                                    >
-                                        {p.name}
-                                        <span className="text-xs text-gray-400 ml-2">{p.unit}</span>
-                                    </button>
-                                ))}
+            {/* Two columns once there is room for them. What you are adding
+                goes on the left and what is already logged stays on the right,
+                so you can see both at the same time instead of scrolling up and
+                down between them. It stacks back on a phone, with adding first,
+                which is what you want when you are standing at the bin. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div>
+                    {/* Employees only ever see today, so there is nothing to
+                        move between, but a manager can look back. */}
+                    {isManager ? (
+                        <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => setLogDate(addDays(logDate, -1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
+                                <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+                                <button type="button" onClick={() => setLogDate(addDays(logDate, 1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
+                                <button type="button" onClick={() => setLogDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
                             </div>
-                        )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                            <label className={labelCls}>
-                                Quantity {selectedProduct ? `(${selectedProduct.unit})` : ''}
-                            </label>
-                            <input
-                                type="number" step="0.001" min="0" inputMode="decimal"
-                                value={quantity}
-                                onChange={e => setQuantity(e.target.value)}
-                                className={`${fieldCls} text-right`}
-                                placeholder="0"
-                            />
                         </div>
-                        <div>
-                            <label className={labelCls}>Reason</label>
-                            <select value={reason} onChange={e => setReason(e.target.value)} className={fieldCls}>
-                                {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                            </select>
-                        </div>
-                    </div>
+                    ) : (
+                        <p className="text-sm text-gray-500 mb-3">{shortDate(logDate)}</p>
+                    )}
 
-                    {/* The money for this one item, live */}
-                    {selectedProduct && quantity !== '' && (
-                        <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                            {costing.hasCost ? (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600">
-                                        {fmtQty(quantity)} {selectedProduct.unit} at {fmtMoney(costing.unitCost)}
-                                    </span>
-                                    <span className="text-lg font-semibold text-gray-900">{fmtMoney(costing.value)}</span>
+                    {/* Adding items. Bigger touch targets than the rest of the
+                        app, because this gets used one-handed on the floor. */}
+                    {!reviewing && (
+                        <form onSubmit={addToBasket} className="bg-white rounded-xl border border-border p-5 mb-3">
+                            <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
+
+                            <div className="mb-3 relative">
+                                <label className={labelCls}>Product</label>
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={e => { setSearch(e.target.value); setProductId('') }}
+                                    className={fieldCls}
+                                    placeholder="Start typing a product name"
+                                />
+                                {filtered.length > 0 && !productId && (
+                                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-sm overflow-hidden">
+                                        {filtered.map(p => (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                onClick={() => pickProduct(p)}
+                                                className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-border last:border-0"
+                                            >
+                                                {p.name}
+                                                <span className="text-xs text-gray-400 ml-2">{p.unit}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label className={labelCls}>
+                                        Quantity {selectedProduct ? `(${selectedProduct.unit})` : ''}
+                                    </label>
+                                    <input
+                                        type="number" step="0.001" min="0" inputMode="decimal"
+                                        value={quantity}
+                                        onChange={e => setQuantity(e.target.value)}
+                                        className={`${fieldCls} text-right`}
+                                        placeholder="0"
+                                    />
                                 </div>
-                            ) : (
-                                <p className="text-sm text-amber-700">
-                                    No price is set for this product, so the value cannot be worked out. You can still
-                                    log it, and a manager can set the price later.
+                                <div>
+                                    <label className={labelCls}>Reason</label>
+                                    <select value={reason} onChange={e => setReason(e.target.value)} className={fieldCls}>
+                                        {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* The money for this one item, live */}
+                            {selectedProduct && quantity !== '' && (
+                                <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                                    {costing.hasCost ? (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">
+                                                {fmtQty(quantity)} {selectedProduct.unit} at {fmtMoney(costing.unitCost)}
+                                            </span>
+                                            <span className="text-lg font-semibold text-gray-900">{fmtMoney(costing.value)}</span>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-amber-700">
+                                            No price is set for this product, so the value cannot be worked out. You can still
+                                            log it, and a manager can set the price later.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                    Add to list
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {/* The list being built. Nothing here is saved yet. */}
+                    {basket.length > 0 && (
+                        <div className={`bg-white rounded-xl p-5 mb-4 ${reviewing ? 'border-2 border-accent' : 'border border-border'}`}>
+                            <div className="flex items-center justify-between mb-1">
+                                <h3 className="text-sm font-semibold text-gray-900">
+                                    {reviewing ? 'Check before saving' : 'Not saved yet'}
+                                </h3>
+                                <span className="text-xs text-gray-500">
+                                    {basket.length} {basket.length === 1 ? 'item' : 'items'}
+                                </span>
+                            </div>
+                            {reviewing && (
+                                <p className="text-xs text-gray-500 mb-3">Once this is saved you cannot change it yourself.</p>
+                            )}
+
+                            <div className="border border-border rounded-lg divide-y divide-border mb-3 mt-3">
+                                {basket.map(i => (
+                                    <div key={i.key} className="flex items-center gap-3 px-3 py-2.5">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm text-gray-900 truncate">{i.product.name}</div>
+                                            <div className="text-xs text-gray-400">
+                                                {fmtQty(i.quantity)} {i.product.unit} · {reasonLabel(i.reason)}
+                                                {i.hasCost && ` · at ${fmtMoney(i.unitCost)}`}
+                                            </div>
+                                        </div>
+                                        <span className={`text-sm whitespace-nowrap ${i.hasCost ? 'text-gray-900 font-medium' : 'text-amber-600'}`}>
+                                            {i.hasCost ? fmtMoney(i.value) : 'No price'}
+                                        </span>
+                                        {!reviewing && (
+                                            <button onClick={() => removeFromBasket(i.key)}
+                                                className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                                aria-label={`Remove ${i.product.name}`}>×</button>
+                                        )}
+                                    </div>
+                                ))}
+                                <div className="flex items-center justify-between px-3 py-3 bg-gray-50">
+                                    <span className="text-sm font-medium text-gray-700">Total</span>
+                                    <span className="text-xl font-semibold text-gray-900">{fmtMoney(basketTotal)}</span>
+                                </div>
+                            </div>
+
+                            {basketMissingPrices > 0 && (
+                                <p className="text-xs text-amber-700 mb-3">
+                                    {basketMissingPrices} {basketMissingPrices === 1 ? 'item has' : 'items have'} no price set, so
+                                    the total is lower than the real cost. They will still be logged.
                                 </p>
                             )}
+
+                            <div className="flex justify-end gap-2">
+                                {reviewing ? (
+                                    <>
+                                        <button onClick={() => setReviewing(false)} disabled={saving}
+                                            className="px-5 py-3 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
+                                            Go back
+                                        </button>
+                                        <button onClick={confirmSave} disabled={saving}
+                                            className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                                            {saving ? 'Saving...' : 'Save it'}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button onClick={() => setReviewing(true)}
+                                        className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                        Review and save
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
+                </div>
 
-                    <div className="flex justify-end">
-                        <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
-                            Add to list
-                        </button>
-                    </div>
-                </form>
-            )}
-
-            {/* The list being built. Nothing here is saved yet. */}
-            {basket.length > 0 && (
-                <div className={`bg-white rounded-xl p-5 mb-4 ${reviewing ? 'border-2 border-accent' : 'border border-border'}`}>
-                    <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                            {reviewing ? 'Check before saving' : 'Not saved yet'}
-                        </h3>
-                        <span className="text-xs text-gray-500">
-                            {basket.length} {basket.length === 1 ? 'item' : 'items'}
+                {/* What is already logged */}
+                <div className="bg-white rounded-xl border border-border p-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-700">Logged today</h3>
+                        <span className="text-sm text-gray-500">
+                            total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
                         </span>
                     </div>
-                    {reviewing && (
-                        <p className="text-xs text-gray-500 mb-3">Once this is saved you cannot change it yourself.</p>
-                    )}
 
-                    <div className="border border-border rounded-lg divide-y divide-border mb-3 mt-3">
-                        {basket.map(i => (
-                            <div key={i.key} className="flex items-center gap-3 px-3 py-2.5">
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm text-gray-900 truncate">{i.product.name}</div>
-                                    <div className="text-xs text-gray-400">
-                                        {fmtQty(i.quantity)} {i.product.unit} · {reasonLabel(i.reason)}
-                                        {i.hasCost && ` · at ${fmtMoney(i.unitCost)}`}
+                    {entries.length === 0 ? (
+                        <p className="text-sm text-gray-400 italic">Nothing logged yet.</p>
+                    ) : (
+                        <div className="divide-y divide-border">
+                            {entries.map(e => (
+                                <div key={e.id} className="flex items-center gap-3 py-2.5">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm text-gray-900 truncate">{e.products?.name || 'Unknown product'}</div>
+                                        <div className="text-xs text-gray-400">
+                                            {fmtQty(e.quantity_wasted)} {e.products?.unit} · {reasonLabel(e.reason)}
+                                        </div>
                                     </div>
+                                    <span className="text-sm text-gray-900 whitespace-nowrap">
+                                        {e.waste_value == null ? '-' : fmtMoney(e.waste_value)}
+                                    </span>
+                                    {isManager && (
+                                        <button onClick={() => handleDelete(e)}
+                                            className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                            aria-label="Delete entry">×</button>
+                                    )}
                                 </div>
-                                <span className={`text-sm whitespace-nowrap ${i.hasCost ? 'text-gray-900 font-medium' : 'text-amber-600'}`}>
-                                    {i.hasCost ? fmtMoney(i.value) : 'No price'}
-                                </span>
-                                {!reviewing && (
-                                    <button onClick={() => removeFromBasket(i.key)}
-                                        className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
-                                        aria-label={`Remove ${i.product.name}`}>×</button>
-                                )}
-                            </div>
-                        ))}
-                        <div className="flex items-center justify-between px-3 py-3 bg-gray-50">
-                            <span className="text-sm font-medium text-gray-700">Total</span>
-                            <span className="text-xl font-semibold text-gray-900">{fmtMoney(basketTotal)}</span>
+                            ))}
                         </div>
-                    </div>
-
-                    {basketMissingPrices > 0 && (
-                        <p className="text-xs text-amber-700 mb-3">
-                            {basketMissingPrices} {basketMissingPrices === 1 ? 'item has' : 'items have'} no price set, so
-                            the total is lower than the real cost. They will still be logged.
-                        </p>
                     )}
-
-                    <div className="flex justify-end gap-2">
-                        {reviewing ? (
-                            <>
-                                <button onClick={() => setReviewing(false)} disabled={saving}
-                                    className="px-5 py-3 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
-                                    Go back
-                                </button>
-                                <button onClick={confirmSave} disabled={saving}
-                                    className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
-                                    {saving ? 'Saving...' : 'Save it'}
-                                </button>
-                            </>
-                        ) : (
-                            <button onClick={() => setReviewing(true)}
-                                className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
-                                Review and save
-                            </button>
-                        )}
-                    </div>
                 </div>
-            )}
-
-            {/* What is already logged */}
-            <div className="bg-white rounded-xl border border-border p-5">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-700">Logged today</h3>
-                    <span className="text-sm text-gray-500">
-                        total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
-                    </span>
-                </div>
-
-                {entries.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nothing logged yet.</p>
-                ) : (
-                    <div className="divide-y divide-border">
-                        {entries.map(e => (
-                            <div key={e.id} className="flex items-center gap-3 py-2.5">
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm text-gray-900 truncate">{e.products?.name || 'Unknown product'}</div>
-                                    <div className="text-xs text-gray-400">
-                                        {fmtQty(e.quantity_wasted)} {e.products?.unit} · {reasonLabel(e.reason)}
-                                    </div>
-                                </div>
-                                <span className="text-sm text-gray-900 whitespace-nowrap">
-                                    {e.waste_value == null ? '-' : fmtMoney(e.waste_value)}
-                                </span>
-                                {isManager && (
-                                    <button onClick={() => handleDelete(e)}
-                                        className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
-                                        aria-label="Delete entry">×</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
-        </div>
+        </PageContainer>
     )
 }
