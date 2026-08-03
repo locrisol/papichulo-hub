@@ -77,7 +77,6 @@ export default function WasteSummaryPage() {
         }
 
         load()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart])
 
     const filtered = reasonFilter

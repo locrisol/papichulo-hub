@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { RECEIPT_ROWS, resolveRowOrder } from './WeeklySalesPage'
+import { resolveRowOrder } from './WeeklySalesPage'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 

@@ -102,7 +102,6 @@ export default function WasteLogPage() {
         }
 
         load()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, logDate, refresh])
 
     const selectedProduct = products.find(p => p.id === productId) || null

@@ -25,7 +25,6 @@ const ALLERGEN_KEYS = [
 ]
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
-const FROM_SEVERITY = { 2: 'contains', 1: 'may_contain', 0: 'none' }
 
 function emptyAllergens() {
   const obj = {}

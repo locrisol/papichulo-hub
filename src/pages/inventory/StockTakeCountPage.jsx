@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { calculateMixCost, resolveUnitCost } from '../../lib/mixCost'
+import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 
@@ -140,10 +140,6 @@ export default function StockTakeCountPage() {
         return lines
             .filter(l => l.product_id === productId)
             .reduce((s, l) => s + Number(l.line_total || 0), 0)
-    }
-
-    function getProductLineCount(productId) {
-        return lines.filter(l => l.product_id === productId).length
     }
 
     function sessionTitle() {

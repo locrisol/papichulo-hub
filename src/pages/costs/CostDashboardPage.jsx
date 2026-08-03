@@ -200,7 +200,6 @@ export default function CostDashboardPage() {
         }
 
         load()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart, refresh])
 
     // Closed days are left out of every total: they have no sales and would only
