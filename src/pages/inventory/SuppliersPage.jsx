@@ -45,9 +45,13 @@ export default function SuppliersPage() {
 
     async function fetchSuppliers() {
         setLoading(true)
+        // Ordered by name. Without an order the database returns the rows
+        // however it likes, and updating a row moves it, so deactivating a
+        // supplier and turning it back on sent it somewhere else in the list.
         const { data, error } = await supabase
             .from('suppliers')
             .select('*')
+            .order('name')
 
         if (error) setError(friendlyError(error))
         else setSuppliers(data)

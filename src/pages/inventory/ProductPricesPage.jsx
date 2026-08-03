@@ -59,6 +59,7 @@ export default function ProductPricesPage() {
             .from('suppliers')
             .select('*')
             .eq('is_active', true)
+            .order('name')
 
         if (data) setSuppliers(data)
     }

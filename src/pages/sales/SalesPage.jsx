@@ -103,6 +103,8 @@ export default function SalesPage() {
             .select('*')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
+            .order('sort_order')
+            .order('name')
 
         if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 

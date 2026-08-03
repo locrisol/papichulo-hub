@@ -18,9 +18,12 @@ export default function UsersPage() {
   async function fetchData() {
     setLoading(true)
 
+    // Ordered by name. Without an order the database returns the rows however
+    // it likes, and updating a row moves it, so deactivating a user and turning
+    // them back on sent them somewhere else in the list.
     const [usersRes, restaurantsRes] = await Promise.all([
-      supabase.from('users').select('*'),
-      supabase.from('restaurants').select('*')
+      supabase.from('users').select('*').order('full_name'),
+      supabase.from('restaurants').select('*').order('name')
     ])
 
     if (usersRes.error) setError(friendlyError(usersRes.error))
