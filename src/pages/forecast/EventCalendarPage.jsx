@@ -6,6 +6,7 @@ import { can, MANAGERS } from '../../lib/access'
 import { todayISO, weekStartOf, addDays, shortDate, monthStart, addMonths, monthLabel } from '../../lib/dates'
 import { syncEvents, syncIsDue, markSynced } from '../../lib/ticketmaster'
 import { fmtMoney } from '../../lib/format'
+import { friendlyError } from '../../lib/errors'
 
 // What is on at 3Arena.
 //
@@ -84,7 +85,7 @@ export default function EventCalendarPage() {
                 } catch (e) {
                     // A failed sync is not a failed page. Whatever is already in
                     // the table is still worth showing.
-                    setError(`Could not check Ticketmaster: ${e.message}`)
+                    setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
                 } finally {
                     setSyncing(false)
                 }
@@ -97,7 +98,7 @@ export default function EventCalendarPage() {
                 .lte('event_date', gridEnd)
                 .order('event_date', { ascending: true })
 
-            if (e1) { setError(e1.message); setLoading(false); return }
+            if (e1) { setError(friendlyError(e1)); setLoading(false); return }
             setEvents(data || [])
 
             // Everything still to come, whatever month the grid is showing. The
@@ -129,7 +130,7 @@ export default function EventCalendarPage() {
             setNote(`Checked Ticketmaster: ${r.total} events, ${r.added} new.`)
             setRefresh(n => n + 1)
         } catch (e) {
-            setError(`Could not check Ticketmaster: ${e.message}`)
+            setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
         } finally {
             setSyncing(false)
         }

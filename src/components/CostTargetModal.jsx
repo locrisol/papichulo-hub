@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { weekStartOf, shortDate, todayISO } from '../lib/dates'
 import { describeTargets } from '../lib/costTargets'
+import { friendlyError } from '../lib/errors'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -42,7 +43,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                 .eq('restaurant_id', restaurantId)
                 .eq('target_type', targetType)
 
-            if (e1) setError(e1.message)
+            if (e1) setError(friendlyError(e1))
             else setHistory(data || [])
         }
         load()
@@ -79,7 +80,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
         })
         setSaving(false)
 
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
         setRefresh(n => n + 1)
         onSaved()
     }
@@ -99,7 +100,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
             .delete()
             .eq('id', t.id)
 
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
         setRefresh(n => n + 1)
         onSaved()
     }

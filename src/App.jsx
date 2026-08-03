@@ -4,7 +4,7 @@ import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
 import RequireRole from './components/RequireRole'
-import { ALL_ROLES, MANAGERS, ADMIN_ONLY, RESTAURANT_CONFIG } from './lib/access'
+import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from './lib/access'
 import { useAuth } from './context/AuthContext'
 import { homeFor } from './lib/access'
 

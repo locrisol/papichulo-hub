@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
+import { friendlyError } from '../../lib/errors'
 
 export default function SuppliersPage() {
     const { user } = useAuth()
@@ -48,7 +49,7 @@ export default function SuppliersPage() {
             .from('suppliers')
             .select('*')
 
-        if (error) setError(error.message)
+        if (error) setError(friendlyError(error))
         else setSuppliers(data)
         setLoading(false)
     }
@@ -63,7 +64,7 @@ export default function SuppliersPage() {
                 .update(formData)
                 .eq('id', editingSupplier.id)
 
-            if (error) setError(error.message)
+            if (error) setError(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -73,7 +74,7 @@ export default function SuppliersPage() {
                 .from('suppliers')
                 .insert(formData)
 
-            if (error) setError(error.message)
+            if (error) setError(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -105,7 +106,7 @@ export default function SuppliersPage() {
             .update({ is_active: !supplier.is_active })
             .eq('id', supplier.id)
 
-        if (error) setError(error.message)
+        if (error) setError(friendlyError(error))
         else fetchSuppliers()
     }
 

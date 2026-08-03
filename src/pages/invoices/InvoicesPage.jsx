@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
+import { friendlyError } from '../../lib/errors'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -75,7 +76,7 @@ export default function InvoicesPage() {
                 .eq('is_active', true)
                 .order('name')
 
-            if (sErr) { setError(sErr.message); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
             setSuppliers(sup || [])
 
             // The week runs Sunday to Saturday, so the end is six days on.
@@ -89,7 +90,7 @@ export default function InvoicesPage() {
                 .lte('invoice_date', end)
                 .order('invoice_date', { ascending: false })
 
-            if (iErr) { setError(iErr.message); setLoading(false); return }
+            if (iErr) { setError(friendlyError(iErr)); setLoading(false); return }
             setInvoices(inv || [])
             setLoading(false)
         }
@@ -119,7 +120,7 @@ export default function InvoicesPage() {
         })
         setSaving(false)
 
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
 
         // Keep the supplier, the date and the category: invoices tend to arrive
         // in batches from the same place on the same day.
@@ -132,7 +133,7 @@ export default function InvoicesPage() {
     async function handleDelete(inv) {
         if (!window.confirm(`Delete the ${fmtMoney(inv.total_amount)} invoice from ${inv.suppliers?.name}?`)) return
         const { error: e1 } = await supabase.from('invoices').delete().eq('id', inv.id)
-        if (e1) setError(e1.message)
+        if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)
     }
 
