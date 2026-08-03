@@ -241,7 +241,11 @@ export default function LabourPage() {
         setSuccess(changed === 0 ? 'Nothing to save.' : `Saved ${changed} ${changed === 1 ? 'day' : 'days'}.`)
     }
 
-    const inputCls = 'w-full border border-border rounded-md px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white'
+    // Same rule as the weekly sales grid: a white box means you can type in it,
+    // a grey fill means it was worked out for you. Hours and People are typed,
+    // Labour, Net sales and Labour % are all calculated.
+    const inputCls = 'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+    const calcCellCls = 'px-3 py-2 text-right bg-gray-50'
 
     if (loading && Object.keys(days).length === 0) {
         return <div><p className="text-sm text-gray-400">Loading...</p></div>
@@ -335,15 +339,15 @@ export default function LabourPage() {
                                                 onChange={e => setField(d, 'staff', e.target.value)}
                                                 className={inputCls} placeholder="0" />
                                         </td>
-                                        <td className="px-3 py-2 text-right text-gray-900">{fmtMoney(costFor(d))}</td>
-                                        <td className="px-3 py-2 text-right">
+                                        <td className={`${calcCellCls} text-gray-700`}>{fmtMoney(costFor(d))}</td>
+                                        <td className={calcCellCls}>
                                             {closed
                                                 ? <span className="text-gray-400 text-xs">Closed</span>
                                                 : net == null
                                                     ? <span className="text-amber-600 text-xs">No sales entered</span>
-                                                    : <span className="text-gray-900">{fmtMoney(net)}</span>}
+                                                    : <span className="text-gray-700">{fmtMoney(net)}</span>}
                                         </td>
-                                        <td className={`px-3 py-2 text-right font-medium ${pctColour(pct)}`}>
+                                        <td className={`${calcCellCls} font-medium ${pctColour(pct)}`}>
                                             {pct == null ? '-' : `${pct.toFixed(1)}%`}
                                         </td>
                                     </tr>
