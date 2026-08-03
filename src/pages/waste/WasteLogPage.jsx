@@ -39,7 +39,11 @@ export default function WasteLogPage() {
     const [prices, setPrices] = useState([])
     const [entries, setEntries] = useState([])
 
+    // Two separate loading flags on purpose. `loading` is the catalogue, which
+    // is all the page needs before it can show anything, so it blanks the page.
+    // `loadingEntries` is just the one day's list, so it only dims that panel.
     const [loading, setLoading] = useState(true)
+    const [loadingEntries, setLoadingEntries] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
@@ -57,10 +61,14 @@ export default function WasteLogPage() {
 
     const restaurantId = activeRestaurant?.id
 
+    // The catalogue. Products, recipes and prices belong to the restaurant, not
+    // to the day you are looking at, so this only runs when the restaurant
+    // changes. It used to reload on every date change, which threw the whole
+    // page away and rebuilt it just to step back one day.
     useEffect(() => {
         if (!restaurantId) return
 
-        async function load() {
+        async function loadCatalogue() {
             setLoading(true)
             setError('')
 
@@ -90,6 +98,23 @@ export default function WasteLogPage() {
             if (prErr) { setError(friendlyError(prErr)); setLoading(false); return }
             setPrices(priceRows || [])
 
+            setLoading(false)
+        }
+
+        loadCatalogue()
+    }, [restaurantId])
+
+    // The one day's entries. This is the only thing that has to change when you
+    // move to another day, and it never blanks the page: the list stays on
+    // screen and dims while the new one arrives.
+    useEffect(() => {
+        if (!restaurantId) return
+
+        let cancelled = false
+
+        async function loadEntries() {
+            setLoadingEntries(true)
+
             const { data: logs, error: wErr } = await supabase
                 .from('waste_logs')
                 .select('*, products(name, unit)')
@@ -97,13 +122,20 @@ export default function WasteLogPage() {
                 .eq('log_date', logDate)
                 .order('created_at', { ascending: true })
 
-            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
-            setEntries(logs || [])
+            // Clicking the arrow quickly starts several of these. Without this
+            // guard a slow earlier request could land last and show the wrong
+            // day's entries.
+            if (cancelled) return
 
-            setLoading(false)
+            if (wErr) setError(friendlyError(wErr))
+            else setEntries(logs || [])
+
+            setLoadingEntries(false)
         }
 
-        load()
+        loadEntries()
+
+        return () => { cancelled = true }
     }, [restaurantId, logDate, refresh])
 
     const selectedProduct = products.find(p => p.id === productId) || null
@@ -391,10 +423,13 @@ export default function WasteLogPage() {
                     )}
                 </div>
 
-                {/* What is already logged */}
-                <div className="bg-white rounded-xl border border-border p-5">
+                {/* What is already logged. Dims while another day loads instead
+                    of disappearing, so the page does not jump. */}
+                <div className={`bg-white rounded-xl border border-border p-5 transition-opacity ${loadingEntries ? 'opacity-50' : ''}`}>
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-semibold text-gray-700">Logged today</h3>
+                        <h3 className="text-sm font-semibold text-gray-700">
+                            {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}
+                        </h3>
                         <span className="text-sm text-gray-500">
                             total: <span className="font-semibold text-gray-900">{fmtMoney(dayTotal)}</span>
                         </span>
