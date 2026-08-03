@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
+import { friendlyError } from '../../lib/errors'
 
 export default function ProductsPage() {
   const { user } = useAuth()
@@ -53,7 +54,7 @@ export default function ProductsPage() {
       .from('products')
       .select('*')
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else setProducts(data)
     setLoading(false)
   }
@@ -134,14 +135,14 @@ export default function ProductsPage() {
         .update(payload)
         .eq('id', editingProduct.id)
 
-      if (error) setError(error.message)
+      if (error) setError(friendlyError(error))
       else { fetchProducts(); resetForm() }
     } else {
       const { error } = await supabase
         .from('products')
         .insert(payload)
 
-      if (error) setError(error.message)
+      if (error) setError(friendlyError(error))
       else { fetchProducts(); resetForm() }
     }
   }
@@ -174,7 +175,7 @@ export default function ProductsPage() {
       .update({ is_active: !product.is_active })
       .eq('id', product.id)
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else fetchProducts()
   }
 

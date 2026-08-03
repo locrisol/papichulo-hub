@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
+import { friendlyError, isPermissionError } from '../../lib/errors'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -165,7 +166,7 @@ export default function WeeklySalesPage() {
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
 
-        if (pErr) { setError(pErr.message); setLoading(false); return }
+        if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 
         const sortedPlats = (plats || []).sort(
             (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
@@ -179,7 +180,7 @@ export default function WeeklySalesPage() {
             .gte('sale_date', dates[0])
             .lte('sale_date', dates[6])
 
-        if (rErr) { setError(rErr.message); setLoading(false); return }
+        if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
         const byDate = {}
         for (const r of recs || []) byDate[r.sale_date] = r
@@ -318,6 +319,19 @@ export default function WeeklySalesPage() {
         return grossAmount > 0 ? (amount / grossAmount) * 100 : 0
     }
 
+    // A draft the database will never accept is worse than no draft: it comes
+    // back next visit looking like figures that saved. Only for a refusal, not
+    // for a dropped connection, where keeping what was typed is the whole point.
+    function discardDraftIfRefused(err) {
+        if (!isPermissionError(err)) return
+        try {
+            localStorage.removeItem(draftKey(restaurantId, weekStart))
+        } catch {
+            // Nothing to lose if it cannot be cleared.
+        }
+        setDirty(false)
+    }
+
     // ---- saving ---------------------------------------------------------
 
     async function handleSaveWeek() {
@@ -386,11 +400,21 @@ export default function WeeklySalesPage() {
 
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('sales_records').insert(toInsert)
-            if (e1) { setError(e1.message); setSaving(false); return }
+            if (e1) {
+                setError(friendlyError(e1))
+                discardDraftIfRefused(e1)
+                setSaving(false)
+                return
+            }
         }
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('sales_records').update(u.payload).eq('id', u.id)
-            if (e2) { setError(e2.message); setSaving(false); return }
+            if (e2) {
+                setError(friendlyError(e2))
+                discardDraftIfRefused(e2)
+                setSaving(false)
+                return
+            }
         }
 
         // The database now matches the screen, so the draft is no longer needed.

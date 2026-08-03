@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { friendlyError } from '../lib/errors'
 
 const TYPE_OPTIONS = [
   {
@@ -47,7 +48,7 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
       if (insertErr.code === '23505') {
         setError('There is already an active stock take for this restaurant. Close it before starting a new one.')
       } else {
-        setError(insertErr.message)
+        setError(friendlyError(insertErr))
       }
       setSubmitting(false)
       return

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PriceForm from '../../components/PriceForm'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
+import { friendlyError } from '../../lib/errors'
 
 export default function ProductPricesPage() {
     const { id } = useParams()
@@ -49,7 +50,7 @@ export default function ProductPricesPage() {
             .eq('id', id)
             .single()
 
-        if (error) setError(error.message)
+        if (error) setError(friendlyError(error))
         else setProduct(data)
     }
 
@@ -72,7 +73,7 @@ export default function ProductPricesPage() {
             .order('is_preferred', { ascending: false })
             .order('id', { ascending: true })
 
-        if (error) setError(error.message)
+        if (error) setError(friendlyError(error))
         else setPrices(data)
         setLoading(false)
     }
@@ -170,7 +171,7 @@ export default function ProductPricesPage() {
                 setError('A loose price link for this supplier already exists. Edit the existing one instead.')
             }
         } else {
-            setError(err.message)
+            setError(friendlyError(err))
         }
     }
 
@@ -205,14 +206,14 @@ export default function ProductPricesPage() {
             .eq('product_id', id)
             .eq('restaurant_id', activeRestaurant.id)
 
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
 
         const { error: e2 } = await supabase
             .from('product_supplier_prices')
             .update({ is_preferred: true })
             .eq('id', price.id)
 
-        if (e2) setError(e2.message)
+        if (e2) setError(friendlyError(e2))
         else fetchPrices()
     }
 
@@ -224,7 +225,7 @@ export default function ProductPricesPage() {
             .delete()
             .eq('id', price.id)
 
-        if (error) setError(error.message)
+        if (error) setError(friendlyError(error))
         else fetchPrices()
     }
 

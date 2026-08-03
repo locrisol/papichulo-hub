@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
+import { friendlyError } from '../../lib/errors'
 
 export default function StockTakesListPage() {
   const navigate = useNavigate()
@@ -42,7 +43,7 @@ export default function StockTakesListPage() {
       .limit(11) // 1 active + 10 closed at most
 
     if (sessionErr) {
-      setError(sessionErr.message)
+      setError(friendlyError(sessionErr))
       setLoading(false)
       return
     }

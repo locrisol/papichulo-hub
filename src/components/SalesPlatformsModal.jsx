@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
+import { friendlyError } from '../lib/errors'
 
 const BUCKETS = [
   { value: 'online_platform', label: 'Online Platform' },
@@ -42,7 +43,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
 
-    if (e1) setError(e1.message)
+    if (e1) setError(friendlyError(e1))
     else setPlatforms(data || [])
     setLoading(false)
   }
@@ -82,7 +83,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       })
 
     if (e1) {
-      setError(e1.code === '23505' ? 'A platform with that name already exists' : e1.message)
+      setError(e1.code === '23505' ? 'A platform with that name already exists' : friendlyError(e1))
       return
     }
 
@@ -131,7 +132,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       .eq('id', p.id)
 
     if (e1) {
-      setError(e1.code === '23505' ? 'A platform with that name already exists' : e1.message)
+      setError(e1.code === '23505' ? 'A platform with that name already exists' : friendlyError(e1))
       return
     }
 
@@ -146,7 +147,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       .update({ is_active: !p.is_active })
       .eq('id', p.id)
 
-    if (e1) setError(e1.message)
+    if (e1) setError(friendlyError(e1))
     else {
       fetchPlatforms()
       onChange && onChange()

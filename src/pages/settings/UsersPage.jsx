@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
+import { friendlyError } from '../../lib/errors'
 
 export default function UsersPage() {
   const { user } = useAuth()
@@ -22,7 +23,7 @@ export default function UsersPage() {
       supabase.from('restaurants').select('*')
     ])
 
-    if (usersRes.error) setError(usersRes.error.message)
+    if (usersRes.error) setError(friendlyError(usersRes.error))
     else setUsers(usersRes.data)
 
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data)
@@ -36,7 +37,7 @@ export default function UsersPage() {
       .update({ is_active: !currentStatus })
       .eq('id', userId)
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else fetchData()
   }
 

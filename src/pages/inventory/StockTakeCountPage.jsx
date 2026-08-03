@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { calculateMixCost, resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { friendlyError } from '../../lib/errors'
 
 // Section display order. Products whose section isn't in this list sort last.
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -77,7 +78,7 @@ export default function StockTakeCountPage() {
             .eq('is_active', true)
 
         if (productsErr) {
-            setError(productsErr.message)
+            setError(friendlyError(productsErr))
             setLoading(false)
             return
         }
@@ -202,7 +203,7 @@ export default function StockTakeCountPage() {
             .single()
 
         setSavingLine(false)
-        if (insertErr) { setError(insertErr.message); return }
+        if (insertErr) { setError(friendlyError(insertErr)); return }
 
         setLines(prev => [...prev, data])
         setDraftCounts({})
@@ -216,7 +217,7 @@ export default function StockTakeCountPage() {
             .eq('id', lineId)
 
         if (delErr) {
-            setError(delErr.message)
+            setError(friendlyError(delErr))
             return
         }
         setLines(prev => prev.filter(l => l.id !== lineId))

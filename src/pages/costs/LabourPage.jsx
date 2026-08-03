@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
+import { friendlyError } from '../../lib/errors'
 
 // Labour hours, entered a week at a time.
 //
@@ -79,7 +80,7 @@ export default function LabourPage() {
                 .gte('entry_date', weekStart)
                 .lte('entry_date', end)
 
-            if (lErr) { setError(lErr.message); setLoading(false); return }
+            if (lErr) { setError(friendlyError(lErr)); setLoading(false); return }
 
             // Net sales for the same week, so each day can be read against what
             // it actually took.
@@ -90,7 +91,7 @@ export default function LabourPage() {
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
-            if (sErr) { setError(sErr.message); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
 
             // Targets can change over time, so fetch the overrides and work out
             // which one applied to this week rather than using today's default.
@@ -100,7 +101,7 @@ export default function LabourPage() {
                 .eq('restaurant_id', restaurantId)
                 .eq('target_type', 'labour')
 
-            if (oErr) { setError(oErr.message); setLoading(false); return }
+            if (oErr) { setError(friendlyError(oErr)); setLoading(false); return }
             setOverrides(overrideRows || [])
 
             const byDate = {}
@@ -222,11 +223,11 @@ export default function LabourPage() {
 
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('labour_entries').insert(toInsert)
-            if (e1) { setError(e1.message); setSaving(false); return }
+            if (e1) { setError(friendlyError(e1)); setSaving(false); return }
         }
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('labour_entries').update(u.payload).eq('id', u.id)
-            if (e2) { setError(e2.message); setSaving(false); return }
+            if (e2) { setError(friendlyError(e2)); setSaving(false); return }
         }
 
         setSaving(false)

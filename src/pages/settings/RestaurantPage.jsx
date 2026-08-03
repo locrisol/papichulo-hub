@@ -7,6 +7,7 @@ import CostTargetModal from '../../components/CostTargetModal'
 import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
 import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
+import { friendlyError } from '../../lib/errors'
 
 // Restaurant settings.
 //
@@ -68,7 +69,7 @@ export default function RestaurantPage() {
                 .select('*')
                 .eq('restaurant_id', activeRestaurant.id)
 
-            if (e1) setError(e1.message)
+            if (e1) setError(friendlyError(e1))
             else setOverrides(data || [])
         }
         load()
@@ -94,7 +95,7 @@ export default function RestaurantPage() {
             .update({ sales_row_order: rowOrder })
             .eq('id', activeRestaurant.id)
         setOrderSaving(false)
-        if (e1) setError(e1.message)
+        if (e1) setError(friendlyError(e1))
         else setSuccess('Sales row order saved. Reload the weekly sales page to see it.')
     }
 
@@ -115,7 +116,7 @@ export default function RestaurantPage() {
             .single()
 
         setLoading(false)
-        if (e1) setError(e1.message)
+        if (e1) setError(friendlyError(e1))
         else {
             setActiveRestaurant(data)
             setSuccess('Settings saved.')

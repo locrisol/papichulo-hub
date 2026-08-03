@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
+import { friendlyError } from '../../lib/errors'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -67,7 +68,7 @@ export default function InvoiceHistoryPage() {
                 .eq('is_active', true)
                 .order('name')
 
-            if (sErr) { setError(sErr.message); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
             setSuppliers(sup || [])
 
             // Build the query up in pieces so the filters that are set are the
@@ -84,7 +85,7 @@ export default function InvoiceHistoryPage() {
 
             const { data, error: iErr } = await q.order('invoice_date', { ascending: !sortDesc })
 
-            if (iErr) { setError(iErr.message); setLoading(false); return }
+            if (iErr) { setError(friendlyError(iErr)); setLoading(false); return }
             setInvoices(data || [])
             setLoading(false)
         }

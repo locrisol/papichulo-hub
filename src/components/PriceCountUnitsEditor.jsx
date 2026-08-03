@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { friendlyError } from '../lib/errors'
 
 // Editor for the pack formats (Box, Bag, Tin...) on a single price record,
 // plus the allow_loose_count toggle. Formats convert to the product's base unit.
@@ -38,7 +39,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                 .single(),
         ])
 
-        if (formatsErr) setError(formatsErr.message)
+        if (formatsErr) setError(friendlyError(formatsErr))
         else setFormats(formatsData || [])
 
         if (!priceErr && priceData) {
@@ -67,7 +68,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             .single()
 
         setSaving(false)
-        if (error) { setError(error.message); return }
+        if (error) { setError(friendlyError(error)); return }
 
         setFormats(prev => [...prev, data])
         setLabel('')
@@ -80,7 +81,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             .delete()
             .eq('id', formatId)
 
-        if (error) { setError(error.message); return }
+        if (error) { setError(friendlyError(error)); return }
         setFormats(prev => prev.filter(f => f.id !== formatId))
     }
 
@@ -93,7 +94,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             .eq('id', price.id)
 
         if (error) {
-            setError(error.message)
+            setError(friendlyError(error))
             setAllowLoose(!next) // revert on failure
         }
     }

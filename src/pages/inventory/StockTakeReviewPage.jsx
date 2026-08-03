@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { friendlyError } from '../../lib/errors'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -126,7 +127,7 @@ export default function StockTakeReviewPage() {
       .single()
 
     setSavingLine(false)
-    if (insertErr) { setError(insertErr.message); return }
+    if (insertErr) { setError(friendlyError(insertErr)); return }
 
     setLines(prev => [...prev, data])
     setDraftQty('')
@@ -150,7 +151,7 @@ export default function StockTakeReviewPage() {
       .eq('id', id)
 
     setClosing(false)
-    if (updateErr) { setError(updateErr.message); return }
+    if (updateErr) { setError(friendlyError(updateErr)); return }
 
     navigate(`/inventory/stock-takes/${id}/summary`)
   }

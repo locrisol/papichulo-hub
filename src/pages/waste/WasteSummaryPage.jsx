@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
+import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
 //
@@ -53,7 +54,7 @@ export default function WasteSummaryPage() {
                 .gte('log_date', weekStart)
                 .lte('log_date', end)
 
-            if (wErr) { setError(wErr.message); setLoading(false); return }
+            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
             setEntries(logs || [])
 
             // Closed days are left out: they have no sales, so including them
@@ -65,7 +66,7 @@ export default function WasteSummaryPage() {
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
-            if (sErr) { setError(sErr.message); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
             setNetSales(
                 (sales || [])
                     .filter(s => !s.is_closed)

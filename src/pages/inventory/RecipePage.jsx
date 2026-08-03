@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
+import { friendlyError } from '../../lib/errors'
 
 export default function RecipePage() {
   const { id } = useParams()
@@ -50,7 +51,7 @@ export default function RecipePage() {
       .eq('id', id)
       .single()
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else {
       setProduct(data)
       setBatchYieldInput(data.batch_yield ?? '')
@@ -75,7 +76,7 @@ export default function RecipePage() {
       .select('*')
       .order('id')
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else setRecipeLines(data)
     setLoading(false)
   }
@@ -160,14 +161,14 @@ export default function RecipePage() {
         .update(payload)
         .eq('id', editingLine.id)
 
-      if (error) setError(error.message)
+      if (error) setError(friendlyError(error))
       else { fetchRecipeLines(); resetForm() }
     } else {
       const { error } = await supabase
         .from('mix_recipes')
         .insert(payload)
 
-      if (error) setError(error.message)
+      if (error) setError(friendlyError(error))
       else {
         fetchRecipeLines()
         setFormData(emptyForm())
@@ -203,7 +204,7 @@ export default function RecipePage() {
       .delete()
       .eq('id', line.id)
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else fetchRecipeLines()
   }
 
@@ -224,7 +225,7 @@ export default function RecipePage() {
       .eq('id', id)
 
     if (error) {
-      setBatchYieldMessage(error.message)
+      setBatchYieldMessage(friendlyError(error))
     } else {
       setBatchYieldMessage('Saved')
       fetchProduct()
