@@ -315,6 +315,18 @@ export default function CostDashboardPage() {
                 </div>
             )}
 
+            {/* The current week is only ever part of a week. Halfway through, a
+                percentage can look wrong when it is really just incomplete, and
+                nothing on the page said so. Past weeks are finished, so they say
+                nothing, and a week with no sales at all already has the message
+                above rather than this one. */}
+            {!loading && isThisWeek && netSales > 0 && (
+                <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
+                    Week in progress. These figures are worked out from the days entered so far, so they will keep
+                    moving as the rest of the week goes in.
+                </div>
+            )}
+
             {/* The four costs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <KpiCard
