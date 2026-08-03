@@ -6,6 +6,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
+import { secondaryButton, dateField } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -568,7 +569,7 @@ export default function WeeklySalesPage() {
                 {/* Switch to the single-day form, for phone use */}
                 <button
                     onClick={() => navigate('/sales?view=day')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Day view
                 </button>
@@ -599,7 +600,7 @@ export default function WeeklySalesPage() {
                             setPickerDate(v)
                             goToWeek(weekStartOf(v))
                         }}
-                        className="ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={`ml-auto ${dateField}`}
                         aria-label="Jump to week"
                     />
                 </div>

@@ -7,6 +7,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
 import PageContainer from '../../components/layout/PageContainer'
+import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
@@ -282,17 +283,15 @@ export default function CostDashboardPage() {
 
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={() => shiftWeek(-1)}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        className={`${iconButton} text-sm font-semibold`}>
                         ‹ Previous
                     </button>
                     <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${isThisWeek
-                            ? 'border-accent text-accent bg-orange-50'
-                            : 'border-border text-gray-600 hover:bg-gray-50'}`}>
+                        className={jumpButton(isThisWeek)}>
                         This week
                     </button>
                     <button type="button" onClick={() => shiftWeek(1)}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        className={`${iconButton} text-sm font-semibold`}>
                         Next ›
                     </button>
                     <input type="date" value={pickerDate}
@@ -302,7 +301,7 @@ export default function CostDashboardPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={dateField}
                         aria-label="Jump to week" />
                 </div>
             </div>

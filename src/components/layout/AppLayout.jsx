@@ -185,17 +185,45 @@ export default function AppLayout({ children }) {
                         <h1 className="font-serif text-xl font-bold text-gray-900">{pageTitle}</h1>
                     </div>
 
-                    {/* Restaurant switcher: only for roles that span locations */}
+                    {/* Restaurant switcher: only for roles that span locations.
+                        Labelled and outlined in the accent colour on purpose. It
+                        used to be a plain grey select with no label, which was
+                        easy to miss, and being on the wrong restaurant means
+                        every number on every page is the wrong one. */}
                     {(user?.role === 'super_admin' || user?.role === 'owner') && (
-                        <select
-                            value={activeRestaurant?.id || ''}
-                            onChange={e => switchRestaurant(restaurants.find(r => r.id === e.target.value))}
-                            className="text-sm border border-border rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-accent"
-                        >
-                            {restaurants.map(r => (
-                                <option key={r.id} value={r.id}>{r.name}</option>
-                            ))}
-                        </select>
+                        <div className="flex items-center gap-2">
+                            <span className="hidden sm:block text-xs font-bold uppercase tracking-widest text-muted">
+                                Restaurant
+                            </span>
+                            <div className="relative">
+                                {/* The native arrow goes with appearance-none, so
+                                    both icons are drawn here instead. */}
+                                <svg
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-accent pointer-events-none"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                                >
+                                    <path d={icons.restaurant} />
+                                </svg>
+                                <select
+                                    value={activeRestaurant?.id || ''}
+                                    onChange={e => switchRestaurant(restaurants.find(r => r.id === e.target.value))}
+                                    aria-label="Active restaurant"
+                                    className="appearance-none text-sm font-semibold border-2 border-accent/40 rounded-lg pl-9 pr-9 py-2 bg-white text-gray-900 cursor-pointer transition-colors hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                                >
+                                    {restaurants.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+                                <svg
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-accent pointer-events-none"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                                >
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                        </div>
                     )}
                 </header>
                 <main className="flex-1 overflow-y-auto p-4 md:p-7">

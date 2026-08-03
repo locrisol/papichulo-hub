@@ -6,6 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
+import { secondaryButton } from '../../lib/controlStyles'
 
 const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
@@ -213,7 +214,7 @@ export default function MenuItemsPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setShowCategoryModal(true)}
-            className="px-4 py-2 border border-border text-sm font-medium rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+            className={secondaryButton}
           >
             Manage Categories
           </button>

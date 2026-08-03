@@ -6,6 +6,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
@@ -142,7 +143,7 @@ export default function WasteSummaryPage() {
                 </div>
                 <button
                     onClick={() => navigate('/waste')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Log waste
                 </button>

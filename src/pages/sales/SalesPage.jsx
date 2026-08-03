@@ -8,6 +8,7 @@ import { resolveRowOrder } from './WeeklySalesPage'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton } from '../../lib/controlStyles'
 
 // Threshold above which the reconciliation is flagged for review.
 const VARIANCE_WARN_THRESHOLD = 10
@@ -315,7 +316,7 @@ export default function SalesPage() {
                         localStorage.setItem('salesView', 'week')
                         navigate('/sales/weekly')
                     }}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Week view
                 </button>
