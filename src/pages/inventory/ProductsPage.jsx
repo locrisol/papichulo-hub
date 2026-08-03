@@ -5,18 +5,28 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
 // The columns you can sort by, in the order they appear across the table.
 // Actions is not in here, because there is nothing to sort it on.
+//
+// Section and Type carry a fixed width. Sorting let the Name column take as much
+// room as it wanted, which squeezed the others until a badge like "Cold Room"
+// broke onto two lines.
 const SORTABLE_COLUMNS = [
   { key: 'name', label: 'Name' },
-  { key: 'section', label: 'Section' },
-  { key: 'unit', label: 'Unit' },
-  { key: 'type', label: 'Type' },
+  { key: 'section', label: 'Section', width: 'w-36' },
+  { key: 'unit', label: 'Unit', width: 'w-20' },
+  { key: 'type', label: 'Type', width: 'w-32' },
   { key: 'supplier', label: 'Preferred Supplier' },
-  { key: 'cost', label: 'Cost/Unit' },
-  { key: 'weightLoss', label: 'Weight Loss' },
+  { key: 'cost', label: 'Cost/Unit', width: 'w-28' },
+  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28' },
 ]
+
+// Badges carry the meaning now that the MIX row tint is very light, so they are
+// a step stronger than they were. whitespace-nowrap keeps two word labels like
+// "Cold Room" on one line.
+const badge = 'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
 
 export default function ProductsPage() {
   const { activeRestaurant } = useRestaurant()
@@ -356,24 +366,24 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
                 other striped row, so it did not read as a heading at all. It is
-                darker now with a heavier line under it. */}
+                the dark sidebar green now, which there is no mistaking. */}
             <thead>
-              <tr className="bg-gray-100 border-b-2 border-gray-300">
+              <tr className={tableHeadRow}>
                 {SORTABLE_COLUMNS.map(col => (
-                  <th key={col.key} className="text-left px-4 py-3">
+                  <th key={col.key} className={`text-left px-4 py-3 whitespace-nowrap ${col.width || ''}`}>
                     <button
                       type="button"
                       onClick={() => toggleSort(col.key)}
-                      className="flex items-center gap-1 text-xs font-bold text-gray-700 uppercase tracking-wider hover:text-gray-900"
+                      className={`flex items-center gap-1 whitespace-nowrap ${tableHeadCell} hover:text-white/70`}
                     >
                       {col.label}
-                      <span className={sortBy === col.key ? 'text-accent' : 'text-gray-300'}>
+                      <span className={sortBy === col.key ? 'text-accent' : 'text-white/30'}>
                         {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
                       </span>
                     </button>
                   </th>
                 ))}
-                <th className="text-left px-4 py-3 text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
+                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -389,24 +399,24 @@ export default function ProductsPage() {
                     <tr className={`border-b border-border ${!p.is_active
                       ? 'bg-red-100'
                       : p.is_mix
-                        ? 'bg-amber-100'
+                        ? 'bg-amber-50'
                         : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          p.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                        <span className={`${badge} ${
+                          p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'
                         }`}>
                           {p.section}
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        <span className={`${badge} ${
                           !p.is_active
                             ? 'bg-gray-100 text-gray-400'
                             : p.is_mix
-                              ? 'bg-amber-50 text-amber-700'
-                              : 'bg-green-50 text-green-700'
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-green-100 text-green-800'
                         }`}>
                           {p.is_mix ? 'MIX' : 'Purchased'}
                         </span>
