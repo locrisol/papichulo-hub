@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { tableHeadRow } from '../lib/controlStyles'
 
 export default function CategoryManagerModal({ categories, onClose, onChange }) {
   const [error, setError] = useState('')
@@ -125,7 +126,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
           <table className="w-full text-sm mb-6">
             <thead>
-              <tr className="border-b border-border bg-gray-50">
+              <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Order</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Status</th>

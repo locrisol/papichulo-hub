@@ -107,7 +107,7 @@ export default function AppLayout({ children }) {
                 />
             )}
 
-            {/* Sidebar — fixed and slide-in on mobile, static on desktop */}
+            {/* Sidebar: fixed and slide-in on mobile, static on desktop */}
             <aside className={`
                 fixed inset-y-0 left-0 z-30 w-56 bg-sidebar flex flex-col flex-shrink-0
                 transform transition-transform duration-200

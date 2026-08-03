@@ -36,7 +36,10 @@ export const dateField =
 //
 // It is the dark sidebar green now. There is no mistaking it for a data row, and
 // it ties the tables to the rest of the app rather than adding another colour.
-export const tableHeadRow = 'bg-sidebar'
+// The child rules are so a table only has to change its heading row, and every
+// heading cell inside it follows. The cells set their own text-gray-500, and a
+// plain class would lose to that, but "> th" is more specific so it wins.
+export const tableHeadRow = 'bg-sidebar [&>th]:text-white [&>th]:font-bold'
 export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wider'
 
 // "This week" and "Today", which jump back to now. They read as selected when

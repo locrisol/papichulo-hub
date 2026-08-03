@@ -7,7 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -256,7 +256,7 @@ export default function InvoicesPage() {
                 ) : (
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Category</th>

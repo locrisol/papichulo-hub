@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow } from '../../lib/controlStyles'
 
 export default function RecipePage() {
   const { id } = useParams()
@@ -354,7 +355,7 @@ export default function RecipePage() {
           <div className="bg-white rounded-xl border border-border overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-gray-50">
+                <tr className={tableHeadRow}>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingredient</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
