@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
 export default function SuppliersPage() {
     const { user } = useAuth()
@@ -45,9 +46,13 @@ export default function SuppliersPage() {
 
     async function fetchSuppliers() {
         setLoading(true)
+        // Ordered by name. Without an order the database returns the rows
+        // however it likes, and updating a row moves it, so deactivating a
+        // supplier and turning it back on sent it somewhere else in the list.
         const { data, error } = await supabase
             .from('suppliers')
             .select('*')
+            .order('name')
 
         if (error) setError(friendlyError(error))
         else setSuppliers(data)
@@ -232,14 +237,14 @@ export default function SuppliersPage() {
                 <div className="bg-white rounded-xl border border-border overflow-hidden">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                            <tr className={tableHeadRow}>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Category</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Email</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Phone</th>
+                                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Status</th>
                                 {isManager && (
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                                    <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                                 )}
                             </tr>
                         </thead>

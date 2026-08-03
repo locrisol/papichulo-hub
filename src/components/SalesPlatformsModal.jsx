@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
+import { tableHeadRow } from '../lib/controlStyles'
 
 const BUCKETS = [
   { value: 'online_platform', label: 'Online Platform' },
@@ -23,13 +24,11 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
   // Add form
   const [newName, setNewName] = useState('')
   const [newBucket, setNewBucket] = useState('online_platform')
-  const [newSortOrder, setNewSortOrder] = useState('')
 
   // Inline edit
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editBucket, setEditBucket] = useState('online_platform')
-  const [editSortOrder, setEditSortOrder] = useState('')
 
   useEffect(() => {
     if (activeRestaurant) fetchPlatforms()
@@ -42,6 +41,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       .from('sales_platforms')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
+      // sort_order is what the platform list is arranged by, then name to break
+      // ties. Without an order, deactivating a platform moved it in the list.
+      .order('sort_order')
+      .order('name')
 
     if (e1) setError(friendlyError(e1))
     else setPlatforms(data || [])
@@ -63,15 +66,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       setError('Name is required')
       return
     }
-    // Sort order is optional; default to 0 if blank
-    let sortOrder = 0
-    if (newSortOrder !== '') {
-      sortOrder = parseInt(newSortOrder)
-      if (isNaN(sortOrder)) {
-        setError('Sort order must be a number')
-        return
-      }
-    }
+
+    // Goes on the end of its bucket. There is no number to type any more, you
+    // move it up with the arrows once it is in the list.
+    const sortOrder = platformsForBucket(newBucket).length
 
     const { error: e1 } = await supabase
       .from('sales_platforms')
@@ -88,7 +86,40 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     }
 
     setNewName('')
-    setNewSortOrder('')
+    fetchPlatforms()
+    onChange && onChange()
+  }
+
+  // Moves a platform one place up or down inside its own bucket.
+  //
+  // The whole bucket is renumbered from zero rather than swapping two numbers.
+  // The order used to be typed by hand, so nothing ever stopped two platforms
+  // sharing a number or the numbers having gaps, and swapping two equal ones
+  // would look like the arrow had done nothing. Rewriting the lot makes the
+  // stored order match what is on screen.
+  async function movePlatform(bucket, index, direction) {
+    const rows = platformsForBucket(bucket)
+    const target = index + direction
+    if (target < 0 || target >= rows.length) return
+
+    setError('')
+
+    const reordered = rows.slice()
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(target, 0, moved)
+
+    const results = await Promise.all(
+      reordered.map((p, i) =>
+        supabase.from('sales_platforms').update({ sort_order: i }).eq('id', p.id)
+      )
+    )
+
+    const failed = results.find(r => r.error)
+    if (failed) {
+      setError(friendlyError(failed.error))
+      return
+    }
+
     fetchPlatforms()
     onChange && onChange()
   }
@@ -97,7 +128,6 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     setEditingId(p.id)
     setEditName(p.name)
     setEditBucket(p.bucket)
-    setEditSortOrder(String(p.sort_order))
     setError('')
   }
 
@@ -105,7 +135,6 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     setEditingId(null)
     setEditName('')
     setEditBucket('online_platform')
-    setEditSortOrder('')
     setError('')
   }
 
@@ -117,18 +146,9 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       setError('Name is required')
       return
     }
-    let sortOrder = 0
-    if (editSortOrder !== '') {
-      sortOrder = parseInt(editSortOrder)
-      if (isNaN(sortOrder)) {
-        setError('Sort order must be a number')
-        return
-      }
-    }
-
     const { error: e1 } = await supabase
       .from('sales_platforms')
-      .update({ name, bucket: editBucket, sort_order: sortOrder })
+      .update({ name, bucket: editBucket })
       .eq('id', p.id)
 
     if (e1) {
@@ -154,7 +174,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     }
   }
 
-  function renderRow(p) {
+  function renderRow(p, index, rows) {
     if (editingId === p.id) {
       return (
         <tr key={p.id} className="border-b border-border">
@@ -177,14 +197,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               ))}
             </select>
           </td>
-          <td className="px-3 py-2 w-20">
-            <input
-              type="number"
-              value={editSortOrder}
-              onChange={e => setEditSortOrder(e.target.value)}
-              className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-            />
-          </td>
+          {/* Nothing to edit here any more. The order is set with the arrows. */}
+          <td className="px-3 py-2 w-24"></td>
           <td className="px-3 py-2 w-32">
             <div className="flex gap-2">
               <button
@@ -213,8 +227,30 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
           {p.is_active ? 'Active' : 'Inactive'}
         </td>
-        <td className={`px-3 py-2 ${p.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-          {p.sort_order}
+        {/* Up and down arrows, the same as the weekly sales row order list in
+            restaurant settings. It used to be a number you typed in, which was
+            slower and let two platforms end up with the same one. */}
+        <td className="px-3 py-2 w-24">
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => movePlatform(p.bucket, index, -1)}
+              disabled={index === 0}
+              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+              aria-label={`Move ${p.name} up`}
+            >
+              &uarr;
+            </button>
+            <button
+              type="button"
+              onClick={() => movePlatform(p.bucket, index, 1)}
+              disabled={index === rows.length - 1}
+              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+              aria-label={`Move ${p.name} down`}
+            >
+              &darr;
+            </button>
+          </div>
         </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
@@ -250,10 +286,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-gray-50">
+              <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Status</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">Order</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Order</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Actions</th>
               </tr>
             </thead>
@@ -289,7 +325,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
 
           <p className="text-xs text-gray-500 mb-4">
-            Platforms feed the Online Platform and Catering totals on the sales entry form. Deactivate a platform instead of deleting it so past sales records keep their reference. Lower sort order appears first.
+            Platforms feed the Online Platform and Catering totals on the sales entry form. Deactivate a platform instead of deleting it so past sales records keep their reference. Use the arrows to set the order they appear in.
           </p>
 
           {loading ? (
@@ -324,15 +360,6 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                   ))}
                 </select>
               </div>
-              <div className="w-20">
-                <input
-                  type="number"
-                  value={newSortOrder}
-                  onChange={e => setNewSortOrder(e.target.value)}
-                  placeholder="Order"
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                />
-              </div>
               <button
                 type="submit"
                 className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
@@ -341,7 +368,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               </button>
             </form>
             <p className="text-xs text-gray-400 mt-2">
-              Suggested gaps of 10 (e.g. 10, 20, 30) so you can insert a platform between two existing ones without renumbering.
+              A new platform goes on the end of its group. Use the arrows to move it up.
             </p>
           </div>
         </div>

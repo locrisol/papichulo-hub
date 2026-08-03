@@ -5,6 +5,8 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
+import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
@@ -133,7 +135,7 @@ export default function WasteSummaryPage() {
     const dates = [weekStart, addDays(weekStart, 6)]
 
     return (
-        <div className="max-w-4xl">
+        <PageContainer>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Waste summary</h2>
@@ -141,7 +143,7 @@ export default function WasteSummaryPage() {
                 </div>
                 <button
                     onClick={() => navigate('/waste')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Log waste
                 </button>
@@ -217,7 +219,7 @@ export default function WasteSummaryPage() {
                 ) : (
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Quantity</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Value</th>
@@ -262,6 +264,6 @@ export default function WasteSummaryPage() {
                 {' '}{WARN_BELOW}% needs attention. Quantities are not totalled across products, since kilos and units
                 do not add up together.
             </p>
-        </div>
+        </PageContainer>
     )
 }

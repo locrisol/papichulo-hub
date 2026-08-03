@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
+import PageContainer from '../../components/layout/PageContainer'
 
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
@@ -39,9 +40,9 @@ export default function PublicAllergensPreviewPage() {
         async function fetchMenuData() {
             const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
                 supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-                supabase.from('menu_items').select('*').eq('is_active', true),
+                supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
                 supabase.from('menu_item_components').select('*'),
-                supabase.from('products').select('*'),
+                supabase.from('products').select('*').order('name'),
                 supabase.from('mix_recipes').select('*'),
                 supabase.from('product_allergens').select('*'),
             ])
@@ -397,14 +398,14 @@ export default function PublicAllergensPreviewPage() {
 
     if (!activeRestaurant) {
         return (
-            <div className="p-6">
+            <div>
                 <p className="text-sm text-gray-500">Select a restaurant to preview its public page.</p>
             </div>
         )
     }
 
     return (
-        <div className="p-4 sm:p-6 max-w-5xl">
+        <PageContainer>
             <header className="mb-6">
                 <h1 className="font-serif text-2xl font-bold text-gray-900">Public Allergens</h1>
                 <p className="text-sm text-muted mt-1">
@@ -505,6 +506,6 @@ export default function PublicAllergensPreviewPage() {
             <div className="border border-border rounded-xl overflow-hidden bg-app-bg">
                 <PublicAllergensPage slugOverride={activeRestaurant.slug} />
             </div>
-        </div>
+        </PageContainer>
     )
 }

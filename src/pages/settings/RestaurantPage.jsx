@@ -8,6 +8,7 @@ import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
 import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 // Restaurant settings.
 //
@@ -134,7 +135,7 @@ export default function RestaurantPage() {
     }
 
     return (
-        <div className="max-w-2xl">
+        <PageContainer width="form">
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -153,189 +154,199 @@ export default function RestaurantPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
-            {/* Cost targets. Changed through the same modal the dashboard uses,
-                so a target is only ever set in one place. */}
-            <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
-                <p className="text-xs text-gray-500 mt-1 mb-4">
-                    What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
-                    choose, so past weeks keep the target that was really in force at the time.
-                </p>
+            {/* Two columns once there is room for them. On the left is what
+                you change most, the targets and the pay rate, finishing with
+                Save settings. On the right is the setup you touch once and
+                leave alone. It stacks back into one column on a phone. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div>
+                    {/* Cost targets. Changed through the same modal the dashboard uses,
+                        so a target is only ever set in one place. */}
+                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                        <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
+                        <p className="text-xs text-gray-500 mt-1 mb-4">
+                            What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
+                            choose, so past weeks keep the target that was really in force at the time.
+                        </p>
 
-                <div className="border border-border rounded-lg divide-y divide-border">
-                    {TARGET_TYPES.map(type => {
-                        const s = targetSummary(type)
-                        return (
-                            <div key={type.key} className="px-4 py-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-medium text-gray-900">{type.label}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            {s.current ? (
-                                                s.current.until
-                                                    ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
-                                                    : `Running since the week of ${shortDate(s.current.from)}`
-                                            ) : (
-                                                'The restaurant default. Nothing has been set for a particular week'
-                                            )}
-                                        </p>
-                                        {s.upcoming.length > 0 && (
-                                            <p className="text-xs text-blue-600 mt-0.5">
-                                                {s.upcoming.length === 1
-                                                    ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
-                                                    : `${s.upcoming.length} more changes already set for later weeks`}
-                                            </p>
-                                        )}
+                        <div className="border border-border rounded-lg divide-y divide-border">
+                            {TARGET_TYPES.map(type => {
+                                const s = targetSummary(type)
+                                return (
+                                    <div key={type.key} className="px-4 py-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-gray-900">{type.label}</p>
+                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                    {s.current ? (
+                                                        s.current.until
+                                                            ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
+                                                            : `Running since the week of ${shortDate(s.current.from)}`
+                                                    ) : (
+                                                        'The restaurant default. Nothing has been set for a particular week'
+                                                    )}
+                                                </p>
+                                                {s.upcoming.length > 0 && (
+                                                    <p className="text-xs text-blue-600 mt-0.5">
+                                                        {s.upcoming.length === 1
+                                                            ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
+                                                            : `${s.upcoming.length} more changes already set for later weeks`}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 flex-shrink-0">
+                                                <span className="font-serif text-xl font-bold text-gray-900">
+                                                    {s.value != null ? `${s.value}%` : '-'}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTarget(type.key)}
+                                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                                                >
+                                                    Change
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <span className="font-serif text-xl font-bold text-gray-900">
-                                            {s.value != null ? `${s.value}%` : '-'}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setEditingTarget(type.key)}
-                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
-                                        >
-                                            Change
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {/* Everything saved straight onto the restaurant row */}
-            <form onSubmit={handleSave}>
-                <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Hourly rate (€)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={formData.hourly_rate}
-                                onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                required
-                            />
-                            {/* Safe to change without a date, because the rate is
-                                copied onto each labour entry when it is saved. */}
-                            <p className="text-xs text-gray-400 mt-1">
-                                The average rate used to work out labour cost. Changing it does not alter weeks already
-                                entered, since each one keeps the rate it was saved with.
-                            </p>
+                                )
+                            })}
                         </div>
                     </div>
-                </div>
 
-                {user?.role === 'super_admin' && (
-                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">Forecasting</h3>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={formData.forecasting_enabled}
-                                onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
-                                className="w-4 h-4 accent-accent"
-                            />
-                            <div>
-                                <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
-                                <p className="text-xs text-gray-500">Only for restaurants near a large event venue</p>
-                            </div>
-                        </label>
-                    </div>
-                )}
-
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="bg-accent hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors"
-                >
-                    {loading ? 'Saving...' : 'Save settings'}
-                </button>
-            </form>
-
-            {/* Sales platforms management */}
-            <div className="bg-white rounded-xl border border-border p-6 mt-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
-                        <p className="text-xs text-gray-500 mt-1">
-                            The delivery and catering platforms used for sales entry.
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setShowPlatformsModal(true)}
-                        className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-                    >
-                        Manage platforms
-                    </button>
-                </div>
-            </div>
-
-            {/* Order of the receipt rows in the weekly sales grid */}
-            <div className="bg-white rounded-xl border border-border p-6 mt-4">
-                <h3 className="text-sm font-semibold text-gray-900">Weekly sales row order</h3>
-                <p className="text-xs text-gray-500 mt-1 mb-4">
-                    Arrange the till receipt rows to match how you read the POS receipt. Platform rows are ordered
-                    separately, in Manage platforms.
-                </p>
-
-                <ul className="border border-border rounded-lg divide-y divide-border mb-3">
-                    {rowOrder.map((key, i) => {
-                        const row = RECEIPT_ROWS.find(r => r.key === key)
-                        if (!row) return null
-                        return (
-                            <li key={key} className="flex items-center justify-between px-3 py-2">
-                                <span className="text-sm text-gray-700">{row.label}</span>
-                                <div className="flex gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => moveRow(i, -1)}
-                                        disabled={i === 0}
-                                        className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                        aria-label={`Move ${row.label} up`}
-                                    >
-                                        &uarr;
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => moveRow(i, 1)}
-                                        disabled={i === rowOrder.length - 1}
-                                        className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                        aria-label={`Move ${row.label} down`}
-                                    >
-                                        &darr;
-                                    </button>
+                    {/* Everything saved straight onto the restaurant row */}
+                    <form onSubmit={handleSave}>
+                        <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                        Hourly rate (€)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={formData.hourly_rate}
+                                        onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })}
+                                        className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                        required
+                                    />
+                                    {/* Safe to change without a date, because the rate is
+                                        copied onto each labour entry when it is saved. */}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        The average rate used to work out labour cost. Changing it does not alter weeks already
+                                        entered, since each one keeps the rate it was saved with.
+                                    </p>
                                 </div>
-                            </li>
-                        )
-                    })}
-                </ul>
+                            </div>
+                        </div>
 
-                <div className="flex justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setRowOrder(RECEIPT_ROWS.map(r => r.key))}
-                        className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                        Reset to default
-                    </button>
-                    <button
-                        type="button"
-                        onClick={saveRowOrder}
-                        disabled={orderSaving}
-                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
-                    >
-                        {orderSaving ? 'Saving...' : 'Save order'}
-                    </button>
+                        {user?.role === 'super_admin' && (
+                            <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-4">Forecasting</h3>
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.forecasting_enabled}
+                                        onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
+                                        className="w-4 h-4 accent-accent"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
+                                        <p className="text-xs text-gray-500">Only for restaurants near a large event venue</p>
+                                    </div>
+                                </label>
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="bg-accent hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors"
+                        >
+                            {loading ? 'Saving...' : 'Save settings'}
+                        </button>
+                    </form>
+                </div>
+
+                <div>
+                    {/* Sales platforms management */}
+                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    The delivery and catering platforms used for sales entry.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPlatformsModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Manage platforms
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Order of the receipt rows in the weekly sales grid */}
+                    <div className="bg-white rounded-xl border border-border p-6">
+                        <h3 className="text-sm font-semibold text-gray-900">Weekly sales row order</h3>
+                        <p className="text-xs text-gray-500 mt-1 mb-4">
+                            Arrange the till receipt rows to match how you read the POS receipt. Platform rows are ordered
+                            separately, in Manage platforms.
+                        </p>
+
+                        <ul className="border border-border rounded-lg divide-y divide-border mb-3">
+                            {rowOrder.map((key, i) => {
+                                const row = RECEIPT_ROWS.find(r => r.key === key)
+                                if (!row) return null
+                                return (
+                                    <li key={key} className="flex items-center justify-between px-3 py-2">
+                                        <span className="text-sm text-gray-700">{row.label}</span>
+                                        <div className="flex gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => moveRow(i, -1)}
+                                                disabled={i === 0}
+                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                                aria-label={`Move ${row.label} up`}
+                                            >
+                                                &uarr;
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => moveRow(i, 1)}
+                                                disabled={i === rowOrder.length - 1}
+                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+                                                aria-label={`Move ${row.label} down`}
+                                            >
+                                                &darr;
+                                            </button>
+                                        </div>
+                                    </li>
+                                )
+                            })}
+                        </ul>
+
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setRowOrder(RECEIPT_ROWS.map(r => r.key))}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                Reset to default
+                            </button>
+                            <button
+                                type="button"
+                                onClick={saveRowOrder}
+                                disabled={orderSaving}
+                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                            >
+                                {orderSaving ? 'Saving...' : 'Save order'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -355,6 +366,6 @@ export default function RestaurantPage() {
                     onClose={() => setShowPlatformsModal(false)}
                 />
             )}
-        </div>
+        </PageContainer>
     )
 }

@@ -6,14 +6,14 @@
 // For a MIX ingredient, the unit cost is the result of recursing.
 //
 // Returns:
-//   { cost: number, status: 'ok' }                    — successful calculation
-//   { cost: null, status: 'no_recipe' }               — MIX has no ingredients
-//   { cost: null, status: 'no_batch_yield' }          — MIX has no batch_yield set
+//   { cost: number, status: 'ok' }                    it worked out
+//   { cost: null, status: 'no_recipe' }               the MIX has no ingredients
+//   { cost: null, status: 'no_batch_yield' }          the MIX has no batch_yield set
 //   { cost: null, status: 'missing_price', missing: [productId, ...] }
-//                                                     — one or more ingredients
-//                                                       (raw or MIX) couldn't be costed
-//   { cost: null, status: 'cycle' }                   — recipe references itself
-//                                                       directly or transitively
+//                                                     one or more ingredients, raw
+//                                                     or MIX, could not be costed
+//   { cost: null, status: 'cycle' }                   the recipe references itself,
+//                                                     directly or through another
 
 export function calculateMixCost(product, allProducts, allRecipeLines, preferredPrices, visited = new Set()) {
   // Cycle detection: if we're already computing this product's cost

@@ -6,6 +6,8 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
+import PageContainer from '../../components/layout/PageContainer'
+import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
@@ -265,7 +267,7 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     return (
-        <div className="max-w-5xl">
+        <PageContainer>
             {/* Header: the week, and what it has done so far */}
             <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
                 <div>
@@ -281,17 +283,15 @@ export default function CostDashboardPage() {
 
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={() => shiftWeek(-1)}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        className={`${iconButton} text-sm font-semibold`}>
                         ‹ Previous
                     </button>
                     <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${isThisWeek
-                            ? 'border-accent text-accent bg-orange-50'
-                            : 'border-border text-gray-600 hover:bg-gray-50'}`}>
+                        className={jumpButton(isThisWeek)}>
                         This week
                     </button>
                     <button type="button" onClick={() => shiftWeek(1)}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                        className={`${iconButton} text-sm font-semibold`}>
                         Next ›
                     </button>
                     <input type="date" value={pickerDate}
@@ -301,7 +301,7 @@ export default function CostDashboardPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={dateField}
                         aria-label="Jump to week" />
                 </div>
             </div>
@@ -312,6 +312,18 @@ export default function CostDashboardPage() {
                 <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">
                     No sales are recorded for this week, so the percentages cannot be worked out. Enter the week's
                     sales and everything here fills in.
+                </div>
+            )}
+
+            {/* The current week is only ever part of a week. Halfway through, a
+                percentage can look wrong when it is really just incomplete, and
+                nothing on the page said so. Past weeks are finished, so they say
+                nothing, and a week with no sales at all already has the message
+                above rather than this one. */}
+            {!loading && isThisWeek && netSales > 0 && (
+                <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
+                    Week in progress. These figures are worked out from the days entered so far, so they will keep
+                    moving as the rest of the week goes in.
                 </div>
             )}
 
@@ -451,6 +463,6 @@ export default function CostDashboardPage() {
                     onSaved={() => setRefresh(n => n + 1)}
                 />
             )}
-        </div>
+        </PageContainer>
     )
 }

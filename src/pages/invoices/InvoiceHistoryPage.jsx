@@ -5,6 +5,8 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -117,7 +119,7 @@ export default function InvoiceHistoryPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <div className="max-w-4xl">
+        <PageContainer>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Invoice history</h2>
@@ -125,7 +127,7 @@ export default function InvoiceHistoryPage() {
                 </div>
                 <button
                     onClick={() => navigate('/invoices')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Add an invoice
                 </button>
@@ -194,7 +196,7 @@ export default function InvoiceHistoryPage() {
                 ) : (
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 w-28">
                                     {/* Sorting by date is the only one worth having: you are
                                         almost always looking for something recent or something
@@ -227,6 +229,6 @@ export default function InvoiceHistoryPage() {
                     </table>
                 )}
             </div>
-        </div>
+        </PageContainer>
     )
 }

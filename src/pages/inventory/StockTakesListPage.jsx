@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 export default function StockTakesListPage() {
   const navigate = useNavigate()
@@ -124,7 +125,7 @@ export default function StockTakesListPage() {
 
   if (!activeRestaurant) {
     return (
-      <div className="p-6">
+      <div>
         <p className="text-sm text-gray-500">Select a restaurant to view stock takes.</p>
       </div>
     )
@@ -132,14 +133,14 @@ export default function StockTakesListPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div>
         <p className="text-sm text-gray-500">Loading stock takes...</p>
       </div>
     )
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl">
+    <PageContainer>
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl font-bold text-gray-900">Stock Takes</h1>
@@ -322,6 +323,6 @@ export default function StockTakesListPage() {
           }}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

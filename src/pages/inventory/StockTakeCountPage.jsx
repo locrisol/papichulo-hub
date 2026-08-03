@@ -76,6 +76,7 @@ export default function StockTakeCountPage() {
             .from('products')
             .select('*')
             .eq('is_active', true)
+            .order('name')
 
         if (productsErr) {
             setError(friendlyError(productsErr))
@@ -499,7 +500,7 @@ export default function StockTakeCountPage() {
                                             key={product.id}
                                             className={`${i < items.length - 1 ? 'border-b border-border' : ''} ${isExpanded ? 'bg-white' : ''} ${!isCounted ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
                                         >
-                                            {/* Row header — tap to expand */}
+                                            {/* Row header, tap to expand */}
                                             <button
                                                 type="button"
                                                 onClick={() => !isClosed && toggleExpand(product.id)}
@@ -607,7 +608,7 @@ export default function StockTakeCountPage() {
                                                         </div>
                                                     )}
 
-                                                    {/* Add a count — per-format fields + optional loose */}
+                                                    {/* Add a count: per-format fields, plus optional loose */}
                                                     {(() => {
                                                         const config = formatsByProductId[product.id] || { formats: [], allowLoose: true }
                                                         const looseAllowed = config.allowLoose || config.formats.length === 0

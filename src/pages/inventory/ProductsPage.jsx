@@ -5,6 +5,32 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
+
+// Every column in the table, in the order it appears.
+//
+// Only some of them can be sorted. Section, Unit and Type are short repeated
+// values, so sorting by them tells you nothing you cannot already see, and Type
+// did nothing at all because MIX products are always first anyway. To pick out
+// one section you use the buttons above the table instead.
+//
+// The widths are there because sorting let the Name column take as much room as
+// it wanted, which squeezed the others until a badge like "Cold Room" broke onto
+// two lines.
+const COLUMNS = [
+  { key: 'name', label: 'Name', sortable: true },
+  { key: 'section', label: 'Section', width: 'w-36' },
+  { key: 'unit', label: 'Unit', width: 'w-20' },
+  { key: 'type', label: 'Type', width: 'w-32' },
+  { key: 'supplier', label: 'Preferred Supplier', sortable: true },
+  { key: 'cost', label: 'Cost/Unit', width: 'w-28', sortable: true },
+  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28', sortable: true },
+]
+
+// Badges carry the meaning now that the MIX row tint is very light, so they are
+// a step stronger than they were. whitespace-nowrap keeps two word labels like
+// "Cold Room" on one line.
+const badge = 'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
 
 export default function ProductsPage() {
   const { activeRestaurant } = useRestaurant()
@@ -33,8 +59,19 @@ export default function ProductsPage() {
     is_active: true,
   })
 
+  // The filter buttons above the table. There is no separate order list any
+  // more: the sort runs across the whole list, so nothing needs to know which
+  // section comes before which.
   const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-  const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+
+  // Which column the table is sorted by, and which way.
+  const [sortBy, setSortBy] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
+
+  function toggleSort(key) {
+    if (sortBy === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(key); setSortDir('asc') }
+  }
 
   useEffect(() => {
     fetchProducts()
@@ -47,10 +84,14 @@ export default function ProductsPage() {
     fetchRecipeLines()
   }, [activeRestaurant])
 
+  // Ordered by name. Without an order the database returns the rows however it
+  // likes, and updating a row moves it, so deactivating a product and turning it
+  // back on sent it somewhere else in the list.
   async function fetchProducts() {
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .order('name')
 
     if (error) setError(friendlyError(error))
     else setProducts(data)
@@ -61,6 +102,7 @@ export default function ProductsPage() {
     const { data } = await supabase
       .from('suppliers')
       .select('*')
+      .order('name')
 
     if (data) setSuppliers(data)
   }
@@ -177,14 +219,64 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
+  // What a product is worth per unit. A MIX is costed from its recipe, a bought
+  // product from its preferred supplier price. Null when neither can be worked
+  // out, which sorts to the bottom rather than pretending to be zero.
+  function unitCostOf(p) {
+    if (p.is_mix) {
+      const result = calculateMixCost(p, products, recipeLines, prices)
+      return result?.cost ?? null
+    }
+    const price = getPreferredPrice(p.id)
+    return price ? parseFloat(price.price_per_unit) : null
+  }
+
+  // The value a column sorts on. Text comes back lowercased so the sort is not
+  // case sensitive, which would otherwise put every capital letter first.
+  function sortValue(p, key) {
+    switch (key) {
+      case 'supplier':
+        return p.is_mix
+          ? ''
+          : (getSupplierName(getPreferredPrice(p.id)?.supplier_id) || '').toLowerCase()
+      case 'cost': return unitCostOf(p)
+      case 'weightLoss': return Number(p.weight_loss_pct) || 0
+      default: return p.name.toLowerCase()
+    }
+  }
+
+  function compareValues(a, b) {
+    // Nulls last whichever way the column is sorted, so "no price set" never
+    // looks like the cheapest thing in the list.
+    if (a === null && b === null) return 0
+    if (a === null) return 1
+    if (b === null) return -1
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    return String(a).localeCompare(String(b))
+  }
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     .filter(p => activeSection === 'All' || p.section === activeSection)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .slice()
     .sort((a, b) => {
-      const sectionDiff = sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section)
-      if (sectionDiff !== 0) return sectionDiff
-      return a.name.localeCompare(b.name)
+      // Sorting runs across the whole list, not inside each section. Sorting by
+      // cost should give the dearest product there is, not the dearest in every
+      // section. If you only want one section you use the buttons above the
+      // table, which is what they are for.
+
+      // MIX products still come first. They are the ones that behave
+      // differently, since their cost comes from a recipe rather than a
+      // supplier, and the yellow row goes with that.
+      if (a.is_mix !== b.is_mix) return a.is_mix ? -1 : 1
+
+      const result = compareValues(sortValue(a, sortBy), sortValue(b, sortBy))
+      const directed = sortDir === 'desc' ? -result : result
+
+      // Same value in the sorted column, so fall back to name to keep the order
+      // stable instead of letting it shuffle on every render.
+      return directed !== 0 ? directed : a.name.localeCompare(b.name)
     })
 
   return (
@@ -269,16 +361,30 @@ export default function ProductsPage() {
       ) : (
         <div className="bg-white rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
+            {/* The heading row used to be bg-gray-50, exactly the same as every
+                other striped row, so it did not read as a heading at all. It is
+                the dark sidebar green now, which there is no mistaking. */}
             <thead>
-              <tr className="border-b border-border bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Section</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Preferred Supplier</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost/Unit</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Weight Loss</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <tr className={tableHeadRow}>
+                {COLUMNS.map(col => (
+                  <th key={col.key} className={`text-left px-4 py-3 whitespace-nowrap ${col.width || ''}`}>
+                    {col.sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col.key)}
+                        className={`flex items-center gap-1 whitespace-nowrap ${tableHeadCell} hover:text-white/70`}
+                      >
+                        {col.label}
+                        <span className={sortBy === col.key ? 'text-accent' : 'text-white/30'}>
+                          {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                        </span>
+                      </button>
+                    ) : (
+                      <span className={`whitespace-nowrap ${tableHeadCell}`}>{col.label}</span>
+                    )}
+                  </th>
+                ))}
+                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -287,23 +393,31 @@ export default function ProductsPage() {
                 const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
                 return (
                   <Fragment key={p.id}>
-                    <tr className={`border-b border-border ${!p.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    {/* MIX rows are yellow the whole way across. They are costed
+                        from a recipe instead of a supplier price, so it matters
+                        which ones they are. Inactive still wins, because a
+                        deactivated product matters more than how it is costed. */}
+                    <tr className={`border-b border-border ${!p.is_active
+                      ? 'bg-red-100'
+                      : p.is_mix
+                        ? 'bg-amber-50'
+                        : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          p.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                        <span className={`${badge} ${
+                          p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'
                         }`}>
                           {p.section}
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        <span className={`${badge} ${
                           !p.is_active
                             ? 'bg-gray-100 text-gray-400'
                             : p.is_mix
-                              ? 'bg-amber-50 text-amber-700'
-                              : 'bg-green-50 text-green-700'
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-green-100 text-green-800'
                         }`}>
                           {p.is_mix ? 'MIX' : 'Purchased'}
                         </span>

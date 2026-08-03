@@ -4,8 +4,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
+import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -165,6 +166,8 @@ export default function WeeklySalesPage() {
             .select('*')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
+            .order('sort_order')
+            .order('name')
 
         if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 
@@ -458,10 +461,17 @@ export default function WeeklySalesPage() {
 
     // ---- rendering helpers ----------------------------------------------
 
+    // One rule across the whole grid: a white box means you can type in it, a
+    // grey fill means it was worked out for you.
+    //
+    // Before this the input borders were the cream border colour on a cream
+    // page, so they barely read as boxes, and the totals and the reconciliation
+    // were bare text with nothing marking them as different. Everything looked
+    // the same on a screen that is nothing but numbers.
     const inputCls =
-        'w-full border border-border rounded-md px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400'
-    const labelCellCls = 'px-3 py-2 text-sm text-gray-700 whitespace-nowrap sticky left-0 bg-white z-10'
-    const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-900 text-right whitespace-nowrap'
+        'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none'
+    const labelCellCls = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-gray-50 z-10'
+    const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap bg-gray-50'
 
     // Called as functions rather than rendered as components, so React keeps the
     // same DOM nodes between renders and inputs do not lose focus while typing.
@@ -560,7 +570,11 @@ export default function WeeklySalesPage() {
         <div>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Weekly sales</h2>
+                    {/* Which month you are in. The column headings give the day
+                        and the date, but on a grid full of numbers it is easy to
+                        lose track of the month, so it is said once up here. */}
+                    <p className="font-serif text-xl font-bold text-gray-900">{weekMonthLabel(weekStart)}</p>
+                    <h2 className="text-lg font-semibold text-gray-900 mt-1">Weekly sales</h2>
                     <p className="text-sm text-gray-500 mt-1">
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>
@@ -568,7 +582,7 @@ export default function WeeklySalesPage() {
                 {/* Switch to the single-day form, for phone use */}
                 <button
                     onClick={() => navigate('/sales?view=day')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Day view
                 </button>
@@ -580,12 +594,17 @@ export default function WeeklySalesPage() {
             {/* Week navigation */}
             <div className="bg-white rounded-xl border border-border p-4 mb-4">
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => shiftWeek(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous week">‹</button>
-                    <span className="text-sm font-medium text-gray-900 px-2">
+                    <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
+                    {/* Fixed width, or the arrows shift sideways every time the
+                        text changes length. "3 Aug - 9 Aug" is a lot narrower
+                        than "31 Aug - 6 Sept", and clicking back through weeks
+                        moved the button out from under the mouse. The width is
+                        set for the longest case, a range crossing a month. */}
+                    <span className="text-sm font-medium text-gray-900 text-center w-44 flex-shrink-0">
                         {shortDate(dates[0])} - {shortDate(dates[6])}
                     </span>
-                    <button type="button" onClick={() => shiftWeek(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next week">›</button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">This week</button>
+                    <button type="button" onClick={() => shiftWeek(1)} className={iconButton} aria-label="Next week">›</button>
+                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className={`ml-1 ${jumpButton(weekStart === weekStartOf(todayISO()))}`}>This week</button>
 
                     {dirty && <span className="text-xs text-amber-600 font-medium ml-2">Unsaved changes</span>}
 
@@ -599,7 +618,7 @@ export default function WeeklySalesPage() {
                             setPickerDate(v)
                             goToWeek(weekStartOf(v))
                         }}
-                        className="ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className={`ml-auto ${dateField}`}
                         aria-label="Jump to week"
                     />
                 </div>
@@ -610,17 +629,23 @@ export default function WeeklySalesPage() {
                 <div className="overflow-x-auto" onKeyDown={handleGridKeyDown}>
                     <table className="w-full min-w-[1000px] table-fixed">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10 w-44">
+                            {/* The first cell is sticky and paints its own
+                                background, so it has to be given the heading
+                                colour too. Otherwise it keeps the old grey and
+                                you see it as soon as you scroll sideways. The
+                                day and date are divs inside the cell, so they
+                                set their own colour rather than inheriting. */}
+                            <tr className={tableHeadRow}>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
                                     &nbsp;
                                 </th>
                                 {dates.map((d, i) => (
                                     <th key={d} className="px-1.5 py-2 text-center w-24">
-                                        <div className="text-xs font-semibold text-gray-700">{DAY_NAMES[i]}</div>
-                                        <div className="text-xs text-gray-400 font-normal">{shortDate(d)}</div>
+                                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
                                     </th>
                                 ))}
-                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Total</th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
                             </tr>
 
                             {/* Closed sits in the header: it is a property of the day */}
