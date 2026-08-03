@@ -393,7 +393,7 @@ export default function SalesPage() {
                                 <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
                                     {varianceWarn
-                                        ? `Over €${VARIANCE_WARN_THRESHOLD} — check the figures`
+                                        ? `Over €${VARIANCE_WARN_THRESHOLD}, check the figures`
                                         : 'cash + card + kiosk + online + catering − gross'}
                                 </div>
                             </div>

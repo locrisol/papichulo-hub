@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
+import { iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Labour hours, entered a week at a time.
 //
@@ -307,7 +307,7 @@ export default function LabourPage() {
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[760px] text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Day</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Hours</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">People</th>

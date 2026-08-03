@@ -6,7 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -196,7 +196,7 @@ export default function InvoiceHistoryPage() {
                 ) : (
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 w-28">
                                     {/* Sorting by date is the only one worth having: you are
                                         almost always looking for something recent or something

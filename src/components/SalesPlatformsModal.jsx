@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
+import { tableHeadRow } from '../lib/controlStyles'
 
 const BUCKETS = [
   { value: 'online_platform', label: 'Online Platform' },
@@ -285,7 +286,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-gray-50">
+              <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Status</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Order</th>

@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow } from '../../lib/controlStyles'
 
 const MARGIN_GREEN = 65
 const MARGIN_AMBER = 60
@@ -431,7 +432,7 @@ export default function MenuItemPage() {
         <div className="bg-white rounded-xl border border-border overflow-hidden mb-6">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-gray-50">
+              <tr className={tableHeadRow}>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Component</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
@@ -631,7 +632,7 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
             <option value="">Select a product...</option>
             {availableProducts.map(p => (
               <option key={p.id} value={p.id}>
-                {p.name} ({p.unit}){p.is_mix ? ' — MIX' : ''}
+                {p.name} ({p.unit}){p.is_mix ? ' (MIX)' : ''}
               </option>
             ))}
           </select>

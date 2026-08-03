@@ -6,7 +6,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
@@ -219,7 +219,7 @@ export default function WasteSummaryPage() {
                 ) : (
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
+                            <tr className={tableHeadRow}>
                                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Quantity</th>
                                 <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Value</th>

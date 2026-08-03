@@ -6,7 +6,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
-import { secondaryButton, iconButton, dateField, jumpButton } from '../../lib/controlStyles'
+import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -629,17 +629,23 @@ export default function WeeklySalesPage() {
                 <div className="overflow-x-auto" onKeyDown={handleGridKeyDown}>
                     <table className="w-full min-w-[1000px] table-fixed">
                         <thead>
-                            <tr className="border-b border-border bg-gray-50">
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10 w-44">
+                            {/* The first cell is sticky and paints its own
+                                background, so it has to be given the heading
+                                colour too. Otherwise it keeps the old grey and
+                                you see it as soon as you scroll sideways. The
+                                day and date are divs inside the cell, so they
+                                set their own colour rather than inheriting. */}
+                            <tr className={tableHeadRow}>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
                                     &nbsp;
                                 </th>
                                 {dates.map((d, i) => (
                                     <th key={d} className="px-1.5 py-2 text-center w-24">
-                                        <div className="text-xs font-semibold text-gray-700">{DAY_NAMES[i]}</div>
-                                        <div className="text-xs text-gray-400 font-normal">{fullDate(d)}</div>
+                                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
                                     </th>
                                 ))}
-                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Total</th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
                             </tr>
 
                             {/* Closed sits in the header: it is a property of the day */}

@@ -10,10 +10,10 @@
 // may_contain it.
 //
 // Inputs:
-//   product            — the product or menu item we're deriving for
-//   allProducts        — every product (for resolving recipe ingredient IDs)
-//   allRecipeLines     — every mix_recipes row (for nested MIX recursion)
-//   allAllergens       — every product_allergens row (one per product max)
+//   product            the product or menu item we are deriving for
+//   allProducts        every product, for resolving recipe ingredient IDs
+//   allRecipeLines     every mix_recipes row, for nested MIX recursion
+//   allAllergens       every product_allergens row, one per product at most
 //
 // For menu items we don't pass the menu_item directly; instead we derive
 // the allergens of each component product separately and merge. See

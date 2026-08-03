@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
+import { tableHeadRow } from '../../lib/controlStyles'
 
 export default function UsersPage() {
   const { user } = useAuth()
@@ -80,7 +81,7 @@ export default function UsersPage() {
         <div className="bg-white rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-gray-50">
+              <tr className={tableHeadRow}>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Restaurant</th>
