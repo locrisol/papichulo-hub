@@ -60,10 +60,10 @@ export default function MenuItemsPage() {
       menuItemsRes, categoriesRes, componentsRes, productsRes,
       recipeLinesRes, allergensRes,
     ] = await Promise.all([
-      supabase.from('menu_items').select('*'),
+      supabase.from('menu_items').select('*').order('name'),
       supabase.from('menu_categories').select('*').order('sort_order'),
       supabase.from('menu_item_components').select('*'),
-      supabase.from('products').select('*'),
+      supabase.from('products').select('*').order('name'),
       supabase.from('mix_recipes').select('*'),
       supabase.from('product_allergens').select('*'),
     ])

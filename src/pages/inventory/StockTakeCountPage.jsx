@@ -76,6 +76,7 @@ export default function StockTakeCountPage() {
             .from('products')
             .select('*')
             .eq('is_active', true)
+            .order('name')
 
         if (productsErr) {
             setError(friendlyError(productsErr))

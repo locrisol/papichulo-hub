@@ -40,9 +40,9 @@ export default function PublicAllergensPreviewPage() {
         async function fetchMenuData() {
             const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
                 supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-                supabase.from('menu_items').select('*').eq('is_active', true),
+                supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
                 supabase.from('menu_item_components').select('*'),
-                supabase.from('products').select('*'),
+                supabase.from('products').select('*').order('name'),
                 supabase.from('mix_recipes').select('*'),
                 supabase.from('product_allergens').select('*'),
             ])

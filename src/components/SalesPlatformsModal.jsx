@@ -42,6 +42,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       .from('sales_platforms')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
+      // sort_order is what the platform list is arranged by, then name to break
+      // ties. Without an order, deactivating a platform moved it in the list.
+      .order('sort_order')
+      .order('name')
 
     if (e1) setError(friendlyError(e1))
     else setPlatforms(data || [])

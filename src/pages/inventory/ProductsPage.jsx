@@ -47,10 +47,14 @@ export default function ProductsPage() {
     fetchRecipeLines()
   }, [activeRestaurant])
 
+  // Ordered by name. Without an order the database returns the rows however it
+  // likes, and updating a row moves it, so deactivating a product and turning it
+  // back on sent it somewhere else in the list.
   async function fetchProducts() {
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .order('name')
 
     if (error) setError(friendlyError(error))
     else setProducts(data)
@@ -61,6 +65,7 @@ export default function ProductsPage() {
     const { data } = await supabase
       .from('suppliers')
       .select('*')
+      .order('name')
 
     if (data) setSuppliers(data)
   }

@@ -55,7 +55,7 @@ export default function StockTakeReviewPage() {
     setSession(sessionData)
 
     const { data: productsData } = await supabase
-      .from('products').select('*').eq('is_active', true)
+      .from('products').select('*').eq('is_active', true).order('name')
     setProducts(productsData || [])
 
     const { data: linesData } = await supabase
