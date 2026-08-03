@@ -44,8 +44,22 @@ function mergeAllergens(target, source) {
   }
 }
 
+// Everything one product carries, including anything it inherits from a recipe.
+//
+// This is the opposite of the cost calculation in one important way. Cost gives
+// up and returns null when an ingredient cannot be priced, because a partial
+// total looks like a real number. Here a missing ingredient is skipped and the
+// rest still answer, because refusing to say anything about a dish would leave
+// the page blank, and blank reads as "no allergens" to somebody standing at the
+// counter.
+//
+// That trade is safe as long as the caller knows the answer could be short.
+// PublicAllergensPage checks for it and tells the customer to ask staff rather
+// than showing an incomplete list as though it were the whole thing.
 export function deriveProductAllergens(product, allProducts, allRecipeLines, allAllergens, visited = new Set()) {
-  // Cycle guard: identical pattern to calculateMixCost.
+  // Cycle guard: identical pattern to calculateMixCost. A copy per branch rather
+  // than one shared set, so the same MIX appearing in two different ingredients
+  // is not mistaken for a loop and silently emptied.
   if (visited.has(product.id)) {
     return emptyAllergens()
   }
@@ -79,6 +93,13 @@ export function deriveProductAllergens(product, allProducts, allRecipeLines, all
   return result
 }
 
+// What a dish carries, worked out from everything in it.
+//
+// This is what the public page shows and what nobody tags by hand. A component
+// pointing at a product that is not in allProducts is skipped, which happens
+// when the caller could not read that product rather than because it does not
+// exist. See the note on deriveProductAllergens above: the caller has to notice
+// that and say so.
 export function deriveMenuItemAllergens(menuItemComponents, allProducts, allRecipeLines, allAllergens) {
   // For a menu item: combine the allergens of every component product.
   // Components themselves never have allergen overrides at the component

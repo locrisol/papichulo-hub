@@ -7,6 +7,22 @@ import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow } from '../../lib/controlStyles'
 
+// One dish: what it is made of, what it costs, and what it contains.
+//
+// The menu items list shows all the dishes at once. This is the screen where you
+// actually build one, by adding components. A component points at a product,
+// bought or made in house, with a quantity.
+//
+// The three numbers on this page all come from somewhere else and none of them
+// are stored. The cost is added up from the components using this restaurant's
+// preferred prices, the margin comes off that against the net selling price, and
+// the allergens are derived by following each component down through its recipe.
+// Nothing here is typed in twice, so nothing can disagree with itself.
+//
+// The same product cannot be added twice to one dish. That is a unique
+// constraint on menu_item_components rather than a check in this file, so it
+// holds however the row got there.
+
 const MARGIN_GREEN = 65
 const MARGIN_AMBER = 60
 

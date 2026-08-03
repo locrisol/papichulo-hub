@@ -1,3 +1,17 @@
+// Every address in the app and who is allowed to open it.
+//
+// The routes are in one file on purpose. Access is decided in two places and
+// they have to agree: the sidebar in AppLayout decides what you are offered, and
+// this decides what happens if you type an address anyway. Both read the same
+// role lists out of lib/access.js, so a link cannot be hidden while the page
+// behind it still loads.
+//
+// None of this protects the data. Row level security does that, in the database,
+// and it holds even if everything here is wrong. This is about not handing
+// somebody a screen that can only turn them away.
+//
+// The public allergen page sits outside ProtectedRoute, because a customer
+// scanning a QR code has no account and never will.
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
@@ -32,7 +46,6 @@ import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
-import { CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -58,10 +71,18 @@ export default function App() {
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />
                 <Route path="/waste/summary" element={<RequireRole allowed={MANAGERS}><WasteSummaryPage /></RequireRole>} />
 
-                {/* The catalogue is readable by everyone: an employee counting
-                    stock needs to see products and their units. Writing is
-                    refused by the database. */}
-                <Route path="/catalogue" element={<RequireRole allowed={MANAGERS}><CatalogueScreen /></RequireRole>} />
+                {/* The catalogue is managers only, because every one of these
+                    screens shows what we pay. An employee counting stock sees
+                    products and units on the stock take screen instead, with no
+                    money on it.
+
+                    Suppliers is the deliberate exception, open to everyone, so
+                    anyone taking a wrong delivery can ring the rep.
+
+                    There is no /catalogue on its own. It used to render an early
+                    design screen with hardcoded products and prices that looked
+                    exactly like real data. Nothing linked to it, but the address
+                    worked. /catalogue/products is the real one. */}
                 <Route path="/catalogue/suppliers" element={<RequireRole allowed={ALL_ROLES}><SuppliersPage /></RequireRole>} />
                 <Route path="/catalogue/products" element={<RequireRole allowed={MANAGERS}><ProductsPage /></RequireRole>} />
                 <Route path="/catalogue/products/:id/prices" element={<RequireRole allowed={MANAGERS}><ProductPricesPage /></RequireRole>} />

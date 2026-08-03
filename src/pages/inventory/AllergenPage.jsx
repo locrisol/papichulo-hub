@@ -3,6 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
 
+// Tagging the 14 allergens on one product.
+//
+// This is where the raw answers are set, and it is the only place they are typed
+// in by a person. Everything else in the app derives from these: a dish works out
+// its own allergens from the products it is made of, so nobody tags a menu item.
+//
+// The 14 are fixed by EU 1169 and cannot be added to or renamed. A product with
+// no record yet is treated as Not Present for all of them, which is why the form
+// opens filled in rather than empty.
+//
+// One row per product, so saving is an insert the first time and an update after.
 const ALLERGENS = [
   { key: 'gluten', label: 'Gluten' },
   { key: 'crustaceans', label: 'Crustaceans' },

@@ -8,6 +8,20 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
+// Every dish we sell, with what it costs us and what it makes.
+//
+// The margin is worked out against the net price, not the price on the menu. VAT
+// is not ours, so counting it as income makes every dish look better than it is.
+//
+// The cost is all or nothing. If one component cannot be costed, because nothing
+// is priced or a MIX in it is incomplete, the whole dish shows no cost and no
+// margin instead of a total that quietly leaves an ingredient out. A margin that
+// is wrong is worse than a margin that is missing, because nobody checks it.
+//
+// Everything here is per restaurant. The selling price is the same in both, but
+// the cost follows whichever supplier that restaurant prefers, so the same dish
+// can have a different margin in each one.
+
 const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
 

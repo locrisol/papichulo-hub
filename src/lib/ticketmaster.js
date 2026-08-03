@@ -7,8 +7,9 @@
 // here ever deletes, and an event that has passed stays exactly where it is.
 // That is what turns a calendar into a history worth training on later.
 //
-// We pull 90 days ahead every time the page opens, so as long as somebody looks
-// at it once every three months, no event is ever missed.
+// We pull six months ahead, and at most twice a day rather than on every page
+// open. As long as somebody looks at the calendar once every six months, no
+// event is ever missed.
 
 const API = 'https://app.ticketmaster.com/discovery/v2/events.json'
 const KEY = import.meta.env.VITE_TICKETMASTER_KEY
@@ -66,7 +67,10 @@ export function mapEvent(e) {
     }
 }
 
-// Everything at the venue in the next 90 days.
+// Everything at the venue between now and DAYS_AHEAD from now.
+//
+// Events with no date are dropped. The date is the only thing every other part
+// of this depends on, so a row without one is no use to anybody.
 export async function fetchUpcomingEvents(venueId) {
     if (!KEY) throw new Error('VITE_TICKETMASTER_KEY is not set')
     if (!venueId) throw new Error('This restaurant has no forecasting venue set')

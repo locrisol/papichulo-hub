@@ -1,6 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Who is signed in.
+//
+// There are two different things here and the app needs both. The session comes
+// from Supabase Auth and only says somebody is logged in. The user is our own
+// row from the users table, and that is where the role and the restaurant live,
+// which is what every permission check actually reads.
+//
+// So there is a moment on every sign-in where there is a session but no user
+// yet. RequireRole has to allow for that gap or it refuses people at random.
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {

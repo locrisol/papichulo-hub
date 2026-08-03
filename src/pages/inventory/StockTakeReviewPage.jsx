@@ -7,6 +7,22 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 
+// The last look before a stock take is closed. Managers only.
+//
+// There is no approval queue while counting: employees add and change their own
+// lines as they go and nothing waits on anyone. This screen is where the checking
+// actually happens, which is why it leads with what has not been counted rather
+// than with what has.
+//
+// Closing is a one-way door in practice. It stamps the time and saves the total
+// value, and from then on the numbers are history. A manager can reopen a session
+// afterwards, and that is recorded with who did it and why, so a late fix leaves
+// a trail instead of quietly rewriting a closed count.
+//
+// A product nobody counted is left with no line at all. It is not written as
+// zero, because zero means somebody looked and there was none, and those two
+// things lead to completely different decisions about ordering.
+
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 function sectionRank(section) {

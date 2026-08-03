@@ -3,6 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import logo from '../../assets/PapiChuloLogo.png'
 
+// The sign in screen.
+//
+// The only page that lives outside the app shell, so it has its own full page
+// layout instead of the sidebar and header.
+//
+// The error deliberately says "Invalid email or password" and never which of the
+// two was wrong. Saying "no account with that email" tells anyone who asks which
+// addresses exist here, which is a free list of who works for us.
+//
+// There is no sign up link because accounts are still created by hand. Letting
+// people register themselves needs the approval flow that is not built yet.
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

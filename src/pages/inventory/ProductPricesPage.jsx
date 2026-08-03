@@ -7,6 +7,21 @@ import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow } from '../../lib/controlStyles'
 
+// Every price we can buy one product at, for the restaurant you are working in.
+//
+// A product comes from more than one supplier, and the same supplier sells it in
+// more than one way, so there are usually several rows here. What makes them
+// different is the supplier, whether it is a case or loose, and the pack size.
+//
+// Exactly one of them is marked preferred, and that single row is what the whole
+// app costs from: menu item margins, waste value, stock take value and the food
+// cost on the dashboard all follow it. Changing which one is preferred changes
+// every one of those numbers, which is why it is a deliberate action and not
+// just whichever price is cheapest.
+//
+// Prices are per restaurant. Both restaurants sell the same dish at the same
+// price, but they can buy the ingredient from different suppliers, so the cost
+// and the margin differ by restaurant while the selling price does not.
 export default function ProductPricesPage() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -198,22 +213,44 @@ export default function ProductPricesPage() {
         setErrors({})
     }
 
+    // Moves the preferred flag to a different price.
+    //
+    // This takes two updates, because supabase-js sends one statement at a time
+    // and there is no transaction around them. So the order matters, and it is
+    // deliberate: set the new one first, then clear the others.
+    //
+    // Doing it the other way round, clearing first, means a failure on the
+    // second update leaves the product with no preferred price at all. Its cost
+    // then reads as nothing in every place that depends on it, the menu margins,
+    // the waste value and the stock take, and nothing on screen says why.
+    //
+    // This way the worst case is two rows briefly marked preferred. The cost
+    // still resolves, it might just resolve to the old supplier until somebody
+    // presses it again, and the error message says something went wrong. A wrong
+    // price is recoverable. A missing one goes unnoticed.
+    //
+    // The clear step deliberately excludes the row we just set, so it cannot
+    // undo its own work.
+    //
+    // Doing both in one database function would remove the window entirely, and
+    // that is the proper fix if this ever actually bites.
     async function setAsPreferred(price) {
         setError('')
 
-        // Unset all preferred for this product+restaurant first
         const { error: e1 } = await supabase
+            .from('product_supplier_prices')
+            .update({ is_preferred: true })
+            .eq('id', price.id)
+
+        if (e1) { setError(friendlyError(e1)); return }
+
+        // Every other price for this product and restaurant.
+        const { error: e2 } = await supabase
             .from('product_supplier_prices')
             .update({ is_preferred: false })
             .eq('product_id', id)
             .eq('restaurant_id', activeRestaurant.id)
-
-        if (e1) { setError(friendlyError(e1)); return }
-
-        const { error: e2 } = await supabase
-            .from('product_supplier_prices')
-            .update({ is_preferred: true })
-            .eq('id', price.id)
+            .neq('id', price.id)
 
         if (e2) setError(friendlyError(e2))
         else fetchPrices()
