@@ -5,6 +5,16 @@ import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow } from '../../lib/controlStyles'
 
+// Everyone with an account, and turning them on or off.
+//
+// What you see here is already decided by the database. The users policies only
+// return the rows your role is allowed to read, so a store manager gets their
+// own restaurant and a super admin gets everybody. This page does not filter
+// anything itself, it shows whatever came back.
+//
+// Deactivating is the only change that can be made from here, and there is no
+// deleting. Everything a person did stays pointing at their row, so removing it
+// would break the history of every count and every waste entry they logged.
 export default function UsersPage() {
   const { user } = useAuth()
   const [users, setUsers] = useState([])

@@ -2,8 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 
-// Editor for the pack formats (Box, Bag, Tin...) on a single price record,
-// plus the allow_loose_count toggle. Formats convert to the product's base unit.
+// The pack formats on one supplier price, plus whether loose counting is on.
+//
+// This exists so a stock take can be counted the way product actually sits in
+// the cold room. Nobody wants to work out that eleven boxes is 66 KG while
+// standing in there with a phone, so they count 11 boxes and the app does it.
+//
+// A format is a label and a factor, where the factor turns one pack into the
+// product's base unit. Box = 6 means one box is 6 KG. Loose counting is separate
+// and lives on the price itself as allow_loose_count, because it is not a pack,
+// it is the leftover you count in the base unit.
+//
+// Formats belong to a price rather than to a product on purpose: two suppliers
+// sell the same thing in different sized boxes.
 export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     const [formats, setFormats] = useState([])
     const [allowLoose, setAllowLoose] = useState(price.allow_loose_count ?? true)

@@ -2,6 +2,20 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 
+// Starts a stock take session.
+//
+// Only one session can be open per restaurant at a time, and that is enforced by
+// a partial unique index in the database rather than by checking here first.
+// Checking first would let two people both look, both see nothing open, and both
+// start one. The insert failing is what actually prevents it, so the error from
+// the database is the thing worth showing.
+//
+// About the type. It is recorded on the session and used for the title and the
+// badge in the history, but it does not yet change what you count: every session
+// type lists every active product. The plan is for count_frequency on products
+// to decide which ones a weekly or daily session includes. That column exists in
+// the database and nothing reads it yet, so the descriptions below describe the
+// intent rather than what happens today.
 const TYPE_OPTIONS = [
   {
     value: 'monthly',

@@ -8,6 +8,21 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 
+// A finished stock take: what was counted, what it was worth, and who did it.
+//
+// The value shown here is not worked out again from today's prices. Every line
+// saved its own unit cost on the day it was counted, so a price change next
+// month does not quietly rewrite what the stock was worth back then. That is the
+// whole point of a stock take having a value at all.
+//
+// A manager can reopen a closed session from here. It asks for a reason and
+// records who reopened it and when, because a closed count is a figure the
+// business acts on, and changing one after the fact should leave a trail rather
+// than just happening.
+//
+// This is also where the PDF comes from, which is the format the owner is used
+// to seeing.
+
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 const SECTION_COLOURS = {

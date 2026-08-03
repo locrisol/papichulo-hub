@@ -8,6 +8,20 @@
 -- gives you two of everything. It is meant for a fresh database only.
 -- =====================================================================
 
+-- The two restaurants we actually run.
+--
+-- Adding a location is a row in here and nothing else. No code knows how many
+-- restaurants there are, which is the whole point of everything being keyed by
+-- restaurant_id.
+--
+-- Only Point Campus gets forecasting, because it is the one across from 3Arena.
+-- Dun Laoghaire has no big venue near it, so a calendar of concerts would tell
+-- them nothing.
+--
+-- KovZ9177WYV is the 3Arena venue ID in the Ticketmaster Discovery API. An
+-- earlier version of this file had a different one, and because a wrong venue ID
+-- returns an empty list rather than an error, it looked exactly like Ticketmaster
+-- simply had no events. Worth checking against the API before ever changing it.
   INSERT INTO public.restaurants (name, location, forecasting_enabled, forecasting_venue_id)
   VALUES (
     'Point Campus',
@@ -21,15 +35,33 @@
     'Dun Laoghaire',
     'Unit 4a, The Pavillions, Marine Road'
   );
+-- The suppliers we actually buy from.
+--
+-- Suppliers are shared by both restaurants, because it is the same company
+-- delivering to both. Which one is preferred for a given product is decided per
+-- restaurant on the price, not here.
+--
+-- The category is what the cost dashboard splits on. Food goes against the food
+-- target and packaging and cleaning go against the other one, so a supplier in
+-- the wrong category moves money between two cost targets. Several of these sell
+-- both, which is what the notes are about: the category is where most of their
+-- invoices land, and the real split is set per invoice when it is entered.
+--
+-- The contact email and phone are deliberately left empty here. They used to
+-- hold the name, work email and mobile number of a real person at each company,
+-- and this repository is public, so that was other people's personal data
+-- published to anyone who looked. Company names are fine, they are public
+-- business information. The actual contacts belong in the live database, typed
+-- in on the suppliers screen, not in a seed file that ships with the code.
   INSERT INTO public.suppliers (name, category, contact_email, contact_phone, notes, is_active)
-  VALUES ('Sysco Ireland', 'food', 'ciara-kehoe@sysco.com', '0877150526', 'Is also Packaging/Non Food', true),
-         ('Henderson Foodservice', 'food', 'brian.topping@bdfoods.ie', '0861722640', 'Is also Packaging/Non Food', true),
-         ('BWG Foodservice', 'food', 'cross@bwg.ie', '0860333505', 'Is also Packaging/Non Food', true),
-         ('Deli Meats Ireland', 'food', 'stephenlsales@delifoods.ie', '0879064876', '', true),
-         ('Blanco Niño', 'food', 'orders@blanco-nino.com', '0879501807', '', true),
-         ('Mexican Things', 'food', 'sales@mexicanthings.ie', '0894344792', '', true),
-         ('PRL Ireland', 'food', 'aleksandra.majewska@prl.ie', '12571487', '', true),
-         ('Sherpack', 'packaging', 'sales@sherpack.ie', '433342130', '', true),
-         ('Zeus', 'packaging', 'sales@zeus.ie', '14018900', '', true),
-         ('Cullen and Bohan', 'packaging', 'rcullen@cullen-bohan.com', '0833059895', '', true),
-         ('Nisbets', 'other', 'keyaccounts@nisbets.ie', '0214946777', '', true);
+  VALUES ('Sysco Ireland', 'food', NULL, NULL, 'Is also Packaging/Non Food', true),
+         ('Henderson Foodservice', 'food', NULL, NULL, 'Is also Packaging/Non Food', true),
+         ('BWG Foodservice', 'food', NULL, NULL, 'Is also Packaging/Non Food', true),
+         ('Deli Meats Ireland', 'food', NULL, NULL, '', true),
+         ('Blanco Niño', 'food', NULL, NULL, '', true),
+         ('Mexican Things', 'food', NULL, NULL, '', true),
+         ('PRL Ireland', 'food', NULL, NULL, '', true),
+         ('Sherpack', 'packaging', NULL, NULL, '', true),
+         ('Zeus', 'packaging', NULL, NULL, '', true),
+         ('Cullen and Bohan', 'packaging', NULL, NULL, '', true),
+         ('Nisbets', 'other', NULL, NULL, '', true);

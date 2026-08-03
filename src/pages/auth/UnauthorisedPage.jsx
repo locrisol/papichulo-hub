@@ -2,6 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { homeFor } from '../../lib/access'
 
+// Where RequireRole sends someone who typed the address of a page their role
+// cannot open.
+//
+// It says the page is not part of your role rather than that it does not exist,
+// because it does exist and pretending otherwise just makes people ask twice.
+// Nothing sensitive is given away by admitting a page is there, since the
+// database is what refuses the data either way.
 export default function UnauthorisedPage() {
   const navigate = useNavigate()
   const { user } = useAuth()

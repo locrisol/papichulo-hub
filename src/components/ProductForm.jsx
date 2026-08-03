@@ -1,3 +1,14 @@
+// The add and edit form for a product.
+//
+// It holds no state of its own. The page owns the values and the validation and
+// passes them down, which is why the same form works for adding a new product
+// and for editing one in place in the table without behaving differently.
+//
+// The section and unit lists are not free text. products has a check constraint
+// on both, so anything not in these lists is refused by the database rather than
+// saved as a typo. If one is ever added it has to go in a migration first.
+//   section  Freezer, Cold Room, Dry, Packaging, Cleaning
+//   unit     KG, Units, Litre
 export default function ProductForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors }) {
   return (
     <form onSubmit={onSubmit}>

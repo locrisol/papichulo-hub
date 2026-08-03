@@ -1,3 +1,19 @@
+// The add and edit form for one supplier price on a product.
+//
+// A supplier sells the same thing in more than one way, so a price is either for
+// a full case or for a loose unit, and purchase_type says which. That choice
+// changes what you have to fill in, which is why the form splits on it rather
+// than showing every box at once:
+//   case   price per case and units per case, and the price per unit is worked
+//          out from those two
+//   loose  the price per unit typed straight in
+//
+// The database has a check constraint on purchase_type allowing only those two.
+//
+// previewPerUnit shows the division as you type. It is only a preview, the real
+// value is worked out again on save, but seeing it immediately catches a units
+// per case that was entered wrong, which otherwise quietly moves the cost of
+// every dish the product goes into.
 export default function PriceForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit }) {
   const isCase = formData.purchase_type === 'case'
 

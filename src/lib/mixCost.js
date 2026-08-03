@@ -14,6 +14,12 @@
 //                                                     or MIX, could not be costed
 //   { cost: null, status: 'cycle' }                   the recipe references itself,
 //                                                     directly or through another
+//
+// It is all or nothing on purpose. If one ingredient out of ten cannot be
+// costed, the answer is null rather than the total of the other nine. A partial
+// cost is more dangerous than no cost, because it arrives as a real number and
+// nothing about it looks wrong. It just quietly makes the margin on that dish
+// look better than it is.
 
 export function calculateMixCost(product, allProducts, allRecipeLines, preferredPrices, visited = new Set()) {
   // Cycle detection: if we're already computing this product's cost
@@ -43,6 +49,12 @@ export function calculateMixCost(product, allProducts, allRecipeLines, preferred
 
   // Recursively cost each ingredient line, tracking visited so a cycle
   // somewhere deeper is detected.
+  //
+  // A fresh copy per branch rather than one shared set, and that matters. A
+  // shared set would remember every MIX seen anywhere in the tree, so a MIX used
+  // legitimately in two different ingredients would look like a loop the second
+  // time and cost nothing. Copying means visited only ever holds the chain above
+  // this point, which is what a cycle actually is.
   const nextVisited = new Set(visited)
   nextVisited.add(product.id)
 

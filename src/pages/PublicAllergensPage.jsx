@@ -10,6 +10,33 @@ const ALLERGEN_LABELS = {
   lupin: 'Lupin', molluscs: 'Molluscs',
 }
 
+// The allergen page customers see, at /allergens/[slug]. No login.
+//
+// Nothing here is tagged by hand. Each dish works its allergens out from its
+// ingredients, following recipes down through nested MIXes and taking the worst
+// answer at every step, so the page cannot drift out of date the way the old
+// spreadsheet did. That logic lives in lib/allergens.js.
+//
+// Two things to know about this file.
+//
+// It is used twice. A customer opens it from a QR code, and it is also embedded
+// inside the manager's preview screen, which passes slugOverride instead of
+// reading the slug from the address.
+//
+// And there is one thing still open, worth knowing before trusting this page.
+//
+// For a customer the database hides deactivated rows on its own, because the
+// public policies are written as auth.uid() IS NULL AND is_active = true. That
+// applies to products too. So if a dish that is still on sale contains an
+// ingredient somebody has since deactivated, the customer's copy of that product
+// never arrives, the component is skipped, and the allergens it carried are
+// quietly missing from what they are shown.
+//
+// Nothing triggers it today: no active dish currently contains a deactivated
+// product. But nothing stops it either, and this is the one page where being
+// quietly incomplete matters, so it wants either a policy that lets the public
+// read every product, or a warning when deactivating something still used in a
+// dish that is on sale.
 export default function PublicAllergensPage({ slugOverride }) {
   const params = useParams()
   const slug = slugOverride ?? params.slug
@@ -49,9 +76,21 @@ export default function PublicAllergensPage({ slugOverride }) {
     }
     setRestaurant(restRes.data)
 
+    // Categories and dishes are filtered here as well as by the database. For a
+    // customer the public policies already do it, but the manager previewing
+    // this page is signed in, and the signed-in policies have no is_active
+    // condition, so without this the preview showed dishes a customer never
+    // gets. Asking for it explicitly means the page behaves the same whoever is
+    // looking at it.
+    //
+    // Products deliberately are not filtered. They are not a list on screen,
+    // they are what the allergens are worked out from, and a dish can contain a
+    // product that has since been deactivated. Leaving it out would drop that
+    // product's allergens from the answer, which is the one thing this page
+    // cannot get wrong.
     const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
-      supabase.from('menu_categories').select('*').order('sort_order'),
-      supabase.from('menu_items').select('*').order('name'),
+      supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
+      supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
       supabase.from('menu_item_components').select('*'),
       supabase.from('products').select('*').order('name'),
       supabase.from('mix_recipes').select('*'),
@@ -74,6 +113,25 @@ export default function PublicAllergensPage({ slugOverride }) {
 
   function getItemAllergens(item) {
     return deriveMenuItemAllergens(getItemComponents(item.id), products, recipeLines, allergens)
+  }
+
+  // Whether every ingredient in this dish actually arrived.
+  //
+  // A customer is not signed in, and the database only hands an anonymous reader
+  // active products. So if an ingredient is deactivated while the dish is still
+  // on sale, its row never arrives. deriveMenuItemAllergens skips a component it
+  // cannot find, which would quietly turn "we do not know" into "no declared
+  // allergens", and that is the worst way to be wrong on this page in
+  // particular.
+  //
+  // The components themselves are always readable, so the gap can be spotted
+  // even though the missing product cannot be fetched. When it happens the dish
+  // says to ask staff instead of showing a list that looks complete.
+  //
+  // A manager viewing this through the preview is signed in and gets every
+  // product, so this reads false for them and nothing changes.
+  function allIngredientsReadable(item) {
+    return getItemComponents(item.id).every(c => products.some(p => p.id === c.product_id))
   }
 
   function getAllergenSummary(state) {
@@ -178,6 +236,7 @@ export default function PublicAllergensPage({ slugOverride }) {
                       .map(key => ({ key, state: itemAllergens[key] }))
                       .filter(a => a.state !== 'none')
                     const isExpanded = expandedId === item.id
+                    const complete = allIngredientsReadable(item)
 
                     return (
                       <div
@@ -193,7 +252,12 @@ export default function PublicAllergensPage({ slugOverride }) {
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-gray-900">{item.name}</p>
                               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                {present.length === 0 ? (
+                                {!complete ? (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    Please ask a member of staff
+                                  </span>
+                                ) : present.length === 0 ? (
                                   <span className="text-xs text-gray-500">No declared allergens</span>
                                 ) : (
                                   present.map(({ key, state }) => {
@@ -219,6 +283,15 @@ export default function PublicAllergensPage({ slugOverride }) {
 
                         {isExpanded && (
                           <div className="px-4 pb-4 bg-gray-50">
+                            {/* The breakdown below is worked out from the
+                                ingredients, so if one of them could not be read
+                                it is incomplete and saying nothing about that
+                                would be worse than saying nothing at all. */}
+                            {!complete && (
+                              <div className="bg-amber-100 border border-amber-300 text-amber-900 text-xs rounded-lg p-3 mt-2">
+                                We cannot confirm the full allergen list for this dish right now. Please ask a member of staff before ordering it.
+                              </div>
+                            )}
                             <div className="grid grid-cols-2 gap-2 mt-2">
                               {ALLERGEN_KEYS.map(key => {
                                 const state = itemAllergens[key]

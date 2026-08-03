@@ -2,6 +2,20 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
+// Which restaurant you are working in.
+//
+// Nearly every screen filters by this, so it lives here rather than being picked
+// up again on each page. Sales, invoices, labour, waste, prices and cost targets
+// all belong to one restaurant, and the same dish can cost different money in
+// each because they buy from different suppliers.
+//
+// Only super admins and owners ever have more than one. For everybody else the
+// query below returns a single row, which is why the switcher never appears for
+// them: there is nothing to switch to.
+//
+// The choice is kept in localStorage rather than in the database, because it is
+// about the browser you are sitting at, not about the person. A manager checking
+// something on the office laptop should not change what their phone opens on.
 const RestaurantContext = createContext(null)
 
 export function RestaurantProvider({ children }) {

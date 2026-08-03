@@ -7,6 +7,20 @@ import StartStockTakeModal from '../../components/StartStockTakeModal'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 
+// The way in to stock takes: whatever is open now, and the last ten that closed.
+//
+// This is the first screen everyone sees, employees included, so it has to
+// answer one question straight away: is there a count on, and how far through is
+// it. That is what the progress on the active session is for.
+//
+// Only one session can be open per restaurant at a time. The database enforces
+// that, not this page, so the Start button showing does not mean starting will
+// work. If somebody else opened one first the insert is refused and the message
+// says so.
+//
+// Employees can see this list and can count, but they cannot open or close a
+// session. Reviewing and closing is a manager job, which is why those live on
+// separate screens rather than as buttons here.
 export default function StockTakesListPage() {
   const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
