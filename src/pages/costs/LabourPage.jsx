@@ -6,6 +6,7 @@ import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 // Labour hours, entered a week at a time.
 //
@@ -246,7 +247,7 @@ export default function LabourPage() {
     }
 
     return (
-        <div className="max-w-4xl">
+        <PageContainer>
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Labour</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -375,6 +376,6 @@ export default function LabourPage() {
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
-        </div>
+        </PageContainer>
     )
 }

@@ -7,6 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { resolveRowOrder } from './WeeklySalesPage'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 // Threshold above which the reconciliation is flagged for review.
 const VARIANCE_WARN_THRESHOLD = 10
@@ -298,11 +299,11 @@ export default function SalesPage() {
     }
 
     if (loading) {
-        return <div className="max-w-2xl"><p className="text-sm text-gray-400">Loading...</p></div>
+        return <PageContainer width="form"><p className="text-sm text-gray-400">Loading...</p></PageContainer>
     }
 
     return (
-        <div className="max-w-2xl">
+        <PageContainer width="form">
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
@@ -323,90 +324,105 @@ export default function SalesPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
-            {/* Date selector */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-3">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => shiftDate(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
-                        <input type="date" value={saleDate} onChange={e => setSaleDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-                        <button type="button" onClick={() => shiftDate(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
-                        <button type="button" onClick={() => setSaleDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
+            {/* Two columns once there is room for them. The left is the day
+                and the money off the till, finishing with the reconciliation,
+                which is the number you are actually checking. The right is the
+                extra detail that does not go into that number. On a phone it
+                stacks back into one column in the same order. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div>
+                    {/* Date selector */}
+                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => shiftDate(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
+                                <input type="date" value={saleDate} onChange={e => setSaleDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+                                <button type="button" onClick={() => shiftDate(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
+                                <button type="button" onClick={() => setSaleDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
+                            </div>
+                            {recordId && <span className="text-xs text-amber-600 font-medium">Existing record</span>}
+                        </div>
                     </div>
-                    {recordId && <span className="text-xs text-amber-600 font-medium">Existing record</span>}
+
+                    {/* Non-trading day */}
+                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={isClosed}
+                                onChange={e => setIsClosed(e.target.checked)}
+                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                            />
+                            <div>
+                                <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    Marks the day as not trading. Closed days are excluded from daily averages.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    {/* Everything below is irrelevant on a closed day, so it is hidden. */}
+                    {!isClosed && (
+                        <>
+                            {/* Till receipt block, in the order set in Restaurant settings */}
+                            <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {receiptRows.map(row => (
+                                        <div key={row.key}>
+                                            <label className={labelCls}>{row.label}</label>
+                                            <input
+                                                type="number" step="0.01" inputMode="decimal"
+                                                value={values[row.key] ?? ''}
+                                                onChange={e => setValue(row.key, e.target.value)}
+                                                className={fieldCls}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Reconciliation closes the receipt block */}
+                            <div className={`rounded-xl p-4 mb-3 ${varianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
+                                <div className={`text-xs mb-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>Reconciliation</div>
+                                <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
+                                <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
+                                    {varianceWarn
+                                        ? `Over €${VARIANCE_WARN_THRESHOLD} — check the figures`
+                                        : 'cash + card + kiosk + online + catering − gross'}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
-            </div>
 
-            {/* Non-trading day */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={isClosed}
-                        onChange={e => setIsClosed(e.target.checked)}
-                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-                    />
+                {/* The right column is all about a trading day, so on a closed
+                    day there is nothing to put in it. */}
+                {!isClosed && (
                     <div>
-                        <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                            Marks the day as not trading. Closed days are excluded from daily averages.
-                        </p>
-                    </div>
-                </label>
-            </div>
+                        {/* Platform detail, outside the reconciliation */}
+                        {trackingBucket('Online Platform', onlinePlatforms, 'onlineSales')}
+                        {trackingBucket('Catering', cateringPlatforms, 'cateringSales')}
 
-            {/* Everything below is irrelevant on a closed day, so it is hidden. */}
-            {!isClosed && (
-                <>
-                    {/* Till receipt block, in the order set in Restaurant settings */}
-                    <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            {receiptRows.map(row => (
-                                <div key={row.key}>
-                                    <label className={labelCls}>{row.label}</label>
+                        <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelCls}>Staff food</label>
                                     <input
                                         type="number" step="0.01" inputMode="decimal"
-                                        value={values[row.key] ?? ''}
-                                        onChange={e => setValue(row.key, e.target.value)}
+                                        value={staffFood}
+                                        onChange={e => setStaffFood(e.target.value)}
                                         className={fieldCls}
                                         placeholder="0.00"
                                     />
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Reconciliation closes the receipt block */}
-                    <div className={`rounded-xl p-4 mb-3 ${varianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
-                        <div className={`text-xs mb-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>Reconciliation</div>
-                        <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
-                        <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
-                            {varianceWarn
-                                ? `Over €${VARIANCE_WARN_THRESHOLD} — check the figures`
-                                : 'cash + card + kiosk + online + catering − gross'}
-                        </div>
-                    </div>
-
-                    {/* Platform detail, outside the reconciliation */}
-                    {trackingBucket('Online Platform', onlinePlatforms, 'onlineSales')}
-                    {trackingBucket('Catering', cateringPlatforms, 'cateringSales')}
-
-                    <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={labelCls}>Staff food</label>
-                                <input
-                                    type="number" step="0.01" inputMode="decimal"
-                                    value={staffFood}
-                                    onChange={e => setStaffFood(e.target.value)}
-                                    className={fieldCls}
-                                    placeholder="0.00"
-                                />
                             </div>
                         </div>
                     </div>
-                </>
-            )}
+                )}
+            </div>
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
@@ -417,6 +433,6 @@ export default function SalesPage() {
                             : (recordId ? 'Update day' : 'Save day')}
                 </button>
             </div>
-        </div>
+        </PageContainer>
     )
 }

@@ -6,6 +6,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
+import PageContainer from '../../components/layout/PageContainer'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -150,7 +151,7 @@ export default function InvoicesPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <div className="max-w-3xl">
+        <PageContainer>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Invoices</h2>
@@ -282,6 +283,6 @@ export default function InvoicesPage() {
                     </table>
                 )}
             </div>
-        </div>
+        </PageContainer>
     )
 }
