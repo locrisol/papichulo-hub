@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
+import { friendlyError } from '../../lib/errors'
 
 const MARGIN_GREEN = 65
 const MARGIN_AMBER = 60
@@ -87,7 +88,7 @@ export default function MenuItemPage() {
       supabase.from('product_allergens').select('*'),
     ])
 
-    if (itemRes.error) { setError(itemRes.error.message); setLoading(false); return }
+    if (itemRes.error) { setError(friendlyError(itemRes.error)); setLoading(false); return }
     setItem(itemRes.data)
     setHeaderForm(emptyHeaderForm(itemRes.data))
 
@@ -146,7 +147,7 @@ export default function MenuItemPage() {
       .update(payload)
       .eq('id', id)
 
-    if (err) setError(err.message)
+    if (err) setError(friendlyError(err))
     else {
       setHeaderSavedMessage('Saved')
       fetchAll()
@@ -207,7 +208,7 @@ export default function MenuItemPage() {
     if (err.code === '23505') {
       setError('This product is already a component of this menu item. Edit the existing row instead.')
     } else {
-      setError(err.message)
+      setError(friendlyError(err))
     }
   }
 
@@ -243,7 +244,7 @@ export default function MenuItemPage() {
       .from('menu_item_components')
       .delete()
       .eq('id', component.id)
-    if (err) setError(err.message)
+    if (err) setError(friendlyError(err))
     else fetchComponents()
   }
 

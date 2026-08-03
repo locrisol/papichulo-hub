@@ -3,6 +3,11 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
+import RequireRole from './components/RequireRole'
+import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from './lib/access'
+import { useAuth } from './context/AuthContext'
+import { homeFor } from './lib/access'
+
 import UsersPage from './pages/settings/UsersPage'
 import RestaurantPage from './pages/settings/RestaurantPage'
 import SuppliersPage from './pages/inventory/SuppliersPage'
@@ -26,7 +31,8 @@ import LabourPage from './pages/costs/LabourPage'
 import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
-import { ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
+import EventCalendarPage from './pages/forecast/EventCalendarPage'
+import { CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -40,31 +46,44 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <Routes>
-                <Route path="/dashboard" element={<CostDashboardPage />} />
-                <Route path="/sales" element={<SalesPage />} />
-                <Route path="/sales/weekly" element={<WeeklySalesPage />} />
-                <Route path="/invoices" element={<InvoicesPage />} />
-                <Route path="/invoices/history" element={<InvoiceHistoryPage />} />
-                <Route path="/waste" element={<WasteLogPage />} />
-                <Route path="/waste/summary" element={<WasteSummaryPage />} />
-                <Route path="/catalogue" element={<CatalogueScreen />} />
-                <Route path="/catalogue/suppliers" element={<SuppliersPage />} />
-                <Route path="/catalogue/products" element={<ProductsPage />} />
-                <Route path="/catalogue/products/:id/prices" element={<ProductPricesPage />} />
-                <Route path="/catalogue/products/:id/recipe" element={<RecipePage />} />
-                <Route path="/catalogue/products/:id/allergens" element={<AllergenPage />} />
-                <Route path="/catalogue/menu-items" element={<MenuItemsPage />} />
-                <Route path="/catalogue/menu-items/:id" element={<MenuItemPage />} />
-                <Route path="/inventory/stock-takes" element={<StockTakesListPage />} />
-                <Route path="/inventory/stock-takes/:id" element={<StockTakeCountPage />} />
-                <Route path="/inventory/stock-takes/:id/review" element={<StockTakeReviewPage />} />
-                <Route path="/inventory/stock-takes/:id/summary" element={<StockTakeSummaryPage />} />
-                <Route path="/inventory/public-allergens" element={<PublicAllergensPreviewPage />} />
-                <Route path="/costs/labour" element={<LabourPage />} />
-                <Route path="/forecast" element={<ForecastScreen />} />
-                <Route path="/settings/users" element={<UsersPage />} />
-                <Route path="/settings/restaurant" element={<RestaurantPage />} />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                {/* Managers and above. Employees have no access to money. */}
+                <Route path="/dashboard" element={<RequireRole allowed={MANAGERS}><CostDashboardPage /></RequireRole>} />
+                <Route path="/sales" element={<RequireRole allowed={MANAGERS}><SalesPage /></RequireRole>} />
+                <Route path="/sales/weekly" element={<RequireRole allowed={MANAGERS}><WeeklySalesPage /></RequireRole>} />
+                <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
+                <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
+                <Route path="/costs/labour" element={<RequireRole allowed={MANAGERS}><LabourPage /></RequireRole>} />
+
+                {/* Anyone logs waste; only managers see the week. */}
+                <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />
+                <Route path="/waste/summary" element={<RequireRole allowed={MANAGERS}><WasteSummaryPage /></RequireRole>} />
+
+                {/* The catalogue is readable by everyone: an employee counting
+                    stock needs to see products and their units. Writing is
+                    refused by the database. */}
+                <Route path="/catalogue" element={<RequireRole allowed={MANAGERS}><CatalogueScreen /></RequireRole>} />
+                <Route path="/catalogue/suppliers" element={<RequireRole allowed={ALL_ROLES}><SuppliersPage /></RequireRole>} />
+                <Route path="/catalogue/products" element={<RequireRole allowed={MANAGERS}><ProductsPage /></RequireRole>} />
+                <Route path="/catalogue/products/:id/prices" element={<RequireRole allowed={MANAGERS}><ProductPricesPage /></RequireRole>} />
+                <Route path="/catalogue/products/:id/recipe" element={<RequireRole allowed={MANAGERS}><RecipePage /></RequireRole>} />
+                <Route path="/catalogue/products/:id/allergens" element={<RequireRole allowed={MANAGERS}><AllergenPage /></RequireRole>} />
+                <Route path="/catalogue/menu-items" element={<RequireRole allowed={MANAGERS}><MenuItemsPage /></RequireRole>} />
+                <Route path="/catalogue/menu-items/:id" element={<RequireRole allowed={MANAGERS}><MenuItemPage /></RequireRole>} />
+
+                {/* Counting is the employee's job. Reviewing and closing is not. */}
+                <Route path="/inventory/stock-takes" element={<RequireRole allowed={ALL_ROLES}><StockTakesListPage /></RequireRole>} />
+                <Route path="/inventory/stock-takes/:id" element={<RequireRole allowed={ALL_ROLES}><StockTakeCountPage /></RequireRole>} />
+                <Route path="/inventory/stock-takes/:id/review" element={<RequireRole allowed={MANAGERS}><StockTakeReviewPage /></RequireRole>} />
+                <Route path="/inventory/stock-takes/:id/summary" element={<RequireRole allowed={MANAGERS}><StockTakeSummaryPage /></RequireRole>} />
+                <Route path="/inventory/public-allergens" element={<RequireRole allowed={MANAGERS}><PublicAllergensPreviewPage /></RequireRole>} />
+
+                <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
+
+                {/* Settings. Restaurant configuration excludes owners. */}
+                <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
+                <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
+
+                <Route path="/" element={<HomeRedirect />} />
               </Routes>
             </AppLayout>
           </ProtectedRoute>
@@ -72,4 +91,12 @@ export default function App() {
       />
     </Routes>
   )
+}
+
+// The dashboard is no use to an employee, who cannot read any of it, so send
+// them where their work actually is.
+function HomeRedirect() {
+    const { session, user, loading } = useAuth()
+    if (loading || (session && !user)) return null
+    return <Navigate to={homeFor(user)} replace />
 }

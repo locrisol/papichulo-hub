@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
+import { friendlyError } from '../../lib/errors'
 
 export default function StockTakesListPage() {
   const navigate = useNavigate()
@@ -42,7 +43,7 @@ export default function StockTakesListPage() {
       .limit(11) // 1 active + 10 closed at most
 
     if (sessionErr) {
-      setError(sessionErr.message)
+      setError(friendlyError(sessionErr))
       setLoading(false)
       return
     }
@@ -56,11 +57,7 @@ export default function StockTakesListPage() {
     // If there's an active session, compute progress: how many products
     // have at least one line, vs total active products in the restaurant.
     if (active) {
-      const [{ count: countedProducts }, { count: totalProducts }, { count: totalLines }] = await Promise.all([
-        supabase
-          .from('stock_take_lines')
-          .select('product_id', { count: 'exact', head: true })
-          .eq('stock_take_id', active.id),
+      const [{ count: totalProducts }, { count: totalLines }] = await Promise.all([
         supabase
           .from('products')
           .select('id', { count: 'exact', head: true })
@@ -71,8 +68,8 @@ export default function StockTakesListPage() {
           .eq('stock_take_id', active.id),
       ])
 
-      // countedProducts above actually counts all line rows, not distinct
-      // products. We need distinct. Do a follow-up fetch of distinct product_ids.
+      // A count of stock_take_lines gives all line rows, not distinct products,
+      // so fetch the product_ids and count the distinct ones instead.
       const { data: linesForDistinct } = await supabase
         .from('stock_take_lines')
         .select('product_id')
@@ -93,7 +90,7 @@ export default function StockTakesListPage() {
   }
 
   function formatDateTime(iso) {
-    if (!iso) return '—'
+    if (!iso) return '-'
     return new Date(iso).toLocaleString('en-IE', {
       day: 'numeric',
       month: 'short',
@@ -104,7 +101,7 @@ export default function StockTakesListPage() {
   }
 
   function formatDate(iso) {
-    if (!iso) return '—'
+    if (!iso) return '-'
     return new Date(iso).toLocaleDateString('en-IE', {
       day: 'numeric',
       month: 'short',
@@ -147,7 +144,8 @@ export default function StockTakesListPage() {
         <div>
           <h1 className="font-serif text-2xl font-bold text-gray-900">Stock Takes</h1>
           <p className="text-sm text-muted mt-1">
-            {activeRestaurant.name} — physical inventory counts and history.
+            {activeRestaurant.name}
+            {isManager ? ' | physical inventory counts and history.' : ' | count what is physically in the kitchen and storage.'}
           </p>
         </div>
 
@@ -187,7 +185,7 @@ export default function StockTakesListPage() {
                 </span>
               </div>
               <h2 className="font-serif text-lg font-bold text-gray-900">
-                {activeSession.notes || `${typeLabel(activeSession.type)} count — ${formatDate(activeSession.started_at)}`}
+                {activeSession.notes || `${typeLabel(activeSession.type)} count, ${formatDate(activeSession.started_at)}`}
               </h2>
               <p className="text-sm text-muted mt-1">
                 Started by {activeSession.starter?.full_name || 'Unknown'} on {formatDateTime(activeSession.started_at)}
@@ -231,19 +229,32 @@ export default function StockTakesListPage() {
         </div>
       )}
 
-      {/* History */}
-      <section>
-        <h2 className="text-sm font-bold uppercase tracking-widest text-muted mb-3">
-          {closedSessions.length === 0 && !activeSession ? '' : 'History'}
-        </h2>
+      {/* An employee with nothing to count needs to know why the page is empty.
+          They do not get the history below, so without this they would see
+          nothing at all. */}
+      {!isManager && !activeSession && (
+        <div className="bg-white border border-border rounded-xl p-10 text-center">
+          <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">Nothing to count right now</h3>
+          <p className="text-sm text-muted max-w-sm mx-auto">
+            A manager needs to start a stock take before you can count.
+          </p>
+        </div>
+      )}
 
-        {closedSessions.length === 0 && !activeSession ? (
-          <div className="bg-white border border-border rounded-xl p-10 text-center">
-            <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">No stock takes yet</h3>
-            <p className="text-sm text-muted mb-5 max-w-sm mx-auto">
-              Stock takes record what's physically in your kitchen and storage. Start one to count your current inventory.
-            </p>
-            {isManager && (
+      {/* History is managers only. An employee cannot open a closed session, so
+          listing them would only give them things to click that turn them away. */}
+      {isManager && (
+        <section>
+          <h2 className="text-sm font-bold uppercase tracking-widest text-muted mb-3">
+            {closedSessions.length === 0 && !activeSession ? '' : 'History'}
+          </h2>
+
+          {closedSessions.length === 0 && !activeSession ? (
+            <div className="bg-white border border-border rounded-xl p-10 text-center">
+              <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">No stock takes yet</h3>
+              <p className="text-sm text-muted mb-5 max-w-sm mx-auto">
+                Stock takes record what is physically in your kitchen and storage. Start one to count what you have now.
+              </p>
               <button
                 type="button"
                 onClick={() => setShowStartModal(true)}
@@ -251,57 +262,54 @@ export default function StockTakesListPage() {
               >
                 Start your first stock take
               </button>
-            )}
-            {!isManager && (
-              <p className="text-xs text-muted italic">A manager needs to start a stock take before you can count.</p>
-            )}
-          </div>
-        ) : closedSessions.length === 0 ? (
-          <p className="text-sm text-muted italic">No closed stock takes yet.</p>
-        ) : (
-          <div className="bg-white border border-border rounded-xl overflow-hidden">
-            {closedSessions.map((session, i) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => navigate(`/inventory/stock-takes/${session.id}/summary`)}
-                className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${i < closedSessions.length - 1 ? 'border-b border-border' : ''}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${typeBadgeClass(session.type)}`}>
-                        {typeLabel(session.type)}
-                      </span>
-                      {session.reopened_at && (
-                        <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
-                          Reopened
+            </div>
+          ) : closedSessions.length === 0 ? (
+            <p className="text-sm text-muted italic">No closed stock takes yet.</p>
+          ) : (
+            <div className="bg-white border border-border rounded-xl overflow-hidden">
+              {closedSessions.map((session, i) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => navigate(`/inventory/stock-takes/${session.id}/summary`)}
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${i < closedSessions.length - 1 ? 'border-b border-border' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${typeBadgeClass(session.type)}`}>
+                          {typeLabel(session.type)}
                         </span>
+                        {session.reopened_at && (
+                          <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                            Reopened
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-medium text-gray-900">
+                        {session.notes || `${typeLabel(session.type)} count, ${formatDate(session.started_at)}`}
+                      </p>
+                      <p className="text-xs text-muted mt-0.5">
+                        Started {formatDateTime(session.started_at)}
+                        {session.completed_at && ` · Closed ${formatDateTime(session.completed_at)}`}
+                        {session.starter?.full_name && ` · by ${session.starter.full_name}`}
+                      </p>
+                      {session.reopened_at && session.reopen_reason && (
+                        <p className="text-xs text-amber-700 mt-1 italic">
+                          Reopened {formatDateTime(session.reopened_at)} by {session.reopener?.full_name || 'Unknown'}: {session.reopen_reason}
+                        </p>
                       )}
                     </div>
-                    <p className="font-medium text-gray-900">
-                      {session.notes || `${typeLabel(session.type)} count — ${formatDate(session.started_at)}`}
-                    </p>
-                    <p className="text-xs text-muted mt-0.5">
-                      Started {formatDateTime(session.started_at)}
-                      {session.completed_at && ` • Closed ${formatDateTime(session.completed_at)}`}
-                      {session.starter?.full_name && ` • by ${session.starter.full_name}`}
-                    </p>
-                    {session.reopened_at && session.reopen_reason && (
-                      <p className="text-xs text-amber-700 mt-1 italic">
-                        Reopened {formatDateTime(session.reopened_at)} by {session.reopener?.full_name || 'Unknown'}: {session.reopen_reason}
-                      </p>
-                    )}
+                    <svg className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
                   </div>
-                  <svg className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {showStartModal && (
         <StartStockTakeModal

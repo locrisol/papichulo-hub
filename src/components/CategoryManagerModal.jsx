@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { friendlyError } from '../lib/errors'
 
 export default function CategoryManagerModal({ categories, onClose, onChange }) {
   const [error, setError] = useState('')
@@ -33,7 +34,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
     if (e1) {
       // 23505 = unique violation on name
-      setError(e1.code === '23505' ? 'A category with that name already exists' : e1.message)
+      setError(e1.code === '23505' ? 'A category with that name already exists' : friendlyError(e1))
       return
     }
 
@@ -76,7 +77,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
       .eq('id', category.id)
 
     if (e1) {
-      setError(e1.code === '23505' ? 'A category with that name already exists' : e1.message)
+      setError(e1.code === '23505' ? 'A category with that name already exists' : friendlyError(e1))
       return
     }
 
@@ -90,7 +91,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
       .update({ is_active: !category.is_active })
       .eq('id', category.id)
 
-    if (e1) setError(e1.message)
+    if (e1) setError(friendlyError(e1))
     else onChange()
   }
 

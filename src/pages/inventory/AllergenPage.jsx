@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { friendlyError } from '../../lib/errors'
 
 const ALLERGENS = [
   { key: 'gluten', label: 'Gluten' },
@@ -69,7 +70,7 @@ export default function AllergenPage() {
       .single()
 
     if (productError) {
-      setError(productError.message)
+      setError(friendlyError(productError))
       setLoading(false)
       return
     }
@@ -84,7 +85,7 @@ export default function AllergenPage() {
       .maybeSingle()
 
     if (allergenError) {
-      setError(allergenError.message)
+      setError(friendlyError(allergenError))
       setLoading(false)
       return
     }
@@ -126,7 +127,7 @@ export default function AllergenPage() {
       .upsert(payload, { onConflict: 'product_id' })
 
     if (error) {
-      setError(error.message)
+      setError(friendlyError(error))
     } else {
       setSavedMessage('Saved')
       // Refetch so the "Last updated" timestamp shown is the one

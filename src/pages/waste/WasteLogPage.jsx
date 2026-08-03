@@ -7,6 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
+import { friendlyError } from '../../lib/errors'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -67,7 +68,7 @@ export default function WasteLogPage() {
                 .eq('is_active', true)
                 .order('name')
 
-            if (pErr) { setError(pErr.message); setLoading(false); return }
+            if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
             setProducts(prods || [])
 
             // Needed to cost a MIX, which has no supplier price of its own.
@@ -75,7 +76,7 @@ export default function WasteLogPage() {
                 .from('mix_recipes')
                 .select('*')
 
-            if (rErr) { setError(rErr.message); setLoading(false); return }
+            if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
             setRecipeLines(recipes || [])
 
             const { data: priceRows, error: prErr } = await supabase
@@ -84,7 +85,7 @@ export default function WasteLogPage() {
                 .eq('restaurant_id', restaurantId)
                 .eq('is_preferred', true)
 
-            if (prErr) { setError(prErr.message); setLoading(false); return }
+            if (prErr) { setError(friendlyError(prErr)); setLoading(false); return }
             setPrices(priceRows || [])
 
             const { data: logs, error: wErr } = await supabase
@@ -94,14 +95,13 @@ export default function WasteLogPage() {
                 .eq('log_date', logDate)
                 .order('created_at', { ascending: true })
 
-            if (wErr) { setError(wErr.message); setLoading(false); return }
+            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
             setEntries(logs || [])
 
             setLoading(false)
         }
 
         load()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, logDate, refresh])
 
     const selectedProduct = products.find(p => p.id === productId) || null
@@ -171,7 +171,7 @@ export default function WasteLogPage() {
         const { error: e1 } = await supabase.from('waste_logs').insert(rows)
 
         setSaving(false)
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
 
         const count = rows.length
         setBasket([])
@@ -183,7 +183,7 @@ export default function WasteLogPage() {
     async function handleDelete(entry) {
         if (!window.confirm(`Delete ${fmtQty(entry.quantity_wasted)} of ${entry.products?.name}?`)) return
         const { error: e1 } = await supabase.from('waste_logs').delete().eq('id', entry.id)
-        if (e1) setError(e1.message)
+        if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)
     }
 

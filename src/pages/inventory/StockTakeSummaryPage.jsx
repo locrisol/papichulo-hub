@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { friendlyError } from '../../lib/errors'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -179,7 +180,7 @@ export default function StockTakeSummaryPage() {
       if (updateErr.code === '23505') {
         setError('There is already an active stock take for this restaurant. Close it before reopening this one.')
       } else {
-        setError(updateErr.message)
+        setError(friendlyError(updateErr))
       }
       return
     }

@@ -46,3 +46,24 @@ export function addDays(dateStr, days) {
     d.setDate(d.getDate() + days)
     return toISODate(d)
 }
+
+// The first day of the month containing the given date.
+export function monthStart(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    d.setDate(1)
+    return toISODate(d)
+}
+
+// Move a date by a number of months. Always call this on the first of a month:
+// moving 31 January forward gives 3 March, because February has no 31st.
+export function addMonths(dateStr, months) {
+    const d = new Date(dateStr + 'T00:00:00')
+    d.setMonth(d.getMonth() + months)
+    return toISODate(d)
+}
+
+// A month and year, for a heading. For example August 2026.
+export function monthLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
+}

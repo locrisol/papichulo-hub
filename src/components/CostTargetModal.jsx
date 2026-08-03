@@ -2,16 +2,18 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { weekStartOf, shortDate, todayISO } from '../lib/dates'
+import { describeTargets } from '../lib/costTargets'
+import { friendlyError } from '../lib/errors'
 
-// Setting a cost target, permanently or just for a while.
+// Setting a cost target, and seeing what has been set before.
 //
-// A target is never edited in place. Every change is a new row with an effective
-// date, so looking back at an old week shows the target that was really in force
-// then. That is why there is a history list at the bottom rather than a single
+// A target is never edited in place. Every change is a new row with a start
+// week, so looking back at an old week shows the target that was really in
+// force then. That is why there is a history at the bottom rather than one
 // value you overwrite.
 //
-// A temporary target has an end date. When it passes, nothing needs to happen:
-// the lookup simply stops matching it and falls back to the last permanent one.
+// A target with no end week runs until the next one starts. One with an end
+// week stops on its own, and whatever was running before comes back.
 
 const TYPE_LABELS = {
     food: 'Food',
@@ -19,12 +21,14 @@ const TYPE_LABELS = {
     labour: 'Labour',
 }
 
-export default function CostTargetModal({ targetType, restaurantId, currentValue, onClose, onSaved }) {
+export default function CostTargetModal({ targetType, restaurantId, currentValue, weekStart, onClose, onSaved }) {
     const { user } = useAuth()
+    const week = weekStart || weekStartOf(todayISO())
 
     const [value, setValue] = useState(currentValue != null ? String(currentValue) : '')
     const [isTemporary, setIsTemporary] = useState(false)
-    const [from, setFrom] = useState(weekStartOf(todayISO()))
+    // Defaults to the week you were looking at when you pressed Edit target.
+    const [from, setFrom] = useState(week)
     const [until, setUntil] = useState('')
     const [history, setHistory] = useState([])
     const [saving, setSaving] = useState(false)
@@ -38,9 +42,8 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                 .select('*')
                 .eq('restaurant_id', restaurantId)
                 .eq('target_type', targetType)
-                .order('effective_from', { ascending: false })
 
-            if (e1) setError(e1.message)
+            if (e1) setError(friendlyError(e1))
             else setHistory(data || [])
         }
         load()
@@ -56,13 +59,13 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
             return
         }
 
-        // Dates are snapped to the Sunday that starts the week, because targets
-        // are applied per week and a mid-week start would be ambiguous.
+        // Dates snap to the Sunday that starts the week, because targets apply
+        // per week and a mid-week start would be ambiguous.
         const effectiveFrom = weekStartOf(from)
         const effectiveUntil = isTemporary && until ? weekStartOf(until) : null
 
         if (isTemporary) {
-            if (!until) { setError('A temporary target needs an end week'); return }
+            if (!until) { setError('A target that only runs for a while needs an end week'); return }
             if (effectiveUntil < effectiveFrom) { setError('The end week cannot be before the start week'); return }
         }
 
@@ -77,13 +80,55 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
         })
         setSaving(false)
 
-        if (e1) { setError(e1.message); return }
+        if (e1) { setError(friendlyError(e1)); return }
         setRefresh(n => n + 1)
         onSaved()
     }
 
+    // Deleting a target really removes it. Without this there is no way to undo
+    // a mistake, and it is easy to end up with several set on the same week
+    // that never applied to anything.
+    async function handleDelete(t) {
+        const ok = window.confirm(
+            `Delete the ${t.value}% target starting the week of ${shortDate(t.from)}?\n\n` +
+            'Weeks that were using it will fall back to whatever was set before.'
+        )
+        if (!ok) return
+
+        const { error: e1 } = await supabase
+            .from('cost_target_overrides')
+            .delete()
+            .eq('id', t.id)
+
+        if (e1) { setError(friendlyError(e1)); return }
+        setRefresh(n => n + 1)
+        onSaved()
+    }
+
+    const timeline = describeTargets(history, targetType, week)
+
     const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
     const labelCls = 'text-xs text-gray-500 mb-1 block'
+
+    const badge = {
+        current: { text: 'In force this week', cls: 'bg-green-100 text-green-800' },
+        upcoming: { text: 'Starts later', cls: 'bg-blue-50 text-blue-700' },
+        finished: { text: 'Finished', cls: 'bg-gray-100 text-gray-500' },
+        never: { text: 'Never applied', cls: 'bg-amber-50 text-amber-700' },
+    }
+
+    function describeDates(t) {
+        if (t.status === 'never') {
+            return `Set for the week of ${shortDate(t.from)}, but another target was set for the same week straight after, so this one never applied.`
+        }
+        if (!t.until) {
+            return `From the week of ${shortDate(t.from)}, with nothing after it yet.`
+        }
+        if (t.ended === 'set') {
+            return `From the week of ${shortDate(t.from)} to the week of ${shortDate(t.until)}, then it stops on its own.`
+        }
+        return `From the week of ${shortDate(t.from)} to the week of ${shortDate(t.until)}, when the next one took over.`
+    }
 
     return (
         <div className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4" onClick={onClose}>
@@ -113,7 +158,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                             <div>
                                 <span className="text-sm font-medium text-gray-900">Only for a while</span>
                                 <p className="text-xs text-gray-500 mt-0.5">
-                                    When it ends, the previous permanent target comes back on its own.
+                                    When it ends, whatever was running before comes back on its own.
                                 </p>
                             </div>
                         </label>
@@ -141,20 +186,37 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                         </div>
                     </form>
 
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Previous targets</h3>
-                    {history.length === 0 ? (
+                    {/* A timeline rather than a list. A target with no end week is
+                        really ended by the next one that starts, so each gets a
+                        real range instead of everything saying ongoing. */}
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Target history</h3>
+                    {timeline.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">
                             Nothing set yet, so the restaurant default is being used.
                         </p>
                     ) : (
                         <div className="border border-border rounded-lg divide-y divide-border">
-                            {history.map(h => (
-                                <div key={h.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                                    <span className="text-gray-900 font-medium">{h.override_value}%</span>
-                                    <span className="text-xs text-gray-500">
-                                        from {shortDate(h.effective_from)}
-                                        {h.effective_until ? ` until ${shortDate(h.effective_until)}` : ', ongoing'}
-                                    </span>
+                            {timeline.map(t => (
+                                <div key={t.id} className={`px-3 py-2 ${t.status === 'current' ? 'bg-green-50' : ''}`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className={`text-sm font-medium ${t.status === 'current' ? 'text-green-800' : 'text-gray-900'}`}>
+                                            {t.value}%
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${badge[t.status].cls}`}>
+                                                {badge[t.status].text}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDelete(t)}
+                                                className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                                aria-label={`Delete the ${t.value}% target`}
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-0.5">{describeDates(t)}</p>
                                 </div>
                             ))}
                         </div>

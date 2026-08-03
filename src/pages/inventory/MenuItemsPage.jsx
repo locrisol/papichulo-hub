@@ -1,10 +1,11 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
+import { friendlyError } from '../../lib/errors'
 
 const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
@@ -66,7 +67,7 @@ export default function MenuItemsPage() {
       supabase.from('product_allergens').select('*'),
     ])
 
-    if (menuItemsRes.error) setError(menuItemsRes.error.message)
+    if (menuItemsRes.error) setError(friendlyError(menuItemsRes.error))
     else setMenuItems(menuItemsRes.data)
 
     if (categoriesRes.data) setCategories(categoriesRes.data)
@@ -123,7 +124,7 @@ export default function MenuItemsPage() {
       .select()
       .single()
 
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else {
       // Jump straight into the editor for the new item so the user can
       // start adding components immediately.
@@ -142,7 +143,7 @@ export default function MenuItemsPage() {
       .from('menu_items')
       .update({ is_active: !item.is_active })
       .eq('id', item.id)
-    if (error) setError(error.message)
+    if (error) setError(friendlyError(error))
     else fetchAll()
   }
 

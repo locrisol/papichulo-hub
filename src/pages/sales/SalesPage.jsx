@@ -4,8 +4,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { RECEIPT_ROWS, resolveRowOrder } from './WeeklySalesPage'
+import { resolveRowOrder } from './WeeklySalesPage'
 import { todayISO, addDays } from '../../lib/dates'
+import { friendlyError } from '../../lib/errors'
 
 // Threshold above which the reconciliation is flagged for review.
 const VARIANCE_WARN_THRESHOLD = 10
@@ -101,7 +102,7 @@ export default function SalesPage() {
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
 
-        if (pErr) { setError(pErr.message); setLoading(false); return }
+        if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 
         // Sort by the manager-defined order, falling back to alphabetical.
         const sortedPlats = (plats || []).sort(
@@ -116,7 +117,7 @@ export default function SalesPage() {
             .eq('sale_date', saleDate)
             .maybeSingle()
 
-        if (rErr) { setError(rErr.message); setLoading(false); return }
+        if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
         if (rec) {
             setRecordId(rec.id)
@@ -246,7 +247,7 @@ export default function SalesPage() {
         }
 
         setSaving(false)
-        if (resErr) { setError(resErr.message); return }
+        if (resErr) { setError(friendlyError(resErr)); return }
         setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
         loadDay()
     }

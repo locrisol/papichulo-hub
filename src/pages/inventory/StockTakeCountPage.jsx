@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { calculateMixCost, resolveUnitCost } from '../../lib/mixCost'
+import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { friendlyError } from '../../lib/errors'
 
 // Section display order. Products whose section isn't in this list sort last.
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -77,7 +78,7 @@ export default function StockTakeCountPage() {
             .eq('is_active', true)
 
         if (productsErr) {
-            setError(productsErr.message)
+            setError(friendlyError(productsErr))
             setLoading(false)
             return
         }
@@ -141,10 +142,6 @@ export default function StockTakeCountPage() {
             .reduce((s, l) => s + Number(l.line_total || 0), 0)
     }
 
-    function getProductLineCount(productId) {
-        return lines.filter(l => l.product_id === productId).length
-    }
-
     function sessionTitle() {
         // If the user gave a custom note, use it as-is.
         if (session.notes && session.notes.trim()) return session.notes.trim()
@@ -202,7 +199,7 @@ export default function StockTakeCountPage() {
             .single()
 
         setSavingLine(false)
-        if (insertErr) { setError(insertErr.message); return }
+        if (insertErr) { setError(friendlyError(insertErr)); return }
 
         setLines(prev => [...prev, data])
         setDraftCounts({})
@@ -216,7 +213,7 @@ export default function StockTakeCountPage() {
             .eq('id', lineId)
 
         if (delErr) {
-            setError(delErr.message)
+            setError(friendlyError(delErr))
             return
         }
         setLines(prev => prev.filter(l => l.id !== lineId))

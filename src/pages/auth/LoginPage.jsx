@@ -21,7 +21,10 @@ export default function LoginPage() {
       setError('Invalid email or password')
       setLoading(false)
     } else {
-      navigate('/dashboard')
+      // Go to the root and let HomeRedirect work out where this role belongs. Sending
+      // people straight to the dashboard puts an employee on a page they cannot use,
+      // and they get bounced to the unauthorised screen a second later.
+      navigate('/', { replace: true })
     }
   }
 

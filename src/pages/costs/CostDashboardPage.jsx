@@ -6,6 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
+import { friendlyError } from '../../lib/errors'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -144,7 +145,7 @@ export default function CostDashboardPage() {
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
-            if (sErr) { setError(sErr.message); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
             setSalesRows(sales || [])
 
             const { data: invoices, error: iErr } = await supabase
@@ -154,7 +155,7 @@ export default function CostDashboardPage() {
                 .gte('invoice_date', weekStart)
                 .lte('invoice_date', end)
 
-            if (iErr) { setError(iErr.message); setLoading(false); return }
+            if (iErr) { setError(friendlyError(iErr)); setLoading(false); return }
 
             setFoodCost((invoices || [])
                 .filter(i => i.category === 'food')
@@ -174,7 +175,7 @@ export default function CostDashboardPage() {
                 .gte('entry_date', weekStart)
                 .lte('entry_date', end)
 
-            if (lErr) { setError(lErr.message); setLoading(false); return }
+            if (lErr) { setError(friendlyError(lErr)); setLoading(false); return }
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
 
             const { data: waste, error: wErr } = await supabase
@@ -184,7 +185,7 @@ export default function CostDashboardPage() {
                 .gte('log_date', weekStart)
                 .lte('log_date', end)
 
-            if (wErr) { setError(wErr.message); setLoading(false); return }
+            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
 
             const { data: overrideRows, error: oErr } = await supabase
@@ -192,14 +193,13 @@ export default function CostDashboardPage() {
                 .select('*')
                 .eq('restaurant_id', restaurantId)
 
-            if (oErr) { setError(oErr.message); setLoading(false); return }
+            if (oErr) { setError(friendlyError(oErr)); setLoading(false); return }
             setOverrides(overrideRows || [])
 
             setLoading(false)
         }
 
         load()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart, refresh])
 
     // Closed days are left out of every total: they have no sales and would only
@@ -441,6 +441,7 @@ export default function CostDashboardPage() {
                 <CostTargetModal
                     targetType={editing}
                     restaurantId={restaurantId}
+                    weekStart={weekStart}
                     currentValue={
                         editing === 'food' ? foodTarget
                             : editing === 'packaging' ? packagingTarget
