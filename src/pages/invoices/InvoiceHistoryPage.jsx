@@ -6,6 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton } from '../../lib/controlStyles'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -126,7 +127,7 @@ export default function InvoiceHistoryPage() {
                 </div>
                 <button
                     onClick={() => navigate('/invoices')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     Add an invoice
                 </button>

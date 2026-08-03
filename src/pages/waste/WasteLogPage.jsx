@@ -8,6 +8,7 @@ import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
@@ -207,7 +208,7 @@ export default function WasteLogPage() {
                 {isManager && (
                     <button
                         onClick={() => navigate('/waste/summary')}
-                        className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                        className={secondaryButton}
                     >
                         Weekly summary
                     </button>

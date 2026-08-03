@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { secondaryButton } from '../../lib/controlStyles'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { todayISO, weekStartOf, addDays, shortDate, monthStart, addMonths, monthLabel } from '../../lib/dates'
@@ -176,7 +177,7 @@ export default function EventCalendarPage() {
                     <button
                         onClick={forceSync}
                         disabled={syncing}
-                        className="px-4 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                        className={secondaryButton}
                     >
                         {syncing ? 'Checking...' : 'Check for new events'}
                     </button>
@@ -189,12 +190,12 @@ export default function EventCalendarPage() {
             {/* Month navigation */}
             <div className="bg-white rounded-xl border border-border p-3 mb-4 flex items-center gap-2 flex-wrap">
                 <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-                    className="px-3 py-1.5 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    className={secondaryButton}>
                     ‹ {monthLabel(addMonths(viewMonth, -1))}
                 </button>
                 <span className="font-serif text-lg font-bold text-gray-900 px-2">{monthLabel(viewMonth)}</span>
                 <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                    className="px-3 py-1.5 border border-border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    className={secondaryButton}>
                     {monthLabel(addMonths(viewMonth, 1))} ›
                 </button>
                 {viewMonth !== monthStart(today) && (

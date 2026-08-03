@@ -7,6 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { secondaryButton } from '../../lib/controlStyles'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -161,7 +162,7 @@ export default function InvoicesPage() {
                     is where you go when you are looking for something older. */}
                 <button
                     onClick={() => navigate('/invoices/history')}
-                    className="px-3 py-2 border border-border rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    className={secondaryButton}
                 >
                     History
                 </button>
