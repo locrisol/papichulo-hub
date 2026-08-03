@@ -461,10 +461,17 @@ export default function WeeklySalesPage() {
 
     // ---- rendering helpers ----------------------------------------------
 
+    // One rule across the whole grid: a white box means you can type in it, a
+    // grey fill means it was worked out for you.
+    //
+    // Before this the input borders were the cream border colour on a cream
+    // page, so they barely read as boxes, and the totals and the reconciliation
+    // were bare text with nothing marking them as different. Everything looked
+    // the same on a screen that is nothing but numbers.
     const inputCls =
-        'w-full border border-border rounded-md px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400'
-    const labelCellCls = 'px-3 py-2 text-sm text-gray-700 whitespace-nowrap sticky left-0 bg-white z-10'
-    const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-900 text-right whitespace-nowrap'
+        'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none'
+    const labelCellCls = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-gray-50 z-10'
+    const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap bg-gray-50'
 
     // Called as functions rather than rendered as components, so React keeps the
     // same DOM nodes between renders and inputs do not lose focus while typing.
