@@ -441,6 +441,7 @@ export default function CostDashboardPage() {
                 <CostTargetModal
                     targetType={editing}
                     restaurantId={restaurantId}
+                    weekStart={weekStart}
                     currentValue={
                         editing === 'food' ? foodTarget
                             : editing === 'packaging' ? packagingTarget

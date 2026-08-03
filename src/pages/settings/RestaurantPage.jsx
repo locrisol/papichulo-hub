@@ -3,40 +3,54 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
+import CostTargetModal from '../../components/CostTargetModal'
 import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
-import { todayISO, weekStartOf } from '../../lib/dates'
+import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
+import { resolveTarget, describeTargets } from '../../lib/costTargets'
+
+// Restaurant settings.
+//
+// Cost targets are set through the same modal the cost dashboard uses, so there
+// is one place a target is ever changed and the two screens cannot drift apart.
+//
+// A target is never edited in place. Each change is a new row with a start week,
+// so a change made today does not rewrite how June was judged. That is why the
+// hourly rate and the forecasting flag are the only things saved straight onto
+// the restaurant here: the rate is copied onto every labour entry when it is
+// saved, so past weeks already keep what was really paid.
+
+const TARGET_TYPES = [
+    { key: 'food', label: 'Food cost', column: 'food_cost_target' },
+    { key: 'labour', label: 'Labour cost', column: 'labour_cost_target' },
+    { key: 'packaging', label: 'Packaging and cleaning', column: 'packaging_cost_target' },
+]
 
 export default function RestaurantPage() {
     const { user } = useAuth()
     const { activeRestaurant, setActiveRestaurant } = useRestaurant()
 
     const [formData, setFormData] = useState({
-        food_cost_target: '',
-        labour_cost_target: '',
-        packaging_cost_target: '',
         hourly_rate: '',
         forecasting_enabled: false,
     })
 
-    const [saveType, setSaveType] = useState('permanent')
-    const [effectiveFrom, setEffectiveFrom] = useState('')
-    const [effectiveUntil, setEffectiveUntil] = useState('')
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
-    const [activeOverrides, setActiveOverrides] = useState([])
+    const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
+    const [editingTarget, setEditingTarget] = useState(null)
+    const [refresh, setRefresh] = useState(0)
 
     // Order of the till receipt rows in the weekly sales grid.
     const [rowOrder, setRowOrder] = useState(RECEIPT_ROWS.map(r => r.key))
     const [orderSaving, setOrderSaving] = useState(false)
 
+    const week = weekStartOf(todayISO())
+
     useEffect(() => {
         if (!activeRestaurant) return
         setFormData({
-            food_cost_target: parseFloat(activeRestaurant.food_cost_target).toFixed(2) || '',
-            labour_cost_target: parseFloat(activeRestaurant.labour_cost_target).toFixed(2) || '',
-            packaging_cost_target: parseFloat(activeRestaurant.packaging_cost_target).toFixed(2) || '',
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
         })
@@ -45,8 +59,20 @@ export default function RestaurantPage() {
 
     useEffect(() => {
         if (!activeRestaurant) return
-        fetchActiveOverrides()
-    }, [activeRestaurant])
+
+        // All of them, not just what applies today. Without the full list there
+        // is no way to work out when one target really ended.
+        async function load() {
+            const { data, error: e1 } = await supabase
+                .from('cost_target_overrides')
+                .select('*')
+                .eq('restaurant_id', activeRestaurant.id)
+
+            if (e1) setError(e1.message)
+            else setOverrides(data || [])
+        }
+        load()
+    }, [activeRestaurant, refresh])
 
     // Swap a row with its neighbour. Arrows rather than drag and drop: this is
     // set once and rarely revisited, and arrows work on touch without a library.
@@ -72,81 +98,38 @@ export default function RestaurantPage() {
         else setSuccess('Sales row order saved. Reload the weekly sales page to see it.')
     }
 
-    async function fetchActiveOverrides() {
-        const today = todayISO()
-        const { data } = await supabase
-            .from('cost_target_overrides')
-            .select('*')
-            .eq('restaurant_id', activeRestaurant.id)
-            .lte('effective_from', today)
-            .or(`effective_until.is.null,effective_until.gte.${today}`)
-
-        if (data) setActiveOverrides(data)
-    }
-
-    function getCurrentWeekStart() {
-        // Was building this with toISOString, which converts to UTC and so
-        // lands on the wrong day here in the evening. Cost targets are stored
-        // by week, so that quietly filed a target against the week before.
-        return weekStartOf(todayISO())
-    }
-
     async function handleSave(e) {
         e.preventDefault()
         setLoading(true)
         setError('')
         setSuccess('')
 
-        if (saveType === 'permanent') {
-            const { data, error } = await supabase
-                .from('restaurants')
-                .update({
-                    food_cost_target: parseFloat(formData.food_cost_target),
-                    labour_cost_target: parseFloat(formData.labour_cost_target),
-                    packaging_cost_target: parseFloat(formData.packaging_cost_target),
-                    hourly_rate: parseFloat(formData.hourly_rate),
-                    forecasting_enabled: formData.forecasting_enabled,
-                })
-                .eq('id', activeRestaurant.id)
-                .select()
-                .single()
-
-            if (error) setError(error.message)
-            else {
-                setActiveRestaurant(data)
-                setSuccess('Settings saved successfully.')
-            }
-        } else {
-            const targets = [
-                { type: 'food', value: formData.food_cost_target, original: activeRestaurant.food_cost_target },
-                { type: 'labour', value: formData.labour_cost_target, original: activeRestaurant.labour_cost_target },
-                { type: 'packaging', value: formData.packaging_cost_target, original: activeRestaurant.packaging_cost_target },
-            ].filter(t => parseFloat(t.value) !== parseFloat(t.original))
-
-            if (targets.length === 0) {
-                setError('No cost targets were changed.')
-                setLoading(false)
-                return
-            }
-
-            const inserts = targets.map(t => ({
-                restaurant_id: activeRestaurant.id,
-                target_type: t.type,
-                override_value: parseFloat(t.value),
-                effective_from: effectiveFrom || getCurrentWeekStart(),
-                effective_until: effectiveUntil || null,
-                created_by: user.id,
-            }))
-
-            const { error } = await supabase
-                .from('cost_target_overrides')
-                .insert(inserts)
-
-            if (error) setError(error.message)
-            else setSuccess('Temporary targets saved successfully.')
-        }
+        const { data, error: e1 } = await supabase
+            .from('restaurants')
+            .update({
+                hourly_rate: parseFloat(formData.hourly_rate),
+                forecasting_enabled: formData.forecasting_enabled,
+            })
+            .eq('id', activeRestaurant.id)
+            .select()
+            .single()
 
         setLoading(false)
+        if (e1) setError(e1.message)
+        else {
+            setActiveRestaurant(data)
+            setSuccess('Settings saved.')
+        }
+    }
+
+    // What is in force this week for one target, and how long it runs.
+    function targetSummary(type) {
+        const timeline = describeTargets(overrides, type.key, week)
+        const current = timeline.find(t => t.status === 'current')
+        const upcoming = timeline.filter(t => t.status === 'upcoming')
+        const fallback = Number(activeRestaurant?.[type.column])
+        const value = resolveTarget(overrides, type.key, week, fallback)
+        return { current, upcoming, value, count: timeline.length }
     }
 
     return (
@@ -154,95 +137,82 @@ export default function RestaurantPage() {
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                    Configure cost targets and settings for {activeRestaurant?.name}
+                    Cost targets and settings for {activeRestaurant?.name}
                 </p>
                 {activeRestaurant?.updated_at && (
                     <p className="text-xs text-gray-400 mt-1">
                         Last updated: {new Date(activeRestaurant.updated_at).toLocaleDateString('en-IE', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
+                            day: '2-digit', month: '2-digit', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
                         })}
                     </p>
                 )}
             </div>
 
-            {error && (
-                <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
-            )}
-            {success && (
-                <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>
-            )}
+            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
-            {activeOverrides.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm font-semibold text-amber-700 mb-2">Active temporary overrides</p>
-                    <ul className="text-xs text-amber-600 space-y-1">
-                        {activeOverrides.map(o => (
-                            <li key={o.id}>
-                                {o.target_type.charAt(0).toUpperCase() + o.target_type.slice(1)} cost target overridden to{' '}
-                                <strong>{parseFloat(o.override_value).toFixed(2)}%</strong>
-                                {o.effective_until ? ` until ${new Date(o.effective_until).toLocaleDateString('en-IE')}` : ' (open-ended)'}
-                            </li>
-                        ))}
-                    </ul>
+            {/* Cost targets. Changed through the same modal the dashboard uses,
+                so a target is only ever set in one place. */}
+            <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-4">
+                    What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
+                    choose, so past weeks keep the target that was really in force at the time.
+                </p>
+
+                <div className="border border-border rounded-lg divide-y divide-border">
+                    {TARGET_TYPES.map(type => {
+                        const s = targetSummary(type)
+                        return (
+                            <div key={type.key} className="px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-900">{type.label}</p>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            {s.current ? (
+                                                s.current.until
+                                                    ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
+                                                    : `Running since the week of ${shortDate(s.current.from)}`
+                                            ) : (
+                                                'The restaurant default. Nothing has been set for a particular week'
+                                            )}
+                                        </p>
+                                        {s.upcoming.length > 0 && (
+                                            <p className="text-xs text-blue-600 mt-0.5">
+                                                {s.upcoming.length === 1
+                                                    ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
+                                                    : `${s.upcoming.length} more changes already set for later weeks`}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <span className="font-serif text-xl font-bold text-gray-900">
+                                            {s.value != null ? `${s.value}%` : '-'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingTarget(type.key)}
+                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                                        >
+                                            Change
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })}
                 </div>
-            )}
+            </div>
 
+            {/* Everything saved straight onto the restaurant row */}
             <form onSubmit={handleSave}>
                 <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Cost Targets</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Food Cost Target (%)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={formData.food_cost_target}
-                                onChange={e => setFormData({ ...formData, food_cost_target: e.target.value })}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Labour Cost Target (%)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={formData.labour_cost_target}
-                                onChange={e => setFormData({ ...formData, labour_cost_target: e.target.value })}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Packaging Cost Target (%)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={formData.packaging_cost_target}
-                                onChange={e => setFormData({ ...formData, packaging_cost_target: e.target.value })}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Hourly Rate (€)
+                                Hourly rate (€)
                             </label>
                             <input
                                 type="number"
@@ -253,63 +223,14 @@ export default function RestaurantPage() {
                                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                 required
                             />
+                            {/* Safe to change without a date, because the rate is
+                                copied onto each labour entry when it is saved. */}
+                            <p className="text-xs text-gray-400 mt-1">
+                                The average rate used to work out labour cost. Changing it does not alter weeks already
+                                entered, since each one keeps the rate it was saved with.
+                            </p>
                         </div>
                     </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Save Type</h3>
-                    <div className="flex gap-4 mb-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                value="permanent"
-                                checked={saveType === 'permanent'}
-                                onChange={() => setSaveType('permanent')}
-                                className="accent-accent"
-                            />
-                            <span className="text-sm text-gray-700">Permanent</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                value="temporary"
-                                checked={saveType === 'temporary'}
-                                onChange={() => setSaveType('temporary')}
-                                className="accent-accent"
-                            />
-                            <span className="text-sm text-gray-700">Temporary</span>
-                        </label>
-                    </div>
-
-                    {saveType === 'temporary' && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                    Effective From (Sunday)
-                                </label>
-                                <input
-                                    type="date"
-                                    value={effectiveFrom}
-                                    onChange={e => setEffectiveFrom(e.target.value)}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                                <p className="text-xs text-gray-400 mt-1">Defaults to current week if left empty</p>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                    Effective Until (Saturday)
-                                </label>
-                                <input
-                                    type="date"
-                                    value={effectiveUntil}
-                                    onChange={e => setEffectiveUntil(e.target.value)}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                                <p className="text-xs text-gray-400 mt-1">Leave empty for open-ended override</p>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {user?.role === 'super_admin' && (
@@ -324,7 +245,7 @@ export default function RestaurantPage() {
                             />
                             <div>
                                 <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
-                                <p className="text-xs text-gray-500">Only available for restaurants near large event venues</p>
+                                <p className="text-xs text-gray-500">Only for restaurants near a large event venue</p>
                             </div>
                         </label>
                     </div>
@@ -335,16 +256,17 @@ export default function RestaurantPage() {
                     disabled={loading}
                     className="bg-accent hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors"
                 >
-                    {loading ? 'Saving...' : 'Save Settings'}
+                    {loading ? 'Saving...' : 'Save settings'}
                 </button>
             </form>
+
             {/* Sales platforms management */}
             <div className="bg-white rounded-xl border border-border p-6 mt-4">
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
                         <p className="text-xs text-gray-500 mt-1">
-                            Configure the delivery and catering platforms used for sales entry.
+                            The delivery and catering platforms used for sales entry.
                         </p>
                     </div>
                     <button
@@ -415,6 +337,17 @@ export default function RestaurantPage() {
                     </button>
                 </div>
             </div>
+
+            {editingTarget && (
+                <CostTargetModal
+                    targetType={editingTarget}
+                    restaurantId={activeRestaurant.id}
+                    weekStart={week}
+                    currentValue={targetSummary(TARGET_TYPES.find(t => t.key === editingTarget)).value}
+                    onClose={() => setEditingTarget(null)}
+                    onSaved={() => setRefresh(n => n + 1)}
+                />
+            )}
 
             {showPlatformsModal && (
                 <SalesPlatformsModal
