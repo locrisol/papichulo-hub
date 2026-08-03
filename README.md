@@ -90,6 +90,7 @@ npm run dev -- --host
 | `npm run test:run` | Runs the tests once and exits |
 | `npm run lint` | Runs ESLint |
 | `npm run schema` | Rebuilds `supabase/schema.sql` and `seed.sql` from the migrations |
+| `npm run test:rls` | Runs the database access tests, which need a network and the test accounts |
 
 ## Tests
 
@@ -100,6 +101,12 @@ npm run test:run
 82 tests across six files, all in `src/lib`. These tests cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, and waste valie.
 
 The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being trated as the next day and the weeks selectors where moving into blocks of six days instea of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
+
+The database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
+
+They need the `ws` package, which `npm install` fetches with everything else. It is only there because `supabase-js` builds a realtime client the moment you create a client, and realtime needs WebSocket. Browsers have it, Node only got it in version 22, and this project runs on 20. Nothing here uses realtime.
+
+They never create anything. Reads are harmless, and a write that is meant to be refused changes nothing. That does leave one gap: they do not prove an allowed write succeeds, because doing so would put rows into live data.
 
 ## How it is laid out
 
@@ -115,10 +122,14 @@ The date tests are there because of a real bug that appeared during production. 
         invoices/        entry and history
         costs/           labour and the cost dashboard
         waste/           logging and the weekly summary
+    tests/
+      rls/               the database access tests
     supabase/
       schema.sql         everything at once, for a new database
       seed.sql           the restaurants and suppliers
       migrations/        every schema change, in order
+    scripts/
+      build-schema.mjs   rebuilds schema.sql from the migrations
 
 Anything in `lib` is a plain function with no React in it, which is why those are the parts with tests.
 

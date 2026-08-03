@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "schema": "node scripts/build-schema.mjs"
+    "schema": "node scripts/build-schema.mjs",
+    "test:rls": "vitest run --config vitest.rls.config.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.3",
@@ -32,6 +33,7 @@
     "globals": "^17.5.0",
     "tailwindcss": "^4.2.4",
     "vite": "^8.0.10",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "ws": "^8.21.1"
   }
 }
