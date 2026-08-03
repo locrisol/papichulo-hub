@@ -6,6 +6,18 @@ import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
 
+// The columns you can sort by, in the order they appear across the table.
+// Actions is not in here, because there is nothing to sort it on.
+const SORTABLE_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'section', label: 'Section' },
+  { key: 'unit', label: 'Unit' },
+  { key: 'type', label: 'Type' },
+  { key: 'supplier', label: 'Preferred Supplier' },
+  { key: 'cost', label: 'Cost/Unit' },
+  { key: 'weightLoss', label: 'Weight Loss' },
+]
+
 export default function ProductsPage() {
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
@@ -35,6 +47,15 @@ export default function ProductsPage() {
 
   const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
   const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+
+  // Which column the table is sorted by, and which way.
+  const [sortBy, setSortBy] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
+
+  function toggleSort(key) {
+    if (sortBy === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(key); setSortDir('asc') }
+  }
 
   useEffect(() => {
     fetchProducts()
@@ -182,14 +203,73 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
+  // What a product is worth per unit. A MIX is costed from its recipe, a bought
+  // product from its preferred supplier price. Null when neither can be worked
+  // out, which sorts to the bottom rather than pretending to be zero.
+  function unitCostOf(p) {
+    if (p.is_mix) {
+      const result = calculateMixCost(p, products, recipeLines, prices)
+      return result?.cost ?? null
+    }
+    const price = getPreferredPrice(p.id)
+    return price ? parseFloat(price.price_per_unit) : null
+  }
+
+  // The value a column sorts on. Text comes back lowercased so the sort is not
+  // case sensitive, which would otherwise put every capital letter first.
+  function sortValue(p, key) {
+    switch (key) {
+      case 'section': return sectionOrder.indexOf(p.section)
+      case 'unit': return (p.unit || '').toLowerCase()
+      case 'type': return p.is_mix ? 0 : 1
+      case 'supplier':
+        return p.is_mix
+          ? ''
+          : (getSupplierName(getPreferredPrice(p.id)?.supplier_id) || '').toLowerCase()
+      case 'cost': return unitCostOf(p)
+      case 'weightLoss': return Number(p.weight_loss_pct) || 0
+      default: return p.name.toLowerCase()
+    }
+  }
+
+  function compareValues(a, b) {
+    // Nulls last whichever way the column is sorted, so "no price set" never
+    // looks like the cheapest thing in the list.
+    if (a === null && b === null) return 0
+    if (a === null) return 1
+    if (b === null) return -1
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    return String(a).localeCompare(String(b))
+  }
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     .filter(p => activeSection === 'All' || p.section === activeSection)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .slice()
     .sort((a, b) => {
-      const sectionDiff = sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section)
-      if (sectionDiff !== 0) return sectionDiff
-      return a.name.localeCompare(b.name)
+      // Sections always group together. Clicking the Section heading flips the
+      // order of the groups; any other column leaves them alone and sorts
+      // inside them.
+      const sectionA = sectionOrder.indexOf(a.section)
+      const sectionB = sectionOrder.indexOf(b.section)
+      if (sectionA !== sectionB) {
+        const diff = sectionA - sectionB
+        return sortBy === 'section' && sortDir === 'desc' ? -diff : diff
+      }
+
+      // MIX products come first inside their section, whatever is being sorted.
+      // They are the ones that behave differently, since their cost comes from a
+      // recipe rather than a supplier, so they are worth keeping together at the
+      // top where they are easy to find.
+      if (a.is_mix !== b.is_mix) return a.is_mix ? -1 : 1
+
+      const result = compareValues(sortValue(a, sortBy), sortValue(b, sortBy))
+      const directed = sortDir === 'desc' ? -result : result
+
+      // Same value in the sorted column, so fall back to name to keep the order
+      // stable instead of letting it shuffle on every render.
+      return directed !== 0 ? directed : a.name.localeCompare(b.name)
     })
 
   return (
@@ -274,16 +354,26 @@ export default function ProductsPage() {
       ) : (
         <div className="bg-white rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
+            {/* The heading row used to be bg-gray-50, exactly the same as every
+                other striped row, so it did not read as a heading at all. It is
+                darker now with a heavier line under it. */}
             <thead>
-              <tr className="border-b border-border bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Section</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Preferred Supplier</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost/Unit</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Weight Loss</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <tr className="bg-gray-100 border-b-2 border-gray-300">
+                {SORTABLE_COLUMNS.map(col => (
+                  <th key={col.key} className="text-left px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className="flex items-center gap-1 text-xs font-bold text-gray-700 uppercase tracking-wider hover:text-gray-900"
+                    >
+                      {col.label}
+                      <span className={sortBy === col.key ? 'text-accent' : 'text-gray-300'}>
+                        {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </button>
+                  </th>
+                ))}
+                <th className="text-left px-4 py-3 text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -292,7 +382,15 @@ export default function ProductsPage() {
                 const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
                 return (
                   <Fragment key={p.id}>
-                    <tr className={`border-b border-border ${!p.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    {/* MIX rows are yellow the whole way across. They are costed
+                        from a recipe instead of a supplier price, so it matters
+                        which ones they are. Inactive still wins, because a
+                        deactivated product matters more than how it is costed. */}
+                    <tr className={`border-b border-border ${!p.is_active
+                      ? 'bg-red-100'
+                      : p.is_mix
+                        ? 'bg-amber-100'
+                        : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${

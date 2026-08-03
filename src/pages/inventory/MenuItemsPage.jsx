@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
 const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
@@ -340,19 +340,22 @@ export default function MenuItemsPage() {
           {itemsByCategory.map(({ category, items }) => (
             items.length === 0 ? null : (
               <div key={category.id}>
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">{category.name}</h3>
+                {/* The category name was small grey uppercase, the same weight
+                    as a column heading, so it did not read as the start of a
+                    group. It is a proper heading now. */}
+                <h3 className="font-serif text-base font-bold text-gray-900 mb-2 px-1">{category.name}</h3>
                 <div className="bg-white rounded-xl border border-border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-border bg-gray-50">
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Components</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Price (gross)</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Net</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Margin</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Allergens</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <tr className={tableHeadRow}>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Components</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Cost</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Price (gross)</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Net</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Margin</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Allergens</th>
+                        <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
