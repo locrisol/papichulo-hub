@@ -3,6 +3,15 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { tableHeadRow } from '../lib/controlStyles'
 
+// Manages the categories menu items are grouped under.
+//
+// These do two jobs at once, which is why they matter more than they look. They
+// group the menu items list for the manager, and they are also the headings a
+// customer sees on the public allergen page, in the same order.
+//
+// sort_order decides that order, lowest first, and it is typed in rather than
+// set with arrows. Categories are deactivated and never deleted, because menu
+// items point at one by id and deleting would leave them pointing at nothing.
 export default function CategoryManagerModal({ categories, onClose, onChange }) {
   const [error, setError] = useState('')
   const [newName, setNewName] = useState('')

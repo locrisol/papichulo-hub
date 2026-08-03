@@ -8,6 +8,24 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 import PageContainer from '../../components/layout/PageContainer'
 
+// The manager's side of the public allergen page: the QR code to print, the
+// link, and a preview of what customers get.
+//
+// The preview is the real page rather than a copy of it, so there is only one
+// place the customer view is written. One thing to know though: the manager is
+// signed in while looking at it, and the database policies that hide inactive
+// dishes only apply to somebody who is not. So the preview can show a
+// deactivated dish that a customer scanning the code would never see. There is a
+// note about it in PublicAllergensPage.
+//
+// There are two different PDFs here and they are for different jobs. The QR one
+// is A6, sized to sit on a table. The allergen list is A4 landscape and is the
+// FSAI record form, the paper version an inspector asks for, with the allergens
+// in the order that form uses rather than the order we store them in.
+//
+// The QR code is generated in the browser every time rather than stored. It only
+// depends on the restaurant slug, so there is nothing to keep, and regenerating
+// means it can never be left pointing at an old address.
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()

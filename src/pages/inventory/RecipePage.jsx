@@ -7,6 +7,22 @@ import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow } from '../../lib/controlStyles'
 
+// The recipe behind a MIX, meaning something we make ourselves rather than buy.
+//
+// A MIX has no supplier and no invoice, so its cost has to come from what goes
+// into it. The recipe is the ingredient lines plus the batch yield, and the cost
+// per unit is everything the ingredients came to divided by how much the batch
+// makes. Change the price of any ingredient and every MIX using it follows on
+// its own, along with every dish those MIXes go into.
+//
+// The batch yield lives on the product rather than on each line, because it
+// describes the whole recipe, not one ingredient. Without it there is nothing to
+// divide by and the cost cannot be worked out at all, which is why it is asked
+// for separately and saved on its own.
+//
+// An ingredient can itself be a MIX, so the calculation recurses. A recipe that
+// ends up pointing back at itself stops cleanly instead of looping forever, and
+// that guard is in lib/mixCost.js rather than here.
 export default function RecipePage() {
   const { id } = useParams()
   const navigate = useNavigate()

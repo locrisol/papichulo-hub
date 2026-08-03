@@ -5,6 +5,20 @@ import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
+// Who we buy from.
+//
+// Suppliers are shared by both restaurants rather than owned by one, because it
+// is the same company delivering to both. What differs by restaurant is which
+// supplier is preferred for a given product, and that lives on the price, not
+// here.
+//
+// The category is food, packaging, cleaning or other, and it is a check
+// constraint in the database. It matters beyond tidiness: the cost dashboard
+// splits food from packaging by the category on the invoice, so putting a
+// supplier in the wrong one moves money between two cost targets.
+//
+// Suppliers are deactivated and never deleted. Old invoices and prices point at
+// them, and those have to keep making sense.
 export default function SuppliersPage() {
     const { user } = useAuth()
 

@@ -1,5 +1,15 @@
 import { useRef, useEffect, useState } from 'react'
 
+// One ingredient line on a MIX recipe.
+//
+// The quantity is always stored in the ingredient's own unit, so KG for anything
+// measured in KG. That is what the cost calculation expects and it never sees
+// anything else.
+//
+// What this form adds on top is a friendlier way to type it. Recipes are full of
+// small amounts, and nobody wants to write 0.04 KG for forty grams, so the box
+// can display grams or millilitres and converts back before saving. The unit on
+// screen is only ever a display choice, it never changes what is stored.
 export default function RecipeIngredientForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'

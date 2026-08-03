@@ -6,9 +6,16 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 
 // Sidebar navigation.
-// Items are grouped by `section`; the sections render in the order they first
-// appear in this array. Entries for modules that are not built yet are left
-// commented out so the sidebar never links to a mockup screen.
+//
+// Items are grouped by `section`, and the sections render in the order they
+// first appear in this array, so moving an item can move a whole heading.
+//
+// This is only half of who can reach what. It decides what a role is offered.
+// App.jsx decides what happens if somebody types the address anyway, and both
+// read the same lists out of lib/access.js so they cannot disagree.
+//
+// Anything not built yet is left out entirely rather than added and disabled. A
+// link that goes nowhere is worse than no link.
 const navItems = [
     { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
 

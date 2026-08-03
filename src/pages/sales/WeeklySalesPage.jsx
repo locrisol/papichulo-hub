@@ -337,6 +337,27 @@ export default function WeeklySalesPage() {
 
     // ---- saving ---------------------------------------------------------
 
+    // Saves the whole week in one go.
+    //
+    // A week is up to seven rows, some of which already exist and some of which
+    // do not, so it sorts them into inserts and updates first and sends the
+    // inserts as one batch. There is no upsert here because a day is identified
+    // by restaurant and date rather than by an id the screen knows.
+    //
+    // A day is skipped entirely when nothing has been typed into it and nothing
+    // is stored for it yet. That is what keeps "nobody has filled this in" a
+    // real state rather than writing seven rows of zeros for every week, which
+    // would make a day nobody touched look like a day we took nothing.
+    //
+    // Marking a day closed writes zeros across the board on purpose. Closed and
+    // empty are different things: closed means we did not trade, and closed days
+    // are then left out of daily averages so a bank holiday does not drag down
+    // what a normal day looks like.
+    //
+    // This is not a transaction. If the inserts land and an update then fails,
+    // part of the week is saved and the screen still shows what you typed. That
+    // is why it stops at the first error rather than carrying on, and why the
+    // local draft is only cleared once everything has gone through.
     async function handleSaveWeek() {
         setError(''); setSuccess('')
         setSaving(true)

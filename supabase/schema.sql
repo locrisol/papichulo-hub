@@ -810,7 +810,19 @@ CREATE POLICY "waste_logs_update_delete" ON waste_logs
     get_my_role() IN ('super_admin', 'owner', 'store_manager')
     AND restaurant_id = get_my_restaurant_id()
   );
-ALTER TABLE restaurants 
+-- When a restaurant was last changed.
+--
+-- This is what the public allergen page shows as its last updated date, which is
+-- there because the allergen regulation expects customers to be told how current
+-- the information is.
+--
+-- The trigger sets it in the database rather than the app sending a timestamp.
+-- If the app sent it, anything that ever updates a restaurant another way, a
+-- migration or a fix run by hand, would leave the date lying.
+--
+-- The function is written generically so other tables can use the same trigger
+-- later, but for now restaurants is the only one that has it.
+ALTER TABLE restaurants
 ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
 
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -827,6 +839,19 @@ CREATE OR REPLACE TRIGGER restaurants_updated_at
   BEFORE UPDATE ON restaurants
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
+-- Let one supplier sell the same product in more than one pack size.
+--
+-- The old rule was one price per product, supplier and restaurant, which does
+-- not match how they actually sell. Sysco will quote the same thing as a 5 KG
+-- case and a 25 KG case, and those are different prices per unit. Under the old
+-- constraint you could only record one of them.
+--
+-- Adding purchase_type and units_per_case to the key means case and loose are
+-- separate records, and two case sizes are separate records as well.
+--
+-- The DROP uses the name Postgres generated for the original constraint. If the
+-- database was ever built some other way that name will not exist and this line
+-- fails, which is why schema.sql is the file a fresh install runs.
 ALTER TABLE product_supplier_prices
 DROP CONSTRAINT product_supplier_prices_product_id_supplier_id_restaurant_i_key;
 
