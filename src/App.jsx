@@ -31,7 +31,8 @@ import LabourPage from './pages/costs/LabourPage'
 import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
-import { ForecastScreen, CatalogueScreen } from './mockup/MockupScreens'
+import EventCalendarPage from './pages/forecast/EventCalendarPage'
+import { CatalogueScreen } from './mockup/MockupScreens'
 
 export default function App() {
   return (
@@ -76,7 +77,7 @@ export default function App() {
                 <Route path="/inventory/stock-takes/:id/summary" element={<RequireRole allowed={MANAGERS}><StockTakeSummaryPage /></RequireRole>} />
                 <Route path="/inventory/public-allergens" element={<RequireRole allowed={MANAGERS}><PublicAllergensPreviewPage /></RequireRole>} />
 
-                <Route path="/forecast" element={<RequireRole allowed={MANAGERS}><ForecastScreen /></RequireRole>} />
+                <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
 
                 {/* Settings. Restaurant configuration excludes owners. */}
                 <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />

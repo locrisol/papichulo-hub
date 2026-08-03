@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel } from './dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -132,5 +132,44 @@ describe('addDays', () => {
 
     it('crosses a year backwards', () => {
         expect(addDays('2026-01-01', -1)).toBe('2025-12-31')
+    })
+})
+
+describe('monthStart', () => {
+    it('goes back to the first of the month', () => {
+        expect(monthStart('2026-08-19')).toBe('2026-08-01')
+    })
+
+    it('leaves the first alone', () => {
+        expect(monthStart('2026-08-01')).toBe('2026-08-01')
+    })
+})
+
+describe('addMonths', () => {
+    it('moves forward', () => {
+        expect(addMonths('2026-08-01', 1)).toBe('2026-09-01')
+    })
+
+    it('moves backward', () => {
+        expect(addMonths('2026-08-01', -1)).toBe('2026-07-01')
+    })
+
+    it('crosses a year', () => {
+        expect(addMonths('2026-12-01', 1)).toBe('2027-01-01')
+    })
+
+    it('crosses a year backwards', () => {
+        expect(addMonths('2026-01-01', -1)).toBe('2025-12-01')
+    })
+
+    // Why the comment on the function says to call it on the first of a month.
+    it('is safe from the first of any month, including into February', () => {
+        expect(addMonths('2026-01-01', 1)).toBe('2026-02-01')
+    })
+})
+
+describe('monthLabel', () => {
+    it('gives the month and year', () => {
+        expect(monthLabel('2026-08-01')).toBe('August 2026')
     })
 })

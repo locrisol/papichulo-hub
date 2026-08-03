@@ -13,7 +13,7 @@
     'Point Campus',
     'Dublin Docklands',
     true,
-    'KovZpZAE6laa'
+    'KovZ9177WYV'
   );
 
   INSERT INTO public.restaurants (name, location)
