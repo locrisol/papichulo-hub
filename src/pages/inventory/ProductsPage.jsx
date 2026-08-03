@@ -7,20 +7,24 @@ import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
 
-// The columns you can sort by, in the order they appear across the table.
-// Actions is not in here, because there is nothing to sort it on.
+// Every column in the table, in the order it appears.
 //
-// Section and Type carry a fixed width. Sorting let the Name column take as much
-// room as it wanted, which squeezed the others until a badge like "Cold Room"
-// broke onto two lines.
-const SORTABLE_COLUMNS = [
-  { key: 'name', label: 'Name' },
+// Only some of them can be sorted. Section, Unit and Type are short repeated
+// values, so sorting by them tells you nothing you cannot already see, and Type
+// did nothing at all because MIX products are always first anyway. To pick out
+// one section you use the buttons above the table instead.
+//
+// The widths are there because sorting let the Name column take as much room as
+// it wanted, which squeezed the others until a badge like "Cold Room" broke onto
+// two lines.
+const COLUMNS = [
+  { key: 'name', label: 'Name', sortable: true },
   { key: 'section', label: 'Section', width: 'w-36' },
   { key: 'unit', label: 'Unit', width: 'w-20' },
   { key: 'type', label: 'Type', width: 'w-32' },
-  { key: 'supplier', label: 'Preferred Supplier' },
-  { key: 'cost', label: 'Cost/Unit', width: 'w-28' },
-  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28' },
+  { key: 'supplier', label: 'Preferred Supplier', sortable: true },
+  { key: 'cost', label: 'Cost/Unit', width: 'w-28', sortable: true },
+  { key: 'weightLoss', label: 'Weight Loss', width: 'w-28', sortable: true },
 ]
 
 // Badges carry the meaning now that the MIX row tint is very light, so they are
@@ -55,8 +59,10 @@ export default function ProductsPage() {
     is_active: true,
   })
 
+  // The filter buttons above the table. There is no separate order list any
+  // more: the sort runs across the whole list, so nothing needs to know which
+  // section comes before which.
   const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-  const sectionOrder = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
   // Which column the table is sorted by, and which way.
   const [sortBy, setSortBy] = useState('name')
@@ -229,9 +235,6 @@ export default function ProductsPage() {
   // case sensitive, which would otherwise put every capital letter first.
   function sortValue(p, key) {
     switch (key) {
-      case 'section': return sectionOrder.indexOf(p.section)
-      case 'unit': return (p.unit || '').toLowerCase()
-      case 'type': return p.is_mix ? 0 : 1
       case 'supplier':
         return p.is_mix
           ? ''
@@ -258,20 +261,14 @@ export default function ProductsPage() {
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     .slice()
     .sort((a, b) => {
-      // Sections always group together. Clicking the Section heading flips the
-      // order of the groups; any other column leaves them alone and sorts
-      // inside them.
-      const sectionA = sectionOrder.indexOf(a.section)
-      const sectionB = sectionOrder.indexOf(b.section)
-      if (sectionA !== sectionB) {
-        const diff = sectionA - sectionB
-        return sortBy === 'section' && sortDir === 'desc' ? -diff : diff
-      }
+      // Sorting runs across the whole list, not inside each section. Sorting by
+      // cost should give the dearest product there is, not the dearest in every
+      // section. If you only want one section you use the buttons above the
+      // table, which is what they are for.
 
-      // MIX products come first inside their section, whatever is being sorted.
-      // They are the ones that behave differently, since their cost comes from a
-      // recipe rather than a supplier, so they are worth keeping together at the
-      // top where they are easy to find.
+      // MIX products still come first. They are the ones that behave
+      // differently, since their cost comes from a recipe rather than a
+      // supplier, and the yellow row goes with that.
       if (a.is_mix !== b.is_mix) return a.is_mix ? -1 : 1
 
       const result = compareValues(sortValue(a, sortBy), sortValue(b, sortBy))
@@ -369,18 +366,22 @@ export default function ProductsPage() {
                 the dark sidebar green now, which there is no mistaking. */}
             <thead>
               <tr className={tableHeadRow}>
-                {SORTABLE_COLUMNS.map(col => (
+                {COLUMNS.map(col => (
                   <th key={col.key} className={`text-left px-4 py-3 whitespace-nowrap ${col.width || ''}`}>
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(col.key)}
-                      className={`flex items-center gap-1 whitespace-nowrap ${tableHeadCell} hover:text-white/70`}
-                    >
-                      {col.label}
-                      <span className={sortBy === col.key ? 'text-accent' : 'text-white/30'}>
-                        {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
-                      </span>
-                    </button>
+                    {col.sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col.key)}
+                        className={`flex items-center gap-1 whitespace-nowrap ${tableHeadCell} hover:text-white/70`}
+                      >
+                        {col.label}
+                        <span className={sortBy === col.key ? 'text-accent' : 'text-white/30'}>
+                          {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                        </span>
+                      </button>
+                    ) : (
+                      <span className={`whitespace-nowrap ${tableHeadCell}`}>{col.label}</span>
+                    )}
                   </th>
                 ))}
                 <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
