@@ -1,8 +1,8 @@
 # Papi Chulo Hub
 
-A web application for managing operations of a restaurant. It handles the product catalogue, menu costs, allergens, stock take, sales, invoices, labour and waste, and displays all this information together into a weekly cost dashboard.
+A web application for managing operations of a restaurant. It handles the product catalogue, menu costs, allergens, stock take, sales, invoices, labour and waste, and displays all this information together in a weekly cost dashboard.
 
-It is built for Papi Chulo, a Mexicam Street Food business with currently two location in Dublin (Point Campus and Dún Laoghaire), and it is currently in use.
+It is built for Papi Chulo, a Mexican Street Food business with currently two locations in Dublin (Point Campus and Dún Laoghaire), and it is currently in use.
 
 **Live at [papichulo-hub.vercel.app](https://papichulo-hub.vercel.app/)**
 
@@ -10,19 +10,19 @@ It is built for Papi Chulo, a Mexicam Street Food business with currently two lo
 
 **Product catalogue.** Products, suppliers and prices. One same product can be purchased from different suppliers at different prices, by cases or loose, and one price per restaurant is marked as preferred to track the current cost of the products and keep it updated. The products we prepare in store rather than being directly purchased are recipes, and their cost is calculated from the ingredients cost, using recipes including every single ingredient or product used for the recipe.
 
-**Menu.** Dishes built from products, with the cost and the margin calculated from the each restaurants prices, as each restaurant might prefer different suppliers for a same product.
+**Menu.** Dishes built from products, with the cost and the margin calculated from each restaurant's prices, as each restaurant might prefer different suppliers for a same product.
 
-**Allergens.** All fourteen EU allergens per product. The dish allergens are retrieved based on the own allergen for each ingredients, taking the worst case at every stap, so there is no need to label each dish of the menu by hand. There is also a public page for customers than can by open scanning a QR code or using a link, with no login required.
+**Allergens.** All fourteen EU allergens per product. The dish allergens are retrieved based on the allergens of each ingredient, taking the worst case at every step, so there is no need to label each dish of the menu by hand. There is also a public page for customers that can be opened by scanning a QR code or using a link, with no login required.
 
 **Stock takes.** Built for a phone, as the idea is to use this functionality while you are counting in the store the different sections (cold room, freezer, dry, packaging, cleaning). The products are grouped by sections, multiple counts for a product are allowed, counting in whole packs as well as loose units, and the possibility to generate a PDF file at the end.
 
-**Sales.** Allows to record one day at a time if the app is accessed from a phone, or a whole week at once on a laptop. The figures from the till receipt are what is used for the reconciliation. The sales from delivery plataforms are saved separately for tracking, becaue the report delivery charges, comission, VAT, discounts, and might be slightly different; forcing the calculation with these values would produce errors that are not real.
+**Sales.** Allows to record one day at a time if the app is accessed from a phone, or a whole week at once on a laptop. The figures from the till receipt are what is used for the reconciliation. The sales from delivery platforms are saved separately for tracking, because they report delivery charges, commission, VAT and discounts differently, so the figures might be slightly different; forcing the calculation with these values would produce errors that are not real.
 
-**Invoices, labour and waste.** Invoices are handled by supplier and category. Labour hours are entered manually from Timesheet information until the stores upgrade their POS System, with information about the average cost of each day versus that day sales. Waste is logged during work and cost calculated in real time as the employees type the quantities.
+**Invoices, labour and waste.** Invoices are handled by supplier and category. Labour hours are entered manually from Timesheet information until the stores upgrade their POS System, with information about the average cost of each day versus that day's sales. Waste is logged during work and cost calculated in real time as the employees type the quantities.
 
-**Cost dashboard.** Food, labour, packaging and waste as a percentage of net sales against their targets, with gross profit and the week day by day. Targets can be changed permanently or just for some specific weeks, so temporary changes won't affect past weeks or the rest of the year if it's not a permanent change.
+**Cost dashboard.** Food, labour, packaging and cleaning, and waste as a percentage of net sales against their targets, with gross profit and the week day by day. Targets can be changed permanently or just for some specific weeks, so temporary changes won't affect past weeks or the rest of the year if it's not a permanent change.
 
-**Events.** A calendar that displays events on the 3Arena, which is in front of Papi Chhulo Point Campus. If the event is popular it will be a busy evening/night for us, so knowing there is a concert on Thursday changes everything from orders, product preparation and staff available. Everyone can see it, because the people working that night are the ones who need to know.
+**Events.** A calendar that displays events on the 3Arena, which is in front of Papi Chulo Point Campus. If the event is popular it will be a busy evening/night for us, so knowing there is a concert on Thursday changes everything from orders, product preparation and staff available. Everyone can see it, because the people working that night are the ones who need to know.
 
 ## Built with
 
@@ -76,7 +76,7 @@ npm run dev
 
 It runs at `http://localhost:5173`.
 
-Or if you want the local version to be accesible from mobile devices in your network:
+Or if you want the local version to be accessible from mobile devices in your network:
 
 ```bash
 npm run dev -- --host
@@ -101,9 +101,9 @@ npm run dev -- --host
 npm run test:run
 ```
 
-114 tests across seven files, all in `src/lib`. These tests cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
+134 tests across eight files, all in `src/lib`. These tests cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
 
-The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being trated as the next day and the weeks selectors where moving into blocks of six days instea of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
+The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being treated as the next day and the week selectors were moving in blocks of six days instead of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
 
 The 35 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
 
@@ -152,6 +152,8 @@ There are four roles. The rules are stored directly in the database as row level
 | Restaurant settings | No | Yes | No | Yes |
 | Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
 
+An Owner sees their restaurants but does not configure one, which is why restaurant settings is a Store Manager job.
+
 An employee can start counting but cannot open or close a stock take session, and can modify their own count lines but not the ones other employees have created.
 
 The public allergen page is public and needs no login. Products, menu items, categories and recipes are readable without logging in, because the page has to follow a recipe down to work out what a dish contains. Prices and costs are not.
@@ -168,19 +170,19 @@ Set these in the Vercel project settings under Environment Variables:
 - `VITE_TICKETMASTER_KEY`
 
 
-Add the Vercel address to the allowed URLs in Supabase under Authentication, or when you try to log in it will looks like it works, but you will be redirected back to the same page.
+Add the Vercel address to the allowed URLs in Supabase under Authentication, or when you try to log in it will look like it works, but you will be redirected back to the same page.
 
 `vercel.json` sends every path to `index.html`. Without it, opening a link directly returns a 404, because Vercel looks for a file at that path and this is a single page app. It matters most for the allergen page, which is only ever reached by scanning a QR code.
 
 ## How the work is organised
 
-Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is send to `development` through a pull request. Issues that were described but we decided not built at this tage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definetely want to implement soon some of them.
+Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is sent to `development` through a pull request. Issues that were described but we decided not to build at this stage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definitely want to implement some of them soon.
 
 When you add a migration, run `npm run schema` and commit the rebuilt `supabase/schema.sql` alongside it. That file is what a fresh install runs, so a migration missing from it would be missing from any new database.
 
 ## What is not built
 
-**AI invoice extraction** using Google Gemini, as well as the product alises and the price change review, that would depend on a feature for an AI extracting information from the invoices. Currently, invoices are entered by hand, which covers what we need.
+**AI invoice extraction** using Google Gemini, as well as the product aliases and the price change review, that would depend on a feature for an AI extracting information from the invoices. Currently, invoices are entered by hand, which covers what we need.
 
 **Importing the weekly report from the till.** The old POS System and tills will be replaced soon, so a parser created for the old Pixel Point export format would be obsolete before it was used.
 
