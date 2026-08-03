@@ -34,9 +34,9 @@ const navItems = [
     { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory', roles: ALL_ROLES },
     { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory', roles: MANAGERS },
 
-    // Forecasting is not implemented yet (issues #57-#60) and currently routes to
-    // a mockup screen, so it stays hidden until the real module is built.
-    // { path: '/forecast', label: 'Forecasting', icon: 'forecast', section: 'Analytics' },
+    // Everyone sees this. Nothing on it is sensitive, and the people working a
+    // concert night are the ones who most need to know it is happening.
+    { path: '/forecast', label: 'Events', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES, needsForecasting: true },
 
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: MANAGERS },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
@@ -82,9 +82,12 @@ export default function AppLayout({ children }) {
         navigate('/login')
     }
 
-    // Only what this role can actually use. A section with nothing left in it
-    // disappears rather than showing an empty heading.
-    const visibleItems = navItems.filter(n => can(user, n.roles))
+    // Only what this role can use, and only where the feature is turned on for
+    // this restaurant.
+    const visibleItems = navItems.filter(n =>
+        can(user, n.roles) &&
+        (!n.needsForecasting || activeRestaurant?.forecasting_enabled)
+    )
     const sections = [...new Set(visibleItems.map(n => n.section))]
 
     // Page title: exact nav match first, then a prefix fallback for detail pages.
