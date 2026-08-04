@@ -131,7 +131,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     }
 
     return (
-        <div className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
                 onClick={e => e.stopPropagation()}>
 
