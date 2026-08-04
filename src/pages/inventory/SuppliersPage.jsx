@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
 
 // Who we buy from.
 //
@@ -131,7 +131,7 @@ export default function SuppliersPage() {
 
     return (
         <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Suppliers</h2>
                     <p className="text-sm text-gray-500 mt-1">
@@ -248,7 +248,7 @@ export default function SuppliersPage() {
             {loading ? (
                 <div className="text-sm text-gray-500">Loading suppliers...</div>
             ) : (
-                <div className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className={tableCard}>
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -271,7 +271,7 @@ export default function SuppliersPage() {
                                             {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                            <span className={`${badge} capitalize ${s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
                                                 }`}>
                                                 {s.category}
                                             </span>
@@ -279,7 +279,7 @@ export default function SuppliersPage() {
                                         <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_email || '-'}</td>
                                         <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_phone || '-'}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                                            <span className={`${badge} ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
                                                 }`}>
                                                 {s.is_active ? 'Active' : 'Inactive'}
                                             </span>

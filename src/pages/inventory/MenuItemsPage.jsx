@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard } from '../../lib/controlStyles'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -218,14 +218,17 @@ export default function MenuItemsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      {/* Allowed to wrap. A title, a subtitle and three buttons never fit
+          across a phone, and with no wrapping the title was squeezed into a
+          narrow column while the last button hung off the right edge. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
           <p className="text-sm text-gray-500 mt-1">
             Costs and margins for {activeRestaurant?.name}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <button
             onClick={() => setShowCategoryModal(true)}
             className={secondaryButton}
@@ -358,7 +361,7 @@ export default function MenuItemsPage() {
                     as a column heading, so it did not read as the start of a
                     group. It is a proper heading now. */}
                 <h3 className="font-serif text-base font-bold text-gray-900 mb-2 px-1">{category.name}</h3>
-                <div className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className={tableCard}>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className={tableHeadRow}>

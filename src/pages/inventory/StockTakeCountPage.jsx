@@ -363,8 +363,13 @@ export default function StockTakeCountPage() {
             className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col"
             style={{ height: 'calc(100vh - 4rem)' }}
         >
-            {/* Fixed top bar (non-scrolling flex child) */}
-            <div className="flex-shrink-0 z-30 bg-white border-b border-border shadow-sm px-4 md:px-7">
+            {/* Fixed top bar (non-scrolling flex child).
+
+                z-20 keeps it above the section headings below, which are z-10,
+                while staying under the sidebar and its overlay. See the note in
+                AppLayout: this bar used to be level with the sidebar and so it
+                sat on top of the open menu instead of being blurred behind it. */}
+            <div className="flex-shrink-0 z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
                 <div className="py-3 flex items-center gap-3">
                     <button
                         type="button"

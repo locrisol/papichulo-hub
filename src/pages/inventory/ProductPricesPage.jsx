@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import PriceForm from '../../components/PriceForm'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge } from '../../lib/controlStyles'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -281,7 +281,7 @@ export default function ProductPricesPage() {
                 <span>←</span> Back to products
             </button>
 
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">
                         Prices: {product?.name || '...'}
@@ -331,7 +331,7 @@ export default function ProductPricesPage() {
                     </p>
                 </div>
             ) : (
-                <div className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className={tableCard}>
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -357,7 +357,7 @@ export default function ProductPricesPage() {
                                     >
                                         <td className="px-4 py-3 font-medium text-gray-900">{getSupplierName(p.supplier_id)}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.purchase_type === 'case'
+                                            <span className={`${badge} ${p.purchase_type === 'case'
                                                 ? 'bg-purple-50 text-purple-700'
                                                 : 'bg-amber-50 text-amber-700'
                                                 }`}>

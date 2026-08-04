@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -26,11 +26,6 @@ const COLUMNS = [
   { key: 'cost', label: 'Cost/Unit', width: 'w-28', sortable: true },
   { key: 'weightLoss', label: 'Weight Loss', width: 'w-28', sortable: true },
 ]
-
-// Badges carry the meaning now that the MIX row tint is very light, so they are
-// a step stronger than they were. whitespace-nowrap keeps two word labels like
-// "Cold Room" on one line.
-const badge = 'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
 
 export default function ProductsPage() {
   const { activeRestaurant } = useRestaurant()
@@ -281,7 +276,7 @@ export default function ProductsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Products</h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -359,7 +354,7 @@ export default function ProductsPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading products...</div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
+        <div className={tableCard}>
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
                 other striped row, so it did not read as a heading at all. It is

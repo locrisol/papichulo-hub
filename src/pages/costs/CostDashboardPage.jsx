@@ -281,19 +281,27 @@ export default function CostDashboardPage() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => shiftWeek(-1)}
-                        className={`${iconButton} text-sm font-semibold`}>
-                        ‹ Previous
-                    </button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                        className={jumpButton(isThisWeek)}>
-                        This week
-                    </button>
-                    <button type="button" onClick={() => shiftWeek(1)}
-                        className={`${iconButton} text-sm font-semibold`}>
-                        Next ›
-                    </button>
+                {/* Four controls in one row fits a laptop and does not fit a
+                    phone, where the date box was pushed clean off the right
+                    edge. The three week buttons stay together on their own line
+                    and the date box drops underneath them, full width so it is
+                    easy to hit with a thumb. On anything wider it goes back to
+                    being one row. */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => shiftWeek(-1)}
+                            className={`${iconButton} text-sm font-semibold`}>
+                            ‹ Previous
+                        </button>
+                        <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            className={jumpButton(isThisWeek)}>
+                            This week
+                        </button>
+                        <button type="button" onClick={() => shiftWeek(1)}
+                            className={`${iconButton} text-sm font-semibold`}>
+                            Next ›
+                        </button>
+                    </div>
                     <input type="date" value={pickerDate}
                         onChange={e => {
                             const v = e.target.value
@@ -301,7 +309,7 @@ export default function CostDashboardPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className={dateField}
+                        className={`${dateField} w-full sm:w-auto`}
                         aria-label="Jump to week" />
                 </div>
             </div>
@@ -327,8 +335,14 @@ export default function CostDashboardPage() {
                 </div>
             )}
 
-            {/* The four costs */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* The four costs.
+
+                One per row on a phone. Each of these holds a heading, an edit
+                link, a percentage, a target, an amount, a bar and a badge, and
+                at half a phone screen the percentage and its target ended up on
+                separate lines with the bar squashed to nothing. These are the
+                first thing you look at, so they get the full width. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <KpiCard
                     label="Food cost"
                     pct={pct(foodCost)}

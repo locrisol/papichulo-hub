@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard } from '../../lib/controlStyles'
 
 // One dish: what it is made of, what it costs, and what it contains.
 //
@@ -445,7 +445,7 @@ export default function MenuItemPage() {
           <p className="text-sm text-gray-500">No components yet. Click "+ Add Component" to start building this menu item.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden mb-6">
+        <div className={`${tableCard} mb-6`}>
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>

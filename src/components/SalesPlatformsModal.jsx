@@ -302,7 +302,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div

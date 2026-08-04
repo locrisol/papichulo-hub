@@ -42,6 +42,38 @@ export const dateField =
 export const tableHeadRow = 'bg-sidebar [&>th]:text-white [&>th]:font-bold'
 export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wider'
 
+// The white box a table sits in.
+//
+// This exists because of a bug that only showed up on a phone. Every table was
+// in a box that said overflow-hidden, which was there to keep the rounded
+// corners from being squared off by the heading row. On a laptop that is all it
+// does. On a 360px screen the table is wider than the box, and overflow-hidden
+// does exactly what it says: the last columns are cut off and there is no way to
+// reach them. Cost per unit and the Delete buttons were simply gone.
+//
+// Labour and Weekly Sales never had this because they were built with a
+// scrolling box inside, so they were the only two that worked on a phone.
+//
+// overflow-x-auto lets it scroll sideways, and overflow-y-hidden keeps the
+// corner clipping we wanted in the first place. Anything that was clipped
+// vertically before is still clipped, so nothing else moves.
+export const tableCard =
+    'bg-white rounded-xl border border-border overflow-x-auto overflow-y-hidden'
+
+// The small coloured pills in a table cell: a role, a section, a status.
+//
+// This started life on the products screen and the rest of the app was still
+// writing its own. Those ones left out inline-block and whitespace-nowrap, and
+// on a phone that shows: a plain span is inline, so when a two word label like
+// "Super Admin" or "Cold Room" wraps, the coloured background wraps with it and
+// the pill breaks in half across two lines. It looks like somebody went at it
+// with a marker.
+//
+// Colours are not in here. Each use adds its own background and text colour on
+// top, since what the colour means is different every time.
+export const badge =
+    'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
+
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.
 export function jumpButton(isCurrent) {

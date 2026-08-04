@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge } from '../../lib/controlStyles'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -62,7 +62,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">User Management</h2>
           <p className="text-sm text-gray-500 mt-1">Manage user accounts and access levels</p>
@@ -88,7 +88,7 @@ export default function UsersPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading users...</div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
+        <div className={tableCard}>
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
@@ -107,13 +107,13 @@ export default function UsersPage() {
                     {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 capitalize">
+                    <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
                       {u.role.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500">{getRestaurantName(u.restaurant_id)}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    <span className={`${badge} ${
                       u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
                     }`}>
                       {u.is_active ? 'Active' : 'Inactive'}
