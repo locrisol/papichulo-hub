@@ -299,9 +299,18 @@ export default function PublicAllergensPage({ slugOverride }) {
                                 const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-gray-400 border border-gray-200'
                                 const label = s ? s.label : 'Not present'
                                 return (
+                                  // Stacked on a phone, side by side from the
+                                  // small breakpoint up. Two of these fit across
+                                  // a phone, and at that width a long name like
+                                  // Crustaceans and a long state like Not
+                                  // present were pushed into each other with
+                                  // nothing between them. This is an allergen
+                                  // list, so a customer being unsure which word
+                                  // goes with which allergen is the one thing it
+                                  // must never do.
                                   <div
                                     key={key}
-                                    className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg ${colour}`}
+                                    className={`flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 text-xs px-3 py-2 rounded-lg ${colour}`}
                                   >
                                     <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
                                     <span>{label}</span>

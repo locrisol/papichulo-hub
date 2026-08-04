@@ -260,6 +260,14 @@ export default function LabourPage() {
                 </p>
             </div>
 
+            {/* Phone only. There is no one-day version of this page to send you
+                to, the way weekly sales has, so this just says what to expect
+                rather than offering a way out. */}
+            <div className="md:hidden bg-blue-50 text-blue-800 text-sm rounded-lg p-3 mb-4">
+                This page is meant for a computer. It works fine on a phone, but the week is seven rows of hours and
+                cost, so you have to scroll sideways to reach the cost column.
+            </div>
+
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
@@ -296,7 +304,7 @@ export default function LabourPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className={`ml-auto ${dateField}`}
+                        className={`w-full sm:w-auto sm:ml-auto ${dateField}`}
                         aria-label="Jump to week"
                     />
                 </div>

@@ -609,6 +609,19 @@ export default function WeeklySalesPage() {
                 </button>
             </div>
 
+            {/* Phone only.
+
+                The app already sends you to the day form on a narrow screen,
+                but only when it is guessing. Follow the sidebar link, or come
+                back after choosing the week view once on a laptop, and you land
+                straight on this grid with no explanation. Seven days across is
+                never going to be comfortable on a phone, so rather than pretend
+                otherwise it says so and points at the form that is. */}
+            <div className="md:hidden bg-blue-50 text-blue-800 text-sm rounded-lg p-3 mb-4">
+                This grid is meant for a computer. On a phone the Day view above is easier to use. It takes one day
+                at a time and saves to exactly the same place, so it makes no difference which one you use.
+            </div>
+
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
@@ -639,7 +652,7 @@ export default function WeeklySalesPage() {
                             setPickerDate(v)
                             goToWeek(weekStartOf(v))
                         }}
-                        className={`ml-auto ${dateField}`}
+                        className={`w-full sm:w-auto sm:ml-auto ${dateField}`}
                         aria-label="Jump to week"
                     />
                 </div>

@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -204,6 +204,39 @@ export default function MenuItemsPage() {
     return 'text-red-600'
   }
 
+  // The row buttons, written once and used by the table and the phone cards, so
+  // the two cannot end up offering different things. A plain function rather
+  // than a component, since a component declared in here would be a new type on
+  // every render and get rebuilt each time.
+  function rowActions(item) {
+    return (
+      <>
+        <button
+          onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
+          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => toggleActive(item)}
+          className={`text-xs font-medium ${
+            item.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
+          }`}
+        >
+          {item.is_active ? 'Deactivate' : 'Reactivate'}
+        </button>
+      </>
+    )
+  }
+
+  // How the allergen count reads. Both layouts show the same thing, so it is
+  // worked out here rather than written twice.
+  function allergenText(item) {
+    const s = summariseAllergens(getItemAllergens(item))
+    if (s.contains === 0 && s.mayContain === 0) return null
+    return s
+  }
+
   // Filter, group, sort
   const filteredItems = menuItems.filter(i => showInactive || i.is_active)
   const itemsByCategory = categories
@@ -360,8 +393,126 @@ export default function MenuItemsPage() {
                 {/* The category name was small grey uppercase, the same weight
                     as a column heading, so it did not read as the start of a
                     group. It is a proper heading now. */}
-                <h3 className="font-serif text-base font-bold text-gray-900 mb-2 px-1">{category.name}</h3>
-                <div className={tableCard}>
+                {/* The category heading.
+
+                    On a phone it is the dark green bar Stock Take uses for its
+                    sections, with the number of dishes on the right. Once the
+                    dishes became cards they all carried the same weight, so a
+                    plain line of text between two white cards did not read as
+                    the start of a group at all. You scrolled past Rice Bowls
+                    without noticing you had left Burritos.
+
+                    On a desktop it goes back to plain text, because there it
+                    sits directly on top of the table heading row, which is
+                    already this same green, and two green bands touching is
+                    heavy. */}
+                <div className="bg-sidebar rounded-lg shadow-md px-3 py-2.5 mb-2 flex items-center justify-between md:block md:bg-transparent md:shadow-none md:px-1 md:py-0">
+                  <h3 className="font-serif text-base font-bold text-white md:text-gray-900">
+                    {category.name}
+                  </h3>
+                  <span className={`${badge} bg-white/20 text-white md:hidden`}>
+                    {items.length}
+                  </span>
+                </div>
+
+                {/* Phone: one card per dish instead of eight columns to swipe
+                    through. Same figures in the same order, stacked. The
+                    desktop table below is untouched and takes over from the
+                    medium breakpoint up. Both read their buttons from
+                    rowActions so they cannot drift apart. */}
+                <div className="md:hidden space-y-3">
+                  {items.map(item => {
+                    const cost = getItemCost(item)
+                    const m = getMargin(item)
+                    const allergens = allergenText(item)
+                    const componentCount = getItemComponents(item.id).length
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border p-4 ${item.is_active
+                          ? 'bg-white border-border'
+                          : 'bg-red-100 border-red-200'}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {item.name}
+                          </p>
+                          {/* The table says this with a red row, which a single
+                              card cannot do, so it says it in words. */}
+                          {!item.is_active && (
+                            <span className={`${badge} flex-shrink-0 bg-red-200 text-red-800`}>Inactive</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {componentCount} {componentCount === 1 ? 'component' : 'components'}
+                        </p>
+
+                        <dl className="mt-3 space-y-1.5 text-sm">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-gray-500">Cost</dt>
+                            <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                              {cost !== null
+                                ? `€${cost.toFixed(2)}`
+                                : <span className="text-amber-600 text-xs">Incomplete</span>}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-gray-500">Price (gross)</dt>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                              €{parseFloat(item.selling_price).toFixed(2)}
+                              <span className="text-xs text-gray-400 ml-1">
+                                (VAT {parseFloat(item.vat_rate)}%)
+                              </span>
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-gray-500">Net</dt>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                              €{getNet(item).toFixed(2)}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-gray-500">Margin</dt>
+                            <dd className="text-right">
+                              {m ? (
+                                <span className={`font-medium ${marginColour(m.marginPct)}`}>
+                                  €{m.margin.toFixed(2)}
+                                  <span className="text-xs ml-1">
+                                    ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-amber-600 text-xs">—</span>
+                              )}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-gray-500">Allergens</dt>
+                            <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-gray-400'}`}>
+                              {!allergens ? 'None' : (
+                                <>
+                                  {allergens.contains > 0 && (
+                                    <span className="text-red-600 mr-2">{allergens.contains} contains</span>
+                                  )}
+                                  {allergens.mayContain > 0 && (
+                                    <span className="text-amber-700">{allergens.mayContain} may</span>
+                                  )}
+                                </>
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-black/10">
+                          {rowActions(item)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className={`${tableCard} hidden md:block`}>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className={tableHeadRow}>
@@ -434,22 +585,7 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
-                                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => toggleActive(item)}
-                                  className={`text-xs font-medium ${
-                                    item.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                                  }`}
-                                >
-                                  {item.is_active ? 'Deactivate' : 'Reactivate'}
-                                </button>
-                              </div>
+                              <div className="flex gap-3">{rowActions(item)}</div>
                             </td>
                           </tr>
                         )
