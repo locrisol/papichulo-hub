@@ -214,6 +214,70 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
+  // The row buttons, written once and used by both layouts.
+  //
+  // This is a plain function rather than a component on purpose. A component
+  // declared inside another component is a new type on every render, so React
+  // throws the old one away and builds it again, and that is a lot of churn for
+  // five buttons.
+  function rowActions(p) {
+    return (
+      <>
+        <button
+          onClick={() => editingProduct?.id === p.id ? resetForm() : startEdit(p)}
+          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+        >
+          {editingProduct?.id === p.id ? 'Cancel' : 'Edit'}
+        </button>
+        <button
+          onClick={() => navigate(`/catalogue/products/${p.id}/allergens`)}
+          className="text-xs font-medium text-gray-500 hover:text-gray-700"
+        >
+          Allergens
+        </button>
+        {p.is_mix && (
+          <button
+            onClick={() => navigate(`/catalogue/products/${p.id}/recipe`)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+          >
+            Recipe
+          </button>
+        )}
+        <button
+          onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
+          className="text-xs font-medium text-gray-500 hover:text-gray-700"
+        >
+          Prices
+        </button>
+        <button
+          onClick={() => toggleActive(p)}
+          className={`text-xs font-medium ${
+            p.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
+          }`}
+        >
+          {p.is_active ? 'Deactivate' : 'Reactivate'}
+        </button>
+      </>
+    )
+  }
+
+  // Everything a product shows that is not simply a column off the record,
+  // worked out once so the table and the phone cards cannot end up saying
+  // different things about the same product.
+  function rowValues(p) {
+    const price = getPreferredPrice(p.id)
+    const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+    return {
+      supplier: p.is_mix ? 'House-made' : getSupplierName(price?.supplier_id),
+      // Null means we could not work it out: a MIX with an ingredient that has
+      // no price, or a bought product with no preferred price set.
+      cost: p.is_mix
+        ? (mixResult?.cost != null ? `€${mixResult.cost.toFixed(4)}` : null)
+        : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : null),
+      weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
+    }
+  }
+
   // What a product is worth per unit. A MIX is costed from its recipe, a bought
   // product from its preferred supplier price. Null when neither can be worked
   // out, which sorts to the bottom rather than pretending to be zero.
@@ -354,7 +418,107 @@ export default function ProductsPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading products...</div>
       ) : (
-        <div className={tableCard}>
+        <>
+        {/* Phone: one card per product instead of a table to swipe.
+
+            This screen gets used standing in a cold room with one hand, so
+            eight columns and a sideways swipe is the wrong shape for it. The
+            card says the same things in the same order, just stacked. The
+            desktop table is untouched and takes over from the medium
+            breakpoint up.
+
+            Both layouts get their values from rowValues and their buttons from
+            rowActions, so there is only one place to change if any of it
+            changes. */}
+        <div className="md:hidden space-y-3">
+          {filteredProducts.map(p => {
+            const v = rowValues(p)
+            return (
+              <div
+                key={p.id}
+                className={`rounded-xl border p-4 ${!p.is_active
+                  ? 'bg-red-100 border-red-200'
+                  : p.is_mix
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-white border-border'}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {p.name}
+                  </p>
+                  <span className={`${badge} flex-shrink-0 ${!p.is_active
+                    ? 'bg-gray-100 text-gray-400'
+                    : p.is_mix
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-green-100 text-green-800'}`}>
+                    {p.is_mix ? 'MIX' : 'Purchased'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className={`${badge} ${p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'}`}>
+                    {p.section}
+                  </span>
+                  <span className="text-xs text-gray-500">{p.unit}</span>
+                  {/* The table says this with a red row, which a single card
+                      cannot do on its own, so it says it in words instead. */}
+                  {!p.is_active && (
+                    <span className={`${badge} bg-red-200 text-red-800`}>Inactive</span>
+                  )}
+                </div>
+
+                <dl className="mt-3 space-y-1.5 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-gray-500">Cost/unit</dt>
+                    <dd className={`font-medium text-right ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {v.cost ?? (
+                        <span className="text-amber-600 text-xs">
+                          {p.is_mix ? 'Incomplete' : 'No price set'}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-gray-500">Supplier</dt>
+                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-gray-400'} ${p.is_mix ? 'italic' : ''}`}>
+                      {v.supplier}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-gray-500">Weight loss</dt>
+                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                      {v.weightLoss}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-black/10">
+                  {rowActions(p)}
+                </div>
+
+                {editingProduct?.id === p.id && (
+                  <div className="mt-3 pt-3 border-t border-black/10">
+                    <ProductForm
+                      formData={formData}
+                      onChange={handleFieldChange}
+                      onSubmit={handleSave}
+                      onCancel={resetForm}
+                      submitLabel="Save Changes"
+                      errors={errors}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {filteredProducts.length === 0 && (
+            <div className="bg-white rounded-xl border border-border px-4 py-8 text-center text-sm text-gray-500">
+              No products found.
+            </div>
+          )}
+        </div>
+
+        <div className={`${tableCard} hidden md:block`}>
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
                 other striped row, so it did not read as a heading at all. It is
@@ -431,42 +595,7 @@ export default function ProductsPage() {
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => editingProduct?.id === p.id ? resetForm() : startEdit(p)}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                          >
-                            {editingProduct?.id === p.id ? 'Cancel' : 'Edit'}
-                          </button>
-                          <button
-                            onClick={() => navigate(`/catalogue/products/${p.id}/allergens`)}
-                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                          >
-                            Allergens
-                          </button>
-                          {p.is_mix && (
-                            <button
-                              onClick={() => navigate(`/catalogue/products/${p.id}/recipe`)}
-                              className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                            >
-                              Recipe
-                            </button>
-                          )}
-                          <button
-                            onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
-                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                          >
-                            Prices
-                          </button>
-                          <button
-                            onClick={() => toggleActive(p)}
-                            className={`text-xs font-medium ${
-                              p.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                            }`}
-                          >
-                            {p.is_active ? 'Deactivate' : 'Reactivate'}
-                          </button>
-                        </div>
+                        <div className="flex gap-3">{rowActions(p)}</div>
                       </td>
                     </tr>
                     {editingProduct?.id === p.id && (
@@ -494,6 +623,7 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
+        </>
       )}
     </div>
   )
