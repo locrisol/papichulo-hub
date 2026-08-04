@@ -187,23 +187,42 @@ export default function EventCalendarPage() {
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {note && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{note}</div>}
 
-            {/* Month navigation */}
-            <div className="bg-white rounded-xl border border-border p-3 mb-4 flex items-center gap-2 flex-wrap">
-                <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-                    className={secondaryButton}>
-                    ‹ {monthLabel(addMonths(viewMonth, -1))}
-                </button>
-                <span className="font-serif text-lg font-bold text-gray-900 px-2">{monthLabel(viewMonth)}</span>
-                <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                    className={secondaryButton}>
-                    {monthLabel(addMonths(viewMonth, 1))} ›
-                </button>
-                {viewMonth !== monthStart(today) && (
-                    <button type="button" onClick={() => setViewMonth(monthStart(today))}
-                        className="ml-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium">
-                        This month
-                    </button>
-                )}
+            {/* Month navigation.
+
+                The buttons carry a whole month name, so "‹ July 2026" and
+                "September 2026 ›" together are far wider than a phone. Wrapping
+                let them fall onto three lines with the month you are actually
+                looking at stuck in the middle of them.
+
+                On a phone the month you are on goes on top where it belongs, and
+                the two buttons sit side by side underneath, each taking half the
+                row. From the small breakpoint up it goes back to one row with
+                the month between the buttons. */}
+            <div className="bg-white rounded-xl border border-border p-3 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <p className="font-serif text-lg font-bold text-gray-900 sm:hidden">
+                        {monthLabel(viewMonth)}
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, -1))}
+                            className={`${secondaryButton} flex-1 sm:flex-none`}>
+                            ‹ {monthLabel(addMonths(viewMonth, -1))}
+                        </button>
+                        <span className="hidden sm:block font-serif text-lg font-bold text-gray-900 px-2">
+                            {monthLabel(viewMonth)}
+                        </span>
+                        <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, 1))}
+                            className={`${secondaryButton} flex-1 sm:flex-none`}>
+                            {monthLabel(addMonths(viewMonth, 1))} ›
+                        </button>
+                    </div>
+                    {viewMonth !== monthStart(today) && (
+                        <button type="button" onClick={() => setViewMonth(monthStart(today))}
+                            className="sm:ml-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium text-left sm:text-center">
+                            This month
+                        </button>
+                    )}
+                </div>
             </div>
 
             {loading ? (
