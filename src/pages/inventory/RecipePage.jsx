@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard } from '../../lib/controlStyles'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -283,7 +283,7 @@ export default function RecipePage() {
         <span>←</span> Back to products
       </button>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">
             Recipe: {product?.name || '...'}
@@ -368,7 +368,7 @@ export default function RecipePage() {
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-border overflow-hidden">
+          <div className={tableCard}>
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadRow}>

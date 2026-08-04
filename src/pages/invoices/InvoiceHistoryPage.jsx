@@ -137,7 +137,9 @@ export default function InvoiceHistoryPage() {
 
             {/* Filters */}
             <div className="bg-white rounded-xl border border-border p-4 mb-4">
-                <div className="grid grid-cols-4 gap-3 mb-3">
+                {/* Two across on a phone. Four across gave each date box a
+                    quarter of the screen, which showed a single digit. */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                     <div>
                         <label className={labelCls}>From</label>
                         <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={fieldCls} />
@@ -173,8 +175,9 @@ export default function InvoiceHistoryPage() {
                 </div>
             </div>
 
-            {/* Totals for whatever is showing */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            {/* Totals for whatever is showing. Two across on a phone, same as
+                the invoices screen. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 {SUMMARY_GROUPS.map(g => (
                     <div key={g.label} className="bg-white rounded-xl border border-border p-4">
                         <p className="text-xs text-gray-500 uppercase tracking-wider">{g.label}</p>
@@ -194,6 +197,10 @@ export default function InvoiceHistoryPage() {
                 ) : invoices.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">No invoices match those filters.</p>
                 ) : (
+                    // Same as the invoices screen: this table is inside a padded
+                    // card, so it needs its own scrolling wrapper or the Total
+                    // column is off the edge of a phone.
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -227,6 +234,7 @@ export default function InvoiceHistoryPage() {
                             ))}
                         </tbody>
                     </table>
+                    </div>
                 )}
             </div>
         </PageContainer>

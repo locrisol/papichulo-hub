@@ -106,17 +106,26 @@ export default function AppLayout({ children }) {
     return (
         <div className="flex h-screen bg-app-bg overflow-hidden">
 
-            {/* Mobile overlay: closes the sidebar when tapped */}
+            {/* Mobile overlay: closes the sidebar when tapped.
+
+                The sidebar is z-40 and this is z-30 so that everything a page
+                puts on itself can sit below both. The stock take screen has a
+                bar that stays put while the list scrolls, and it used to be on
+                the same level as the sidebar. When two things are on the same
+                level the one further down the page wins, and the page always
+                comes after the sidebar, so opening the menu left the stock take
+                bar sitting on top of it, unblurred. Page furniture belongs at
+                z-20 or below. */}
             {sidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/30 backdrop-blur-sm z-20 md:hidden"
+                    className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30 md:hidden"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
 
             {/* Sidebar: fixed and slide-in on mobile, static on desktop */}
             <aside className={`
-                fixed inset-y-0 left-0 z-30 w-56 bg-sidebar flex flex-col flex-shrink-0
+                fixed inset-y-0 left-0 z-40 w-56 bg-sidebar flex flex-col flex-shrink-0
                 transform transition-transform duration-200
                 md:static md:translate-x-0
                 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}

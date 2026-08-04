@@ -161,10 +161,16 @@ export default function WasteSummaryPage() {
                     <button type="button" onClick={() => shiftWeek(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next week">›</button>
                     <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">This week</button>
 
+                    {/* The reason filter is pushed to the far right on a wide
+                        screen, which is where you expect a filter to be. On a
+                        phone that rule left it stranded on a line of its own
+                        with the date box orphaned underneath, so it only
+                        applies from the small breakpoint up. Both controls take
+                        the full width on a phone instead. */}
                     <select
                         value={reasonFilter}
                         onChange={e => setReasonFilter(e.target.value)}
-                        className="ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                        className="w-full sm:w-auto sm:ml-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                     >
                         <option value="">All reasons</option>
                         {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -179,14 +185,16 @@ export default function WasteSummaryPage() {
                             setPickerDate(v)
                             setWeekStart(weekStartOf(v))
                         }}
-                        className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full sm:w-auto border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                         aria-label="Jump to week"
                     />
                 </div>
             </div>
 
-            {/* The headline numbers */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            {/* The headline numbers. Two across on a phone, so the third one
+                takes a full row of its own. Three across gave each about 100px
+                and "Waste as % of sales" came out over three lines. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 <div className="bg-white rounded-xl border border-border p-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Waste this week</p>
                     <p className="text-xl font-semibold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
@@ -217,6 +225,10 @@ export default function WasteSummaryPage() {
                 ) : byProduct.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">Nothing logged for this week.</p>
                 ) : (
+                    // Inside a padded card, so it needs its own scrolling
+                    // wrapper. The reason breakdown under each product name can
+                    // get long, which pushes Quantity and Value off a phone.
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -256,6 +268,7 @@ export default function WasteSummaryPage() {
                             </tr>
                         </tfoot>
                     </table>
+                    </div>
                 )}
             </div>
 

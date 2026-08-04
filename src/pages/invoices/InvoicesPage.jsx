@@ -175,7 +175,7 @@ export default function InvoicesPage() {
             <form onSubmit={handleSave} className="bg-white rounded-xl border border-border p-5 mb-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an invoice</h3>
 
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
                         <label className={labelCls}>Supplier</label>
                         <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldCls}>
@@ -191,7 +191,11 @@ export default function InvoicesPage() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 mb-3">
+                {/* Two across on a phone, not three. A date box needs about
+                    140px to show a whole date, and a third of a phone screen is
+                    nowhere near that, so it was showing 04/0 with the rest cut
+                    off. */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                     <div>
                         <label className={labelCls}>Invoice date</label>
                         <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={fieldCls} />
@@ -224,8 +228,11 @@ export default function InvoicesPage() {
                 </div>
             </form>
 
-            {/* This week's totals */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            {/* This week's totals. Two across on a phone: these hold nothing but
+                a label and a figure, so they do not need the full width, but
+                four across left about 80px each and the amounts were cut off
+                mid number. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 <div className="bg-white rounded-xl border border-border p-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Food</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('food'))}</p>
@@ -254,6 +261,11 @@ export default function InvoicesPage() {
                 ) : invoices.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">Nothing recorded for this week yet.</p>
                 ) : (
+                    // Sits inside a padded card rather than in the usual table
+                    // box, so it needs its own scrolling wrapper. Without it the
+                    // Total column and the Delete buttons are off the edge of a
+                    // phone screen with no way to reach them.
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -282,6 +294,7 @@ export default function InvoicesPage() {
                             ))}
                         </tbody>
                     </table>
+                    </div>
                 )}
             </div>
         </PageContainer>
