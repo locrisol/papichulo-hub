@@ -7,6 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
+import { numberField } from '../../lib/numberInput'
 import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -517,11 +518,12 @@ export default function WeeklySalesPage() {
                 {dates.map((d, i) => (
                     <td key={d} className="px-1.5 py-1.5">
                         <input
-                            type="number" step="0.01" inputMode="decimal"
+                            {...numberField({
+                                value: days[d]?.[field],
+                                onChange: v => setField(d, field, v),
+                            })}
                             data-col={i}
-                            value={days[d]?.[field] ?? ''}
                             disabled={days[d]?.isClosed}
-                            onChange={e => setField(d, field, e.target.value)}
                             className={inputCls}
                             placeholder="0.00"
                         />
@@ -547,11 +549,12 @@ export default function WeeklySalesPage() {
                 {dates.map((d, i) => (
                     <td key={d} className="px-1.5 py-1.5">
                         <input
-                            type="number" step="0.01" inputMode="decimal"
+                            {...numberField({
+                                value: days[d]?.tenderValues?.[tender.key],
+                                onChange: v => setTenderValue(d, tender.key, v),
+                            })}
                             data-col={i}
-                            value={days[d]?.tenderValues?.[tender.key] ?? ''}
                             disabled={days[d]?.isClosed}
-                            onChange={e => setTenderValue(d, tender.key, e.target.value)}
                             className={inputCls}
                             placeholder="0.00"
                         />
@@ -569,11 +572,12 @@ export default function WeeklySalesPage() {
                 {dates.map((d, i) => (
                     <td key={d} className="px-1.5 py-1.5">
                         <input
-                            type="number" step="0.01" inputMode="decimal"
+                            {...numberField({
+                                value: days[d]?.platformValues?.[platform.name],
+                                onChange: v => setPlatformValue(d, platform.name, v),
+                            })}
                             data-col={i}
-                            value={days[d]?.platformValues?.[platform.name] ?? ''}
                             disabled={days[d]?.isClosed}
-                            onChange={e => setPlatformValue(d, platform.name, e.target.value)}
                             className={inputCls}
                             placeholder="0.00"
                         />

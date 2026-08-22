@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { numberField } from '../lib/numberInput'
 import { tableHeadRow } from '../lib/controlStyles'
 
 // Manages the categories menu items are grouped under.
@@ -157,9 +158,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       </td>
                       <td className="px-3 py-2">
                         <input
-                          type="number"
-                          value={editSortOrder}
-                          onChange={e => setEditSortOrder(e.target.value)}
+                          {...numberField({ value: editSortOrder, onChange: setEditSortOrder, whole: true })}
                           className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                         />
                       </td>
@@ -233,9 +232,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
               </div>
               <div className="w-24">
                 <input
-                  type="number"
-                  value={newSortOrder}
-                  onChange={e => setNewSortOrder(e.target.value)}
+                  {...numberField({ value: newSortOrder, onChange: setNewSortOrder, whole: true })}
                   placeholder="Order"
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />

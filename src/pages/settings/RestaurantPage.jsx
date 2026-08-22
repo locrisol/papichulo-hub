@@ -9,6 +9,7 @@ import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { numberField } from '../../lib/numberInput'
 
 // Restaurant settings.
 //
@@ -197,11 +198,10 @@ export default function RestaurantPage() {
                                         Hourly rate (€)
                                     </label>
                                     <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.hourly_rate}
-                                        onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })}
+                                        {...numberField({
+                                            value: formData.hourly_rate,
+                                            onChange: v => setFormData({ ...formData, hourly_rate: v }),
+                                        })}
                                         className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                         required
                                     />

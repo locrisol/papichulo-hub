@@ -9,6 +9,8 @@
 // saved as a typo. If one is ever added it has to go in a migration first.
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
+import { numberField } from '../lib/numberInput'
+
 export default function ProductForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors }) {
   return (
     <form onSubmit={onSubmit}>
@@ -55,12 +57,10 @@ export default function ProductForm({ formData, onChange, onSubmit, onCancel, su
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Weight Loss %</label>
           <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            value={formData.weight_loss_pct}
-            onChange={e => onChange('weight_loss_pct', e.target.value)}
+            {...numberField({
+              value: formData.weight_loss_pct,
+              onChange: v => onChange('weight_loss_pct', v),
+            })}
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
           {errors.weight_loss_pct

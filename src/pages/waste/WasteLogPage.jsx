@@ -10,6 +10,7 @@ import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
+import { numberField } from '../../lib/numberInput'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -310,9 +311,10 @@ export default function WasteLogPage() {
                                         Quantity {selectedProduct ? `(${selectedProduct.unit})` : ''}
                                     </label>
                                     <input
-                                        type="number" step="0.001" min="0" inputMode="decimal"
-                                        value={quantity}
-                                        onChange={e => setQuantity(e.target.value)}
+                                        {...numberField({
+                                            value: quantity,
+                                            onChange: setQuantity,
+                                        })}
                                         className={`${fieldCls} text-right`}
                                         placeholder="0"
                                     />
