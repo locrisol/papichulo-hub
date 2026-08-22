@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -8,7 +8,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -543,9 +543,10 @@ export default function WeeklySalesPage() {
     // were bare text with nothing marking them as different. Everything looked
     // the same on a screen that is nothing but numbers.
     const inputCls =
-        'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none'
+        'w-full border rounded-md px-2 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:text-gray-400 disabled:shadow-none'
 
-    // A filled box is faintly green, an empty one is white.
+    // A filled box is faintly green, an empty one is white, and every box on a
+    // closed day is red.
     //
     // On a grid of seven days by a dozen rows there was no way to see at a
     // glance how far through a week you were. The empty boxes used to show a
@@ -553,20 +554,41 @@ export default function WeeklySalesPage() {
     // so that is gone as well: blank means nobody has filled it in, and a typed
     // 0 means the till took nothing. Those are different things and the day has
     // to be able to say which.
-    function cellCls(value) {
-        return `${inputCls} ${value === '' || value == null ? 'bg-white' : 'bg-green-50'}`
+    //
+    // The background is set here rather than with a disabled: rule, because a
+    // disabled: rule would beat the closed colour and leave the boxes grey in a
+    // red column.
+    function cellCls(value, closed) {
+        if (closed) return `${inputCls} bg-red-50 border-red-200`
+        const filled = !(value === '' || value == null)
+        return `${inputCls} border-gray-300 ${filled ? 'bg-green-50' : 'bg-white'}`
     }
-    const labelCellCls = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-gray-50 z-10'
-    const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap bg-gray-50'
+
+    // A closed day is not a day nobody has filled in, it is a day we did not
+    // trade, so the whole column says so rather than just the boxes going flat.
+    function closedCol(date) {
+        return days[date]?.isClosed ? 'bg-red-50' : ''
+    }
+    // The label and total cells paint their own background, because the label
+    // is sticky and would otherwise go transparent over the rows as it scrolls.
+    // The background is kept out of the base class and passed in instead: with
+    // it baked in, a tinted row ended up with two background classes on the same
+    // cell and which one won came down to the order Tailwind happens to emit
+    // them in. That is why the gross row and the net row did not match.
+    const labelCellBase = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 z-10'
+    const totalCellBase = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap'
+    const labelCellCls = `${labelCellBase} bg-gray-50`
+    const totalCellCls = `${totalCellBase} bg-gray-50`
 
     // Called as functions rather than rendered as components, so React keeps the
     // same DOM nodes between renders and inputs do not lose focus while typing.
     function fieldRow({ label, field, bold, key, block = 'receipt', tint }) {
+        const bg = tint || 'bg-gray-50'
         return (
             <tr key={key} className={`border-b border-border ${tint || ''}`}>
-                <td className={`${labelCellCls} ${bold ? 'font-semibold' : ''} ${tint || ''}`}>{label}</td>
+                <td className={`${labelCellBase} ${bg} ${bold ? 'font-semibold' : ''}`}>{label}</td>
                 {dates.map((d, i) => (
-                    <td key={d} className="px-1.5 py-1.5">
+                    <td key={d} className={`px-1.5 py-1.5 ${closedCol(d)}`}>
                         <input
                             {...numberField({
                                 value: days[d]?.[field],
@@ -575,11 +597,11 @@ export default function WeeklySalesPage() {
                             data-col={i}
                             data-block={block}
                             disabled={days[d]?.isClosed}
-                            className={cellCls(days[d]?.[field])}
+                            className={cellCls(days[d]?.[field], days[d]?.isClosed)}
                         />
                     </td>
                 ))}
-                <td className={`${totalCellCls} ${tint || ''}`}>{fmtMoney(weekTotal(field))}</td>
+                <td className={`${totalCellBase} ${bg}`}>{fmtMoney(weekTotal(field))}</td>
             </tr>
         )
     }
@@ -597,7 +619,7 @@ export default function WeeklySalesPage() {
                     )}
                 </td>
                 {dates.map((d, i) => (
-                    <td key={d} className="px-1.5 py-1.5">
+                    <td key={d} className={`px-1.5 py-1.5 ${closedCol(d)}`}>
                         <input
                             {...numberField({
                                 value: days[d]?.tenderValues?.[tender.key],
@@ -606,7 +628,7 @@ export default function WeeklySalesPage() {
                             data-col={i}
                             data-block="receipt"
                             disabled={days[d]?.isClosed}
-                            className={cellCls(days[d]?.tenderValues?.[tender.key])}
+                            className={cellCls(days[d]?.tenderValues?.[tender.key], days[d]?.isClosed)}
                         />
                     </td>
                 ))}
@@ -620,7 +642,7 @@ export default function WeeklySalesPage() {
             <tr key={platform.id} className="border-b border-border">
                 <td className={`${labelCellCls} pl-6 text-gray-600`}>{platform.name}</td>
                 {dates.map((d, i) => (
-                    <td key={d} className="px-1.5 py-1.5">
+                    <td key={d} className={`px-1.5 py-1.5 ${closedCol(d)}`}>
                         <input
                             {...numberField({
                                 value: days[d]?.platformValues?.[platform.name],
@@ -629,7 +651,7 @@ export default function WeeklySalesPage() {
                             data-col={i}
                             data-block={platform.bucket}
                             disabled={days[d]?.isClosed}
-                            className={cellCls(days[d]?.platformValues?.[platform.name])}
+                            className={cellCls(days[d]?.platformValues?.[platform.name], days[d]?.isClosed)}
                         />
                     </td>
                 ))}
@@ -642,6 +664,53 @@ export default function WeeklySalesPage() {
 
     // Sum of the tracking rows, with the gap against the receipt figure beneath.
     // The gap is expected and informational, never an error.
+    // The heading on a tracking block.
+    //
+    // These blocks are not part of the reconciliation and never were, but they
+    // sat in the same table in the same colours as the rows that are, with only
+    // a small orange caption to tell them apart. On a screen of nothing but
+    // figures that is not enough. They get a gap, a solid bar and a total that
+    // matches the bar, so it is obvious where the receipt stops.
+    //
+    // Deliberately grey rather than one of the app's colours. Orange would read
+    // as something needing attention and green as something confirmed, and this
+    // is neither: it is a note kept alongside the day.
+    function trackingHeaderRow({ title, note, key }) {
+        return (
+            <Fragment key={key}>
+                <tr>
+                    <td colSpan={9} className="px-3 py-2 sticky left-0 bg-gray-600">
+                        <span className="text-xs font-bold text-white uppercase tracking-wider">{title}</span>
+                        <span className="text-xs text-white/60 ml-2">
+                            tracking only, outside the reconciliation
+                        </span>
+                    </td>
+                </tr>
+                {note && (
+                    <tr>
+                        <td colSpan={9} className="px-3 py-2 sticky left-0 bg-blue-50 text-xs text-blue-800 border-b border-border">
+                            {note}
+                        </td>
+                    </tr>
+                )}
+            </Fragment>
+        )
+    }
+
+    // Every table on this screen uses the same column widths, so the cards line
+    // up with each other and with the day headings above them. They are separate
+    // tables now, one per card, which is the only way to give each a border of
+    // its own, so the widths have to be stated rather than left to the browser.
+    function gridColumns() {
+        return (
+            <colgroup>
+                <col style={{ width: '11rem' }} />
+                {dates.map(d => <col key={d} style={{ width: '6rem' }} />)}
+                <col style={{ width: '7rem' }} />
+            </colgroup>
+        )
+    }
+
     function platformSumRow({ label, bucketPlatforms, receiptKey, key }) {
         const weekSum = weekPlatformSum(bucketPlatforms)
         // Once the till row this was compared against is gone, there is nothing
@@ -651,15 +720,15 @@ export default function WeeklySalesPage() {
         const weekGap = weekSum - weekReceipt
 
         return (
-            <tr key={key} className="border-b border-border bg-gray-50">
-                <td className={`${labelCellCls} font-semibold bg-gray-50`}>{label} tracked</td>
+            <tr key={key} className="border-t-2 border-gray-300 border-b border-border bg-gray-200">
+                <td className={`${labelCellBase} bg-gray-200 font-semibold`}>{label} tracked</td>
                 {dates.map(d => {
                     const day = days[d]
                     const sum = platformSumFor(d, bucketPlatforms)
                     const gap = sum - num(day?.tenderValues?.[receiptKey])
                     const showGap = comparable && !day?.isClosed && Math.abs(gap) >= 0.01
                     return (
-                        <td key={d} className="px-3 py-2 text-right whitespace-nowrap">
+                        <td key={d} className={`px-3 py-2 text-right whitespace-nowrap ${closedCol(d)}`}>
                             <div className="text-sm text-gray-900">{fmtMoney(sum)}</div>
                             {showGap && (
                                 <div className="text-xs text-amber-600">
@@ -727,7 +796,7 @@ export default function WeeklySalesPage() {
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Week navigation */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
                     <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
                     {/* Fixed width, or the arrows shift sideways every time the
@@ -759,10 +828,21 @@ export default function WeeklySalesPage() {
                 </div>
             </div>
 
-            {/* Fixed layout stops columns resizing as digits are typed. */}
-            <div className="bg-white rounded-xl border border-border overflow-hidden mb-4">
-                <div className="overflow-x-auto" onKeyDown={handleGridKeyDown}>
-                    <table className="w-full min-w-[1000px] table-fixed">
+            {/* Three separate cards, all inside one scrolling box.
+
+                The till receipt is one thing and the tracking blocks are
+                another, so they are not rows of the same table any more. Keeping
+                them in one scroller means they still slide sideways together and
+                still share a column layout, which is the whole point: a figure
+                under Wednesday has to be under Wednesday on every card.
+
+                Fixed layout stops columns resizing as digits are typed. */}
+            <div className="overflow-x-auto mb-4" onKeyDown={handleGridKeyDown}>
+                <div className="min-w-[1000px] space-y-4">
+
+                <div className={`${card} overflow-hidden`}>
+                    <table className="w-full table-fixed">
+                        {gridColumns()}
                         <thead>
                             {/* The first cell is sticky and paints its own
                                 background, so it has to be given the heading
@@ -787,7 +867,7 @@ export default function WeeklySalesPage() {
                             <tr className="border-b border-border bg-gray-50">
                                 <td className="px-3 py-1.5 text-xs text-gray-500 sticky left-0 bg-gray-50 z-10">Closed</td>
                                 {dates.map(d => (
-                                    <td key={d} className="px-1.5 py-1.5 text-center">
+                                    <td key={d} className={`px-1.5 py-1.5 text-center ${closedCol(d)}`}>
                                         <input
                                             type="checkbox"
                                             checked={days[d]?.isClosed ?? false}
@@ -810,8 +890,11 @@ export default function WeeklySalesPage() {
                                 figure, so they get the colours and the gap the
                                 weekly spreadsheet already gives them rather than
                                 sitting in one undifferentiated list. */}
-                            {fieldRow({ key: 'gross', label: 'Gross sales', field: 'gross', bold: true, tint: 'bg-blue-50' })}
-                            {fieldRow({ key: 'net', label: 'Net sales', field: 'net', bold: true, tint: 'bg-green-50' })}
+                            {/* A step darker than the faint green a filled
+                                cell gets, or a whole row reads as one big
+                                confirmation tick. */}
+                            {fieldRow({ key: 'gross', label: 'Gross sales', field: 'gross', bold: true, tint: 'bg-blue-200' })}
+                            {fieldRow({ key: 'net', label: 'Net sales', field: 'net', bold: true, tint: 'bg-green-200' })}
 
                             <tr aria-hidden="true">
                                 <td colSpan={9} className="h-4 bg-app-bg sticky left-0"></td>
@@ -832,7 +915,7 @@ export default function WeeklySalesPage() {
                                     const warn = v !== 0
                                     const closed = days[d]?.isClosed
                                     return (
-                                        <td key={d} className="px-3 py-2 text-right text-sm whitespace-nowrap">
+                                        <td key={d} className={`px-3 py-2 text-right text-sm whitespace-nowrap ${closedCol(d)}`}>
                                             {closed
                                                 ? <span className="text-gray-300">-</span>
                                                 : <span className={warn ? 'text-red-600 font-semibold' : 'text-green-700'}>{fmtMoney(v)}</span>}
@@ -842,36 +925,50 @@ export default function WeeklySalesPage() {
                                 <td></td>
                             </tr>
 
-                            {/* Platform detail. Tracking only, outside the reconciliation. */}
-                            {onlinePlatforms.length > 0 && (
-                                <>
-                                    <tr className="border-b border-border">
-                                        <td colSpan={9} className="px-3 pt-4 pb-1 sticky left-0 bg-white">
-                                            <span className="text-xs font-semibold text-accent uppercase tracking-wider">Online Platform</span>
-                                            <span className="text-xs text-gray-400 ml-2">tracking only</span>
-                                        </td>
-                                    </tr>
-                                    {onlinePlatforms.map(p => platformRow(p))}
-                                    {platformSumRow({ key: 'onlineSum', label: 'Online', bucketPlatforms: onlinePlatforms, receiptKey: 'online_sales' })}
-                                </>
-                            )}
+                        </tbody>
+                    </table>
+                </div>
 
-                            {cateringPlatforms.length > 0 && (
-                                <>
-                                    <tr className="border-b border-border">
-                                        <td colSpan={9} className="px-3 pt-4 pb-1 sticky left-0 bg-white">
-                                            <span className="text-xs font-semibold text-accent uppercase tracking-wider">Corporate</span>
-                                            <span className="text-xs text-gray-400 ml-2">tracking only</span>
-                                        </td>
-                                    </tr>
-                                    {cateringPlatforms.map(p => platformRow(p))}
-                                    {platformSumRow({ key: 'cateringSum', label: 'Corporate', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
-                                </>
-                            )}
+                {/* Platform detail. Tracking only, outside the reconciliation. */}
+                {onlinePlatforms.length > 0 && (
+                    <div className={`${card} overflow-hidden`}>
+                        <table className="w-full table-fixed">
+                            {gridColumns()}
+                            <tbody>
+                                {trackingHeaderRow({ key: 'onlineHead', title: 'Online Platforms' })}
+                                {onlinePlatforms.map(p => platformRow(p))}
+                                {platformSumRow({ key: 'onlineSum', label: 'Online', bucketPlatforms: onlinePlatforms, receiptKey: 'online_sales' })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
 
+                {cateringPlatforms.length > 0 && (
+                    <div className={`${card} overflow-hidden`}>
+                        <table className="w-full table-fixed">
+                            {gridColumns()}
+                            <tbody>
+                                {trackingHeaderRow({
+                                    key: 'corporateHead',
+                                    title: 'Corporate',
+                                    note: 'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.',
+                                })}
+                                {cateringPlatforms.map(p => platformRow(p))}
+                                {platformSumRow({ key: 'cateringSum', label: 'Corporate', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                <div className={`${card} overflow-hidden`}>
+                    <table className="w-full table-fixed">
+                        {gridColumns()}
+                        <tbody>
                             {fieldRow({ key: 'staffFood', label: 'Staff food', field: 'staffFood', block: 'extra' })}
                         </tbody>
                     </table>
+                </div>
+
                 </div>
             </div>
 

@@ -9,7 +9,7 @@ import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, card } from '../../lib/controlStyles'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -304,32 +304,48 @@ export default function SalesPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
-    function trackingBucket(title, bucketPlatforms, receiptKey) {
+    function trackingBucket(title, bucketPlatforms, receiptKey, note) {
         if (bucketPlatforms.length === 0) return null
         const sum = platformSum(bucketPlatforms)
         // Once the till row this was compared against is retired there is
         // nothing honest to compare it to, so it shows its own total instead.
         const comparable = shownTenders.some(t => t.key === receiptKey)
         const gap = sum - num(tenderValues[receiptKey])
+        // Headed and totalled the same way as the weekly grid, so both screens
+        // draw the line between the receipt and the notes kept beside it in the
+        // same place. Grey rather than one of the app's colours on purpose:
+        // orange would read as needing attention and green as confirmed, and
+        // this is neither.
         return (
-            <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-sm font-semibold text-accent">
+            <div className={`${card} overflow-hidden mb-3`}>
+                <div className="bg-gray-600 px-5 py-2 flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                         {title}
-                        <span className="text-xs text-gray-400 font-normal ml-2">tracking only</span>
+                        <span className="text-xs font-normal normal-case tracking-normal text-white/60 ml-2">
+                            tracking only, outside the reconciliation
+                        </span>
                     </h3>
-                    <span className="text-sm text-gray-500">
-                        total: <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
-                        <span className="ml-2 text-gray-400">({pctOfGross(sum).toFixed(1)}% of sales)</span>
+                </div>
+
+                {note && (
+                    <p className="bg-blue-50 text-xs text-blue-800 px-5 py-2 border-b border-border">{note}</p>
+                )}
+
+                <div className="bg-gray-200 border-b border-gray-300 px-5 py-2 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">{title} tracked</span>
+                    <span className="text-sm text-gray-600">
+                        <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
+                        <span className="ml-2 text-gray-500">({pctOfGross(sum).toFixed(1)}% of sales)</span>
                     </span>
                 </div>
+
                 {comparable && Math.abs(gap) >= 0.01 && (
-                    <p className="text-xs text-amber-600 mb-3">
+                    <p className="text-xs text-amber-600 px-5 pt-3">
                         {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
                         commission and VAT differently.
                     </p>
                 )}
-                <div className="grid grid-cols-3 gap-3 mt-3">
+                <div className="grid grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
                             <label className={labelCls}>{p.name}</label>
@@ -381,7 +397,7 @@ export default function SalesPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 <div>
                     {/* Date selector */}
-                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                    <div className={`${card} p-4 mb-3`}>
                         {/* Allowed to break onto a second line. It was one row
                             that could not wrap, so on a phone the date controls
                             took the whole width and pushed "Existing record"
@@ -398,7 +414,7 @@ export default function SalesPage() {
                     </div>
 
                     {/* Non-trading day */}
-                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                    <div className={`${card} p-4 mb-3`}>
                         <label className="flex items-center gap-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -421,7 +437,7 @@ export default function SalesPage() {
                             {/* Till receipt block. Gross and net stay at the
                                 top; everything under them is whatever the till
                                 currently prints, set in Restaurant settings. */}
-                            <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                            <div className={`${card} p-5 mb-3`}>
                                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
 
                                 {/* Gross and net are what the day came to. The
@@ -431,7 +447,10 @@ export default function SalesPage() {
                                     the same two colours the weekly spreadsheet
                                     gives them. */}
                                 <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
-                                    <div className="bg-blue-50 rounded-lg p-2">
+                                    {/* A step darker than the faint green a
+                                        filled box gets, or the block reads as
+                                        one big confirmation tick. */}
+                                    <div className="bg-blue-200 rounded-lg p-2">
                                         <label className={labelCls}>Gross sales</label>
                                         <input
                                             {...numberField({
@@ -441,7 +460,7 @@ export default function SalesPage() {
                                             className={fieldWith(values.gross)}
                                         />
                                     </div>
-                                    <div className="bg-green-50 rounded-lg p-2">
+                                    <div className="bg-green-200 rounded-lg p-2">
                                         <label className={labelCls}>Net sales</label>
                                         <input
                                             {...numberField({
@@ -475,7 +494,7 @@ export default function SalesPage() {
                             </div>
 
                             {/* Reconciliation closes the receipt block */}
-                            <div className={`rounded-xl p-4 mb-3 ${varianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
+                            <div className={`rounded-xl border shadow-md p-4 mb-3 ${varianceWarn ? 'bg-red-50 border-red-400' : 'bg-green-50 border-green-400'}`}>
                                 <div className={`text-xs mb-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>Reconciliation</div>
                                 <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
@@ -494,9 +513,10 @@ export default function SalesPage() {
                     <div>
                         {/* Platform detail, outside the reconciliation */}
                         {trackingBucket('Online Platform', onlinePlatforms, 'online_sales')}
-                        {trackingBucket('Corporate', cateringPlatforms, 'outside_catering')}
+                        {trackingBucket('Corporate', cateringPlatforms, 'outside_catering',
+                            'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
 
-                        <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                        <div className={`${card} p-5 mb-3`}>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className={labelCls}>Staff food</label>
