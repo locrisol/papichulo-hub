@@ -6,10 +6,11 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { todayISO, addDays } from '../../lib/dates'
+import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -42,6 +43,7 @@ export default function SalesPage() {
     const { activeRestaurant } = useRestaurant()
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
+    const confirm = useConfirm()
 
     // On a wide screen the week grid is the more useful default, so send the
     // user there unless they explicitly asked for the day view (?view=day) or
@@ -231,7 +233,13 @@ export default function SalesPage() {
 
         // One record per date per restaurant, so confirm before replacing one.
         if (recordId) {
-            const ok = window.confirm(`A sales record already exists for ${saleDate}. Overwrite it?`)
+            const ok = await confirm({
+                title: 'Overwrite this day?',
+                message: 'There is already a record for this day. Saving replaces it with what is on screen now.',
+                details: [{ label: 'Day', value: fullDate(saleDate) }],
+                confirmLabel: 'Overwrite',
+                tone: 'danger',
+            })
             if (!ok) return
         }
 

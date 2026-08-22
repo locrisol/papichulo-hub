@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { tableHeadRow } from '../lib/controlStyles'
+import Modal from './Modal'
 
 // Manages the categories menu items are grouped under.
 //
@@ -107,23 +108,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Manage Categories</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 text-xl leading-none"
-          >
-            ×
-          </button>
-        </div>
+    <Modal title="Manage categories" onClose={onClose} width="max-w-2xl">
 
         <div className="px-6 py-4 overflow-y-auto flex-1">
           {error && (
@@ -258,7 +243,6 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
             Done
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

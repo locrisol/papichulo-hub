@@ -4,8 +4,10 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
+import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
@@ -28,6 +30,7 @@ export default function RecipePage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
+  const confirm = useConfirm()
 
   const [product, setProduct] = useState(null)
   const [recipeLines, setRecipeLines] = useState([])
@@ -215,7 +218,18 @@ export default function RecipePage() {
   }
 
   async function removeLine(line) {
-    if (!confirm('Remove this ingredient from the recipe?')) return
+    const ingredient = getProduct(line.ingredient_product_id)
+    const ok = await confirm({
+      title: 'Remove this ingredient?',
+      message: 'The mix will be costed without it, and every dish using the mix follows.',
+      details: [
+        { label: 'Ingredient', value: ingredient?.name || 'Unknown product' },
+        { label: 'Quantity', value: `${line.quantity} ${ingredient?.unit || ''}`.trim() },
+      ],
+      confirmLabel: 'Remove ingredient',
+      tone: 'danger',
+    })
+    if (!ok) return
 
     const { error } = await supabase
       .from('mix_recipes')
@@ -418,21 +432,6 @@ export default function RecipePage() {
                           </div>
                         </td>
                       </tr>
-                      {editingLine?.id === line.id && (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-4 bg-amber-50 border-b border-border">
-                            <RecipeIngredientForm
-                              formData={formData}
-                              onChange={handleFieldChange}
-                              onSubmit={handleSave}
-                              onCancel={resetForm}
-                              submitLabel="Save Changes"
-                              errors={errors}
-                              availableProducts={availableProducts}
-                            />
-                          </td>
-                        </tr>
-                      )}
                     </Fragment>
                   )
                 })}
@@ -480,6 +479,26 @@ export default function RecipePage() {
               )}
             </div>
           )}
+      {editingLine && (
+        <Modal
+          title={`Edit ${getProduct(editingLine.ingredient_product_id)?.name || 'this ingredient'}`}
+          onClose={resetForm}
+          width="max-w-2xl"
+        >
+          <div className="p-5">
+            <RecipeIngredientForm
+              formData={formData}
+              onChange={handleFieldChange}
+              onSubmit={handleSave}
+              onCancel={resetForm}
+              submitLabel="Save changes"
+              errors={errors}
+              availableProducts={availableProducts}
+            />
+          </div>
+        </Modal>
+      )}
+
         </>
       )}
     </div>

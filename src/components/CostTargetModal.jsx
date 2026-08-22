@@ -4,7 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { weekStartOf, shortDate, todayISO } from '../lib/dates'
 import { describeTargets } from '../lib/costTargets'
 import { friendlyError } from '../lib/errors'
+import { useConfirm } from '../context/ConfirmContext'
 import { numberField } from '../lib/numberInput'
+import Modal from './Modal'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -24,6 +26,7 @@ const TYPE_LABELS = {
 
 export default function CostTargetModal({ targetType, restaurantId, currentValue, weekStart, onClose, onSaved }) {
     const { user } = useAuth()
+    const confirm = useConfirm()
     const week = weekStart || weekStartOf(todayISO())
 
     const [value, setValue] = useState(currentValue != null ? String(currentValue) : '')
@@ -90,10 +93,16 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     // a mistake, and it is easy to end up with several set on the same week
     // that never applied to anything.
     async function handleDelete(t) {
-        const ok = window.confirm(
-            `Delete the ${t.value}% target starting the week of ${shortDate(t.from)}?\n\n` +
-            'Weeks that were using it will fall back to whatever was set before.'
-        )
+        const ok = await confirm({
+            title: 'Delete this target?',
+            message: 'Weeks that were using it will fall back to whatever was set before.',
+            details: [
+                { label: 'Target', value: `${t.value}%` },
+                { label: 'From', value: `week of ${shortDate(t.from)}` },
+            ],
+            confirmLabel: 'Delete target',
+            tone: 'danger',
+        })
         if (!ok) return
 
         const { error: e1 } = await supabase
@@ -132,16 +141,8 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     }
 
     return (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
-                onClick={e => e.stopPropagation()}>
-
-                <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">{TYPE_LABELS[targetType]} target</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
-                </div>
-
-                <div className="px-6 py-4 overflow-y-auto flex-1">
+        <Modal title={`${TYPE_LABELS[targetType]} target`} onClose={onClose}>
+                <div className="px-6 py-4">
                     {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
                     <form onSubmit={handleSave}>
@@ -229,7 +230,6 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                         Done
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

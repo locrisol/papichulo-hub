@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PriceForm from '../../components/PriceForm'
+import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, badge, card } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -26,6 +28,7 @@ export default function ProductPricesPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const { activeRestaurant } = useRestaurant()
+    const confirm = useConfirm()
 
     const [product, setProduct] = useState(null)
     const [prices, setPrices] = useState([])
@@ -37,6 +40,10 @@ export default function ProductPricesPage() {
     const [editingPrice, setEditingPrice] = useState(null)
     const [formData, setFormData] = useState(emptyForm())
     const [formatsForPriceId, setFormatsForPriceId] = useState(null)
+
+    // The price the formats dialog is showing, looked up from the list rather
+    // than kept as a second copy, so it cannot go stale if the list reloads.
+    const formatsPrice = prices.find(p => p.id === formatsForPriceId) || null
 
     function emptyForm() {
         return {
@@ -257,7 +264,19 @@ export default function ProductPricesPage() {
     }
 
     async function removePrice(price) {
-        if (!confirm('Remove this price link?')) return
+        const ok = await confirm({
+            title: 'Remove this price?',
+            message: price.is_preferred
+                ? 'This is the preferred price, so the product will have no cost until another one is set.'
+                : 'The product keeps whichever price is preferred.',
+            details: [
+                { label: 'Supplier', value: getSupplierName(price.supplier_id) },
+                { label: 'Per unit', value: `€${parseFloat(price.price_per_unit).toFixed(4)}` },
+            ],
+            confirmLabel: 'Remove price',
+            tone: 'danger',
+        })
+        if (!ok) return
 
         const { error } = await supabase
             .from('product_supplier_prices')
@@ -394,10 +413,10 @@ export default function ProductPricesPage() {
                                                     {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
                                                 </button>
                                                 <button
-                                                    onClick={() => setFormatsForPriceId(formatsForPriceId === p.id ? null : p.id)}
+                                                    onClick={() => setFormatsForPriceId(p.id)}
                                                     className="text-xs font-medium text-gray-600 hover:text-gray-900"
                                                 >
-                                                    {formatsForPriceId === p.id ? 'Hide formats' : 'Formats'}
+                                                    Formats
                                                 </button>
                                                 <button
                                                     onClick={() => removePrice(p)}
@@ -408,39 +427,48 @@ export default function ProductPricesPage() {
                                             </div>
                                         </td>
                                     </tr>
-                                    {editingPrice?.id === p.id && (
-                                        <tr>
-                                            <td colSpan={7} className="px-4 py-4 bg-amber-50 border-b border-border">
-                                                <PriceForm
-                                                    formData={formData}
-                                                    onChange={handleFieldChange}
-                                                    onSubmit={handleSave}
-                                                    onCancel={resetForm}
-                                                    submitLabel="Save Changes"
-                                                    errors={errors}
-                                                    suppliers={suppliers}
-                                                    unit={product?.unit}
-                                                />
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {formatsForPriceId === p.id && (
-                                        <tr>
-                                            <td colSpan={7} className="px-4 py-4 bg-gray-50 border-b border-border">
-                                                <PriceCountUnitsEditor
-                                                    price={p}
-                                                    unit={product?.unit}
-                                                    onClose={() => setFormatsForPriceId(null)}
-                                                />
-                                            </td>
-                                        </tr>
-                                    )}
                                 </Fragment>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
+            {/* The pack formats open in a dialog too, for the same reason as
+                editing: pushed into the table they were hard to tell apart from
+                the prices around them, and they pushed every row below down. */}
+            {formatsPrice && (
+                <Modal
+                    title={`Pack formats for the ${getSupplierName(formatsPrice.supplier_id)} price`}
+                    onClose={() => setFormatsForPriceId(null)}
+                    width="max-w-2xl"
+                >
+                    <div className="p-5">
+                        <PriceCountUnitsEditor
+                            price={formatsPrice}
+                            unit={product?.unit}
+                            onClose={() => setFormatsForPriceId(null)}
+                        />
+                    </div>
+                </Modal>
+            )}
+
+            {editingPrice && (
+                <Modal title={`Edit the ${getSupplierName(editingPrice.supplier_id)} price`} onClose={resetForm} width="max-w-2xl">
+                    <div className="p-5">
+                        <PriceForm
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Save changes"
+                            errors={errors}
+                            suppliers={suppliers}
+                            unit={product?.unit}
+                        />
+                    </div>
+                </Modal>
+            )}
+
         </div>
     )
 }

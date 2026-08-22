@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
+import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
 
@@ -598,20 +599,6 @@ export default function ProductsPage() {
                         <div className="flex gap-3">{rowActions(p)}</div>
                       </td>
                     </tr>
-                    {editingProduct?.id === p.id && (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-4 bg-amber-50 border-b border-border">
-                          <ProductForm
-                            formData={formData}
-                            onChange={handleFieldChange}
-                            onSubmit={handleSave}
-                            onCancel={resetForm}
-                            submitLabel="Save Changes"
-                            errors={errors}
-                          />
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 )
               })}
@@ -623,6 +610,24 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
+      {/* Editing opens in a dialog rather than pushing a form into the middle
+          of the table. In the table the row being edited was hard to pick out
+          from the rows around it, and everything below it jumped down the page. */}
+      {editingProduct && (
+        <Modal title={`Edit ${editingProduct.name}`} onClose={resetForm} width="max-w-2xl">
+          <div className="p-5">
+            <ProductForm
+              formData={formData}
+              onChange={handleFieldChange}
+              onSubmit={handleSave}
+              onCancel={resetForm}
+              submitLabel="Save changes"
+              errors={errors}
+            />
+          </div>
+        </Modal>
+      )}
+
         </>
       )}
     </div>

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { RestaurantProvider } from './context/RestaurantContext'
+import { ConfirmProvider } from './context/ConfirmContext'
 import './index.css'
 import App from './App'
 
@@ -15,12 +16,18 @@ import App from './App'
 //
 // Both are above BrowserRouter's children rather than inside a page, because the
 // user and the active restaurant have to survive moving between pages.
+//
+// ConfirmProvider is the innermost of the three. It needs nothing from the other
+// two, and being inside them means the one dialog it renders sits above every
+// page without each page having to carry its own.
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <RestaurantProvider>
-          <App />
+          <ConfirmProvider>
+            <App />
+          </ConfirmProvider>
         </RestaurantProvider>
       </AuthProvider>
     </BrowserRouter>
