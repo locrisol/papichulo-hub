@@ -105,6 +105,11 @@ maybe('what each role can see and do', () => {
             expect(count).toBe(0)
         })
 
+        it('cannot see the till receipt rows', async () => {
+            const { count } = await countVisible(employee, 'sales_tenders')
+            expect(count).toBe(0)
+        })
+
         it('cannot see the sales platforms', async () => {
             const { count } = await countVisible(employee, 'sales_platforms')
             expect(count).toBe(0)
@@ -195,6 +200,25 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        // Reading and writing are deliberately different on this one table.
+        // Reading has to be open to a manager or the sales grid cannot draw a
+        // single row. Writing is Super Admin only, because changing the rows
+        // changes the shape of every day entered afterwards.
+        it('can read the till receipt rows, which the sales grid needs', async () => {
+            const { count, error } = await countVisible(manager, 'sales_tenders')
+            expect(error).toBeNull()
+            expect(count).toBeGreaterThan(0)
+        })
+
+        it('is refused when adding a till receipt row', async () => {
+            const refused = await writeRefused(manager, 'sales_tenders', {
+                restaurant_id: ownRestaurantId,
+                key: 'rls_test_never_inserted',
+                label: 'Should not exist',
+            })
+            expect(refused).toBe(true)
+        })
+
         it('only sees users from their own restaurant', async () => {
             const { data } = await manager.from('users').select('restaurant_id')
             const strays = (data || []).filter(u => u.restaurant_id && u.restaurant_id !== ownRestaurantId)
@@ -212,6 +236,21 @@ maybe('what each role can see and do', () => {
             const { data } = await owner.from('sales_records').select('restaurant_id')
             const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
             expect(strays).toHaveLength(0)
+        })
+
+        it('can read the till receipt rows', async () => {
+            const { count, error } = await countVisible(owner, 'sales_tenders')
+            expect(error).toBeNull()
+            expect(count).toBeGreaterThan(0)
+        })
+
+        it('is refused when adding a till receipt row', async () => {
+            const refused = await writeRefused(owner, 'sales_tenders', {
+                restaurant_id: ownRestaurantId,
+                key: 'rls_test_never_inserted',
+                label: 'Should not exist',
+            })
+            expect(refused).toBe(true)
         })
 
         it('is refused when creating a restaurant', async () => {
@@ -232,6 +271,13 @@ maybe('what each role can see and do', () => {
         it('can see every user', async () => {
             const { count } = await countVisible(superadmin, 'users')
             expect(count).toBeGreaterThan(1)
+        })
+
+        it('can see the till receipt rows for both restaurants', async () => {
+            const { data, error } = await superadmin
+                .from('sales_tenders').select('restaurant_id')
+            expect(error).toBeNull()
+            expect(new Set(data.map(t => t.restaurant_id)).size).toBeGreaterThan(1)
         })
 
         it('can see sales from more than one restaurant', async () => {
@@ -260,6 +306,11 @@ maybe('what each role can see and do', () => {
 
         it('cannot read any sales', async () => {
             const { count } = await countVisible(anon, 'sales_records')
+            expect(count).toBe(0)
+        })
+
+        it('cannot read the till receipt rows', async () => {
+            const { count } = await countVisible(anon, 'sales_tenders')
             expect(count).toBe(0)
         })
 

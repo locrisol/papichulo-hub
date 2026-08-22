@@ -6,6 +6,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
 import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -13,9 +14,12 @@ import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from
 // added or removed, which a day-per-column layout would not.
 //
 // TWO RECORDS, DELIBERATELY SEPARATE
-// The top block is the till receipt: gross, net, cash, card, kiosk, one Online
-// Sales figure and one Outside Catering figure. That block is what reconciles,
-// because it is what the POS prints and what can be checked at close.
+// The top block is the till receipt: gross, net, and then a row for every way
+// the till takes money. Those rows are not fixed any more. They come from
+// sales_tenders, one record per row per restaurant, so when the till changes a
+// Super Admin edits them in Restaurant settings instead of us writing a
+// migration. That block is what reconciles, because it is what the POS prints
+// and what can be checked at close.
 // The platform rows below are a separate tracking record. They will not tie out
 // exactly against the receipt: some platforms report before commission, some
 // after, some include VAT and some do not. Forcing them to agree would produce
@@ -41,13 +45,20 @@ function draftKey(restaurantId, weekStart) {
 
 // Fields compared when deciding whether a draft genuinely differs from what is
 // already stored. A draft matching the database is not an unsaved change.
-const DRAFT_FIELDS = ['gross', 'net', 'cash', 'card', 'kiosk', 'onlineSales', 'cateringSales', 'staffFood']
+const DRAFT_FIELDS = ['gross', 'net', 'staffFood']
 
 function sameDay(a, b) {
     if (!a || !b) return false
     if ((a.isClosed ?? false) !== (b.isClosed ?? false)) return false
     for (const f of DRAFT_FIELDS) {
         if (num(a[f]) !== num(b[f])) return false
+    }
+    const tenderKeys = new Set([
+        ...Object.keys(a.tenderValues || {}),
+        ...Object.keys(b.tenderValues || {}),
+    ])
+    for (const k of tenderKeys) {
+        if (num(a.tenderValues?.[k]) !== num(b.tenderValues?.[k])) return false
     }
     const names = new Set([
         ...Object.keys(a.platformValues || {}),
@@ -57,39 +68,6 @@ function sameDay(a, b) {
         if (num(a.platformValues?.[n]) !== num(b.platformValues?.[n])) return false
     }
     return true
-}
-
-// The till receipt rows, in their default order. Exported so Restaurant settings
-// can offer the same list when arranging them. Platform rows are not here: they
-// are ordered by sales_platforms.sort_order.
-export const RECEIPT_ROWS = [
-    { key: 'gross', label: 'Gross sales', bold: true },
-    { key: 'net', label: 'Net sales', bold: true },
-    { key: 'cash', label: 'Cash' },
-    { key: 'card', label: 'Card' },
-    { key: 'kiosk', label: 'Kiosk' },
-    { key: 'onlineSales', label: 'Online Sales' },
-    { key: 'cateringSales', label: 'Outside Catering' },
-]
-
-// Turns a stored order into a usable one. The stored value is a preference, not
-// a contract: unknown keys are dropped and missing rows appended in default
-// order, so changing the field set later cannot leave a manager with a broken grid.
-export function resolveRowOrder(storedOrder) {
-    const byKey = new Map(RECEIPT_ROWS.map(r => [r.key, r]))
-    const out = []
-    if (Array.isArray(storedOrder)) {
-        for (const key of storedOrder) {
-            if (byKey.has(key)) {
-                out.push(byKey.get(key))
-                byKey.delete(key)
-            }
-        }
-    }
-    for (const r of RECEIPT_ROWS) {
-        if (byKey.has(r.key)) out.push(r)
-    }
-    return out
 }
 
 export default function WeeklySalesPage() {
@@ -103,6 +81,9 @@ export default function WeeklySalesPage() {
     const [pickerDate, setPickerDate] = useState(weekStart)
 
     const [platforms, setPlatforms] = useState([])
+    // Every tender for this restaurant, retired ones included. The retired ones
+    // are needed so an old week can still draw the rows it was entered with.
+    const [tenders, setTenders] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -176,6 +157,19 @@ export default function WeeklySalesPage() {
         )
         setPlatforms(sortedPlats)
 
+        // Not filtered by is_active on purpose. A week from March has to be able
+        // to show Outside Catering, and it can only do that if the retired row
+        // is here to be matched against what that week has stored.
+        const { data: tends, error: tErr } = await supabase
+            .from('sales_tenders')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .order('sort_order')
+            .order('label')
+
+        if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
+        setTenders(tends || [])
+
         const { data: recs, error: rErr } = await supabase
             .from('sales_records')
             .select('*')
@@ -200,13 +194,13 @@ export default function WeeklySalesPage() {
                 isClosed: r?.is_closed ?? false,
                 gross: r?.gross_sales != null ? String(r.gross_sales) : '',
                 net: r?.net_sales != null ? String(r.net_sales) : '',
-                cash: r?.cash_sales != null ? String(r.cash_sales) : '',
-                card: r?.card_sales != null ? String(r.card_sales) : '',
-                kiosk: r?.kiosk_sales != null ? String(r.kiosk_sales) : '',
-                // Both taken straight from the till receipt, not derived.
-                onlineSales: r?.online_sales != null ? String(r.online_sales) : '',
-                cateringSales: r?.catering_sales != null ? String(r.catering_sales) : '',
                 staffFood: r?.staff_food != null ? String(r.staff_food) : '',
+                // What is on screen, and what came out of the database. Both are
+                // kept because a save writes the typed values over the stored
+                // ones rather than replacing them, which is how a figure
+                // belonging to no row on screen survives.
+                tenderValues: tenderValuesFromRecord(r?.tender_sales),
+                storedTenders: r?.tender_sales ?? {},
                 platformValues,
             }
         }
@@ -221,7 +215,11 @@ export default function WeeklySalesPage() {
                 const draft = JSON.parse(raw)
                 for (const d of dates) {
                     if (!draft[d]) continue
-                    const merged = { ...next[d], ...draft[d], id: next[d].id }
+                    const merged = {
+                        ...next[d], ...draft[d],
+                        id: next[d].id,
+                        storedTenders: next[d].storedTenders,
+                    }
                     if (sameDay(merged, next[d])) continue
                     next[d] = merged
                     restored = true
@@ -242,6 +240,17 @@ export default function WeeklySalesPage() {
     function setField(date, field, value) {
         setDirty(true)
         setDays(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }))
+    }
+
+    function setTenderValue(date, key, value) {
+        setDirty(true)
+        setDays(prev => ({
+            ...prev,
+            [date]: {
+                ...prev[date],
+                tenderValues: { ...prev[date].tenderValues, [key]: value },
+            },
+        }))
     }
 
     function setPlatformValue(date, platformName, value) {
@@ -284,13 +293,24 @@ export default function WeeklySalesPage() {
         return bucketPlatforms.reduce((sum, p) => sum + num(day.platformValues?.[p.name]), 0)
     }
 
+    // The rows this week draws: the active ones, plus any retired row that one
+    // of these seven days still holds a figure for. Worked out across the whole
+    // week rather than per day, because the grid is one set of rows.
+    const shownTenders = tendersToShow(tenders, dates.map(d => days[d]?.storedTenders))
+
     // Reconciliation uses only the till receipt block.
     function varianceFor(date) {
         const day = days[date]
         if (!day || day.isClosed) return 0
-        return num(day.cash) + num(day.card) + num(day.kiosk)
-            + num(day.onlineSales) + num(day.cateringSales)
-            - num(day.gross)
+        return tenderVariance(day.gross, day.tenderValues, shownTenders)
+    }
+
+    function weekTenderTotal(key) {
+        return dates.reduce((sum, d) => {
+            const day = days[d]
+            if (!day || day.isClosed) return sum
+            return sum + num(day.tenderValues?.[key])
+        }, 0)
     }
 
     function weekTotal(field) {
@@ -315,8 +335,6 @@ export default function WeeklySalesPage() {
 
     const weekGross = weekTotal('gross')
 
-    // Receipt row order, configurable per restaurant in Restaurant settings.
-    const receiptRows = resolveRowOrder(activeRestaurant?.sales_row_order)
 
     function pctOfGross(amount, grossAmount) {
         return grossAmount > 0 ? (amount / grossAmount) * 100 : 0
@@ -370,9 +388,8 @@ export default function WeeklySalesPage() {
             if (!day) continue
 
             const hasAnyValue =
-                day.gross !== '' || day.net !== '' || day.cash !== '' ||
-                day.card !== '' || day.kiosk !== '' || day.onlineSales !== '' ||
-                day.cateringSales !== '' || day.staffFood !== '' ||
+                day.gross !== '' || day.net !== '' || day.staffFood !== '' ||
+                Object.values(day.tenderValues || {}).some(v => v !== '' && v != null) ||
                 Object.values(day.platformValues || {}).some(v => v !== '' && v != null)
 
             // Nothing entered and nothing stored: leave this day alone.
@@ -397,22 +414,19 @@ export default function WeeklySalesPage() {
                 ? {
                     ...base,
                     is_closed: true,
-                    gross_sales: 0, net_sales: 0, cash_sales: 0, card_sales: 0,
-                    kiosk_sales: 0, online_sales: 0, catering_sales: 0,
-                    platform_sales: {}, staff_food: 0, instore_variance: 0,
+                    gross_sales: 0, net_sales: 0,
+                    tender_sales: {}, platform_sales: {}, staff_food: 0, instore_variance: 0,
                 }
                 : {
                     ...base,
                     is_closed: false,
                     gross_sales: num(day.gross),
                     net_sales: num(day.net),
-                    cash_sales: num(day.cash),
-                    card_sales: num(day.card),
-                    kiosk_sales: num(day.kiosk),
-                    // Receipt figures, entered directly rather than derived.
-                    online_sales: num(day.onlineSales),
-                    catering_sales: num(day.cateringSales),
-                    // Tracking detail, not required to match the two above.
+                    // Every row on the till receipt. Written over what was
+                    // already stored rather than replacing it, so a figure
+                    // belonging to no row on screen is left where it is.
+                    tender_sales: mergeTenderSales(day.storedTenders, day.tenderValues, shownTenders),
+                    // Tracking detail, not required to match the receipt.
                     platform_sales: platformSales,
                     staff_food: num(day.staffFood),
                     instore_variance: varianceFor(date),
@@ -518,6 +532,36 @@ export default function WeeklySalesPage() {
         )
     }
 
+    function tenderRow(tender) {
+        return (
+            <tr key={tender.key} className="border-b border-border">
+                <td className={labelCellCls}>
+                    {tender.label}
+                    {/* Only ever appears on an old week. It is here so nobody
+                        wonders why a row they cannot find in settings is on the
+                        screen in front of them. */}
+                    {!tender.is_active && (
+                        <span className="ml-2 text-xs font-normal text-gray-400">retired</span>
+                    )}
+                </td>
+                {dates.map((d, i) => (
+                    <td key={d} className="px-1.5 py-1.5">
+                        <input
+                            type="number" step="0.01" inputMode="decimal"
+                            data-col={i}
+                            value={days[d]?.tenderValues?.[tender.key] ?? ''}
+                            disabled={days[d]?.isClosed}
+                            onChange={e => setTenderValue(d, tender.key, e.target.value)}
+                            className={inputCls}
+                            placeholder="0.00"
+                        />
+                    </td>
+                ))}
+                <td className={totalCellCls}>{fmtMoney(weekTenderTotal(tender.key))}</td>
+            </tr>
+        )
+    }
+
     function platformRow(platform) {
         return (
             <tr key={platform.id} className="border-b border-border">
@@ -544,9 +588,12 @@ export default function WeeklySalesPage() {
 
     // Sum of the tracking rows, with the gap against the receipt figure beneath.
     // The gap is expected and informational, never an error.
-    function platformSumRow({ label, bucketPlatforms, receiptField, key }) {
+    function platformSumRow({ label, bucketPlatforms, receiptKey, key }) {
         const weekSum = weekPlatformSum(bucketPlatforms)
-        const weekReceipt = weekTotal(receiptField)
+        // Once the till row this was compared against is gone, there is nothing
+        // honest to compare it to, so it shows the tracked total on its own.
+        const comparable = shownTenders.some(t => t.key === receiptKey)
+        const weekReceipt = comparable ? weekTenderTotal(receiptKey) : 0
         const weekGap = weekSum - weekReceipt
 
         return (
@@ -555,8 +602,8 @@ export default function WeeklySalesPage() {
                 {dates.map(d => {
                     const day = days[d]
                     const sum = platformSumFor(d, bucketPlatforms)
-                    const gap = sum - num(day?.[receiptField])
-                    const showGap = !day?.isClosed && Math.abs(gap) >= 0.01
+                    const gap = sum - num(day?.tenderValues?.[receiptKey])
+                    const showGap = comparable && !day?.isClosed && Math.abs(gap) >= 0.01
                     return (
                         <td key={d} className="px-3 py-2 text-right whitespace-nowrap">
                             <div className="text-sm text-gray-900">{fmtMoney(sum)}</div>
@@ -571,7 +618,7 @@ export default function WeeklySalesPage() {
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">{fmtMoney(weekSum)}</div>
                     <div className="text-xs text-gray-400">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
-                    {Math.abs(weekGap) >= 0.01 && (
+                    {comparable && Math.abs(weekGap) >= 0.01 && (
                         <div className="text-xs text-amber-600">
                             {weekGap > 0 ? '+' : ''}{fmtMoney(weekGap)} vs receipt
                         </div>
@@ -701,8 +748,13 @@ export default function WeeklySalesPage() {
                         </thead>
 
                         <tbody>
-                            {/* Till receipt block: this is what reconciles */}
-                            {receiptRows.map(r => fieldRow({ key: r.key, label: r.label, field: r.key, bold: r.bold }))}
+                            {/* Till receipt block: this is what reconciles.
+                                Gross and net stay put at the top. Everything
+                                under them is whatever the till currently prints,
+                                in whatever order it is set to. */}
+                            {fieldRow({ key: 'gross', label: 'Gross sales', field: 'gross', bold: true })}
+                            {fieldRow({ key: 'net', label: 'Net sales', field: 'net', bold: true })}
+                            {shownTenders.map(t => tenderRow(t))}
 
                             {/* Reconciliation closes the receipt block */}
                             <tr className="border-b-2 border-border bg-gray-50">
@@ -732,7 +784,7 @@ export default function WeeklySalesPage() {
                                         </td>
                                     </tr>
                                     {onlinePlatforms.map(p => platformRow(p))}
-                                    {platformSumRow({ key: 'onlineSum', label: 'Online', bucketPlatforms: onlinePlatforms, receiptField: 'onlineSales' })}
+                                    {platformSumRow({ key: 'onlineSum', label: 'Online', bucketPlatforms: onlinePlatforms, receiptKey: 'online_sales' })}
                                 </>
                             )}
 
@@ -745,7 +797,7 @@ export default function WeeklySalesPage() {
                                         </td>
                                     </tr>
                                     {cateringPlatforms.map(p => platformRow(p))}
-                                    {platformSumRow({ key: 'cateringSum', label: 'Catering', bucketPlatforms: cateringPlatforms, receiptField: 'cateringSales' })}
+                                    {platformSumRow({ key: 'cateringSum', label: 'Catering', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
                                 </>
                             )}
 
