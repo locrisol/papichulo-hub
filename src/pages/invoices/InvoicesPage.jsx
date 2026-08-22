@@ -7,9 +7,9 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, card } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
-import { INVOICE_CATEGORIES, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
+import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -260,21 +260,21 @@ export default function InvoicesPage() {
                 four across left about 80px each and the amounts were cut off
                 mid number. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Food</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('food'))}</p>
-                </div>
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Packaging and cleaning</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('packaging', 'cleaning'))}</p>
-                </div>
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Other</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('other'))}</p>
-                </div>
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Week total</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(weekTotal)}</p>
+                {INVOICE_SUMMARY_CARDS.map(g => (
+                    <div
+                        key={g.label}
+                        className={`${cardEdge} p-4 ${g.tint || 'bg-white'}`}
+                        style={g.split ? { backgroundImage: g.split } : undefined}
+                    >
+                        <p className={`text-xs uppercase tracking-wider ${g.labelText}`}>{g.label}</p>
+                        <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor(...g.cats))}</p>
+                    </div>
+                ))}
+                {/* The sum of the three, so it is the dark one rather than a
+                    fourth colour competing with them. */}
+                <div className={`${cardEdge} p-4 bg-sidebar`}>
+                    <p className="text-xs text-green-300 uppercase tracking-wider">Week total</p>
+                    <p className="text-lg font-semibold text-white mt-1">{fmtMoney(weekTotal)}</p>
                 </div>
             </div>
 
@@ -312,7 +312,11 @@ export default function InvoicesPage() {
                                         {day.rows.map(inv => {
                                             const cat = invoiceCategory(inv.category)
                                             return (
-                                                <tr key={inv.id} className={`border-b border-border last:border-0 border-l-4 ${cat.stripe}`}>
+                                                // last:border-b-0, not last:border-0. The short one sets every
+                                                // border to nothing, so the last invoice of each day
+                                                // lost the colour stripe down its side and only some
+                                                // rows appeared to be colour coded.
+                                                <tr key={inv.id} className={`border-b border-border last:border-b-0 border-l-4 ${cat.stripe}`}>
                                                     <td className="px-3 py-2 text-gray-900">
                                                         {inv.suppliers?.name || 'Unknown supplier'}
                                                         {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}

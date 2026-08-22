@@ -6,8 +6,8 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
-import { INVOICE_CATEGORIES, invoiceCategory } from '../../lib/invoiceCategories'
+import { secondaryButton, tableHeadRow, card, cardEdge } from '../../lib/controlStyles'
+import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -16,15 +16,6 @@ import { INVOICE_CATEGORIES, invoiceCategory } from '../../lib/invoiceCategories
 // Line items are not shown. They only exist once AI extraction fills them in,
 // and that is deferred (#48), so expanding a row would open onto nothing. The
 // same goes for a manual or AI badge: everything is manual at the moment.
-
-// Packaging and cleaning are shown together, because that is how the weekly
-// report treats them, against one 2.5% target. They are stored separately, so
-// splitting them later is a change here rather than a migration.
-const SUMMARY_GROUPS = [
-    { label: 'Food', cats: ['food'] },
-    { label: 'Packaging and cleaning', cats: ['packaging', 'cleaning'] },
-    { label: 'Other', cats: ['other'] },
-]
 
 function num(v) {
     if (v === '' || v == null) return 0
@@ -172,15 +163,21 @@ export default function InvoiceHistoryPage() {
             {/* Totals for whatever is showing. Two across on a phone, same as
                 the invoices screen. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                {SUMMARY_GROUPS.map(g => (
-                    <div key={g.label} className={`${card} p-4`}>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">{g.label}</p>
+                {INVOICE_SUMMARY_CARDS.map(g => (
+                    <div
+                        key={g.label}
+                        className={`${cardEdge} p-4 ${g.tint || 'bg-white'}`}
+                        style={g.split ? { backgroundImage: g.split } : undefined}
+                    >
+                        <p className={`text-xs uppercase tracking-wider ${g.labelText}`}>{g.label}</p>
                         <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor(g.cats))}</p>
                     </div>
                 ))}
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Total</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(total)}</p>
+                {/* The sum of the three, so it is the dark one rather than a
+                    fourth colour competing with them. */}
+                <div className={`${cardEdge} p-4 bg-sidebar`}>
+                    <p className="text-xs text-green-300 uppercase tracking-wider">Total</p>
+                    <p className="text-lg font-semibold text-white mt-1">{fmtMoney(total)}</p>
                 </div>
             </div>
 
@@ -215,8 +212,10 @@ export default function InvoiceHistoryPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {invoices.map(inv => (
-                                <tr key={inv.id} className="border-b border-border hover:bg-gray-50">
+                            {invoices.map(inv => {
+                                const cat = invoiceCategory(inv.category)
+                                return (
+                                <tr key={inv.id} className={`border-b border-border hover:bg-gray-50 border-l-4 ${cat.stripe}`}>
                                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{shortDate(inv.invoice_date)}</td>
                                     <td className="px-3 py-2 text-gray-900">
                                         {inv.suppliers?.name || 'Unknown supplier'}
@@ -225,15 +224,14 @@ export default function InvoiceHistoryPage() {
                                     <td className="px-3 py-2">
                                         {/* Same colours as the entry screen, so a
                                             category means one thing everywhere. */}
-                                        {(() => { const cat = invoiceCategory(inv.category); return (
-                                            <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
-                                                {cat.label}
-                                            </span>
-                                        ) })()}
+                                        <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                            {cat.label}
+                                        </span>
                                     </td>
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                         </tbody>
                     </table>
                     </div>

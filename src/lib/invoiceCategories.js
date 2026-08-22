@@ -63,6 +63,37 @@ export function invoiceCategory(value) {
     }
 }
 
+// The summary cards at the top of both invoice screens.
+//
+// They carry the same colours as the buttons and the rows, so the eye can go
+// from a card straight to the invoices that made it up without reading a word.
+//
+// Packaging and cleaning is two categories in one card, because the weekly
+// report measures them together against a single target, so it is split down
+// the middle rather than picking one of the two colours and being half wrong.
+// The hex values are the same red-50 and purple-50 the pills use; a gradient
+// cannot be written in Tailwind classes, so it goes in as a style.
+export const INVOICE_SUMMARY_CARDS = [
+    {
+        label: 'Food',
+        cats: ['food'],
+        tint: 'bg-green-50',
+        labelText: 'text-green-800',
+    },
+    {
+        label: 'Packaging and cleaning',
+        cats: ['packaging', 'cleaning'],
+        split: 'linear-gradient(115deg, #fef2f2 0 50%, #faf5ff 50% 100%)',
+        labelText: 'text-gray-700',
+    },
+    {
+        label: 'Other',
+        cats: ['other'],
+        tint: 'bg-gray-100',
+        labelText: 'text-gray-700',
+    },
+]
+
 // The week's invoices, split into days, newest day first.
 //
 // The list used to be one run of rows, so on a busy week you could not see
