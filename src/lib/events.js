@@ -16,11 +16,37 @@ const CATEGORY_STYLE = {
     Arts: 'bg-pink-50 text-pink-800 border-pink-200',
     'Arts & Theatre': 'bg-pink-50 text-pink-800 border-pink-200',
     Family: 'bg-amber-50 text-amber-800 border-amber-200',
+    Film: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+    Miscellaneous: 'bg-gray-100 text-gray-700 border-gray-200',
 }
 
 export function categoryStyle(category) {
     return CATEGORY_STYLE[category] || 'bg-gray-100 text-gray-700 border-gray-200'
 }
+
+// The same categories as a solid colour, for the dots and the stripes.
+//
+// A cell on a phone is about fifty pixels wide, so there is no room for a name
+// in it and a dot is all that fits. The soft fills above are for chips with
+// words on them and would be all but invisible at five pixels across.
+const CATEGORY_DOT = {
+    Music: 'bg-purple-600',
+    Sports: 'bg-blue-600',
+    Arts: 'bg-pink-600',
+    'Arts & Theatre': 'bg-pink-600',
+    Family: 'bg-amber-600',
+    Film: 'bg-cyan-700',
+    Miscellaneous: 'bg-gray-500',
+}
+
+export function categoryDot(category) {
+    return CATEGORY_DOT[category] || 'bg-gray-500'
+}
+
+// The categories to put in the legend under the month, in a fixed order so it
+// does not reshuffle as the months change. Only the ones that turn up at this
+// venue: 3Arena has never once had a Family listing.
+export const LEGEND = ['Music', 'Arts & Theatre', 'Film', 'Sports', 'Miscellaneous']
 
 // The three letter day, for a date like 2026-08-27.
 export function dayName(dateStr) {
@@ -80,4 +106,17 @@ export function weekTitle(weekStart, today) {
     if (weekStart === thisWeek) return 'This week'
     if (weekStart === addDays(thisWeek, 7)) return 'Next week'
     return `Week of ${shortDate(weekStart)}`
+}
+
+// Groups a list of events by the day they are on.
+//
+// Used by every view: the month looks each cell up, the week looks each of its
+// seven days up, and the list walks it in order.
+export function byDate(events) {
+    const out = {}
+    for (const e of events || []) {
+        if (!out[e.event_date]) out[e.event_date] = []
+        out[e.event_date].push(e)
+    }
+    return out
 }

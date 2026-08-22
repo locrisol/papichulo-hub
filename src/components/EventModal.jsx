@@ -22,9 +22,17 @@ export default function EventModal({ event, onClose }) {
         ? 'bg-red-50 text-red-700'
         : 'bg-amber-50 text-amber-700'
 
+    // Labelled Doors rather than Time, because that is what it is.
+    //
+    // Ticketmaster has no doors field at all, it is empty on every one of the 92
+    // events they list for this venue. What they give is the time on the ticket,
+    // and across those 92 it is 18:30 on sixty of them and 18:00 on twenty nine.
+    // No arena act walks on stage at half six. That is doors, and doors is the
+    // number that matters here anyway, since it is when the crowd stops eating
+    // and goes in.
     const rows = [
         { label: 'Day', value: `${dayName(event.event_date)} ${fullDate(event.event_date)}` },
-        { label: 'Time', value: event.event_time ? event.event_time.slice(0, 5) : 'Not given' },
+        { label: 'Doors', value: event.event_time ? event.event_time.slice(0, 5) : 'Not given yet' },
         { label: 'Venue', value: event.venue || '3Arena' },
     ]
 
