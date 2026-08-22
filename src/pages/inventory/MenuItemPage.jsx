@@ -6,6 +6,8 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
+import Modal from '../../components/Modal'
 import { numberField } from '../../lib/numberInput'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -52,6 +54,7 @@ export default function MenuItemPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
+  const confirm = useConfirm()
 
   const [item, setItem] = useState(null)
   const [categories, setCategories] = useState([])
@@ -257,7 +260,18 @@ export default function MenuItemPage() {
   }
 
   async function removeComponent(component) {
-    if (!confirm('Remove this component from the menu item?')) return
+    const ingredient = products.find(p => p.id === component.product_id)
+    const ok = await confirm({
+      title: 'Remove this component?',
+      message: 'The dish will be costed without it from now on.',
+      details: [
+        { label: 'Component', value: ingredient?.name || 'Unknown product' },
+        { label: 'Quantity', value: `${component.quantity} ${ingredient?.unit || ''}`.trim() },
+      ],
+      confirmLabel: 'Remove component',
+      tone: 'danger',
+    })
+    if (!ok) return
     const { error: err } = await supabase
       .from('menu_item_components')
       .delete()
@@ -496,22 +510,6 @@ export default function MenuItemPage() {
                         </div>
                       </td>
                     </tr>
-                    {editingComponent?.id === c.id && (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-4 bg-amber-50 border-b border-border">
-                          <ComponentForm
-                            formData={componentForm}
-                            onChange={handleComponentChange}
-                            onSubmit={handleComponentSave}
-                            onCancel={resetComponentForm}
-                            submitLabel="Save Changes"
-                            errors={componentErrors}
-                            availableProducts={availableProducts}
-                            productSelectRef={null}
-                          />
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 )
               })}
@@ -583,6 +581,30 @@ export default function MenuItemPage() {
           })}
         </div>
       </div>
+
+      {/* Editing opens in a dialog rather than pushing a form into the middle of
+          the table, where the row being changed was hard to pick out from the
+          rows around it and everything below jumped down the page. */}
+      {editingComponent && (
+        <Modal
+          title={`Edit ${products.find(p => p.id === editingComponent.product_id)?.name || 'this component'}`}
+          onClose={resetComponentForm}
+          width="max-w-2xl"
+        >
+          <div className="p-5">
+            <ComponentForm
+              formData={componentForm}
+              onChange={handleComponentChange}
+              onSubmit={handleComponentSave}
+              onCancel={resetComponentForm}
+              submitLabel="Save changes"
+              errors={componentErrors}
+              availableProducts={availableProducts}
+              productSelectRef={null}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

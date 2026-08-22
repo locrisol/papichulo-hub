@@ -8,6 +8,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.
@@ -29,6 +30,9 @@ import { card } from '../../lib/controlStyles'
 // means it can never be left pointing at an old address.
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
+    // Named notify rather than confirm: these two only tell you something, there
+    // is nothing to say yes or no to.
+    const notify = useConfirm()
     const { user } = useAuth()
     const [qrDataUrl, setQrDataUrl] = useState('')
     const [menuData, setMenuData] = useState(null)
@@ -409,9 +413,21 @@ export default function PublicAllergensPreviewPage() {
     async function handleCopyUrl() {
         try {
             await navigator.clipboard.writeText(publicUrl)
-            alert('URL copied to clipboard')
+            notify({
+                title: 'Copied',
+                message: 'The public link is on your clipboard, ready to paste.',
+                notice: true,
+            })
         } catch {
-            alert('Could not copy. URL: ' + publicUrl)
+            // The clipboard is refused in some browsers and over plain http,
+            // so the link goes on screen to be copied by hand rather than the
+            // button appearing to do nothing at all.
+            notify({
+                title: 'Could not copy it',
+                message: 'Your browser would not let the page use the clipboard. The link is below, copy it by hand.',
+                details: [{ label: 'Link', value: publicUrl }],
+                notice: true,
+            })
         }
     }
 

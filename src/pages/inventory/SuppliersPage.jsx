@@ -3,7 +3,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader } from '../../lib/controlStyles'
+import SupplierForm from '../../components/SupplierForm'
+import Modal from '../../components/Modal'
 
 // Who we buy from.
 //
@@ -101,6 +103,12 @@ export default function SuppliersPage() {
         }
     }
 
+    // The form hands back the field and the value rather than an event, the
+    // same as every other form in the app.
+    function handleFieldChange(field, value) {
+        setFormData(prev => ({ ...prev, [field]: value }))
+    }
+
     function resetForm() {
         setFormData({ name: '', category: 'food', contact_email: '', contact_phone: '', notes: '' })
         setEditingSupplier(null)
@@ -171,77 +179,17 @@ export default function SuppliersPage() {
             )}
 
             {isManager && showForm && !editingSupplier && (
-                <div className={`${card} p-6 mb-6`}>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">New Supplier</h3>
-                    <form onSubmit={handleSave}>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                                <select
-                                    value={formData.category}
-                                    onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                >
-                                    <option value="food">Food</option>
-                                    <option value="packaging">Packaging</option>
-                                    <option value="cleaning">Cleaning</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Email</label>
-                                <input
-                                    type="email"
-                                    value={formData.contact_email}
-                                    onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Phone</label>
-                                <input
-                                    type="text"
-                                    value={formData.contact_phone}
-                                    onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                            </div>
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-                            <textarea
-                                value={formData.notes}
-                                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                rows={2}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                type="submit"
-                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                            >
-                                Add Supplier
-                            </button>
-                            <button
-                                type="button"
-                                onClick={resetForm}
-                                className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </form>
+                <div className={`${card} overflow-hidden mb-6`}>
+                    <h3 className={cardHeader}>New supplier</h3>
+                    <div className="p-6">
+                        <SupplierForm
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Add supplier"
+                        />
+                    </div>
                 </div>
             )}
 
@@ -304,86 +252,28 @@ export default function SuppliersPage() {
                                             </td>
                                         )}
                                     </tr>
-                                    {isManager && editingSupplier?.id === s.id && (
-                                        <tr>
-                                            <td colSpan={6} className="px-4 py-4 bg-amber-50 border-b border-border">
-                                                <form onSubmit={handleSave}>
-                                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                                                            <input
-                                                                type="text"
-                                                                value={formData.name}
-                                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                                required
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                                                            <select
-                                                                value={formData.category}
-                                                                onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            >
-                                                                <option value="food">Food</option>
-                                                                <option value="packaging">Packaging</option>
-                                                                <option value="cleaning">Cleaning</option>
-                                                                <option value="other">Other</option>
-                                                            </select>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Email</label>
-                                                            <input
-                                                                type="email"
-                                                                value={formData.contact_email}
-                                                                onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Phone</label>
-                                                            <input
-                                                                type="text"
-                                                                value={formData.contact_phone}
-                                                                onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="mb-4">
-                                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-                                                        <textarea
-                                                            value={formData.notes}
-                                                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                                            rows={2}
-                                                            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                        />
-                                                    </div>
-                                                    <div className="flex gap-3">
-                                                        <button
-                                                            type="submit"
-                                                            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                                                        >
-                                                            Save Changes
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={resetForm}
-                                                            className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                    )}
                                 </Fragment>
                             ))}
                         </tbody>
                     </table>
                 </div>
+            )}
+            {/* Editing opens in a dialog rather than pushing a form into the
+                middle of the table, where the row being changed was hard to
+                pick out from the rows around it and everything below it jumped
+                down the page. */}
+            {editingSupplier && (
+                <Modal title={`Edit ${editingSupplier.name}`} onClose={resetForm} width="max-w-2xl">
+                    <div className="p-6">
+                        <SupplierForm
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Save changes"
+                        />
+                    </div>
+                </Modal>
             )}
         </div>
     )

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { tableHeadRow, card } from '../lib/controlStyles'
+import Modal from './Modal'
 
 // The rows on the till receipt.
 //
@@ -271,21 +272,11 @@ export default function SalesTendersModal({ onClose, onChange }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 border-b border-border">
-          <h2 className="font-serif text-lg font-bold text-gray-900">Till receipt rows</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            The rows on the sales screens for {activeRestaurant?.name}, in the order the till prints them. Gross and
-            net sales are always at the top and are not in this list.
-          </p>
-        </div>
+    <Modal title="Till receipt rows" onClose={onClose} width="max-w-3xl">
+        <p className="px-6 pt-4 text-xs text-gray-500">
+          The rows on the sales screens for {activeRestaurant?.name}, in the order the till prints them. Gross and
+          net sales are always at the top and are not in this list.
+        </p>
 
         {error && (
           <div className="mx-6 mt-4 bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>
@@ -348,7 +339,6 @@ export default function SalesTendersModal({ onClose, onChange }) {
             Done
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

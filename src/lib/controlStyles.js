@@ -55,6 +55,16 @@ export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wi
 //
 // This is only for the outside edge. Rows and dividers inside a card keep
 // border-border, because those are meant to be soft.
+// The heading bar across the top of a card.
+//
+// The dark green is the same one the table heading rows use, so a heading looks
+// like a heading wherever it is rather than each screen inventing its own. Use
+// it with cardEdge and overflow-hidden so the bar is clipped by the rounded
+// corners, and put the card's own padding on the body underneath rather than on
+// the card, or the bar will not reach the edges.
+export const cardHeader =
+    'bg-sidebar px-5 py-3 text-xs font-bold text-white uppercase tracking-wider'
+
 // The edge on its own, without a background.
 //
 // Most cards are white, so card is the one to reach for. A few carry a colour

@@ -10,6 +10,7 @@ import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
+import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
@@ -30,6 +31,7 @@ import { numberField } from '../../lib/numberInput'
 export default function WasteLogPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
+    const confirm = useConfirm()
 
     const isManager = ['super_admin', 'owner', 'store_manager'].includes(user?.role)
     const navigate = useNavigate()
@@ -216,7 +218,17 @@ export default function WasteLogPage() {
     }
 
     async function handleDelete(entry) {
-        if (!window.confirm(`Delete ${fmtQty(entry.quantity_wasted)} of ${entry.products?.name}?`)) return
+        const ok = await confirm({
+            title: 'Delete this waste entry?',
+            details: [
+                { label: 'Product', value: entry.products?.name || 'Unknown product' },
+                { label: 'Quantity', value: `${fmtQty(entry.quantity_wasted)} ${entry.products?.unit || ''}`.trim() },
+                { label: 'Reason', value: reasonLabel(entry.reason) },
+            ],
+            confirmLabel: 'Delete entry',
+            tone: 'danger',
+        })
+        if (!ok) return
         const { error: e1 } = await supabase.from('waste_logs').delete().eq('id', entry.id)
         if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)
