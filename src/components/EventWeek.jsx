@@ -1,4 +1,4 @@
-import { addDays, weekDates, shortDate, weekStartOf } from '../lib/dates'
+import { addDays, weekDates, shortDate, dayMonth, weekStartOf } from '../lib/dates'
 import { DAY_NAMES, categoryDot, statusNote } from '../lib/events'
 import { cardEdge, cardHeader } from '../lib/controlStyles'
 
@@ -21,10 +21,10 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
     return (
         <div className={`${cardEdge} bg-white overflow-hidden`}>
             <div className={`${cardHeader} flex items-center justify-between gap-3`}>
-                <span>
+                <span className="truncate">
                     {weekStart === thisWeek ? 'This week'
                         : weekStart === addDays(thisWeek, 7) ? 'Next week'
-                            : `Week of ${shortDate(weekStart)}`}
+                            : `Week of ${dayMonth(weekStart)}`}
                 </span>
                 <span className="flex items-center gap-1">
                     <button

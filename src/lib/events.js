@@ -2,7 +2,7 @@
 //
 // No React in here, the same split the rest of lib uses.
 
-import { weekStartOf, shortDate, addDays } from './dates'
+import { weekStartOf, dayMonth, monthLabel, addDays } from './dates'
 
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -105,7 +105,7 @@ export function weekTitle(weekStart, today) {
     const thisWeek = weekStartOf(today)
     if (weekStart === thisWeek) return 'This week'
     if (weekStart === addDays(thisWeek, 7)) return 'Next week'
-    return `Week of ${shortDate(weekStart)}`
+    return `Week of ${dayMonth(weekStart)}`
 }
 
 // Groups a list of events by the day they are on.
@@ -119,4 +119,50 @@ export function byDate(events) {
         out[e.event_date].push(e)
     }
     return out
+}
+
+// The list in Coming up, as a flat run of headings and days.
+//
+// Worked out here rather than in the markup because it is a set of rules about
+// when a heading appears, and rules are worth testing.
+//
+// Two levels of heading. The month, because a list that runs from August into
+// October showed nothing but day numbers and you had to work out from the dates
+// where one month ended. And the week inside it, because that is what is being
+// rostered.
+//
+// A week that runs across the end of a month gets its heading printed again
+// underneath the new month. That looks like a repeat and it is not: it is what
+// says the week is still going, rather than leaving a month heading sitting in
+// the middle of a week with nothing to explain it.
+export function agendaRows(events, today) {
+    const days = []
+    for (const e of events || []) {
+        const last = days[days.length - 1]
+        if (last && last.date === e.event_date) last.events.push(e)
+        else days.push({ date: e.event_date, events: [e] })
+    }
+
+    const rows = []
+    let month = ''
+    let week = ''
+
+    for (const day of days) {
+        const m = day.date.slice(0, 7)
+        if (m !== month) {
+            month = m
+            week = ''
+            rows.push({ type: 'month', key: `m${m}`, label: monthLabel(day.date) })
+        }
+
+        const w = weekStartOf(day.date)
+        if (w !== week) {
+            week = w
+            rows.push({ type: 'week', key: `w${m}-${w}`, label: weekTitle(w, today) })
+        }
+
+        rows.push({ type: 'day', key: day.date, date: day.date, events: day.events })
+    }
+
+    return rows
 }

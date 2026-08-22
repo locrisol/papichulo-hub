@@ -30,6 +30,16 @@ export function shortDate(dateStr) {
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })
 }
 
+// A date with the month written out, for example 6 September.
+//
+// The short form is right in a table, where the column is narrow and the month
+// is repeated on every row. It is wrong in a heading, where it is the thing you
+// are reading and "Sept" only saves four letters.
+export function dayMonth(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'long' })
+}
+
 // A full date with the year, for example 23/08/2026.
 //
 // Used on the sales and labour grids. "23 Aug" on its own is not enough when

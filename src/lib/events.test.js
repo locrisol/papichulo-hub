@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle } from './events'
+import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle, agendaRows } from './events'
 
 const on = date => ({ id: date, event_date: date })
 
@@ -105,8 +105,8 @@ describe('weekTitle', () => {
         expect(weekTitle('2026-08-23', today)).toBe('Next week')
     })
 
-    it('dates anything further out', () => {
-        expect(weekTitle('2026-08-30', today)).toBe('Week of 30 Aug')
+    it('dates anything further out, with the month written out', () => {
+        expect(weekTitle('2026-08-30', today)).toBe('Week of 30 August')
     })
 
     it('gets next week right when it lands in the following month', () => {
@@ -117,5 +117,82 @@ describe('weekTitle', () => {
     it('gets next week right across the new year', () => {
         // Thursday 31 December 2026 sits in the week starting Sunday 27 December.
         expect(weekTitle('2027-01-03', '2026-12-31')).toBe('Next week')
+    })
+})
+
+describe('agendaRows', () => {
+    const today = '2026-08-22'
+    const at = (date, id) => ({ id: id || date, event_date: date })
+    const types = rows => rows.map(r => r.type)
+    const labels = rows => rows.filter(r => r.type !== 'day').map(r => r.label)
+
+    it('puts a month heading and a week heading over the first day', () => {
+        // Today is Saturday 22 August, so its week ends that night and the
+        // 25th belongs to the next one.
+        const rows = agendaRows([at('2026-08-25')], today)
+        expect(types(rows)).toEqual(['month', 'week', 'day'])
+        expect(labels(rows)).toEqual(['August 2026', 'Next week'])
+    })
+
+    it('writes the month out in full rather than shortening it', () => {
+        const rows = agendaRows([at('2026-09-01')], today)
+        expect(rows[0].label).toBe('September 2026')
+    })
+
+    it('does not repeat a heading for days in the same week', () => {
+        const rows = agendaRows([at('2026-08-25'), at('2026-08-27')], today)
+        expect(types(rows)).toEqual(['month', 'week', 'day', 'day'])
+    })
+
+    it('starts a new week heading at the Saturday', () => {
+        const rows = agendaRows([at('2026-08-29'), at('2026-08-31')], today)
+        expect(types(rows)).toEqual(['month', 'week', 'day', 'week', 'day'])
+    })
+
+    it('starts a new month heading when the month turns', () => {
+        const rows = agendaRows([at('2026-09-26'), at('2026-10-04')], today)
+        expect(labels(rows)).toEqual([
+            'September 2026', 'Week of 20 September',
+            'October 2026', 'Week of 4 October',
+        ])
+    })
+
+    it('repeats the week under a new month, so a week across the end of one still reads as one week', () => {
+        // Sunday 30 August to Saturday 5 September is one week in two months.
+        const rows = agendaRows([at('2026-08-31'), at('2026-09-02')], today)
+        expect(types(rows)).toEqual(['month', 'week', 'day', 'month', 'week', 'day'])
+        expect(labels(rows)).toEqual([
+            'August 2026', 'Week of 30 August',
+            'September 2026', 'Week of 30 August',
+        ])
+    })
+
+    it('gives every row a key of its own, even the repeated week', () => {
+        const rows = agendaRows([at('2026-08-31'), at('2026-09-02')], today)
+        expect(new Set(rows.map(r => r.key)).size).toBe(rows.length)
+    })
+
+    it('keeps two events on one day together on one day row', () => {
+        const rows = agendaRows([at('2026-10-04', 'a'), at('2026-10-04', 'b')], today)
+        const days = rows.filter(r => r.type === 'day')
+        expect(days).toHaveLength(1)
+        expect(days[0].events.map(e => e.id)).toEqual(['a', 'b'])
+    })
+
+    it('names this week and next week rather than dating them', () => {
+        const rows = agendaRows([at('2026-08-20'), at('2026-08-25')], today)
+        expect(labels(rows)).toEqual(['August 2026', 'This week', 'Next week'])
+    })
+
+    it('loses no events on the way through', () => {
+        const dates = ['2026-08-25', '2026-08-31', '2026-09-02', '2026-10-04']
+        const rows = agendaRows(dates.map(d => at(d)), today)
+        expect(rows.filter(r => r.type === 'day').flatMap(r => r.events).map(e => e.event_date))
+            .toEqual(dates)
+    })
+
+    it('copes with nothing at all', () => {
+        expect(agendaRows([], today)).toEqual([])
+        expect(agendaRows(null, today)).toEqual([])
     })
 })
