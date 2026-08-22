@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { secondaryButton, card } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, jumpButton } from '../../lib/controlStyles'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { todayISO, weekStartOf, addDays, shortDate, monthStart, addMonths, monthLabel } from '../../lib/dates'
 import { syncEvents, syncIsDue, markSynced } from '../../lib/ticketmaster'
-import { fmtMoney } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { DAY_NAMES, categoryStyle, statusNote, dayName, groupByWeek, weekTitle } from '../../lib/events'
+import EventModal from '../../components/EventModal'
 
 // What is on at 3Arena.
 //
@@ -18,21 +19,6 @@ import { friendlyError } from '../../lib/errors'
 // happened, so every sync writes what it finds into our own table and never
 // deletes. Given a few months that becomes something a model could learn from,
 // which is why #59 is deferred rather than dropped.
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-// Colour by the broad type, so a glance tells you what kind of night it is.
-const CATEGORY_STYLE = {
-    Music: 'bg-purple-50 text-purple-800 border-purple-200',
-    Sports: 'bg-blue-50 text-blue-800 border-blue-200',
-    Arts: 'bg-pink-50 text-pink-800 border-pink-200',
-    'Arts & Theatre': 'bg-pink-50 text-pink-800 border-pink-200',
-    Family: 'bg-amber-50 text-amber-800 border-amber-200',
-}
-
-function categoryStyle(category) {
-    return CATEGORY_STYLE[category] || 'bg-gray-100 text-gray-700 border-gray-200'
-}
 
 export default function EventCalendarPage() {
     const { activeRestaurant } = useRestaurant()
@@ -50,6 +36,7 @@ export default function EventCalendarPage() {
     const [error, setError] = useState('')
     const [note, setNote] = useState('')
     const [refresh, setRefresh] = useState(0)
+    const [openEvent, setOpenEvent] = useState(null)
 
     const today = todayISO()
 
@@ -147,6 +134,9 @@ export default function EventCalendarPage() {
     // The whole grid as a flat list of dates.
     const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
 
+    // The list beside it, broken into weeks.
+    const weeks = groupByWeek(upcoming)
+
     if (!enabled) {
         return (
             <div className="w-full">
@@ -190,27 +180,20 @@ export default function EventCalendarPage() {
             {/* Month navigation.
 
                 The buttons carry a whole month name, so "‹ July 2026" and
-                "September 2026 ›" together are far wider than a phone. Wrapping
-                let them fall onto three lines with the month you are actually
-                looking at stuck in the middle of them.
+                "September 2026 ›" together are far wider than a phone, and they
+                sit side by side on their own row with each taking half of it.
 
-                On a phone the month you are on goes on top where it belongs, and
-                the two buttons sit side by side underneath, each taking half the
-                row. From the small breakpoint up it goes back to one row with
-                the month between the buttons. */}
+                The month being looked at used to be repeated in the middle of
+                them. It is on the calendar's own heading bar now, which is where
+                you are looking anyway, so saying it twice a few centimetres
+                apart was only taking up room. */}
             <div className={`${card} p-3 mb-4`}>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <p className="font-serif text-lg font-bold text-gray-900 sm:hidden">
-                        {monthLabel(viewMonth)}
-                    </p>
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1">
                         <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, -1))}
                             className={`${secondaryButton} flex-1 sm:flex-none`}>
                             ‹ {monthLabel(addMonths(viewMonth, -1))}
                         </button>
-                        <span className="hidden sm:block font-serif text-lg font-bold text-gray-900 px-2">
-                            {monthLabel(viewMonth)}
-                        </span>
                         <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, 1))}
                             className={`${secondaryButton} flex-1 sm:flex-none`}>
                             {monthLabel(addMonths(viewMonth, 1))} ›
@@ -218,7 +201,7 @@ export default function EventCalendarPage() {
                     </div>
                     {viewMonth !== monthStart(today) && (
                         <button type="button" onClick={() => setViewMonth(monthStart(today))}
-                            className="sm:ml-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium text-left sm:text-center">
+                            className={jumpButton(false)}>
                             This month
                         </button>
                     )}
@@ -230,9 +213,16 @@ export default function EventCalendarPage() {
             ) : (
                 // Full width on a laptop: the calendar takes two thirds and the
                 // list sits beside it. On anything narrower they stack.
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                //
+                // items-start is the whole reason the big white gap under the
+                // calendar is gone. Both cards are cells of the same grid row,
+                // so by default each one stretches to whichever is taller, and
+                // with thirty events in the list beside it the calendar was
+                // being pulled down to match with nothing in the extra height.
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
 
-                    <div className={`xl:col-span-2 ${card} overflow-hidden`}>
+                    <div className={`xl:col-span-2 ${cardEdge} bg-white overflow-hidden`}>
+                        <div className={cardHeader}>{monthLabel(viewMonth)}</div>
                         <div className="grid grid-cols-7 border-b border-border bg-gray-50">
                             {DAY_NAMES.map(d => (
                                 <div key={d} className="px-2 py-2 text-center text-xs font-semibold text-muted uppercase tracking-wider">
@@ -258,31 +248,47 @@ export default function EventCalendarPage() {
                                             !inMonth ? 'bg-gray-50' : isPast ? 'bg-gray-50/50' : 'bg-white'
                                         }`}
                                     >
-                                        <div className={`text-xs mb-1 ${
-                                            isToday ? 'font-bold text-accent'
-                                                : !inMonth ? 'text-gray-300'
-                                                    : isPast ? 'text-gray-400' : 'text-gray-500'
-                                        }`}>
-                                            {d.getDate()}
+                                        {/* Today is a filled circle rather than
+                                            orange text. Orange text at this size
+                                            reads as a colour someone chose, not
+                                            as a mark, and on a grid of forty two
+                                            numbers you have to hunt for it. */}
+                                        <div className="mb-1 flex items-baseline gap-1">
+                                            <span className={
+                                                isToday
+                                                    ? 'inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-accent text-white text-xs font-bold'
+                                                    : `text-xs ${!inMonth ? 'text-gray-300' : isPast ? 'text-gray-400' : 'text-gray-600'}`
+                                            }>
+                                                {d.getDate()}
+                                            </span>
                                             {d.getDate() === 1 && (
-                                                <span className="ml-1">{d.toLocaleDateString('en-IE', { month: 'short' })}</span>
+                                                <span className={`text-xs font-semibold ${inMonth ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                    {d.toLocaleDateString('en-IE', { month: 'short' })}
+                                                </span>
                                             )}
                                         </div>
 
                                         <div className="space-y-1">
                                             {dayEvents.map(e => (
-                                                <div
+                                                // A button, not a div with a
+                                                // tooltip. The tooltip only ever
+                                                // showed the name and the time,
+                                                // and a phone has no hover at
+                                                // all, which is where this is
+                                                // read most.
+                                                <button
                                                     key={e.id}
-                                                    title={`${e.name}${e.event_time ? ` at ${e.event_time.slice(0, 5)}` : ''}`}
-                                                    className={`text-xs px-1.5 py-1 rounded border leading-tight ${categoryStyle(e.category)} ${
+                                                    type="button"
+                                                    onClick={() => setOpenEvent(e)}
+                                                    className={`w-full text-left text-xs px-1.5 py-1 rounded border leading-tight transition-shadow hover:shadow-sm ${categoryStyle(e.category)} ${
                                                         isPast || !inMonth ? 'opacity-50' : ''
                                                     }`}
                                                 >
-                                                    <div className="truncate font-medium">{e.name}</div>
+                                                    <span className="block truncate font-medium">{e.name}</span>
                                                     {e.event_time && (
-                                                        <div className="opacity-70">{e.event_time.slice(0, 5)}</div>
+                                                        <span className="block opacity-70">{e.event_time.slice(0, 5)}</span>
                                                     )}
-                                                </div>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
@@ -291,53 +297,74 @@ export default function EventCalendarPage() {
                         </div>
                     </div>
 
-                    <div className={`${card} p-5`}>
-                        <h3 className="font-serif text-base font-bold text-gray-900 mb-1">Coming up</h3>
-                        <p className="text-xs text-muted mb-4">
-                            {upcoming.length === 0
-                                ? 'Nothing scheduled yet.'
-                                : `The next ${upcoming.length} ${upcoming.length === 1 ? 'event' : 'events'}, whatever month you are looking at.`}
-                        </p>
+                    <div className={`${cardEdge} bg-white overflow-hidden`}>
+                        <div className={cardHeader}>Coming up</div>
+                        <div className="p-5">
+                            <p className="text-xs text-muted mb-4">
+                                {upcoming.length === 0
+                                    ? 'Nothing scheduled yet.'
+                                    : `The next ${upcoming.length} ${upcoming.length === 1 ? 'event' : 'events'}, whatever month you are looking at.`}
+                            </p>
 
-                        <div className="divide-y divide-border">
-                            {upcoming.map(e => (
-                                <div key={e.id} className="py-3">
-                                    <div className="flex items-start justify-between gap-2 mb-1">
-                                        <p className="text-sm font-medium text-gray-900">{e.name}</p>
-                                        <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${categoryStyle(e.category)}`}>
-                                            {e.category || 'Other'}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-muted">
-                                        {shortDate(e.event_date)}
-                                        {e.event_time && ` at ${e.event_time.slice(0, 5)}`}
+                            {/* Broken into weeks, Sunday to Saturday, the same
+                                weeks the sales and cost screens use. Thirty
+                                events in one run read as a wall, and what
+                                anybody wants out of this is what is on over the
+                                next week or two. */}
+                            {weeks.map(w => (
+                                <div key={w.weekStart} className="mb-5 last:mb-0">
+                                    <p className="text-xs font-semibold text-muted uppercase tracking-wider pb-1.5 border-b border-border">
+                                        {weekTitle(w.weekStart, today)}
                                     </p>
-                                    {/* Off sale well before the date usually means it
-                                        sold out, which says more about how busy we
-                                        will be than the category does. */}
-                                    {e.status === 'offsale' && (
-                                        <p className="text-xs text-amber-700 mt-0.5">
-                                            No longer on sale, so it has probably sold out
-                                        </p>
-                                    )}
-                                    {(e.min_price != null || e.max_price != null) && (
-                                        <p className="text-xs text-gray-400 mt-0.5">
-                                            Tickets {e.min_price != null ? fmtMoney(e.min_price) : '?'}
-                                            {e.max_price != null && e.max_price !== e.min_price && ` to ${fmtMoney(e.max_price)}`}
-                                        </p>
-                                    )}
+
+                                    <div className="divide-y divide-border">
+                                        {w.events.map(e => {
+                                            const note = statusNote(e.status)
+                                            return (
+                                                <button
+                                                    key={e.id}
+                                                    type="button"
+                                                    onClick={() => setOpenEvent(e)}
+                                                    className="w-full text-left py-3 hover:bg-gray-50 transition-colors"
+                                                >
+                                                    <div className="flex items-start justify-between gap-2 mb-1">
+                                                        <p className="text-sm font-medium text-gray-900">{e.name}</p>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${categoryStyle(e.category)}`}>
+                                                            {e.category || 'Other'}
+                                                        </span>
+                                                    </div>
+                                                    {/* The weekday first, because
+                                                        which night it lands on is
+                                                        what decides whether it
+                                                        matters to us. */}
+                                                    <p className="text-xs text-muted">
+                                                        <span className="font-semibold text-gray-700">{dayName(e.event_date)}</span>
+                                                        {' '}{shortDate(e.event_date)}
+                                                        {e.event_time && ` at ${e.event_time.slice(0, 5)}`}
+                                                    </p>
+                                                    {note && (
+                                                        <p className={`text-xs mt-0.5 ${note.tone === 'bad' ? 'text-red-700' : 'text-amber-700'}`}>
+                                                            {note.text}
+                                                        </p>
+                                                    )}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
                                 </div>
                             ))}
-                        </div>
 
-                        <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-border">
-                            {canSync
-                                ? 'Ticket numbers and how many people will attend are not in the free Ticketmaster API, so we cannot show them. Events are saved here as they are found, so once there are a few months of them we can start comparing event nights against what we actually sold.'
-                                : 'Events come from Ticketmaster and are updated a couple of times a day.'}
-                        </p>
+                            <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-border">
+                                {canSync
+                                    ? 'Ticket numbers and how many people will attend are not in the free Ticketmaster API, so we cannot show them. Events are saved here as they are found, so once there are a few months of them we can start comparing event nights against what we actually sold.'
+                                    : 'Events come from Ticketmaster and are updated a couple of times a day.'}
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
+
+            {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
         </div>
     )
 }
