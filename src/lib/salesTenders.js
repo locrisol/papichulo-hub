@@ -47,10 +47,18 @@ export function tendersToShow(tenders, storedDays) {
 
 // What the day is out by.
 //
-// Gross minus what the tenders add up to, which is the way round the weekly
-// spreadsheet has always done it: a day that is three euro short reads as three
-// euro, not minus three. The app used to work it out the other way and nobody
-// noticed, because until Friday 14 August 2026 nothing had ever been out.
+// What the till took, less what it says it took. A day three euro short reads
+// as -3.00, because the money is missing and a shortfall should look like one.
+//
+// Anything under half a cent is treated as nothing. Adding decimals in binary
+// leaves a remainder, so a day that balances to the cent can come out at minus
+// two ten-thousandths of a cent, which is nothing at all but carries a minus
+// sign and used to show as "-€0.00" beside six days of "€0.00". It also matters
+// because the screen turns red on any variance that is not zero, and noise like
+// that is not a variance.
+//
+// The figure itself is not rounded, only the noise removed, so what is shown
+// keeps the rounding that toLocaleString does properly.
 //
 // Only rows marked as counting are included. Every row on the till counts
 // today, but a POS that prints a subtotal line would not, and that is a tick
@@ -60,7 +68,8 @@ export function tenderVariance(gross, values, shownTenders) {
         .filter(t => t.counts_toward_gross)
         .reduce((sum, t) => sum + num(values?.[t.key]), 0)
 
-    return num(gross) - total
+    const out = total - num(gross)
+    return Math.abs(out) < 0.005 ? 0 : out
 }
 
 // What to write back to the database for one day.
@@ -80,6 +89,34 @@ export function mergeTenderSales(stored, values, shownTenders) {
         out[t.key] = num(values?.[t.key])
     }
     return out
+}
+
+// Does a tracking platform belong to a till row?
+//
+// Since August the till itemises Clockmeal, Lunch Team, Feedr and Catering
+// itself, so most Corporate tracking rows now have a till row of the same name.
+// The two live in different tables with nothing joining them, so the name is
+// all there is to go on. Compared loosely, since a stray capital or a trailing
+// space should not break the link.
+//
+// If they ever stop lining up, nothing breaks: no match simply means no copying
+// and the tracking row is typed by hand as it always was.
+export function sameLabel(a, b) {
+    return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase()
+}
+
+// What a tracking row should become when a till row is typed into.
+//
+// Returns the new value to copy across, or null to leave the tracking row
+// alone. It copies while the tracking row is still empty or still says what the
+// till row said a moment ago. Once something different has been typed into it,
+// it is that person's figure and nothing overwrites it: what the till rang up
+// and what the platform pays after commission are not always the same, and the
+// tracking row is where that difference gets recorded.
+export function trackedCopy({ typed, previousTillValue, trackedValue }) {
+    const tracked = trackedValue ?? ''
+    const previous = previousTillValue ?? ''
+    return tracked === '' || tracked === previous ? typed : null
 }
 
 // Turns a stored day into what the inputs need, which is strings. A key with no

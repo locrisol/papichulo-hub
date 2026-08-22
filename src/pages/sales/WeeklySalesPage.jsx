@@ -6,7 +6,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
 import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
 
@@ -31,7 +31,6 @@ import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow } from
 // here, as it is in the day form: the business is changing how it handles cash.
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const VARIANCE_WARN_THRESHOLD = 10
 
 function num(v) {
     if (v === '' || v == null) return 0
@@ -243,15 +242,37 @@ export default function WeeklySalesPage() {
         setDays(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }))
     }
 
+    // Typing a till figure also fills the Corporate tracking row of the same
+    // name, so a day where everything matches only has to be typed once.
+    //
+    // It stays editable. What the till rang up and what the platform actually
+    // pays after commission are not always the same, and the tracking row is
+    // where that difference gets recorded, so it stops copying the moment
+    // something different is typed into it. See trackedCopy.
     function setTenderValue(date, key, value) {
         setDirty(true)
-        setDays(prev => ({
-            ...prev,
-            [date]: {
-                ...prev[date],
-                tenderValues: { ...prev[date].tenderValues, [key]: value },
-            },
-        }))
+        setDays(prev => {
+            const day = prev[date]
+            const next = {
+                ...day,
+                tenderValues: { ...day.tenderValues, [key]: value },
+            }
+
+            const tender = tenders.find(t => t.key === key)
+            const tracking = tender && cateringPlatforms.find(p => sameLabel(p.name, tender.label))
+            if (tracking) {
+                const copy = trackedCopy({
+                    typed: value,
+                    previousTillValue: day.tenderValues?.[key],
+                    trackedValue: day.platformValues?.[tracking.name],
+                })
+                if (copy != null) {
+                    next.platformValues = { ...day.platformValues, [tracking.name]: copy }
+                }
+            }
+
+            return { ...prev, [date]: next }
+        })
     }
 
     function setPlatformValue(date, platformName, value) {
@@ -478,17 +499,34 @@ export default function WeeklySalesPage() {
     // Tab normally moves across the row. In a grid like this it is more natural
     // to move down the same day's column, so jump to the next input carrying the
     // same data-col value. Shift+Tab goes back up.
+    // Tab moves down the block you are in, and at the bottom of it carries on
+    // into the same block on the next day rather than dropping into the block
+    // below.
+    //
+    // It used to walk the whole column, so finishing Uber Eats put you in
+    // Clockmeal, which is a different record entirely. You fill one block across
+    // the week, not one day top to bottom, so this follows how it is actually
+    // used.
     function handleGridKeyDown(e) {
         if (e.key !== 'Tab') return
-        const col = e.target.dataset?.col
-        if (col == null) return
+        const { block, col } = e.target.dataset || {}
+        if (block == null || col == null) return
 
         e.preventDefault()
-        const colInputs = Array.from(
-            document.querySelectorAll(`input[data-col="${col}"]:not([disabled])`)
-        )
-        const i = colInputs.indexOf(e.target)
-        const next = e.shiftKey ? colInputs[i - 1] : colInputs[i + 1]
+
+        const inBlock = c => Array.from(document.querySelectorAll(
+            `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
+        ))
+
+        const here = inBlock(col)
+        const step = e.shiftKey ? -1 : 1
+        let next = here[here.indexOf(e.target) + step]
+
+        if (!next) {
+            const neighbour = inBlock(Number(col) + step)
+            next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+        }
+
         if (next) {
             next.focus()
             next.select()
@@ -505,16 +543,28 @@ export default function WeeklySalesPage() {
     // were bare text with nothing marking them as different. Everything looked
     // the same on a screen that is nothing but numbers.
     const inputCls =
-        'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none'
+        'w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none'
+
+    // A filled box is faintly green, an empty one is white.
+    //
+    // On a grid of seven days by a dozen rows there was no way to see at a
+    // glance how far through a week you were. The empty boxes used to show a
+    // grey 0.00, which reads as a figure somebody entered when it is not one,
+    // so that is gone as well: blank means nobody has filled it in, and a typed
+    // 0 means the till took nothing. Those are different things and the day has
+    // to be able to say which.
+    function cellCls(value) {
+        return `${inputCls} ${value === '' || value == null ? 'bg-white' : 'bg-green-50'}`
+    }
     const labelCellCls = 'px-3 py-2 text-sm font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-gray-50 z-10'
     const totalCellCls = 'px-3 py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap bg-gray-50'
 
     // Called as functions rather than rendered as components, so React keeps the
     // same DOM nodes between renders and inputs do not lose focus while typing.
-    function fieldRow({ label, field, bold, key }) {
+    function fieldRow({ label, field, bold, key, block = 'receipt', tint }) {
         return (
-            <tr key={key} className="border-b border-border">
-                <td className={`${labelCellCls} ${bold ? 'font-semibold' : ''}`}>{label}</td>
+            <tr key={key} className={`border-b border-border ${tint || ''}`}>
+                <td className={`${labelCellCls} ${bold ? 'font-semibold' : ''} ${tint || ''}`}>{label}</td>
                 {dates.map((d, i) => (
                     <td key={d} className="px-1.5 py-1.5">
                         <input
@@ -523,13 +573,13 @@ export default function WeeklySalesPage() {
                                 onChange: v => setField(d, field, v),
                             })}
                             data-col={i}
+                            data-block={block}
                             disabled={days[d]?.isClosed}
-                            className={inputCls}
-                            placeholder="0.00"
+                            className={cellCls(days[d]?.[field])}
                         />
                     </td>
                 ))}
-                <td className={totalCellCls}>{fmtMoney(weekTotal(field))}</td>
+                <td className={`${totalCellCls} ${tint || ''}`}>{fmtMoney(weekTotal(field))}</td>
             </tr>
         )
     }
@@ -554,9 +604,9 @@ export default function WeeklySalesPage() {
                                 onChange: v => setTenderValue(d, tender.key, v),
                             })}
                             data-col={i}
+                            data-block="receipt"
                             disabled={days[d]?.isClosed}
-                            className={inputCls}
-                            placeholder="0.00"
+                            className={cellCls(days[d]?.tenderValues?.[tender.key])}
                         />
                     </td>
                 ))}
@@ -577,9 +627,9 @@ export default function WeeklySalesPage() {
                                 onChange: v => setPlatformValue(d, platform.name, v),
                             })}
                             data-col={i}
+                            data-block={platform.bucket}
                             disabled={days[d]?.isClosed}
-                            className={inputCls}
-                            placeholder="0.00"
+                            className={cellCls(days[d]?.platformValues?.[platform.name])}
                         />
                     </td>
                 ))}
@@ -753,11 +803,20 @@ export default function WeeklySalesPage() {
 
                         <tbody>
                             {/* Till receipt block: this is what reconciles.
-                                Gross and net stay put at the top. Everything
-                                under them is whatever the till currently prints,
-                                in whatever order it is set to. */}
-                            {fieldRow({ key: 'gross', label: 'Gross sales', field: 'gross', bold: true })}
-                            {fieldRow({ key: 'net', label: 'Net sales', field: 'net', bold: true })}
+
+                                Gross and net are what the day came to. The rows
+                                under them are how it was taken, and they have to
+                                add up to gross. They are two different kinds of
+                                figure, so they get the colours and the gap the
+                                weekly spreadsheet already gives them rather than
+                                sitting in one undifferentiated list. */}
+                            {fieldRow({ key: 'gross', label: 'Gross sales', field: 'gross', bold: true, tint: 'bg-blue-50' })}
+                            {fieldRow({ key: 'net', label: 'Net sales', field: 'net', bold: true, tint: 'bg-green-50' })}
+
+                            <tr aria-hidden="true">
+                                <td colSpan={9} className="h-4 bg-app-bg sticky left-0"></td>
+                            </tr>
+
                             {shownTenders.map(t => tenderRow(t))}
 
                             {/* Reconciliation closes the receipt block */}
@@ -765,7 +824,12 @@ export default function WeeklySalesPage() {
                                 <td className={`${labelCellCls} font-semibold bg-gray-50`}>Reconciliation</td>
                                 {dates.map(d => {
                                     const v = varianceFor(d)
-                                    const warn = Math.abs(v) > VARIANCE_WARN_THRESHOLD
+                                    // Any cent at all. This is the till receipt,
+                                    // not a cash drawer, so there is nothing to
+                                    // round away: if it does not add up to gross
+                                    // then something was typed wrong or the till
+                                    // is wrong, and either is worth a look.
+                                    const warn = v !== 0
                                     const closed = days[d]?.isClosed
                                     return (
                                         <td key={d} className="px-3 py-2 text-right text-sm whitespace-nowrap">
@@ -796,16 +860,16 @@ export default function WeeklySalesPage() {
                                 <>
                                     <tr className="border-b border-border">
                                         <td colSpan={9} className="px-3 pt-4 pb-1 sticky left-0 bg-white">
-                                            <span className="text-xs font-semibold text-accent uppercase tracking-wider">Catering</span>
+                                            <span className="text-xs font-semibold text-accent uppercase tracking-wider">Corporate</span>
                                             <span className="text-xs text-gray-400 ml-2">tracking only</span>
                                         </td>
                                     </tr>
                                     {cateringPlatforms.map(p => platformRow(p))}
-                                    {platformSumRow({ key: 'cateringSum', label: 'Catering', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
+                                    {platformSumRow({ key: 'cateringSum', label: 'Corporate', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
                                 </>
                             )}
 
-                            {fieldRow({ key: 'staffFood', label: 'Staff food', field: 'staffFood' })}
+                            {fieldRow({ key: 'staffFood', label: 'Staff food', field: 'staffFood', block: 'extra' })}
                         </tbody>
                     </table>
                 </div>
