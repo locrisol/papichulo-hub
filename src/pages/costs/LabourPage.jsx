@@ -8,6 +8,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // Labour hours, entered a week at a time.
 //
@@ -336,15 +337,18 @@ export default function LabourPage() {
                                             <div className="text-xs text-gray-400">{fullDate(d)}</div>
                                         </td>
                                         <td className="px-2 py-2">
-                                            <input type="number" step="0.25" min="0" inputMode="decimal"
-                                                value={days[d]?.hours ?? ''}
-                                                onChange={e => setField(d, 'hours', e.target.value)}
+                                            <input {...numberField({
+                                                value: days[d]?.hours,
+                                                onChange: v => setField(d, 'hours', v),
+                                            })}
                                                 className={inputCls} placeholder="0" />
                                         </td>
                                         <td className="px-2 py-2">
-                                            <input type="number" step="1" min="0" inputMode="numeric"
-                                                value={days[d]?.staff ?? ''}
-                                                onChange={e => setField(d, 'staff', e.target.value)}
+                                            <input {...numberField({
+                                                value: days[d]?.staff,
+                                                onChange: v => setField(d, 'staff', v),
+                                                whole: true,
+                                            })}
                                                 className={inputCls} placeholder="0" />
                                         </td>
                                         <td className={`${calcCellCls} text-gray-700`}>{fmtMoney(costFor(d))}</td>

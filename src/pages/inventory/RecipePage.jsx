@@ -6,6 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -319,11 +320,10 @@ export default function RecipePage() {
         </p>
         <div className="flex items-center gap-3">
           <input
-            type="number"
-            step="0.001"
-            min="0"
-            value={batchYieldInput}
-            onChange={e => setBatchYieldInput(e.target.value)}
+            {...numberField({
+              value: batchYieldInput,
+              onChange: setBatchYieldInput,
+            })}
             placeholder="e.g. 10"
             className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white w-40"
           />

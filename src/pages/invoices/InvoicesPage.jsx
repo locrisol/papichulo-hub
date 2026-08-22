@@ -8,6 +8,7 @@ import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -202,8 +203,8 @@ export default function InvoicesPage() {
                     </div>
                     <div>
                         <label className={labelCls}>Total</label>
-                        <input type="number" step="0.01" inputMode="decimal" value={totalAmount}
-                            onChange={e => setTotalAmount(e.target.value)} className={`${fieldCls} text-right`} placeholder="0.00" />
+                        <input {...numberField({ value: totalAmount, onChange: setTotalAmount })}
+                            className={`${fieldCls} text-right`} placeholder="0.00" />
                     </div>
                     <div>
                         <label className={labelCls}>Week starting</label>

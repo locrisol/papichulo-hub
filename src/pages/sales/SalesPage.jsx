@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
+import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
@@ -310,9 +311,10 @@ export default function SalesPage() {
                         <div key={p.id}>
                             <label className={labelCls}>{p.name}</label>
                             <input
-                                type="number" step="0.01" inputMode="decimal"
-                                value={platformSales[p.name] ?? ''}
-                                onChange={e => setPlatformAmount(p.name, e.target.value)}
+                                {...numberField({
+                                    value: platformSales[p.name],
+                                    onChange: v => setPlatformAmount(p.name, v),
+                                })}
                                 className={fieldCls}
                                 placeholder="0.00"
                             />
@@ -403,9 +405,10 @@ export default function SalesPage() {
                                     <div>
                                         <label className={labelCls}>Gross sales</label>
                                         <input
-                                            type="number" step="0.01" inputMode="decimal"
-                                            value={values.gross}
-                                            onChange={e => setValue('gross', e.target.value)}
+                                            {...numberField({
+                                                value: values.gross,
+                                                onChange: v => setValue('gross', v),
+                                            })}
                                             className={fieldCls}
                                             placeholder="0.00"
                                         />
@@ -413,9 +416,10 @@ export default function SalesPage() {
                                     <div>
                                         <label className={labelCls}>Net sales</label>
                                         <input
-                                            type="number" step="0.01" inputMode="decimal"
-                                            value={values.net}
-                                            onChange={e => setValue('net', e.target.value)}
+                                            {...numberField({
+                                                value: values.net,
+                                                onChange: v => setValue('net', v),
+                                            })}
                                             className={fieldCls}
                                             placeholder="0.00"
                                         />
@@ -429,9 +433,10 @@ export default function SalesPage() {
                                                 )}
                                             </label>
                                             <input
-                                                type="number" step="0.01" inputMode="decimal"
-                                                value={tenderValues[t.key] ?? ''}
-                                                onChange={e => setTenderValue(t.key, e.target.value)}
+                                                {...numberField({
+                                                    value: tenderValues[t.key],
+                                                    onChange: v => setTenderValue(t.key, v),
+                                                })}
                                                 className={fieldCls}
                                                 placeholder="0.00"
                                             />
@@ -467,9 +472,10 @@ export default function SalesPage() {
                                 <div>
                                     <label className={labelCls}>Staff food</label>
                                     <input
-                                        type="number" step="0.01" inputMode="decimal"
-                                        value={staffFood}
-                                        onChange={e => setStaffFood(e.target.value)}
+                                        {...numberField({
+                                            value: staffFood,
+                                            onChange: setStaffFood,
+                                        })}
                                         className={fieldCls}
                                         placeholder="0.00"
                                     />

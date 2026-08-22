@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { numberField } from '../lib/numberInput'
 
 // One ingredient line on a MIX recipe.
 //
@@ -66,10 +67,6 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
     }
   }
 
-  const stepValue = (displayUnit === 'g' || displayUnit === 'ml') ? '1'
-    : (displayUnit === 'KG' || displayUnit === 'Litre') ? '0.001'
-    : '1'
-
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -95,11 +92,10 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
           <div className="flex gap-2">
             <input
-              type="number"
-              step={stepValue}
-              min="0"
-              value={getDisplayValue()}
-              onChange={e => handleDisplayChange(e.target.value)}
+              {...numberField({
+                value: getDisplayValue(),
+                onChange: handleDisplayChange,
+              })}
               className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {(ingredientUnit === 'KG' || ingredientUnit === 'Litre') ? (

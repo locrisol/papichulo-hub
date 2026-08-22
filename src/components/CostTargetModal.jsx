@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { weekStartOf, shortDate, todayISO } from '../lib/dates'
 import { describeTargets } from '../lib/costTargets'
 import { friendlyError } from '../lib/errors'
+import { numberField } from '../lib/numberInput'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -146,8 +147,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                     <form onSubmit={handleSave}>
                         <div className="mb-3">
                             <label className={labelCls}>Target as a percentage of net sales</label>
-                            <input type="number" step="0.1" min="0" max="100" inputMode="decimal"
-                                value={value} onChange={e => setValue(e.target.value)}
+                            <input {...numberField({ value, onChange: setValue })}
                                 className={`${fieldCls} text-right`} placeholder="30" />
                         </div>
 

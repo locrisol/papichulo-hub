@@ -7,6 +7,7 @@ import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -327,11 +328,10 @@ export default function MenuItemsPage() {
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.selling_price}
-                  onChange={e => handleFieldChange('selling_price', e.target.value)}
+                  {...numberField({
+                    value: formData.selling_price,
+                    onChange: v => handleFieldChange('selling_price', v),
+                  })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.selling_price && <p className="text-xs text-red-600 mt-1">{errors.selling_price}</p>}
@@ -339,12 +339,10 @@ export default function MenuItemsPage() {
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={formData.vat_rate}
-                  onChange={e => handleFieldChange('vat_rate', e.target.value)}
+                  {...numberField({
+                    value: formData.vat_rate,
+                    onChange: v => handleFieldChange('vat_rate', v),
+                  })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.vat_rate && <p className="text-xs text-red-600 mt-1">{errors.vat_rate}</p>}

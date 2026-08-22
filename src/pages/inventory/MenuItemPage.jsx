@@ -6,6 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // One dish: what it is made of, what it costs, and what it contains.
 //
@@ -368,11 +369,10 @@ export default function MenuItemPage() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={headerForm.selling_price}
-              onChange={e => handleHeaderChange('selling_price', e.target.value)}
+              {...numberField({
+                value: headerForm.selling_price,
+                onChange: v => handleHeaderChange('selling_price', v),
+              })}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {headerErrors.selling_price && <p className="text-xs text-red-600 mt-1">{headerErrors.selling_price}</p>}
@@ -380,12 +380,10 @@ export default function MenuItemPage() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="100"
-              value={headerForm.vat_rate}
-              onChange={e => handleHeaderChange('vat_rate', e.target.value)}
+              {...numberField({
+                value: headerForm.vat_rate,
+                onChange: v => handleHeaderChange('vat_rate', v),
+              })}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {headerErrors.vat_rate && <p className="text-xs text-red-600 mt-1">{headerErrors.vat_rate}</p>}
@@ -630,10 +628,6 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
     }
   }
 
-  const stepValue = (displayUnit === 'g' || displayUnit === 'ml') ? '1'
-    : (displayUnit === 'KG' || displayUnit === 'Litre') ? '0.001'
-    : '0.01'
-
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -659,11 +653,10 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
           <div className="flex gap-2">
             <input
-              type="number"
-              step={stepValue}
-              min="0"
-              value={getDisplayValue()}
-              onChange={e => handleDisplayChange(e.target.value)}
+              {...numberField({
+                value: getDisplayValue(),
+                onChange: handleDisplayChange,
+              })}
               className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {(unit === 'KG' || unit === 'Litre') ? (

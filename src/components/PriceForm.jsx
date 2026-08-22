@@ -14,6 +14,8 @@
 // value is worked out again on save, but seeing it immediately catches a units
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
+import { numberField } from '../lib/numberInput'
+
 export default function PriceForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit }) {
   const isCase = formData.purchase_type === 'case'
 
@@ -82,11 +84,10 @@ export default function PriceForm({ formData, onChange, onSubmit, onCancel, subm
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Price per Case (€)</label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.price_per_case}
-              onChange={e => onChange('price_per_case', e.target.value)}
+              {...numberField({
+                value: formData.price_per_case,
+                onChange: v => onChange('price_per_case', v),
+              })}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {errors.price_per_case && <p className="text-xs text-red-600 mt-1">{errors.price_per_case}</p>}
@@ -96,11 +97,10 @@ export default function PriceForm({ formData, onChange, onSubmit, onCancel, subm
               Units per Case ({unit || '...'})
             </label>
             <input
-              type="number"
-              step={unit === 'KG' || unit === 'Litre' ? '0.001' : '1'}
-              min="0"
-              value={formData.units_per_case}
-              onChange={e => onChange('units_per_case', e.target.value)}
+              {...numberField({
+                value: formData.units_per_case,
+                onChange: v => onChange('units_per_case', v),
+              })}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {errors.units_per_case && <p className="text-xs text-red-600 mt-1">{errors.units_per_case}</p>}
@@ -119,11 +119,10 @@ export default function PriceForm({ formData, onChange, onSubmit, onCancel, subm
             Price per {unit || 'unit'} (€)
           </label>
           <input
-            type="number"
-            step="0.0001"
-            min="0"
-            value={formData.price_per_unit}
-            onChange={e => onChange('price_per_unit', e.target.value)}
+            {...numberField({
+              value: formData.price_per_unit,
+              onChange: v => onChange('price_per_unit', v),
+            })}
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
           {errors.price_per_unit && <p className="text-xs text-red-600 mt-1">{errors.price_per_unit}</p>}
