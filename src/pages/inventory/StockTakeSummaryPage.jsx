@@ -7,6 +7,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { card } from '../../lib/controlStyles'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -271,15 +272,15 @@ export default function StockTakeSummaryPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{countedProductIds.size}<span className="text-base text-muted">/{products.length}</span></p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Lines</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{lines.length}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(session.total_value)}</p>
         </div>

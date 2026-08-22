@@ -7,7 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Invoice entry, plus the invoices already recorded for that week.
@@ -173,7 +173,7 @@ export default function InvoicesPage() {
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Entry form */}
-            <form onSubmit={handleSave} className="bg-white rounded-xl border border-border p-5 mb-4">
+            <form onSubmit={handleSave} className={`${card} p-5 mb-4`}>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an invoice</h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -234,26 +234,26 @@ export default function InvoicesPage() {
                 four across left about 80px each and the amounts were cut off
                 mid number. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Food</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('food'))}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Packaging and cleaning</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('packaging', 'cleaning'))}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Other</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor('other'))}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Week total</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(weekTotal)}</p>
                 </div>
             </div>
 
             {/* This week's invoices */}
-            <div className="bg-white rounded-xl border border-border p-5">
+            <div className={`${card} p-5`}>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">
                     Invoices for the week starting {shortDate(weekStart)}
                 </h3>

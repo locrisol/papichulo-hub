@@ -7,7 +7,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
 import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
+import { iconButton, dateField, jumpButton, card } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
 
@@ -66,7 +66,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
     const fill = pct != null && target ? Math.min((pct / target) * 100, 100) : 0
 
     return (
-        <div className="bg-white rounded-xl border border-border p-5">
+        <div className={`${card} p-5`}>
             <div className="flex items-start justify-between mb-2">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
                 {onEdit && (
@@ -403,7 +403,7 @@ export default function CostDashboardPage() {
             {/* How the week was taken. Not costs: this is the same money as net
                 sales, split by how it came in, straight from what was entered on
                 the weekly sales grid. */}
-            <div className="bg-white rounded-xl border border-border p-6 mb-6">
+            <div className={`${card} p-6 mb-6`}>
                 <h3 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h3>
                 <p className="text-xs text-muted mb-4">
                     Shares of gross sales, one for every row on the till receipt. Change what the till takes and this
@@ -424,7 +424,7 @@ export default function CostDashboardPage() {
 
             {/* Gross profit and the week day by day */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl border border-border p-6">
+                <div className={`${card} p-6`}>
                     <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h3>
                     <div className="flex flex-col">
                         <div className="flex justify-between text-sm py-2 border-b border-border">
@@ -454,7 +454,7 @@ export default function CostDashboardPage() {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-border p-6">
+                <div className={`${card} p-6`}>
                     <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Sales day by day</h3>
                     {dates.map((d, i) => {
                         const row = salesByDate[d]

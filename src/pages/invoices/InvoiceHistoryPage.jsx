@@ -6,7 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -136,7 +136,7 @@ export default function InvoiceHistoryPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
             {/* Filters */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 {/* Two across on a phone. Four across gave each date box a
                     quarter of the screen, which showed a single digit. */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
@@ -179,19 +179,19 @@ export default function InvoiceHistoryPage() {
                 the invoices screen. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 {SUMMARY_GROUPS.map(g => (
-                    <div key={g.label} className="bg-white rounded-xl border border-border p-4">
+                    <div key={g.label} className={`${card} p-4`}>
                         <p className="text-xs text-gray-500 uppercase tracking-wider">{g.label}</p>
                         <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor(g.cats))}</p>
                     </div>
                 ))}
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Total</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(total)}</p>
                 </div>
             </div>
 
             {/* The invoices */}
-            <div className="bg-white rounded-xl border border-border p-5">
+            <div className={`${card} p-5`}>
                 {loading ? (
                     <p className="text-sm text-gray-400">Loading...</p>
                 ) : invoices.length === 0 ? (

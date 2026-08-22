@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { num, tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from './salesTenders'
+import { num, tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from './salesTenders'
 
 // The five rows the till printed before August 2026, and the ones it prints now.
 const t = (key, label, sort_order, extra = {}) => ({
@@ -93,17 +93,27 @@ describe('tenderVariance', () => {
     // Sunday 9 August 2026, straight off the weekly spreadsheet.
     it('comes out at nothing when the day balances', () => {
         const values = { cash: 109.04, card: 466.20, kiosk: 1464.47, online_sales: 404.61 }
-        expect(tenderVariance(2444.32, values, NEW_TILL)).toBeCloseTo(0, 2)
+        expect(tenderVariance(2444.32, values, NEW_TILL)).toBe(0)
+    })
+
+    // Saturday 15 August 2026. This one balances too, but adding those three
+    // decimals in binary lands on minus two ten-thousandths of a cent, which
+    // used to print as "-€0.00" next to six days of "€0.00".
+    it('gives a real zero when the decimals do not add up cleanly', () => {
+        const values = { cash: 0, card: 290.64, kiosk: 987.95, online_sales: 325.03 }
+        const v = tenderVariance(1603.62, values, NEW_TILL)
+        expect(v).toBe(0)
+        expect(Object.is(v, -0)).toBe(false)
     })
 
     // Friday 14 August 2026, the one day that was actually out.
-    it('reads a short day as a positive number, the way the spreadsheet does', () => {
+    it('reads a short till as a negative number', () => {
         const values = { cash: 55.60, card: 223.20, kiosk: 1002.55, online_sales: 511.76, feedr: 487.03 }
-        expect(tenderVariance(2283.14, values, NEW_TILL)).toBeCloseTo(3.00, 2)
+        expect(tenderVariance(2283.14, values, NEW_TILL)).toBe(-3)
     })
 
-    it('reads an over day as a negative number', () => {
-        expect(tenderVariance(100, { cash: 105 }, NEW_TILL)).toBeCloseTo(-5, 2)
+    it('reads an over till as a positive number', () => {
+        expect(tenderVariance(100, { cash: 105 }, NEW_TILL)).toBe(5)
     })
 
     // Monday 10 August, the day that used every catering row.
@@ -112,7 +122,7 @@ describe('tenderVariance', () => {
             cash: 56.85, card: 292.77, kiosk: 562.10, online_sales: 405.90,
             clockmeal: 56.40, lunch_team: 114.15, feedr: 480.98,
         }
-        expect(tenderVariance(1969.15, values, NEW_TILL)).toBeCloseTo(0, 2)
+        expect(tenderVariance(1969.15, values, NEW_TILL)).toBe(0)
     })
 
     it('leaves out a row that is not meant to count', () => {
@@ -121,7 +131,7 @@ describe('tenderVariance', () => {
             t('subtotal', 'Subtotal', 1, { counts_toward_gross: false }),
         ]
         // The subtotal is on screen but must not be added in twice.
-        expect(tenderVariance(100, { cash: 100, subtotal: 100 }, rows)).toBeCloseTo(0, 2)
+        expect(tenderVariance(100, { cash: 100, subtotal: 100 }, rows)).toBe(0)
     })
 })
 
@@ -152,6 +162,46 @@ describe('mergeTenderSales', () => {
         const shown = [t('outside_catering', 'Outside Catering', 0, { is_active: false })]
         const out = mergeTenderSales(stored, { outside_catering: '300' }, shown)
         expect(out.outside_catering).toBe(300)
+    })
+})
+
+describe('sameLabel', () => {
+    it('matches a tracking row to the till row of the same name', () => {
+        expect(sameLabel('Feedr', 'Feedr')).toBe(true)
+        expect(sameLabel(' feedr ', 'Feedr')).toBe(true)
+        expect(sameLabel('Lunch Team', 'Lunch team')).toBe(true)
+    })
+
+    it('does not match two different rows', () => {
+        expect(sameLabel('Feedr', 'Clockmeal')).toBe(false)
+        expect(sameLabel('Catering', 'Outside Catering')).toBe(false)
+    })
+
+    it('copes with nothing on either side', () => {
+        expect(sameLabel(null, undefined)).toBe(true)
+        expect(sameLabel('Feedr', null)).toBe(false)
+    })
+})
+
+describe('trackedCopy', () => {
+    it('fills an empty tracking row', () => {
+        expect(trackedCopy({ typed: '745', previousTillValue: '', trackedValue: '' })).toBe('745')
+    })
+
+    // Correcting a typo in the till row should carry through, or you fix one
+    // and leave the other wrong.
+    it('keeps following while the tracking row still matches the till row', () => {
+        expect(trackedCopy({ typed: '750', previousTillValue: '745', trackedValue: '745' })).toBe('750')
+    })
+
+    it('leaves a tracking row alone once something different is in it', () => {
+        // Feedr rang up 745 on the till but only pays 700 after commission.
+        // That 700 is the whole point of the tracking row and must survive.
+        expect(trackedCopy({ typed: '750', previousTillValue: '745', trackedValue: '700' })).toBe(null)
+    })
+
+    it('copies a zero like any other figure', () => {
+        expect(trackedCopy({ typed: '0', previousTillValue: '', trackedValue: '' })).toBe('0')
     })
 })
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../lib/allergens'
+import { card } from '../lib/controlStyles'
 
 const ALLERGEN_LABELS = {
   gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
@@ -202,7 +203,7 @@ export default function PublicAllergensPage({ slugOverride }) {
           <p>If you have a severe allergy, please speak to a member of staff before ordering. While we take great care, our kitchen handles many allergens and we cannot guarantee zero cross-contamination.</p>
         </div>
 
-        <div className="bg-white border border-border rounded-xl p-4 mb-6 text-xs text-gray-600">
+        <div className={`${card} p-4 mb-6 text-xs text-gray-600`}>
           <p className="mb-2">Tap a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
           <div className="flex flex-wrap gap-3 text-xs">
             <span className="inline-flex items-center gap-1.5">
@@ -221,7 +222,7 @@ export default function PublicAllergensPage({ slugOverride }) {
         </div>
 
         {itemsByCategory.length === 0 ? (
-          <div className="bg-white border border-border rounded-xl p-8 text-center">
+          <div className={`${card} p-8 text-center`}>
             <p className="text-sm text-gray-500">No menu items available.</p>
           </div>
         ) : (
@@ -229,7 +230,7 @@ export default function PublicAllergensPage({ slugOverride }) {
             {itemsByCategory.map(({ category, items }) => (
               <div key={category.id}>
                 <h2 className="font-serif text-lg font-bold text-gray-900 mb-2 px-1">{category.name}</h2>
-                <div className="bg-white border border-border rounded-xl overflow-hidden">
+                <div className={`${card} overflow-hidden`}>
                   {items.map((item, i) => {
                     const itemAllergens = getItemAllergens(item)
                     const present = ALLERGEN_KEYS

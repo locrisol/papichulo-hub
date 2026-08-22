@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { card } from '../../lib/controlStyles'
 
 // Section display order. Products whose section isn't in this list sort last.
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
@@ -436,7 +437,7 @@ export default function StockTakeCountPage() {
             <div className="flex-1 overflow-y-auto px-4 md:px-7 pb-20">
                 {isManager && totalValue > 0 && (
                     <div className="pt-4">
-                        <div className="bg-white border border-border rounded-xl p-4">
+                        <div className={`${card} p-4`}>
                             <div className="flex items-center justify-between mb-3">
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>

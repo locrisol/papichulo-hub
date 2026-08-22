@@ -4,15 +4,12 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
-
-// Threshold above which the reconciliation is flagged for review.
-const VARIANCE_WARN_THRESHOLD = 10
+import { secondaryButton, card } from '../../lib/controlStyles'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -174,7 +171,21 @@ export default function SalesPage() {
         setValues(prev => ({ ...prev, [key]: v }))
     }
 
+    // Same as the weekly grid: a till figure fills the Corporate tracking row
+    // of the same name, and stops as soon as that row is given its own figure.
     function setTenderValue(key, value) {
+        const tender = tenders.find(t => t.key === key)
+        const tracking = tender && cateringPlatforms.find(p => sameLabel(p.name, tender.label))
+        if (tracking) {
+            const copy = trackedCopy({
+                typed: value,
+                previousTillValue: tenderValues[key],
+                trackedValue: platformSales[tracking.name],
+            })
+            if (copy != null) {
+                setPlatformSales(prev => ({ ...prev, [tracking.name]: copy }))
+            }
+        }
         setTenderValues(prev => ({ ...prev, [key]: value }))
     }
 
@@ -203,7 +214,10 @@ export default function SalesPage() {
 
     // Reconciliation uses only the till receipt block.
     const variance = tenderVariance(values.gross, tenderValues, shownTenders)
-    const varianceWarn = Math.abs(variance) > VARIANCE_WARN_THRESHOLD
+    // Any cent at all. This is the till receipt, not a cash drawer, so there
+    // is nothing to round away: if it does not add up to gross then something
+    // was typed wrong or the till is wrong, and either is worth a look.
+    const varianceWarn = variance !== 0
 
     const gross = num(values.gross)
     function pctOfGross(amount) {
@@ -278,35 +292,60 @@ export default function SalesPage() {
 
     const fieldCls =
         'w-full border border-border rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white'
+
+    // A filled box is faintly green, an empty one is white, the same as the
+    // weekly grid. The 0.00 placeholders are gone with it: a grey 0.00 reads as
+    // a figure somebody entered when it is not one. Blank means nobody has
+    // filled it in, a typed 0 means the till took nothing, and the day has to
+    // be able to say which.
+    function fieldWith(value) {
+        return `${fieldCls} ${value === '' || value == null ? '' : 'bg-green-50'}`
+    }
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
-    function trackingBucket(title, bucketPlatforms, receiptKey) {
+    function trackingBucket(title, bucketPlatforms, receiptKey, note) {
         if (bucketPlatforms.length === 0) return null
         const sum = platformSum(bucketPlatforms)
         // Once the till row this was compared against is retired there is
         // nothing honest to compare it to, so it shows its own total instead.
         const comparable = shownTenders.some(t => t.key === receiptKey)
         const gap = sum - num(tenderValues[receiptKey])
+        // Headed and totalled the same way as the weekly grid, so both screens
+        // draw the line between the receipt and the notes kept beside it in the
+        // same place. Grey rather than one of the app's colours on purpose:
+        // orange would read as needing attention and green as confirmed, and
+        // this is neither.
         return (
-            <div className="bg-white rounded-xl border border-border p-5 mb-3">
-                <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-sm font-semibold text-accent">
+            <div className={`${card} overflow-hidden mb-3`}>
+                <div className="bg-gray-600 px-5 py-2 flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                         {title}
-                        <span className="text-xs text-gray-400 font-normal ml-2">tracking only</span>
+                        <span className="text-xs font-normal normal-case tracking-normal text-white/60 ml-2">
+                            tracking only, outside the reconciliation
+                        </span>
                     </h3>
-                    <span className="text-sm text-gray-500">
-                        total: <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
-                        <span className="ml-2 text-gray-400">({pctOfGross(sum).toFixed(1)}% of sales)</span>
+                </div>
+
+                {note && (
+                    <p className="bg-blue-50 text-xs text-blue-800 px-5 py-2 border-b border-border">{note}</p>
+                )}
+
+                <div className="bg-gray-200 border-b border-gray-300 px-5 py-2 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">{title} tracked</span>
+                    <span className="text-sm text-gray-600">
+                        <span className="font-semibold text-gray-900">{fmtMoney(sum)}</span>
+                        <span className="ml-2 text-gray-500">({pctOfGross(sum).toFixed(1)}% of sales)</span>
                     </span>
                 </div>
+
                 {comparable && Math.abs(gap) >= 0.01 && (
-                    <p className="text-xs text-amber-600 mb-3">
+                    <p className="text-xs text-amber-600 px-5 pt-3">
                         {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
                         commission and VAT differently.
                     </p>
                 )}
-                <div className="grid grid-cols-3 gap-3 mt-3">
+                <div className="grid grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
                             <label className={labelCls}>{p.name}</label>
@@ -315,8 +354,7 @@ export default function SalesPage() {
                                     value: platformSales[p.name],
                                     onChange: v => setPlatformAmount(p.name, v),
                                 })}
-                                className={fieldCls}
-                                placeholder="0.00"
+                                className={fieldWith(platformSales[p.name])}
                             />
                         </div>
                     ))}
@@ -359,7 +397,7 @@ export default function SalesPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 <div>
                     {/* Date selector */}
-                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                    <div className={`${card} p-4 mb-3`}>
                         {/* Allowed to break onto a second line. It was one row
                             that could not wrap, so on a phone the date controls
                             took the whole width and pushed "Existing record"
@@ -376,7 +414,7 @@ export default function SalesPage() {
                     </div>
 
                     {/* Non-trading day */}
-                    <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                    <div className={`${card} p-4 mb-3`}>
                         <label className="flex items-center gap-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -399,31 +437,42 @@ export default function SalesPage() {
                             {/* Till receipt block. Gross and net stay at the
                                 top; everything under them is whatever the till
                                 currently prints, set in Restaurant settings. */}
-                            <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                            <div className={`${card} p-5 mb-3`}>
                                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
+
+                                {/* Gross and net are what the day came to. The
+                                    boxes under them are how it was taken, and
+                                    they have to add up to gross. Two different
+                                    kinds of figure, so they are set apart with
+                                    the same two colours the weekly spreadsheet
+                                    gives them. */}
+                                <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
+                                    {/* A step darker than the faint green a
+                                        filled box gets, or the block reads as
+                                        one big confirmation tick. */}
+                                    <div className="bg-blue-200 rounded-lg p-2">
                                         <label className={labelCls}>Gross sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.gross,
                                                 onChange: v => setValue('gross', v),
                                             })}
-                                            className={fieldCls}
-                                            placeholder="0.00"
+                                            className={fieldWith(values.gross)}
                                         />
                                     </div>
-                                    <div>
+                                    <div className="bg-green-200 rounded-lg p-2">
                                         <label className={labelCls}>Net sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.net,
                                                 onChange: v => setValue('net', v),
                                             })}
-                                            className={fieldCls}
-                                            placeholder="0.00"
+                                            className={fieldWith(values.net)}
                                         />
                                     </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
                                     {shownTenders.map(t => (
                                         <div key={t.key}>
                                             <label className={labelCls}>
@@ -437,8 +486,7 @@ export default function SalesPage() {
                                                     value: tenderValues[t.key],
                                                     onChange: v => setTenderValue(t.key, v),
                                                 })}
-                                                className={fieldCls}
-                                                placeholder="0.00"
+                                                className={fieldWith(tenderValues[t.key])}
                                             />
                                         </div>
                                     ))}
@@ -446,13 +494,13 @@ export default function SalesPage() {
                             </div>
 
                             {/* Reconciliation closes the receipt block */}
-                            <div className={`rounded-xl p-4 mb-3 ${varianceWarn ? 'bg-red-50' : 'bg-green-50'}`}>
+                            <div className={`rounded-xl border shadow-md p-4 mb-3 ${varianceWarn ? 'bg-red-50 border-red-400' : 'bg-green-50 border-green-400'}`}>
                                 <div className={`text-xs mb-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>Reconciliation</div>
                                 <div className={`text-xl font-semibold ${varianceWarn ? 'text-red-700' : 'text-green-700'}`}>{fmtMoney(variance)}</div>
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
                                     {varianceWarn
-                                        ? `Over €${VARIANCE_WARN_THRESHOLD}, check the figures`
-                                        : 'gross sales, less everything the till took'}
+                                        ? 'Does not add up to gross sales, check the figures'
+                                        : 'everything the till took, against gross sales'}
                                 </div>
                             </div>
                         </>
@@ -465,9 +513,10 @@ export default function SalesPage() {
                     <div>
                         {/* Platform detail, outside the reconciliation */}
                         {trackingBucket('Online Platform', onlinePlatforms, 'online_sales')}
-                        {trackingBucket('Catering', cateringPlatforms, 'outside_catering')}
+                        {trackingBucket('Corporate', cateringPlatforms, 'outside_catering',
+                            'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
 
-                        <div className="bg-white rounded-xl border border-border p-5 mb-3">
+                        <div className={`${card} p-5 mb-3`}>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className={labelCls}>Staff food</label>
@@ -476,8 +525,7 @@ export default function SalesPage() {
                                             value: staffFood,
                                             onChange: setStaffFood,
                                         })}
-                                        className={fieldCls}
-                                        placeholder="0.00"
+                                        className={fieldWith(staffFood)}
                                     />
                                 </div>
                             </div>

@@ -10,6 +10,7 @@ import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { numberField } from '../../lib/numberInput'
+import { card } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -137,7 +138,7 @@ export default function RestaurantPage() {
                 <div>
                     {/* Cost targets. Changed through the same modal the dashboard uses,
                         so a target is only ever set in one place. */}
-                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                    <div className={`${card} p-6 mb-4`}>
                         <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
                         <p className="text-xs text-gray-500 mt-1 mb-4">
                             What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
@@ -190,7 +191,7 @@ export default function RestaurantPage() {
 
                     {/* Everything saved straight onto the restaurant row */}
                     <form onSubmit={handleSave}>
-                        <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                        <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -216,7 +217,7 @@ export default function RestaurantPage() {
                         </div>
 
                         {user?.role === 'super_admin' && (
-                            <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                            <div className={`${card} p-6 mb-4`}>
                                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Forecasting</h3>
                                 <label className="flex items-center gap-3 cursor-pointer">
                                     <input
@@ -245,7 +246,7 @@ export default function RestaurantPage() {
 
                 <div>
                     {/* Sales platforms management */}
-                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                    <div className={`${card} p-6 mb-4`}>
                         <div className="flex items-center justify-between">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
@@ -269,7 +270,7 @@ export default function RestaurantPage() {
                         than this just being a hidden button. Changing these
                         changes the shape of every day entered afterwards. */}
                     {user?.role === 'super_admin' && (
-                        <div className="bg-white rounded-xl border border-border p-6">
+                        <div className={`${card} p-6`}>
                             <div className="flex items-center justify-between gap-4 flex-wrap">
                                 <div>
                                     <h3 className="text-sm font-semibold text-gray-900">Till receipt rows</h3>

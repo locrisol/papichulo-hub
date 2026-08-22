@@ -7,6 +7,7 @@ import jsPDF from 'jspdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 import PageContainer from '../../components/layout/PageContainer'
+import { card } from '../../lib/controlStyles'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.
@@ -432,7 +433,7 @@ export default function PublicAllergensPreviewPage() {
             </header>
 
             {/* QR + actions bar */}
-            <div className="bg-white border border-border rounded-xl p-5 mb-6">
+            <div className={`${card} p-5 mb-6`}>
                 <div className="flex flex-col sm:flex-row gap-5 items-start">
                     {/* QR preview */}
                     <div className="flex-shrink-0 mx-auto sm:mx-0">

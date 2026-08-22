@@ -4,14 +4,16 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { tableHeadRow } from '../lib/controlStyles'
 
+// The stored value stays 'catering'. Only what you read changes, so nothing
+// already recorded against it has to move.
 const BUCKETS = [
   { value: 'online_platform', label: 'Online Platform' },
-  { value: 'catering', label: 'Catering' },
+  { value: 'catering', label: 'Corporate' },
 ]
 
 const BUCKET_LABEL = {
   online_platform: 'Online Platforms',
-  catering: 'Catering',
+  catering: 'Corporate',
 }
 
 export default function SalesPlatformsModal({ onClose, onChange }) {

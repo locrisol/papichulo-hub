@@ -6,6 +6,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { card } from '../../lib/controlStyles'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -232,15 +233,15 @@ export default function StockTakeReviewPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{countedCount}<span className="text-base text-muted">/{products.length}</span></p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Uncounted</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{uncountedProducts.length}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4 col-span-2 sm:col-span-1">
+        <div className={`${card} p-4 col-span-2 sm:col-span-1`}>
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
         </div>
@@ -265,7 +266,7 @@ export default function StockTakeReviewPage() {
             <p className="text-xs text-muted mb-3">
               These have no count for this session. You can count them now, or close without them (they will be left uncounted, not recorded as zero).
             </p>
-            <div className="bg-white border border-border rounded-xl overflow-hidden">
+            <div className={`${card} overflow-hidden`}>
               {uncountedProducts.map((product, i) => {
                 const isExpanded = expandedProductId === product.id
                 const productLines = getProductLines(product.id)
