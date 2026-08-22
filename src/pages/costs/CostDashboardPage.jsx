@@ -9,6 +9,7 @@ import CostTargetModal from '../../components/CostTargetModal'
 import PageContainer from '../../components/layout/PageContainer'
 import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
+import { tendersToShow } from '../../lib/salesTenders'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -122,6 +123,9 @@ export default function CostDashboardPage() {
     const [labourCost, setLabourCost] = useState(0)
     const [wasteCost, setWasteCost] = useState(0)
     const [overrides, setOverrides] = useState([])
+    // The till rows, so the split below can name them. Retired ones included, so
+    // a week from before the till changed still splits the way it was taken.
+    const [tenders, setTenders] = useState([])
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -142,13 +146,23 @@ export default function CostDashboardPage() {
 
             const { data: sales, error: sErr } = await supabase
                 .from('sales_records')
-                .select('sale_date, net_sales, gross_sales, cash_sales, card_sales, kiosk_sales, online_sales, catering_sales, is_closed')
+                .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
                 .eq('restaurant_id', restaurantId)
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
             if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
             setSalesRows(sales || [])
+
+            const { data: tends, error: tErr } = await supabase
+                .from('sales_tenders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order')
+                .order('label')
+
+            if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
+            setTenders(tends || [])
 
             const { data: invoices, error: iErr } = await supabase
                 .from('invoices')
@@ -209,11 +223,16 @@ export default function CostDashboardPage() {
     const trading = salesRows.filter(s => !s.is_closed)
     const netSales = trading.reduce((t, s) => t + num(s.net_sales), 0)
     const grossSales = trading.reduce((t, s) => t + num(s.gross_sales), 0)
-    const cashSales = trading.reduce((t, s) => t + num(s.cash_sales), 0)
-    const cardSales = trading.reduce((t, s) => t + num(s.card_sales), 0)
-    const kioskSales = trading.reduce((t, s) => t + num(s.kiosk_sales), 0)
-    const onlineSales = trading.reduce((t, s) => t + num(s.online_sales), 0)
-    const cateringSales = trading.reduce((t, s) => t + num(s.catering_sales), 0)
+    // How the week was taken, one figure per till row. Built from whatever rows
+    // the week actually has rather than a fixed five, so a week entered before
+    // the till split Outside Catering still splits the way it was taken, and a
+    // week entered after it shows Clockmeal, Lunch Team, Feedr and Catering
+    // separately. Nothing here needs changing when the till changes again.
+    const weekTenders = tendersToShow(tenders, trading.map(s => s.tender_sales))
+    const takenBy = weekTenders.map(t => ({
+        label: t.label,
+        amount: trading.reduce((total, s) => total + num(s.tender_sales?.[t.key]), 0),
+    }))
 
     function pct(amount) {
         return netSales > 0 ? (amount / netSales) * 100 : null
@@ -387,16 +406,11 @@ export default function CostDashboardPage() {
             <div className="bg-white rounded-xl border border-border p-6 mb-6">
                 <h3 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h3>
                 <p className="text-xs text-muted mb-4">
-                    Shares of gross sales. Online Sales and Outside Catering are what came through third parties.
+                    Shares of gross sales, one for every row on the till receipt. Change what the till takes and this
+                    follows it.
                 </p>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    {[
-                        { label: 'Cash', amount: cashSales },
-                        { label: 'Card', amount: cardSales },
-                        { label: 'Kiosk', amount: kioskSales },
-                        { label: 'Online Sales', amount: onlineSales },
-                        { label: 'Outside Catering', amount: cateringSales },
-                    ].map(c => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                    {takenBy.map(c => (
                         <div key={c.label}>
                             <p className="text-xs font-semibold text-muted uppercase tracking-wider">{c.label}</p>
                             <p className="font-serif text-2xl font-bold text-gray-900 mt-1">

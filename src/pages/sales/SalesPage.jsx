@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { resolveRowOrder } from './WeeklySalesPage'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord } from '../../lib/salesTenders'
 import { todayISO, addDays } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
@@ -14,9 +14,11 @@ import { secondaryButton } from '../../lib/controlStyles'
 const VARIANCE_WARN_THRESHOLD = 10
 
 // TWO RECORDS, DELIBERATELY SEPARATE
-// The till receipt block (gross, net, cash, card, kiosk, Online Sales, Outside
-// Catering) is entered directly and is the only block that reconciles, because
-// it is what the POS prints and what can be checked at close. The platform
+// The till receipt block (gross, net, and a row for every way the till takes
+// money) is entered directly and is the only block that reconciles, because it
+// is what the POS prints and what can be checked at close. Those rows come from
+// sales_tenders rather than being fixed, so when the till changes a Super Admin
+// edits them in Restaurant settings instead of us writing a migration. The platform
 // figures below are a separate tracking record: platforms report commission and
 // VAT inconsistently, so forcing them to agree with the receipt would produce a
 // permanent false error. The difference is shown as information instead.
@@ -72,21 +74,24 @@ export default function SalesPage() {
 
     const [platforms, setPlatforms] = useState([])
 
-    // Receipt values, keyed the same way as the weekly grid.
-    const [values, setValues] = useState({
-        gross: '', net: '', cash: '', card: '', kiosk: '',
-        onlineSales: '', cateringSales: '',
-    })
+    // Every tender for this restaurant, retired ones included, so an old day can
+    // still show the rows it was entered with.
+    const [tenders, setTenders] = useState([])
+
+    // Gross and net only. Every other row on the receipt is a tender now.
+    const [values, setValues] = useState({ gross: '', net: '' })
+
+    // Tender amounts on screen, keyed by tender key, and what the database
+    // actually holds. Both are kept because a save writes over the stored
+    // figures rather than replacing them.
+    const [tenderValues, setTenderValues] = useState({})
+    const [storedTenders, setStoredTenders] = useState({})
     const [staffFood, setStaffFood] = useState('')
 
     // Per-platform amounts, keyed by platform name: { Deliveroo: "120.50" }
     const [platformSales, setPlatformSales] = useState({})
 
     const restaurantId = activeRestaurant?.id
-
-    // Receipt row order, configurable per restaurant in Restaurant settings.
-    // Shared with the weekly grid so both screens present the same sequence.
-    const receiptRows = resolveRowOrder(activeRestaurant?.sales_row_order)
 
     useEffect(() => {
         if (restaurantId) loadDay()
@@ -107,6 +112,18 @@ export default function SalesPage() {
             .order('name')
 
         if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
+
+        // Not filtered by is_active: a day from March has to be able to show
+        // Outside Catering, which it can only do if the retired row is here.
+        const { data: tends, error: tErr } = await supabase
+            .from('sales_tenders')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .order('sort_order')
+            .order('label')
+
+        if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
+        setTenders(tends || [])
 
         // Sort by the manager-defined order, falling back to alphabetical.
         const sortedPlats = (plats || []).sort(
@@ -129,12 +146,9 @@ export default function SalesPage() {
             setValues({
                 gross: rec.gross_sales != null ? String(rec.gross_sales) : '',
                 net: rec.net_sales != null ? String(rec.net_sales) : '',
-                cash: rec.cash_sales != null ? String(rec.cash_sales) : '',
-                card: rec.card_sales != null ? String(rec.card_sales) : '',
-                kiosk: rec.kiosk_sales != null ? String(rec.kiosk_sales) : '',
-                onlineSales: rec.online_sales != null ? String(rec.online_sales) : '',
-                cateringSales: rec.catering_sales != null ? String(rec.catering_sales) : '',
             })
+            setTenderValues(tenderValuesFromRecord(rec.tender_sales))
+            setStoredTenders(rec.tender_sales ?? {})
             setStaffFood(rec.staff_food != null ? String(rec.staff_food) : '')
 
             const ps = {}
@@ -145,7 +159,9 @@ export default function SalesPage() {
         } else {
             setRecordId(null)
             setIsClosed(false)
-            setValues({ gross: '', net: '', cash: '', card: '', kiosk: '', onlineSales: '', cateringSales: '' })
+            setValues({ gross: '', net: '' })
+            setTenderValues({})
+            setStoredTenders({})
             setStaffFood('')
             setPlatformSales({})
         }
@@ -155,6 +171,10 @@ export default function SalesPage() {
 
     function setValue(key, v) {
         setValues(prev => ({ ...prev, [key]: v }))
+    }
+
+    function setTenderValue(key, value) {
+        setTenderValues(prev => ({ ...prev, [key]: value }))
     }
 
     function setPlatformAmount(name, value) {
@@ -176,11 +196,12 @@ export default function SalesPage() {
         return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.name]), 0)
     }
 
+    // The rows this day draws: the active ones, plus any retired row this day
+    // still holds a figure for.
+    const shownTenders = tendersToShow(tenders, [storedTenders])
+
     // Reconciliation uses only the till receipt block.
-    const variance =
-        num(values.cash) + num(values.card) + num(values.kiosk)
-        + num(values.onlineSales) + num(values.cateringSales)
-        - num(values.gross)
+    const variance = tenderVariance(values.gross, tenderValues, shownTenders)
     const varianceWarn = Math.abs(variance) > VARIANCE_WARN_THRESHOLD
 
     const gross = num(values.gross)
@@ -220,8 +241,8 @@ export default function SalesPage() {
             ? {
                 ...base,
                 is_closed: true,
-                gross_sales: 0, net_sales: 0, cash_sales: 0, card_sales: 0, kiosk_sales: 0,
-                online_sales: 0, catering_sales: 0, platform_sales: {},
+                gross_sales: 0, net_sales: 0,
+                tender_sales: {}, platform_sales: {},
                 staff_food: 0, instore_variance: 0,
             }
             : {
@@ -229,13 +250,11 @@ export default function SalesPage() {
                 is_closed: false,
                 gross_sales: num(values.gross),
                 net_sales: num(values.net),
-                cash_sales: num(values.cash),
-                card_sales: num(values.card),
-                kiosk_sales: num(values.kiosk),
-                // Receipt figures, entered directly rather than derived.
-                online_sales: num(values.onlineSales),
-                catering_sales: num(values.cateringSales),
-                // Tracking detail, not required to match the two above.
+                // Every row on the till receipt. Written over what was already
+                // stored rather than replacing it, so a figure belonging to no
+                // row on screen is left where it is.
+                tender_sales: mergeTenderSales(storedTenders, tenderValues, shownTenders),
+                // Tracking detail, not required to match the receipt.
                 platform_sales: ps,
                 staff_food: num(staffFood),
                 instore_variance: variance,
@@ -264,7 +283,10 @@ export default function SalesPage() {
     function trackingBucket(title, bucketPlatforms, receiptKey) {
         if (bucketPlatforms.length === 0) return null
         const sum = platformSum(bucketPlatforms)
-        const gap = sum - num(values[receiptKey])
+        // Once the till row this was compared against is retired there is
+        // nothing honest to compare it to, so it shows its own total instead.
+        const comparable = shownTenders.some(t => t.key === receiptKey)
+        const gap = sum - num(tenderValues[receiptKey])
         return (
             <div className="bg-white rounded-xl border border-border p-5 mb-3">
                 <div className="flex items-center justify-between mb-1">
@@ -277,7 +299,7 @@ export default function SalesPage() {
                         <span className="ml-2 text-gray-400">({pctOfGross(sum).toFixed(1)}% of sales)</span>
                     </span>
                 </div>
-                {Math.abs(gap) >= 0.01 && (
+                {comparable && Math.abs(gap) >= 0.01 && (
                     <p className="text-xs text-amber-600 mb-3">
                         {gap > 0 ? '+' : ''}{fmtMoney(gap)} against the receipt figure. Expected: platforms report
                         commission and VAT differently.
@@ -372,17 +394,44 @@ export default function SalesPage() {
                     {/* Everything below is irrelevant on a closed day, so it is hidden. */}
                     {!isClosed && (
                         <>
-                            {/* Till receipt block, in the order set in Restaurant settings */}
+                            {/* Till receipt block. Gross and net stay at the
+                                top; everything under them is whatever the till
+                                currently prints, set in Restaurant settings. */}
                             <div className="bg-white rounded-xl border border-border p-5 mb-3">
                                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Till receipt</h3>
                                 <div className="grid grid-cols-2 gap-3">
-                                    {receiptRows.map(row => (
-                                        <div key={row.key}>
-                                            <label className={labelCls}>{row.label}</label>
+                                    <div>
+                                        <label className={labelCls}>Gross sales</label>
+                                        <input
+                                            type="number" step="0.01" inputMode="decimal"
+                                            value={values.gross}
+                                            onChange={e => setValue('gross', e.target.value)}
+                                            className={fieldCls}
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Net sales</label>
+                                        <input
+                                            type="number" step="0.01" inputMode="decimal"
+                                            value={values.net}
+                                            onChange={e => setValue('net', e.target.value)}
+                                            className={fieldCls}
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    {shownTenders.map(t => (
+                                        <div key={t.key}>
+                                            <label className={labelCls}>
+                                                {t.label}
+                                                {!t.is_active && (
+                                                    <span className="ml-2 text-gray-400">retired</span>
+                                                )}
+                                            </label>
                                             <input
                                                 type="number" step="0.01" inputMode="decimal"
-                                                value={values[row.key] ?? ''}
-                                                onChange={e => setValue(row.key, e.target.value)}
+                                                value={tenderValues[t.key] ?? ''}
+                                                onChange={e => setTenderValue(t.key, e.target.value)}
                                                 className={fieldCls}
                                                 placeholder="0.00"
                                             />
@@ -398,7 +447,7 @@ export default function SalesPage() {
                                 <div className={`text-xs mt-1 ${varianceWarn ? 'text-red-600' : 'text-green-700'}`}>
                                     {varianceWarn
                                         ? `Over €${VARIANCE_WARN_THRESHOLD}, check the figures`
-                                        : 'cash + card + kiosk + online + catering − gross'}
+                                        : 'gross sales, less everything the till took'}
                                 </div>
                             </div>
                         </>
@@ -410,8 +459,8 @@ export default function SalesPage() {
                 {!isClosed && (
                     <div>
                         {/* Platform detail, outside the reconciliation */}
-                        {trackingBucket('Online Platform', onlinePlatforms, 'onlineSales')}
-                        {trackingBucket('Catering', cateringPlatforms, 'cateringSales')}
+                        {trackingBucket('Online Platform', onlinePlatforms, 'online_sales')}
+                        {trackingBucket('Catering', cateringPlatforms, 'outside_catering')}
 
                         <div className="bg-white rounded-xl border border-border p-5 mb-3">
                             <div className="grid grid-cols-2 gap-3">

@@ -3,8 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
+import SalesTendersModal from '../../components/SalesTendersModal'
 import CostTargetModal from '../../components/CostTargetModal'
-import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
 import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
@@ -41,12 +41,9 @@ export default function RestaurantPage() {
     const [error, setError] = useState('')
     const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
+    const [showTendersModal, setShowTendersModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
     const [refresh, setRefresh] = useState(0)
-
-    // Order of the till receipt rows in the weekly sales grid.
-    const [rowOrder, setRowOrder] = useState(RECEIPT_ROWS.map(r => r.key))
-    const [orderSaving, setOrderSaving] = useState(false)
 
     const week = weekStartOf(todayISO())
 
@@ -56,7 +53,6 @@ export default function RestaurantPage() {
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
         })
-        setRowOrder(resolveRowOrder(activeRestaurant.sales_row_order).map(r => r.key))
     }, [activeRestaurant])
 
     useEffect(() => {
@@ -78,28 +74,6 @@ export default function RestaurantPage() {
 
     // Swap a row with its neighbour. Arrows rather than drag and drop: this is
     // set once and rarely revisited, and arrows work on touch without a library.
-    function moveRow(index, direction) {
-        const target = index + direction
-        if (target < 0 || target >= rowOrder.length) return
-        const next = [...rowOrder]
-        const [moved] = next.splice(index, 1)
-        next.splice(target, 0, moved)
-        setRowOrder(next)
-    }
-
-    async function saveRowOrder() {
-        setOrderSaving(true)
-        setError('')
-        setSuccess('')
-        const { error: e1 } = await supabase
-            .from('restaurants')
-            .update({ sales_row_order: rowOrder })
-            .eq('id', activeRestaurant.id)
-        setOrderSaving(false)
-        if (e1) setError(friendlyError(e1))
-        else setSuccess('Sales row order saved. Reload the weekly sales page to see it.')
-    }
-
     async function handleSave(e) {
         e.preventDefault()
         setLoading(true)
@@ -289,64 +263,31 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
-                    {/* Order of the receipt rows in the weekly sales grid */}
-                    <div className="bg-white rounded-xl border border-border p-6">
-                        <h3 className="text-sm font-semibold text-gray-900">Weekly sales row order</h3>
-                        <p className="text-xs text-gray-500 mt-1 mb-4">
-                            Arrange the till receipt rows to match how you read the POS receipt. Platform rows are ordered
-                            separately, in Manage platforms.
-                        </p>
+                    {/* The till receipt rows.
 
-                        <ul className="border border-border rounded-lg divide-y divide-border mb-3">
-                            {rowOrder.map((key, i) => {
-                                const row = RECEIPT_ROWS.find(r => r.key === key)
-                                if (!row) return null
-                                return (
-                                    <li key={key} className="flex items-center justify-between px-3 py-2">
-                                        <span className="text-sm text-gray-700">{row.label}</span>
-                                        <div className="flex gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => moveRow(i, -1)}
-                                                disabled={i === 0}
-                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                                aria-label={`Move ${row.label} up`}
-                                            >
-                                                &uarr;
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => moveRow(i, 1)}
-                                                disabled={i === rowOrder.length - 1}
-                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                                aria-label={`Move ${row.label} down`}
-                                            >
-                                                &darr;
-                                            </button>
-                                        </div>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-
-                        <div className="flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setRowOrder(RECEIPT_ROWS.map(r => r.key))}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                Reset to default
-                            </button>
-                            <button
-                                type="button"
-                                onClick={saveRowOrder}
-                                disabled={orderSaving}
-                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
-                            >
-                                {orderSaving ? 'Saving...' : 'Save order'}
-                            </button>
+                        Super Admin only, and the database says so too rather
+                        than this just being a hidden button. Changing these
+                        changes the shape of every day entered afterwards. */}
+                    {user?.role === 'super_admin' && (
+                        <div className="bg-white rounded-xl border border-border p-6">
+                            <div className="flex items-center justify-between gap-4 flex-wrap">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900">Till receipt rows</h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        The rows on the sales screens, in the order the till prints them. Add one when
+                                        the till starts taking money a new way, retire one when it stops.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTendersModal(true)}
+                                    className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                >
+                                    Manage rows
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
@@ -364,6 +305,12 @@ export default function RestaurantPage() {
             {showPlatformsModal && (
                 <SalesPlatformsModal
                     onClose={() => setShowPlatformsModal(false)}
+                />
+            )}
+
+            {showTendersModal && (
+                <SalesTendersModal
+                    onClose={() => setShowTendersModal(false)}
                 />
             )}
         </PageContainer>
