@@ -83,7 +83,9 @@ export const INVOICE_SUMMARY_CARDS = [
     {
         label: 'Packaging and cleaning',
         cats: ['packaging', 'cleaning'],
-        split: 'linear-gradient(115deg, #fef2f2 0 50%, #faf5ff 50% 100%)',
+        // Corner to corner: the dividing line runs from the top right corner
+        // down to the bottom left, so red sits above it and purple below.
+        split: 'linear-gradient(to bottom right, #fef2f2 0 50%, #faf5ff 50% 100%)',
         labelText: 'text-gray-700',
     },
     {

@@ -6,7 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow, card, cardEdge } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
@@ -154,9 +154,6 @@ export default function InvoiceHistoryPage() {
                     <button type="button" onClick={() => setRange(30)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 30 days</button>
                     <button type="button" onClick={() => setRange(90)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 90 days</button>
                     <button type="button" onClick={clearFilters} className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium">Clear</button>
-                    <span className="ml-auto text-xs text-gray-500">
-                        {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'}
-                    </span>
                 </div>
             </div>
 
@@ -182,7 +179,11 @@ export default function InvoiceHistoryPage() {
             </div>
 
             {/* The invoices */}
-            <div className={`${card} p-5`}>
+            <div className={`${card} overflow-hidden`}>
+                <h3 className={cardHeader}>
+                    {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'} found
+                </h3>
+                <div className="p-5">
                 {loading ? (
                     <p className="text-sm text-gray-400">Loading...</p>
                 ) : invoices.length === 0 ? (
@@ -236,6 +237,7 @@ export default function InvoiceHistoryPage() {
                     </table>
                     </div>
                 )}
+                </div>
             </div>
         </PageContainer>
     )

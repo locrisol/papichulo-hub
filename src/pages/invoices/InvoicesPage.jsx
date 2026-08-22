@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -7,9 +7,11 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, card, cardEdge } from '../../lib/controlStyles'
-import { numberField } from '../../lib/numberInput'
-import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
+import { secondaryButton, card, cardEdge, cardHeader } from '../../lib/controlStyles'
+import InvoiceForm from '../../components/InvoiceForm'
+import { useConfirm } from '../../context/ConfirmContext'
+import Modal from '../../components/Modal'
+import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -29,10 +31,49 @@ function num(v) {
     return isNaN(n) ? 0 : n
 }
 
+// Nothing chosen to start with. The category used to default to food, which is
+// the commonest, but a default that is right most of the time is exactly the one
+// nobody checks, and filing a packaging invoice under food moves money between
+// two different cost targets.
+function emptyForm() {
+    return {
+        supplierId: '',
+        invoiceDate: todayISO(),
+        totalAmount: '',
+        category: '',
+        notes: '',
+    }
+}
+
+// One set of rules for both, so an invoice cannot be edited into a state it
+// could never have been created in.
+function validate(f) {
+    if (!f.supplierId) return 'Pick a supplier'
+    if (!f.category) return 'Pick a category'
+    const amount = parseFloat(f.totalAmount)
+    if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
+    return null
+}
+
+// week_start is worked back out from the date every time rather than kept as it
+// was, so moving an invoice to a different day moves it into the right week too
+// instead of leaving it filed under the old one and wrong on the cost dashboard.
+function invoicePayload(f) {
+    return {
+        supplier_id: f.supplierId,
+        invoice_date: f.invoiceDate,
+        total_amount: parseFloat(f.totalAmount),
+        category: f.category,
+        week_start: weekStartOf(f.invoiceDate),
+        notes: f.notes.trim() || null,
+    }
+}
+
 export default function InvoicesPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const navigate = useNavigate()
+    const confirm = useConfirm()
 
     const [suppliers, setSuppliers] = useState([])
     const [invoices, setInvoices] = useState([])
@@ -46,20 +87,23 @@ export default function InvoicesPage() {
     // new function every render and either loop or need the lint rule silenced.
     const [refresh, setRefresh] = useState(0)
 
-    // The form
-    const [supplierId, setSupplierId] = useState('')
-    const [invoiceDate, setInvoiceDate] = useState(todayISO())
-    const [totalAmount, setTotalAmount] = useState('')
-    // Nothing chosen to start with. It used to default to food, which is the
-    // commonest, but a default that is right most of the time is exactly the
-    // one nobody checks, and filing a packaging invoice under food moves money
-    // between two different cost targets.
-    const [category, setCategory] = useState('')
-    const [notes, setNotes] = useState('')
+    // Adding and editing keep their own values on purpose.
+    //
+    // Sharing one set, the way the products screen does, would mean opening an
+    // invoice to correct it wiped whatever was half typed at the top of the
+    // screen. The add form here is always on show, so that would be a real loss
+    // rather than a theoretical one.
+    const [form, setForm] = useState(emptyForm())
+    const [editingId, setEditingId] = useState(null)
+    const [editForm, setEditForm] = useState(emptyForm())
 
-    // Which week the list below is showing. Follows the date on the form, so
+    // The invoice the dialog is showing, looked up from the list rather than
+    // kept as a second copy, so it cannot go stale if the list reloads.
+    const editingInvoice = invoices.find(i => i.id === editingId) || null
+
+    // Which week the list below is showing. Follows the date on the add form, so
     // entering an invoice from last week shows you last week's invoices.
-    const weekStart = weekStartOf(invoiceDate)
+    const weekStart = weekStartOf(form.invoiceDate)
     const restaurantId = activeRestaurant?.id
 
     useEffect(() => {
@@ -99,24 +143,42 @@ export default function InvoicesPage() {
         load()
     }, [restaurantId, weekStart, refresh])
 
+    function setFormField(field, value) {
+        setForm(prev => ({ ...prev, [field]: value }))
+    }
+
+    function setEditField(field, value) {
+        setEditForm(prev => ({ ...prev, [field]: value }))
+    }
+
+    function startEdit(inv) {
+        setError(''); setSuccess('')
+        setEditingId(inv.id)
+        setEditForm({
+            supplierId: inv.supplier_id || '',
+            invoiceDate: inv.invoice_date,
+            totalAmount: inv.total_amount != null ? String(inv.total_amount) : '',
+            category: inv.category || '',
+            notes: inv.notes || '',
+        })
+    }
+
+    function cancelEdit() {
+        setEditingId(null)
+        setEditForm(emptyForm())
+    }
+
     async function handleSave(e) {
         e.preventDefault()
         setError(''); setSuccess('')
 
-        if (!supplierId) { setError('Pick a supplier'); return }
-        if (!category) { setError('Pick a category'); return }
-        const amount = parseFloat(totalAmount)
-        if (isNaN(amount) || amount <= 0) { setError('The total has to be a number above zero'); return }
+        const problem = validate(form)
+        if (problem) { setError(problem); return }
 
         setSaving(true)
         const { error: e1 } = await supabase.from('invoices').insert({
             restaurant_id: restaurantId,
-            supplier_id: supplierId,
-            invoice_date: invoiceDate,
-            total_amount: amount,
-            category,
-            week_start: weekStartOf(invoiceDate),
-            notes: notes.trim() || null,
+            ...invoicePayload(form),
             entry_method: 'manual',
             created_by: user.id,
         })
@@ -131,16 +193,58 @@ export default function InvoicesPage() {
         // filled in is a form nobody reads, and the cost of getting it wrong is
         // an invoice filed under the wrong target. The date stays, since that
         // is the one thing a batch really does share.
-        setSupplierId('')
-        setCategory('')
-        setTotalAmount('')
-        setNotes('')
+        setForm(emptyForm())
         setSuccess('Invoice saved.')
         setRefresh(n => n + 1)
     }
 
+    // Correcting one rather than deleting it and typing it again, which is what
+    // people were doing and which loses who entered it and when.
+    //
+    // The week is worked back out from the date, so moving an invoice to a
+    // different day also moves it into the right week rather than leaving it
+    // filed under the old one and quietly wrong on the cost dashboard.
+    async function handleUpdate(e) {
+        e.preventDefault()
+        setError(''); setSuccess('')
+
+        const problem = validate(editForm)
+        if (problem) { setError(problem); return }
+
+        setSaving(true)
+        const { error: e1 } = await supabase
+            .from('invoices')
+            .update(invoicePayload(editForm))
+            .eq('id', editingId)
+        setSaving(false)
+
+        if (e1) { setError(friendlyError(e1)); return }
+
+        cancelEdit()
+        setSuccess('Invoice updated.')
+        setRefresh(n => n + 1)
+    }
+
     async function handleDelete(inv) {
-        if (!window.confirm(`Delete the ${fmtMoney(inv.total_amount)} invoice from ${inv.suppliers?.name}?`)) return
+        // Read back what is about to go, laid out rather than squeezed into one
+        // sentence. Several invoices from the same supplier on the same day are
+        // normal here, so the supplier's name on its own does not tell you which
+        // one you are about to delete.
+        const cat = invoiceCategory(inv.category)
+        const ok = await confirm({
+            title: 'Delete this invoice?',
+            message: 'It will be taken off the week straight away and off the cost dashboard with it.',
+            details: [
+                { label: 'Supplier', value: inv.suppliers?.name || 'Unknown supplier' },
+                { label: 'Category', value: cat.label },
+                { label: 'Date', value: fullDate(inv.invoice_date) },
+                { label: 'Total', value: fmtMoney(inv.total_amount) },
+                ...(inv.notes ? [{ label: 'Notes', value: inv.notes }] : []),
+            ],
+            confirmLabel: 'Delete invoice',
+            tone: 'danger',
+        })
+        if (!ok) return
         const { error: e1 } = await supabase.from('invoices').delete().eq('id', inv.id)
         if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)
@@ -154,9 +258,6 @@ export default function InvoicesPage() {
             .reduce((sum, i) => sum + num(i.total_amount), 0)
     }
     const weekTotal = invoices.reduce((sum, i) => sum + num(i.total_amount), 0)
-
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
         <PageContainer>
@@ -179,81 +280,20 @@ export default function InvoicesPage() {
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Entry form */}
-            <form onSubmit={handleSave} className={`${card} p-5 mb-4`}>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an invoice</h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                    <div>
-                        <label className={labelCls}>Supplier</label>
-                        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldCls}>
-                            <option value="">Pick a supplier</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                    </div>
-                    {/* Buttons rather than a dropdown.
-                        //
-                        A dropdown only shows the colour once the choice is
-                        already made, and browsers will not colour the options
-                        inside one in any way that can be relied on. With four
-                        buttons all the colours are visible while you are
-                        choosing, which is the point, and on a phone it is one
-                        tap instead of two. */}
-                    <div>
-                        <label className={labelCls}>Category</label>
-                        <div className="flex flex-wrap gap-2">
-                            {INVOICE_CATEGORIES.map(c => (
-                                <button
-                                    key={c.value}
-                                    type="button"
-                                    onClick={() => setCategory(c.value)}
-                                    aria-pressed={category === c.value}
-                                    className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                                        category === c.value ? c.solid : `${c.soft} hover:brightness-95`
-                                    }`}
-                                >
-                                    {c.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+            <div className={`${card} overflow-hidden mb-4`}>
+                <h3 className={cardHeader}>Add an invoice</h3>
+                <div className="p-5">
+                    <InvoiceForm
+                        formData={form}
+                        onChange={setFormField}
+                        onSubmit={handleSave}
+                        submitLabel="Save invoice"
+                        saving={saving}
+                        suppliers={suppliers}
+                        weekStart={weekStart}
+                    />
                 </div>
-
-                {/* Two across on a phone, not three. A date box needs about
-                    140px to show a whole date, and a third of a phone screen is
-                    nowhere near that, so it was showing 04/0 with the rest cut
-                    off. */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                    <div>
-                        <label className={labelCls}>Invoice date</label>
-                        <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={fieldCls} />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Total</label>
-                        <input {...numberField({ value: totalAmount, onChange: setTotalAmount })}
-                            className={`${fieldCls} text-right`} placeholder="0.00" />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Week starting</label>
-                        {/* Worked out from the date, not typed, so it always matches the sales week */}
-                        <div className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">
-                            {shortDate(weekStart)}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mb-3">
-                    <label className={labelCls}>Notes</label>
-                    <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className={fieldCls}
-                        placeholder="Anything worth remembering about this one" />
-                </div>
-
-                <div className="flex justify-end">
-                    <button type="submit" disabled={saving}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
-                        {saving ? 'Saving...' : 'Save invoice'}
-                    </button>
-                </div>
-            </form>
+            </div>
 
             {/* This week's totals. Two across on a phone: these hold nothing but
                 a label and a figure, so they do not need the full width, but
@@ -279,10 +319,11 @@ export default function InvoicesPage() {
             </div>
 
             {/* This week's invoices */}
-            <div className={`${card} p-5`}>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            <div className={`${card} overflow-hidden`}>
+                <h3 className={cardHeader}>
                     Invoices for the week starting {shortDate(weekStart)}
                 </h3>
+                <div className="p-5">
                 {loading ? (
                     <p className="text-sm text-gray-400">Loading...</p>
                 ) : invoices.length === 0 ? (
@@ -311,12 +352,14 @@ export default function InvoicesPage() {
                                     <tbody>
                                         {day.rows.map(inv => {
                                             const cat = invoiceCategory(inv.category)
+                                            const isEditing = editingId === inv.id
                                             return (
-                                                // last:border-b-0, not last:border-0. The short one sets every
-                                                // border to nothing, so the last invoice of each day
-                                                // lost the colour stripe down its side and only some
-                                                // rows appeared to be colour coded.
-                                                <tr key={inv.id} className={`border-b border-border last:border-b-0 border-l-4 ${cat.stripe}`}>
+                                                <Fragment key={inv.id}>
+                                                {/* last:border-b-0, not last:border-0. The short one sets
+                                                    every border to nothing, so the last invoice of each
+                                                    day lost the colour stripe down its side and only some
+                                                    rows appeared to be colour coded. */}
+                                                <tr className={`border-b border-border last:border-b-0 border-l-4 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}>
                                                     <td className="px-3 py-2 text-gray-900">
                                                         {inv.suppliers?.name || 'Unknown supplier'}
                                                         {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
@@ -330,11 +373,21 @@ export default function InvoicesPage() {
                                                     <td className="px-3 py-2 text-right text-gray-900 font-medium w-28 whitespace-nowrap">
                                                         {fmtMoney(inv.total_amount)}
                                                     </td>
-                                                    <td className="px-3 py-2 w-20">
-                                                        <button onClick={() => handleDelete(inv)}
-                                                            className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
+                                                    <td className="px-3 py-2 w-28">
+                                                        <div className="flex gap-3">
+                                                            <button
+                                                                onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
+                                                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                                            >
+                                                                {isEditing ? 'Cancel' : 'Edit'}
+                                                            </button>
+                                                            <button onClick={() => handleDelete(inv)}
+                                                                className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
+                                                        </div>
                                                     </td>
                                                 </tr>
+
+                                                </Fragment>
                                             )
                                         })}
                                     </tbody>
@@ -343,7 +396,28 @@ export default function InvoicesPage() {
                         ))}
                     </div>
                 )}
+                </div>
             </div>
+            {editingInvoice && (
+                <Modal
+                    title={`Edit the ${editingInvoice.suppliers?.name || 'invoice'} invoice`}
+                    onClose={cancelEdit}
+                    width="max-w-2xl"
+                >
+                    <div className="p-5">
+                        <InvoiceForm
+                            formData={editForm}
+                            onChange={setEditField}
+                            onSubmit={handleUpdate}
+                            onCancel={cancelEdit}
+                            submitLabel="Save changes"
+                            saving={saving}
+                            suppliers={suppliers}
+                            weekStart={weekStartOf(editForm.invoiceDate)}
+                        />
+                    </div>
+                </Modal>
+            )}
         </PageContainer>
     )
 }
