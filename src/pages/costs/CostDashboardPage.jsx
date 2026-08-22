@@ -10,6 +10,7 @@ import PageContainer from '../../components/layout/PageContainer'
 import { iconButton, dateField, jumpButton, card } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
+import WeekTakenChart from '../../components/WeekTakenChart'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -222,17 +223,23 @@ export default function CostDashboardPage() {
     // drag the denominator down.
     const trading = salesRows.filter(s => !s.is_closed)
     const netSales = trading.reduce((t, s) => t + num(s.net_sales), 0)
-    const grossSales = trading.reduce((t, s) => t + num(s.gross_sales), 0)
     // How the week was taken, one figure per till row. Built from whatever rows
     // the week actually has rather than a fixed five, so a week entered before
     // the till split Outside Catering still splits the way it was taken, and a
     // week entered after it shows Clockmeal, Lunch Team, Feedr and Catering
     // separately. Nothing here needs changing when the till changes again.
     const weekTenders = tendersToShow(tenders, trading.map(s => s.tender_sales))
-    const takenBy = weekTenders.map(t => ({
-        label: t.label,
-        amount: trading.reduce((total, s) => total + num(s.tender_sales?.[t.key]), 0),
-    }))
+    const takenBy = weekTenders
+        // Only the rows that make up the takings. Every row on the till counts
+        // today, so this drops nothing, but a POS that prints a subtotal line
+        // would have one that does not, and a subtotal drawn beside the rows it
+        // is the total of would count the same money twice and leave the shares
+        // adding up to well over a hundred.
+        .filter(t => t.counts_toward_gross)
+        .map(t => ({
+            label: t.label,
+            amount: trading.reduce((total, s) => total + num(s.tender_sales?.[t.key]), 0),
+        }))
 
     function pct(amount) {
         return netSales > 0 ? (amount / netSales) * 100 : null
@@ -400,26 +407,15 @@ export default function CostDashboardPage() {
                 />
             </div>
 
-            {/* How the week was taken. Not costs: this is the same money as net
-                sales, split by how it came in, straight from what was entered on
-                the weekly sales grid. */}
+            {/* How the week was taken. Not costs: this is the takings split by
+                the way they came in, straight from what was entered on the
+                weekly sales grid. */}
             <div className={`${card} p-6 mb-6`}>
                 <h3 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h3>
                 <p className="text-xs text-muted mb-4">
-                    Shares of gross sales, one for every row on the till receipt. Change what the till takes and this
-                    follows it.
+                    One share for every row on the till receipt. Change what the till takes and this follows it.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                    {takenBy.map(c => (
-                        <div key={c.label}>
-                            <p className="text-xs font-semibold text-muted uppercase tracking-wider">{c.label}</p>
-                            <p className="font-serif text-2xl font-bold text-gray-900 mt-1">
-                                {grossSales > 0 ? `${((c.amount / grossSales) * 100).toFixed(1)}%` : '-'}
-                            </p>
-                            <p className="text-sm text-muted">{fmtMoney(c.amount)}</p>
-                        </div>
-                    ))}
-                </div>
+                <WeekTakenChart rows={takenBy} />
             </div>
 
             {/* Gross profit and the week day by day */}
