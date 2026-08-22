@@ -7,6 +7,7 @@ import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
+import { INVOICE_CATEGORIES, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -15,13 +16,6 @@ import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
 // Line items are not shown. They only exist once AI extraction fills them in,
 // and that is deferred (#48), so expanding a row would open onto nothing. The
 // same goes for a manual or AI badge: everything is manual at the moment.
-
-const CATEGORIES = [
-    { value: 'food', label: 'Food' },
-    { value: 'packaging', label: 'Packaging' },
-    { value: 'cleaning', label: 'Cleaning' },
-    { value: 'other', label: 'Other' },
-]
 
 // Packaging and cleaning are shown together, because that is how the weekly
 // report treats them, against one 2.5% target. They are stored separately, so
@@ -159,7 +153,7 @@ export default function InvoiceHistoryPage() {
                         <label className={labelCls}>Category</label>
                         <select value={category} onChange={e => setCategory(e.target.value)} className={fieldCls}>
                             <option value="">All categories</option>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                            {INVOICE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
                     </div>
                 </div>
@@ -228,7 +222,15 @@ export default function InvoiceHistoryPage() {
                                         {inv.suppliers?.name || 'Unknown supplier'}
                                         {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
                                     </td>
-                                    <td className="px-3 py-2 text-gray-500 capitalize">{inv.category}</td>
+                                    <td className="px-3 py-2">
+                                        {/* Same colours as the entry screen, so a
+                                            category means one thing everywhere. */}
+                                        {(() => { const cat = invoiceCategory(inv.category); return (
+                                            <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                                {cat.label}
+                                            </span>
+                                        ) })()}
+                                    </td>
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
                                 </tr>
                             ))}

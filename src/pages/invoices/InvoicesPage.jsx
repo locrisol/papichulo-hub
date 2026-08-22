@@ -4,11 +4,12 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
+import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
+import { secondaryButton, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
+import { INVOICE_CATEGORIES, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -22,13 +23,6 @@ import { numberField } from '../../lib/numberInput'
 // purpose. It happens often, so there is no uniqueness rule and no overwrite
 // warning here. Sales work the other way round, one record per day, so the two
 // screens deliberately behave differently.
-const CATEGORIES = [
-    { value: 'food', label: 'Food' },
-    { value: 'packaging', label: 'Packaging' },
-    { value: 'cleaning', label: 'Cleaning' },
-    { value: 'other', label: 'Other' },
-]
-
 function num(v) {
     if (v === '' || v == null) return 0
     const n = parseFloat(v)
@@ -56,7 +50,11 @@ export default function InvoicesPage() {
     const [supplierId, setSupplierId] = useState('')
     const [invoiceDate, setInvoiceDate] = useState(todayISO())
     const [totalAmount, setTotalAmount] = useState('')
-    const [category, setCategory] = useState('food')
+    // Nothing chosen to start with. It used to default to food, which is the
+    // commonest, but a default that is right most of the time is exactly the
+    // one nobody checks, and filing a packaging invoice under food moves money
+    // between two different cost targets.
+    const [category, setCategory] = useState('')
     const [notes, setNotes] = useState('')
 
     // Which week the list below is showing. Follows the date on the form, so
@@ -106,6 +104,7 @@ export default function InvoicesPage() {
         setError(''); setSuccess('')
 
         if (!supplierId) { setError('Pick a supplier'); return }
+        if (!category) { setError('Pick a category'); return }
         const amount = parseFloat(totalAmount)
         if (isNaN(amount) || amount <= 0) { setError('The total has to be a number above zero'); return }
 
@@ -125,8 +124,15 @@ export default function InvoicesPage() {
 
         if (e1) { setError(friendlyError(e1)); return }
 
-        // Keep the supplier, the date and the category: invoices tend to arrive
-        // in batches from the same place on the same day.
+        // Everything clears, including the supplier and the category.
+        //
+        // It used to keep them, on the grounds that invoices arrive in batches
+        // from the same place. They do, but a form that comes back already
+        // filled in is a form nobody reads, and the cost of getting it wrong is
+        // an invoice filed under the wrong target. The date stays, since that
+        // is the one thing a batch really does share.
+        setSupplierId('')
+        setCategory('')
         setTotalAmount('')
         setNotes('')
         setSuccess('Invoice saved.')
@@ -184,11 +190,31 @@ export default function InvoicesPage() {
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
+                    {/* Buttons rather than a dropdown.
+                        //
+                        A dropdown only shows the colour once the choice is
+                        already made, and browsers will not colour the options
+                        inside one in any way that can be relied on. With four
+                        buttons all the colours are visible while you are
+                        choosing, which is the point, and on a phone it is one
+                        tap instead of two. */}
                     <div>
                         <label className={labelCls}>Category</label>
-                        <select value={category} onChange={e => setCategory(e.target.value)} className={fieldCls}>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                        </select>
+                        <div className="flex flex-wrap gap-2">
+                            {INVOICE_CATEGORIES.map(c => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    onClick={() => setCategory(c.value)}
+                                    aria-pressed={category === c.value}
+                                    className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                        category === c.value ? c.solid : `${c.soft} hover:brightness-95`
+                                    }`}
+                                >
+                                    {c.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -262,39 +288,55 @@ export default function InvoicesPage() {
                 ) : invoices.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">Nothing recorded for this week yet.</p>
                 ) : (
-                    // Sits inside a padded card rather than in the usual table
-                    // box, so it needs its own scrolling wrapper. Without it the
-                    // Total column and the Delete buttons are off the edge of a
-                    // phone screen with no way to reach them.
-                    <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className={tableHeadRow}>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Category</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Total</th>
-                                <th className="w-20"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {invoices.map(inv => (
-                                <tr key={inv.id} className="border-b border-border">
-                                    <td className="px-3 py-2 text-gray-700">{shortDate(inv.invoice_date)}</td>
-                                    <td className="px-3 py-2 text-gray-900">
-                                        {inv.suppliers?.name || 'Unknown supplier'}
-                                        {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
-                                    </td>
-                                    <td className="px-3 py-2 text-gray-500 capitalize">{inv.category}</td>
-                                    <td className="px-3 py-2 text-right text-gray-900 font-medium">{fmtMoney(inv.total_amount)}</td>
-                                    <td className="px-3 py-2">
-                                        <button onClick={() => handleDelete(inv)}
-                                            className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                    // One block per day, newest first, each with its own
+                    // total. It used to be one long run of rows, so on a busy
+                    // week there was no telling where Monday's deliveries ended
+                    // and Tuesday's began without reading every date.
+                    //
+                    // Still in a scrolling wrapper: it sits inside a padded card
+                    // rather than the usual table box, and without it the Total
+                    // column and the Delete buttons are off the edge of a phone.
+                    <div className="overflow-x-auto space-y-4">
+                        {groupByDay(invoices).map(day => (
+                            <div key={day.date} className="border border-border rounded-lg overflow-hidden">
+                                <div className="bg-gray-100 border-b border-border px-3 py-2 flex items-center justify-between gap-3">
+                                    <span className="text-sm font-semibold text-gray-800">{fullDate(day.date)}</span>
+                                    <span className="text-sm text-gray-600">
+                                        {day.rows.length} {day.rows.length === 1 ? 'invoice' : 'invoices'}
+                                        <span className="ml-3 font-semibold text-gray-900">{fmtMoney(day.total)}</span>
+                                    </span>
+                                </div>
+
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        {day.rows.map(inv => {
+                                            const cat = invoiceCategory(inv.category)
+                                            return (
+                                                <tr key={inv.id} className={`border-b border-border last:border-0 border-l-4 ${cat.stripe}`}>
+                                                    <td className="px-3 py-2 text-gray-900">
+                                                        {inv.suppliers?.name || 'Unknown supplier'}
+                                                        {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
+                                                    </td>
+                                                    <td className="px-3 py-2 w-32">
+                                                        {/* Same colour as the button it was filed with */}
+                                                        <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                                            {cat.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right text-gray-900 font-medium w-28 whitespace-nowrap">
+                                                        {fmtMoney(inv.total_amount)}
+                                                    </td>
+                                                    <td className="px-3 py-2 w-20">
+                                                        <button onClick={() => handleDelete(inv)}
+                                                            className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
