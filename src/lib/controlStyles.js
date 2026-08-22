@@ -42,6 +42,21 @@ export const dateField =
 export const tableHeadRow = 'bg-sidebar [&>th]:text-white [&>th]:font-bold'
 export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wider'
 
+// The outside of a card: any white panel sitting on the page.
+//
+// The app background is #F7F5F0 and the border colour is #E8E3DB. Both are
+// cream, so a card edge against the page was almost invisible and the panels
+// ran into the background, worst of all on the week and day pickers which are
+// small and have nothing else marking them out.
+//
+// A plain grey border reads against cream where another cream does not, and a
+// small shadow lifts the card off the page. It is the same pair the secondary
+// buttons already use, which were changed for exactly the same reason.
+//
+// This is only for the outside edge. Rows and dividers inside a card keep
+// border-border, because those are meant to be soft.
+export const card = 'bg-white rounded-xl border border-gray-400 shadow-md'
+
 // The white box a table sits in.
 //
 // This exists because of a bug that only showed up on a phone. Every table was
@@ -57,8 +72,8 @@ export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wi
 // overflow-x-auto lets it scroll sideways, and overflow-y-hidden keeps the
 // corner clipping we wanted in the first place. Anything that was clipped
 // vertically before is still clipped, so nothing else moves.
-export const tableCard =
-    'bg-white rounded-xl border border-border overflow-x-auto overflow-y-hidden'
+// Same edge as any other card, with the sideways scrolling added.
+export const tableCard = `${card} overflow-x-auto overflow-y-hidden`
 
 // The small coloured pills in a table cell: a role, a section, a status.
 //

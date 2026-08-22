@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -339,7 +339,7 @@ export default function MenuItemPage() {
       {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
       {/* Header form: name, category, price, VAT, notes */}
-      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+      <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Details</h3>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
@@ -423,7 +423,7 @@ export default function MenuItemPage() {
       </div>
 
       {showComponentForm && !editingComponent && (
-        <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className={`${card} p-6 mb-6`}>
           <h4 className="text-sm font-semibold text-gray-900 mb-4">New Component</h4>
           <ComponentForm
             formData={componentForm}
@@ -439,7 +439,7 @@ export default function MenuItemPage() {
       )}
 
       {components.length === 0 ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center mb-6">
+        <div className={`${card} p-8 text-center mb-6`}>
           <p className="text-sm text-gray-500">No components yet. Click "+ Add Component" to start building this menu item.</p>
         </div>
       ) : (
@@ -521,7 +521,7 @@ export default function MenuItemPage() {
       )}
 
       {/* Summary */}
-      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+      <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Summary</h3>
         <div className="grid grid-cols-5 gap-4">
           <div>
@@ -560,7 +560,7 @@ export default function MenuItemPage() {
       </div>
 
       {/* Derived allergens */}
-      <div className="bg-white rounded-xl border border-border p-6">
+      <div className={`${card} p-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Derived Allergens</h3>
         <p className="text-xs text-gray-500 mb-4">
           Calculated automatically from the allergens set on each component (and recursively from the ingredients of any MIX component). To change, edit the allergens on the underlying products.

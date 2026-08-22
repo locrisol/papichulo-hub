@@ -8,7 +8,7 @@ import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, card } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 import { numberField } from '../../lib/numberInput'
 
@@ -261,7 +261,7 @@ export default function WasteLogPage() {
                     {/* Employees only ever see today, so there is nothing to
                         move between, but a manager can look back. */}
                     {isManager ? (
-                        <div className="bg-white rounded-xl border border-border p-4 mb-3">
+                        <div className={`${card} p-4 mb-3`}>
                             <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => setLogDate(addDays(logDate, -1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
                                 <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
@@ -276,7 +276,7 @@ export default function WasteLogPage() {
                     {/* Adding items. Bigger touch targets than the rest of the
                         app, because this gets used one-handed on the floor. */}
                     {!reviewing && (
-                        <form onSubmit={addToBasket} className="bg-white rounded-xl border border-border p-5 mb-3">
+                        <form onSubmit={addToBasket} className={`${card} p-5 mb-3`}>
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
 
                             <div className="mb-3 relative">
@@ -427,7 +427,7 @@ export default function WasteLogPage() {
 
                 {/* What is already logged. Dims while another day loads instead
                     of disappearing, so the page does not jump. */}
-                <div className={`bg-white rounded-xl border border-border p-5 transition-opacity ${loadingEntries ? 'opacity-50' : ''}`}>
+                <div className={`${card} p-5 transition-opacity ${loadingEntries ? 'opacity-50' : ''}`}>
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-semibold text-gray-700">
                             {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}

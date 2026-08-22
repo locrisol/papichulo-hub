@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import PriceForm from '../../components/PriceForm'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, card } from '../../lib/controlStyles'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -307,7 +307,7 @@ export default function ProductPricesPage() {
             </div>
 
             {showForm && !editingPrice && (
-                <div className="bg-white rounded-xl border border-border p-6 mb-6">
+                <div className={`${card} p-6 mb-6`}>
                     <h3 className="text-sm font-semibold text-gray-900 mb-4">New Price Link</h3>
                     <PriceForm
                         formData={formData}
@@ -325,7 +325,7 @@ export default function ProductPricesPage() {
             {loading ? (
                 <div className="text-sm text-gray-500">Loading prices...</div>
             ) : prices.length === 0 ? (
-                <div className="bg-white rounded-xl border border-border p-8 text-center">
+                <div className={`${card} p-8 text-center`}>
                     <p className="text-sm text-gray-500">
                         No price links yet for this product at {activeRestaurant?.name}. Click "+ Add Price" to create the first one.
                     </p>

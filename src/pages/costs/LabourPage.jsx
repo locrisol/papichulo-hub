@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
+import { iconButton, dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Labour hours, entered a week at a time.
@@ -280,7 +280,7 @@ export default function LabourPage() {
             )}
 
             {/* Week navigation */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
                     <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
                     {/* Fixed width, or the arrows shift sideways every time the
@@ -312,7 +312,7 @@ export default function LabourPage() {
             </div>
 
             {/* The week */}
-            <div className="bg-white rounded-xl border border-border overflow-hidden mb-4">
+            <div className={`${card} overflow-hidden mb-4`}>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[760px] text-sm">
                         <thead>

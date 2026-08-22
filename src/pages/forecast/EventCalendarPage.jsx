@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { secondaryButton } from '../../lib/controlStyles'
+import { secondaryButton, card } from '../../lib/controlStyles'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { todayISO, weekStartOf, addDays, shortDate, monthStart, addMonths, monthLabel } from '../../lib/dates'
@@ -153,7 +153,7 @@ export default function EventCalendarPage() {
                 <div className="mb-6">
                     <h2 className="font-serif text-2xl font-bold text-gray-900">Events</h2>
                 </div>
-                <div className="bg-white border border-border rounded-xl p-10 text-center">
+                <div className={`${card} p-10 text-center`}>
                     <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">Not turned on here</h3>
                     <p className="text-sm text-muted max-w-md mx-auto">
                         Events are only tracked for restaurants near a large venue. {activeRestaurant?.name} does not
@@ -198,7 +198,7 @@ export default function EventCalendarPage() {
                 the two buttons sit side by side underneath, each taking half the
                 row. From the small breakpoint up it goes back to one row with
                 the month between the buttons. */}
-            <div className="bg-white rounded-xl border border-border p-3 mb-4">
+            <div className={`${card} p-3 mb-4`}>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <p className="font-serif text-lg font-bold text-gray-900 sm:hidden">
                         {monthLabel(viewMonth)}
@@ -232,7 +232,7 @@ export default function EventCalendarPage() {
                 // list sits beside it. On anything narrower they stack.
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-                    <div className="xl:col-span-2 bg-white rounded-xl border border-border overflow-hidden">
+                    <div className={`xl:col-span-2 ${card} overflow-hidden`}>
                         <div className="grid grid-cols-7 border-b border-border bg-gray-50">
                             {DAY_NAMES.map(d => (
                                 <div key={d} className="px-2 py-2 text-center text-xs font-semibold text-muted uppercase tracking-wider">
@@ -291,7 +291,7 @@ export default function EventCalendarPage() {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-border p-5">
+                    <div className={`${card} p-5`}>
                         <h3 className="font-serif text-base font-bold text-gray-900 mb-1">Coming up</h3>
                         <p className="text-xs text-muted mb-4">
                             {upcoming.length === 0

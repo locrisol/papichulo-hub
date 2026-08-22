@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
@@ -312,7 +312,7 @@ export default function RecipePage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+      <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Batch Yield</h3>
         <p className="text-xs text-gray-500 mb-3">
           How much finished {product?.name || 'product'} one batch of this recipe produces,
@@ -344,7 +344,7 @@ export default function RecipePage() {
       </div>
 
       {showForm && !editingLine && (
-        <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Ingredient</h3>
           <RecipeIngredientForm
             formData={formData}
@@ -361,7 +361,7 @@ export default function RecipePage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading recipe...</div>
       ) : recipeLines.filter(line => line.mix_product_id === id).length === 0 ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center">
+        <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-gray-500">
             No ingredients yet. Click "+ Add Ingredient" to start building the recipe.
           </p>
@@ -441,7 +441,7 @@ export default function RecipePage() {
           </div>
 
           {summary && (
-            <div className="bg-white rounded-xl border border-border p-6 mt-6">
+            <div className={`${card} p-6 mt-6`}>
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Recipe Summary</h3>
               <div className="grid grid-cols-3 gap-6">
                 <div>

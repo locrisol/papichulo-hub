@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
@@ -297,7 +297,7 @@ export default function MenuItemsPage() {
       )}
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Menu Item</h3>
           <form onSubmit={handleSave}>
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -380,7 +380,7 @@ export default function MenuItemsPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading menu items...</div>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center">
+        <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-gray-500">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
         </div>
       ) : (

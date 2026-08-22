@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
+import { card } from '../../lib/controlStyles'
 
 // Tagging the 14 allergens on one product.
 //
@@ -186,7 +187,7 @@ export default function AllergenPage() {
         <div className="text-sm text-gray-500">Loading allergens...</div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-border overflow-hidden mb-6">
+          <div className={`${card} overflow-hidden mb-6`}>
             {ALLERGENS.map((allergen, i) => (
               <div
                 key={allergen.key}

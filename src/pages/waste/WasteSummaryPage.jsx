@@ -6,7 +6,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
 import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
@@ -152,7 +152,7 @@ export default function WasteSummaryPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
             {/* Week and filter */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
                     <button type="button" onClick={() => shiftWeek(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous week">‹</button>
                     <span className="text-sm font-medium text-gray-900 px-2">
@@ -195,15 +195,15 @@ export default function WasteSummaryPage() {
                 takes a full row of its own. Three across gave each about 100px
                 and "Waste as % of sales" came out over three lines. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Waste this week</p>
                     <p className="text-xl font-semibold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Net sales</p>
                     <p className="text-xl font-semibold text-gray-900 mt-1">{fmtMoney(netSales)}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-border p-4">
+                <div className={`${card} p-4`}>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Waste as % of sales</p>
                     <p className={`text-xl font-semibold mt-1 ${pctColour(wastePct)}`}>
                         {wastePct == null ? '-' : `${wastePct.toFixed(1)}%`}
@@ -215,7 +215,7 @@ export default function WasteSummaryPage() {
             </div>
 
             {/* By product */}
-            <div className="bg-white rounded-xl border border-border p-5">
+            <div className={`${card} p-5`}>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">
                     By product{reasonFilter ? `, ${reasonLabel(reasonFilter).toLowerCase()} only` : ''}
                 </h3>

@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
+import { card } from '../../lib/controlStyles'
 
 // The way in to stock takes: whatever is open now, and the last ten that closed.
 //
@@ -248,7 +249,7 @@ export default function StockTakesListPage() {
           They do not get the history below, so without this they would see
           nothing at all. */}
       {!isManager && !activeSession && (
-        <div className="bg-white border border-border rounded-xl p-10 text-center">
+        <div className={`${card} p-10 text-center`}>
           <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">Nothing to count right now</h3>
           <p className="text-sm text-muted max-w-sm mx-auto">
             A manager needs to start a stock take before you can count.
@@ -265,7 +266,7 @@ export default function StockTakesListPage() {
           </h2>
 
           {closedSessions.length === 0 && !activeSession ? (
-            <div className="bg-white border border-border rounded-xl p-10 text-center">
+            <div className={`${card} p-10 text-center`}>
               <h3 className="font-serif text-lg font-bold text-gray-900 mb-2">No stock takes yet</h3>
               <p className="text-sm text-muted mb-5 max-w-sm mx-auto">
                 Stock takes record what is physically in your kitchen and storage. Start one to count what you have now.
@@ -281,7 +282,7 @@ export default function StockTakesListPage() {
           ) : closedSessions.length === 0 ? (
             <p className="text-sm text-muted italic">No closed stock takes yet.</p>
           ) : (
-            <div className="bg-white border border-border rounded-xl overflow-hidden">
+            <div className={`${card} overflow-hidden`}>
               {closedSessions.map((session, i) => (
                 <button
                   key={session.id}

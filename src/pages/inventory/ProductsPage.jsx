@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -376,7 +376,7 @@ export default function ProductsPage() {
       )}
 
       {showForm && !editingProduct && (
-        <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
           <ProductForm
             formData={formData}
@@ -512,7 +512,7 @@ export default function ProductsPage() {
             )
           })}
           {filteredProducts.length === 0 && (
-            <div className="bg-white rounded-xl border border-border px-4 py-8 text-center text-sm text-gray-500">
+            <div className={`${card} px-4 py-8 text-center text-sm text-gray-500`}>
               No products found.
             </div>
           )}

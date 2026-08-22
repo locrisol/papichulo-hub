@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow } from '../lib/controlStyles'
+import { tableHeadRow, card } from '../lib/controlStyles'
 
 // The rows on the till receipt.
 //
@@ -305,7 +305,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
           ) : ordered.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No rows yet. Add the first one below.</p>
           ) : (
-            <div className="bg-white rounded-xl border border-border overflow-x-auto overflow-y-hidden">
+            <div className={`${card} overflow-x-auto overflow-y-hidden`}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className={tableHeadRow}>
