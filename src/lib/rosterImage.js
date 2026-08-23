@@ -56,9 +56,13 @@ export function drawWeek(canvas, table) {
     const deliveryLines = table.deliveries.map(
         list => list.flatMap(v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width)),
     )
+    const noteLines = table.notes.map(
+        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
+    )
     const l = sheetLayout(table, {
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
         deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
     canvas.width = l.width * SCALE
@@ -245,7 +249,10 @@ export function drawWeek(canvas, table) {
         // A hairline between somebody's times and their breaks, and a heavier
         // one under the pair. A person is one row made of two, and drawn with
         // one weight the sheet reads as twice as many rows as it has people.
-        rule(l.pad + l.nameCol, top + l.shiftH, l.width - l.pad - l.hoursCol, top + l.shiftH, FAINT)
+        rule(
+            l.pad + l.nameCol, top + l.shiftH,
+            l.width - l.pad - l.hoursCol - l.holidayCol, top + l.shiftH, FAINT,
+        )
 
         y += l.shiftH + l.breakH
         rule(l.pad, y, l.width - l.pad, y, RULE, 2)
@@ -257,9 +264,11 @@ export function drawWeek(canvas, table) {
         font(11, '700')
         text('NOTES', l.pad + 12, y + l.notesH / 2, { colour: RED })
         font(12, '600')
-        table.notes.forEach((n, i) => {
-            if (n) text(n, l.columnX(i) + l.dayCol / 2, y + l.notesH / 2, {
-                align: 'center', colour: RED, max: l.dayCol - 10,
+        noteLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + l.notesH / 2 - ((lines.length - 1) * 15) / 2
+            lines.forEach((line, n) => {
+                text(line, x, top + n * 15, { align: 'center', colour: RED })
             })
         })
     }

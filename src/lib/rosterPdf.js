@@ -32,11 +32,15 @@ export function weekPdf(table, restaurantName, weekStart) {
     const deliveryLines = table.deliveries.map(
         list => list.flatMap(v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t))),
     )
+    const noteLines = table.notes.map(
+        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+    )
     const l = sheetLayout(table, {
         width: pageWidth,
         pad: 24,
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
         deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
     // The picture can be as tall as it likes. A page cannot, so the rows are
@@ -200,7 +204,10 @@ export function weekPdf(table, restaurantName, weekStart) {
         // Same two weights as the picture and the screen. A hairline between
         // somebody's times and their breaks, a heavier one under the pair.
         pdf.setDrawColor(236, 232, 226)
-        pdf.line(l.pad + l.nameCol, top + h(l.shiftH), pageWidth - l.pad - l.hoursCol, top + h(l.shiftH))
+        pdf.line(
+            l.pad + l.nameCol, top + h(l.shiftH),
+            pageWidth - l.pad - l.hoursCol - l.holidayCol, top + h(l.shiftH),
+        )
 
         y += rowH
         pdf.setDrawColor(216, 211, 202)
@@ -213,9 +220,13 @@ export function weekPdf(table, restaurantName, weekStart) {
     if (table.notes.some(Boolean)) {
         box(l.pad, y, pageWidth - l.pad * 2, h(l.notesH), [254, 242, 242])
         at('NOTES', l.pad + 8, y + h(l.notesH) / 2 + 3, { size: 7, style: 'bold', rgb: RED })
-        table.notes.forEach((n, i) => {
-            if (n) at(n, l.columnX(i) + l.dayCol / 2, y + h(l.notesH) / 2 + 3, {
-                align: 'center', size: 7, style: 'bold', rgb: RED, max: l.dayCol - 8,
+        noteLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + h(l.notesH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
+            lines.forEach((line, n) => {
+                at(line, x, top + n * h(9), {
+                    align: 'center', size: 7, style: 'bold', rgb: RED,
+                })
             })
         })
     }

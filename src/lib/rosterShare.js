@@ -261,7 +261,7 @@ export function wrapLines(text, maxWidth, measure) {
 // eventLines is how many lines the busiest day of events needs. It is measured
 // by whoever is drawing, because only they know how wide their letters are.
 export function sheetLayout(table, {
-    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1,
+    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1,
 } = {}) {
     const nameCol = 160
     const hoursCol = 78
@@ -280,7 +280,10 @@ export function sheetLayout(table, {
     const deliveriesH = hasDeliveries ? Math.max(metaH, deliveryLines * 15 + 12) : 0
     const shiftH = 34
     const breakH = 20
-    const notesH = 28
+    // Tall enough for the longest label, rather than one line with the rest cut
+    // off. Deep Cleaning Day came out as Deep Cleaning D and an ellipsis, which
+    // is a note nobody can act on.
+    const notesH = Math.max(28, noteLines * 15 + 13)
     const totalH = 34
 
     const bodyRows = table.people.length
