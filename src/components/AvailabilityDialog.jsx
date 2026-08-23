@@ -4,7 +4,9 @@ import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { modalFooter, secondaryButton } from '../lib/controlStyles'
-import { toRows, fromRows, availabilityProblem } from '../lib/availability'
+import {
+    toRows, fromRows, availabilityProblem, windowShape, DAY_START, DAY_END,
+} from '../lib/availability'
 
 // When somebody can work.
 //
@@ -23,8 +25,23 @@ import { toRows, fromRows, availabilityProblem } from '../lib/availability'
 // the timetable changed this term rosters straight over it.
 const STATES = [
     { value: 'any', label: 'Any time' },
-    { value: 'windows', label: 'Only between' },
+    { value: 'windows', label: 'Set hours' },
     { value: 'none', label: 'Cannot work' },
+]
+
+// The three ways a stretch can be said.
+//
+// Not before one and nothing after six are the two commonest things anybody
+// actually says, and both of them only have one time in them. Asking for two
+// meant typing an end of the day that was never really being said.
+//
+// All three are stored the same way underneath, as a pair with the open end
+// sitting on the edge of the day, so nothing further down has to know which
+// was picked.
+const SHAPES = [
+    { value: 'between', label: 'Between' },
+    { value: 'from', label: 'From' },
+    { value: 'until', label: 'Until' },
 ]
 
 export default function AvailabilityDialog({ employee, onClose, onChanged }) {
@@ -43,6 +60,22 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             const windows = r.windows.map((w, i) => {
                 if (i !== index) return w
                 return side === 'from' ? [value, w[1]] : [w[0], value]
+            })
+            return { ...r, windows }
+        }))
+
+    // Changing the shape rewrites the pair rather than hiding a box, so what is
+    // stored is always what is on screen. The time already typed is kept
+    // wherever it still means something.
+    const setShape = (key, index, shape) =>
+        setRows(list => list.map(r => {
+            if (r.key !== key) return r
+            const windows = r.windows.map((w, i) => {
+                if (i !== index) return w
+                const [a, b] = w
+                if (shape === 'from') return [a && a !== DAY_START ? a : '13:00', DAY_END]
+                if (shape === 'until') return [DAY_START, b && b !== DAY_END ? b : '13:00']
+                return [a === DAY_START ? '09:00' : a, b === DAY_END ? '17:00' : b]
             })
             return { ...r, windows }
         }))
@@ -109,23 +142,45 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
 
                             {row.state === 'windows' && (
                                 <div className="mt-2 ml-0 sm:ml-27 space-y-2">
-                                    {row.windows.map((window, i) => (
+                                    {row.windows.map((window, i) => {
+                                        // A window sitting on both edges of the
+                                        // day is any time, and it reads as from
+                                        // midnight rather than flipping the
+                                        // picker to Between and leaving an empty
+                                        // box beside it.
+                                        const found = windowShape(window)
+                                        const shape = found === 'all' ? 'from' : found
+                                        return (
                                         <div key={i} className="flex flex-wrap items-center gap-2">
-                                            <input
-                                                type="time"
-                                                value={window[0]}
-                                                onChange={e => setTime(row.key, i, 'from', e.target.value)}
-                                                aria-label={`${row.name} from`}
+                                            <select
+                                                value={shape}
+                                                onChange={e => setShape(row.key, i, e.target.value)}
+                                                aria-label={`${row.name}, how the hours are set`}
                                                 className={timeCls}
-                                            />
-                                            <span className="text-sm text-gray-500">to</span>
-                                            <input
-                                                type="time"
-                                                value={window[1]}
-                                                onChange={e => setTime(row.key, i, 'to', e.target.value)}
-                                                aria-label={`${row.name} to`}
-                                                className={timeCls}
-                                            />
+                                            >
+                                                {SHAPES.map(o => (
+                                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                                ))}
+                                            </select>
+                                            {shape !== 'until' && (
+                                                <input
+                                                    type="time"
+                                                    value={window[0]}
+                                                    onChange={e => setTime(row.key, i, 'from', e.target.value)}
+                                                    aria-label={`${row.name} from`}
+                                                    className={timeCls}
+                                                />
+                                            )}
+                                            {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
+                                            {shape !== 'from' && (
+                                                <input
+                                                    type="time"
+                                                    value={window[1] === DAY_END ? '' : window[1]}
+                                                    onChange={e => setTime(row.key, i, 'to', e.target.value)}
+                                                    aria-label={`${row.name} to`}
+                                                    className={timeCls}
+                                                />
+                                            )}
                                             {row.windows.length > 1 && (
                                                 <button
                                                     type="button"
@@ -137,7 +192,8 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                                 </button>
                                             )}
                                         </div>
-                                    ))}
+                                        )
+                                    })}
                                     {/* A second stretch is the college day: free
                                         in the morning, in a lecture in the
                                         middle, free again in the evening. One

@@ -11,6 +11,9 @@ import {
     toRows,
     fromRows,
     availabilityProblem,
+    windowShape,
+    windowLabel,
+    DAY_END,
 } from './availability'
 
 // 23 August 2026 is a Sunday, so the week that follows runs Sunday to Saturday
@@ -137,6 +140,62 @@ describe('unavailableSpans', () => {
     it('keeps inside the piece of the day the grid is drawing', () => {
         const spans = unavailableSpans({ 1: [['09:00', '17:00']] }, MONDAY, 8 * 60, 18 * 60)
         expect(spans).toEqual([[480, 540], [1020, 1080]])
+    })
+})
+
+// Not before one, and nothing after six. Both only have one time in them, and
+// both are stored as a pair with the open end on the edge of the day, so there
+// is one shape to read rather than three.
+describe('a window with one open end', () => {
+    it('knows which shape it is', () => {
+        expect(windowShape(['09:00', '17:00'])).toBe('between')
+        expect(windowShape(['13:00', '24:00'])).toBe('from')
+        expect(windowShape(['00:00', '13:00'])).toBe('until')
+        expect(windowShape(['00:00', '24:00'])).toBe('all')
+    })
+
+    it('reads as words', () => {
+        expect(windowLabel(['13:00', '24:00'])).toBe('from 13:00')
+        expect(windowLabel(['00:00', '13:00'])).toBe('until 13:00')
+        expect(windowLabel(['00:00', '24:00'])).toBe('any time')
+    })
+
+    it('lets anything after the start through', () => {
+        const afterOne = { 1: [['13:00', DAY_END]] }
+        expect(outsideAvailability(afterOne, shift(MONDAY, '14:00', '22:00'))).toBe(null)
+        expect(outsideAvailability(afterOne, shift(MONDAY, '13:00', '23:00'))).toBe(null)
+        expect(outsideAvailability(afterOne, shift(MONDAY, '12:00', '18:00')).kind).toBe('time')
+    })
+
+    // The end of the day is 24:00 and not 23:59. A shift finishing at midnight
+    // counts as 1440 minutes in, so a minute short here would refuse every
+    // closing shift for somebody who can work any evening.
+    it('takes a shift that finishes at midnight', () => {
+        const evenings = { 1: [['17:00', DAY_END]] }
+        expect(outsideAvailability(evenings, shift(MONDAY, '18:00', '00:00'))).toBe(null)
+    })
+
+    it('lets anything before the finish through', () => {
+        const beforeOne = { 1: [['00:00', '13:00']] }
+        expect(outsideAvailability(beforeOne, shift(MONDAY, '08:00', '12:00'))).toBe(null)
+        expect(outsideAvailability(beforeOne, shift(MONDAY, '09:00', '14:00')).kind).toBe('time')
+    })
+
+    it('shades only the closed end on the timeline', () => {
+        expect(unavailableSpans({ 1: [['13:00', DAY_END]] }, MONDAY, 6 * 60, 24 * 60))
+            .toEqual([[360, 780]])
+        expect(unavailableSpans({ 1: [['00:00', '13:00']] }, MONDAY, 6 * 60, 24 * 60))
+            .toEqual([[780, 1440]])
+    })
+
+    it('goes round the loop unchanged', () => {
+        const stored = { 1: [['13:00', DAY_END]], 2: [['00:00', '13:00']] }
+        expect(fromRows(toRows(stored))).toEqual(stored)
+    })
+
+    it('is not a missing time', () => {
+        const rows = toRows({ 1: [['13:00', DAY_END]], 2: [['00:00', '13:00']] })
+        expect(availabilityProblem(rows)).toBe('')
     })
 })
 

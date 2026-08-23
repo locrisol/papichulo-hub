@@ -20,6 +20,13 @@
 -- the day this ships. It also makes half filling it in safe: saying
 -- something about Sunday says nothing about the rest of the week.
 --
+-- A stretch with one open end is the commonest thing anybody says: not
+-- before one, or nothing after six. It is still stored as a pair, with
+-- the open end sitting on the edge of the day, so there is one shape to
+-- read rather than three. The end of the day is 24:00 and not 23:59,
+-- because a shift finishing at midnight counts as a full day in and a
+-- minute short would refuse every closing shift.
+--
 -- The roster only ever warns about it. It is a promise made to a person
 -- rather than the law about the company, so a manager who knows the
 -- college timetable changed can roster straight over it and be told
@@ -27,6 +34,6 @@
 -- =====================================================================
 
 comment on column public.employees.availability is
-  'The days and hours they can normally work, as {"1":[["09:00","17:00"]], ...} keyed by weekday with Sunday as 0. A weekday missing from the object means no restriction on that day. A weekday present with an empty list means they cannot work it. A weekday with pairs means those hours and nothing else. Null means nothing has been recorded, which is the same as no restriction on any day. Held on the person rather than in a table of its own because it has no history worth keeping: a published week is frozen, so a rostered shift is already a fact and cannot be changed by anything typed here afterwards.';
+  'The days and hours they can normally work, as {"1":[["09:00","17:00"]], ...} keyed by weekday with Sunday as 0. A weekday missing from the object means no restriction on that day. A weekday present with an empty list means they cannot work it. A weekday with pairs means those hours and nothing else, and a pair with 00:00 at the start or 24:00 at the end is a stretch open at that end: [["13:00","24:00"]] is anything from one o''clock on. Null means nothing has been recorded, which is the same as no restriction on any day. Held on the person rather than in a table of its own because it has no history worth keeping: a published week is frozen, so a rostered shift is already a fact and cannot be changed by anything typed here afterwards.';
 
 notify pgrst, 'reload schema';

@@ -22,6 +22,19 @@
 
 import { toMinutes, shiftMinutes } from './roster'
 
+// The two edges of a day.
+//
+// A window with nothing before it or nothing after it is the commonest thing
+// somebody actually says: not before one, or nothing after six. It is still
+// stored as a pair, with the open end sitting on the edge of the day, so there
+// is one shape to read rather than three.
+//
+// The end of the day is 24:00 and not 23:59. A shift finishing at midnight is
+// counted as 1440 minutes in, so a minute short here would refuse every closing
+// shift for somebody who can work any evening.
+export const DAY_START = '00:00'
+export const DAY_END = '24:00'
+
 // Sunday first, because the roster week starts on Sunday and this is read
 // alongside it.
 export const WEEKDAYS = [
@@ -119,9 +132,30 @@ export function unavailableSpans(availability, date, from, to) {
     return spans.filter(([a, b]) => b > a)
 }
 
+// Which of the four shapes a window has, read off its two ends.
+export function windowShape(window) {
+    const from = toMinutes(window?.[0])
+    const to = toMinutes(window?.[1])
+    const openStart = from <= 0
+    const openEnd = to >= 1440
+    if (openStart && openEnd) return 'all'
+    if (openStart) return 'until'
+    if (openEnd) return 'from'
+    return 'between'
+}
+
+// What one window reads as on its own.
+export function windowLabel(window) {
+    const shape = windowShape(window)
+    if (shape === 'all') return 'any time'
+    if (shape === 'from') return `from ${window[0]}`
+    if (shape === 'until') return `until ${window[1]}`
+    return `${window[0]} to ${window[1]}`
+}
+
 export function windowsLabel(windows) {
     if (!windows || windows.length === 0) return 'nothing that day'
-    return windows.map(([a, b]) => `${a} to ${b}`).join(' and ')
+    return windows.map(windowLabel).join(' and ')
 }
 
 // The one line that goes under somebody's name on the team list.
@@ -182,9 +216,14 @@ export function fromRows(rows) {
 export function availabilityProblem(rows) {
     for (const row of rows || []) {
         if (row.state !== 'windows') continue
-        for (const [a, b] of row.windows || []) {
-            if (!a || !b) return `${row.name} has a time missing.`
-            if (toMinutes(b) <= toMinutes(a)) {
+        for (const window of row.windows || []) {
+            const [a, b] = window
+            // Only the ends that are actually being said. A window running from
+            // one o'clock has no finishing time to be missing.
+            const shape = windowShape(window)
+            if (shape !== 'until' && !a) return `${row.name} has a start time missing.`
+            if (shape !== 'from' && !b) return `${row.name} has a finishing time missing.`
+            if (a && b && toMinutes(b) <= toMinutes(a)) {
                 return `${row.name} finishes at ${b}, which is not after ${a}.`
             }
         }
