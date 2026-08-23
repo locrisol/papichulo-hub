@@ -78,27 +78,12 @@ export default function DayNoteDialog({
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <Modal title={`${dayName(date)} ${shortDate(date)}`} onClose={onClose}>
+        <Modal title={`${dayName(date)} ${shortDate(date)} · options`} onClose={onClose}>
             <div className="p-5">
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
-                <label className="flex items-center gap-3 mb-4 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={form.isClosed}
-                        onChange={e => set('isClosed', e.target.checked)}
-                        className="w-4 h-4 accent-accent"
-                    />
-                    <span>
-                        <span className="block text-sm font-medium text-gray-900">Closed all day</span>
-                        <span className="block text-xs text-gray-500">
-                            Nothing gets marked as an opening or closing shift, and the day reads as closed.
-                        </span>
-                    </span>
-                </label>
-
                 {!form.isClosed && (
-                    <>
+                    <div className="mb-4">
                         <p className={labelCls}>
                             Different hours just for this day
                             {usual && (
@@ -123,22 +108,48 @@ export default function DayNoteDialog({
                                 aria-label="Closes at"
                             />
                         </div>
-                        <p className="text-xs text-gray-400 mb-4">
+                        <p className="text-xs text-gray-400">
                             Leave both empty to use the usual hours. This is where a late night for a concert
                             or an early close for renovations goes.
                         </p>
-                    </>
+                    </div>
                 )}
 
-                <label className="flex items-center gap-3 mb-4 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={form.isBankHoliday}
-                        onChange={e => set('isBankHoliday', e.target.checked)}
-                        className="w-4 h-4 accent-accent"
-                    />
-                    <span className="text-sm font-medium text-gray-900">Bank holiday</span>
-                </label>
+                {/* The two switches under the times, because the times are the
+                    thing you came here to change nine times out of ten. */}
+                <div className="border-t border-border pt-4 mb-4 space-y-3">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.isClosed}
+                            onChange={e => set('isClosed', e.target.checked)}
+                            className="w-4 h-4 mt-0.5 accent-accent"
+                        />
+                        <span>
+                            <span className="block text-sm font-medium text-gray-900">Closed all day</span>
+                            <span className="block text-xs text-gray-500">
+                                The day is marked in red on the roster and nothing counts as an opening or
+                                closing shift.
+                            </span>
+                        </span>
+                    </label>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.isBankHoliday}
+                            onChange={e => set('isBankHoliday', e.target.checked)}
+                            className="w-4 h-4 mt-0.5 accent-accent"
+                        />
+                        <span>
+                            <span className="block text-sm font-medium text-gray-900">Bank holiday</span>
+                            <span className="block text-xs text-gray-500">
+                                Marked in blue on the roster, and it uses the bank holiday hours set in
+                                Restaurant settings unless different hours are typed above.
+                            </span>
+                        </span>
+                    </label>
+                </div>
 
                 <div className="mb-4">
                     <label className={labelCls}>Label across the day</label>

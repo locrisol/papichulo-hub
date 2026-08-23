@@ -186,10 +186,34 @@ export function publishState(shifts) {
     return 'changed'
 }
 
-// How the hours read on screen. 8 rather than 8.0, 8.5 rather than 8.50.
+// How the hours read on screen, always to two decimals.
+//
+// 44.50 and not 44.5, and 8.00 and not 8. These are the numbers that go to the
+// accountant and onto a printed roster, and a column where some rows have two
+// decimals and some have none is harder to read down and looks unfinished.
 export function fmtHours(hours) {
-    if (!hours) return '0'
-    return String(Math.round(hours * 100) / 100)
+    return (Number(hours) || 0).toFixed(2)
+}
+
+// How many people are on at a given minute of the day.
+//
+// Used for the little chart across the top of the roster, which is the thing
+// that actually answers "have I got enough people on at seven": a column of
+// hours tells you who is in, and this tells you how many.
+export function staffAt(shifts, minute) {
+    let count = 0
+    for (const shift of shifts || []) {
+        const from = toMinutes(shift.starts_at)
+        if (minute >= from && minute < from + shiftMinutes(shift.starts_at, shift.ends_at)) count++
+    }
+    return count
+}
+
+// The same across a whole day, one entry per slot.
+export function staffPerSlot(shifts, from, to, slot) {
+    const out = []
+    for (let m = from; m < to; m += slot) out.push(staffAt(shifts, m))
+    return out
 }
 
 // The key the bank holiday hours are stored under, alongside the seven days.

@@ -9,17 +9,20 @@ import {
 
 // One shift: making it, changing it, removing it.
 //
-// This is the only way a shift is ever created or edited, whatever gesture got
-// you here. Dragging across the grid opens this with the times already filled
-// in, tapping opens it with a sensible guess, and clicking an existing shift
-// opens it with that shift in it. One dialog means one set of rules, and it
-// means the phone is not a lesser version of the laptop.
+// Deliberately small. There is no position on it, because a position belongs to
+// a person rather than to a night: somebody is a Supervisor, and they are a
+// Supervisor on every shift they work until they are promoted. It is set once
+// on the team list and read from there, which is one fewer thing to get wrong
+// on every shift of every week.
+//
+// There is no break on it either. The break comes from the restaurant's rules
+// and nothing else, because a break typed by hand is how somebody ends up owed
+// one. If a rule is wrong, the rule is what should change.
 export default function ShiftDialog({
     shift,
     date,
     employee,
     employees,
-    positions,
     dayHours,
     breakRules,
     onSave,
@@ -34,9 +37,6 @@ export default function ShiftDialog({
         employeeId: shift?.employee_id || employee?.id || '',
         startsAt: shortTime(shift?.starts_at) || '09:00',
         endsAt: shortTime(shift?.ends_at) || '17:00',
-        positionId: shift?.position_id || employee?.position_id || '',
-        breakMinutes: shift?.break_minutes ?? null,
-        breakIsManual: shift?.break_is_manual || false,
         note: shift?.note || '',
     }))
 
@@ -44,8 +44,7 @@ export default function ShiftDialog({
 
     const minutes = shiftMinutes(form.startsAt, form.endsAt)
     const hours = minutes / 60
-    const suggested = breakFor(hours, breakRules)
-    const breakMinutes = form.breakIsManual ? (form.breakMinutes ?? 0) : suggested
+    const breakMinutes = breakFor(hours, breakRules)
 
     const edges = shiftEdges({ starts_at: form.startsAt, ends_at: form.endsAt }, dayHours)
 
@@ -80,9 +79,7 @@ export default function ShiftDialog({
             shift_date: date,
             starts_at: form.startsAt,
             ends_at: form.endsAt,
-            position_id: form.positionId || null,
             break_minutes: breakMinutes,
-            break_is_manual: form.breakIsManual,
             note: form.note.trim() || null,
         })
     }
@@ -152,43 +149,6 @@ export default function ShiftDialog({
                         )}
                     </div>
                 )}
-
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                        <label className={labelCls}>Position</label>
-                        <select
-                            value={form.positionId}
-                            onChange={e => set('positionId', e.target.value)}
-                            className={fieldCls}
-                        >
-                            <option value="">Not set</option>
-                            {positions.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Break</label>
-                        <select
-                            value={form.breakIsManual ? String(breakMinutes) : 'auto'}
-                            onChange={e => {
-                                if (e.target.value === 'auto') {
-                                    setForm(f => ({ ...f, breakIsManual: false, breakMinutes: null }))
-                                } else {
-                                    setForm(f => ({
-                                        ...f, breakIsManual: true, breakMinutes: Number(e.target.value),
-                                    }))
-                                }
-                            }}
-                            className={fieldCls}
-                        >
-                            <option value="auto">By the rules ({breakLabel(suggested)})</option>
-                            {[0, 15, 30, 45, 60, 90].map(m => (
-                                <option key={m} value={m}>{breakLabel(m)}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
 
                 <div className="mb-4">
                     <label className={labelCls}>Note</label>

@@ -8,13 +8,15 @@ import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } 
 import { DAY_NAMES } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
 import { iconButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
-import { sortEmployees, isWorkingOn } from '../../lib/team'
+import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
-    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime,
+    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor,
 } from '../../lib/roster'
 import RosterDay from '../../components/RosterDay'
 import ShiftDialog from '../../components/ShiftDialog'
 import DayNoteDialog from '../../components/DayNoteDialog'
+import Modal from '../../components/Modal'
+import EmployeeForm from '../../components/EmployeeForm'
 
 // Building the week.
 //
@@ -24,6 +26,10 @@ import DayNoteDialog from '../../components/DayNoteDialog'
 //
 // A week is a draft until it is published, and publishing is a week at a time,
 // never a shift on its own. Half a roster going out is worse than none.
+const NEW_PERSON = {
+    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+}
+
 export default function RosterPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
@@ -41,9 +47,16 @@ export default function RosterPage() {
     const [dayIndex, setDayIndex] = useState(() => new Date(todayISO() + 'T00:00:00').getDay())
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
+    const [events, setEvents] = useState([])
+    const [addingPerson, setAddingPerson] = useState(false)
+    const [personForm, setPersonForm] = useState(NEW_PERSON)
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
+    const toMinutesSafe = t => {
+        const [h, m] = String(t).split(':').map(Number)
+        return h * 60 + m
+    }
     const dates = weekDates(weekStart)
     const date = dates[dayIndex]
     const weekEnd = dates[6]
@@ -58,7 +71,7 @@ export default function RosterPage() {
         setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -67,6 +80,12 @@ export default function RosterPage() {
             supabase.from('day_notes').select('*')
                 .eq('restaurant_id', restaurantId)
                 .gte('note_date', weekStart).lte('note_date', addDays(weekStart, 6)),
+            // What is on at the Arena. A concert at half six is the reason half
+            // the week is rostered the way it is, so it belongs on the grid
+            // rather than in somebody's head.
+            supabase.from('events').select('*')
+                .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
+                .order('event_time'),
         ])
 
         if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
@@ -76,6 +95,7 @@ export default function RosterPage() {
         setPositions(posRes.data || [])
         setShifts(shiftRes.data || [])
         setDayNotes(noteRes.data || [])
+        setEvents(eventRes.data || [])
         setLoading(false)
     }
 
@@ -111,6 +131,56 @@ export default function RosterPage() {
         if (err) { setError(friendlyError(err)); return }
 
         setEditingShift(null)
+        load()
+    }
+
+    // Dragging puts the shift in without asking anything. The position comes
+    // from the person's record and the break from the rules, which is what they
+    // would have been anyway, and stopping to confirm that on every drag would
+    // make dragging slower than typing.
+    async function dragShift({ employeeId, startsAt, endsAt }) {
+        setSaving(true)
+        setError('')
+
+        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        const { error: err } = await supabase.from('roster_shifts').insert({
+            restaurant_id: restaurantId,
+            employee_id: employeeId,
+            shift_date: date,
+            starts_at: startsAt,
+            ends_at: endsAt,
+            break_minutes: breakFor(hours, activeRestaurant?.break_rules),
+            created_by: user?.id,
+        })
+
+        setSaving(false)
+        if (err) setError(friendlyError(err))
+        else load()
+    }
+
+    async function addPerson(e) {
+        e.preventDefault()
+        if (employeeProblem(personForm)) return
+        setSaving(true)
+
+        const { error: err } = await supabase.from('employees').insert({
+            restaurant_id: restaurantId,
+            full_name: personForm.fullName.trim(),
+            position_id: personForm.positionId || null,
+            hourly_rate: personForm.hourlyRate === '' ? null : Number(personForm.hourlyRate),
+            started_on: personForm.startedOn || null,
+            ended_on: personForm.endedOn || null,
+            user_id: personForm.userId || null,
+            notes: personForm.notes.trim() || null,
+            sort_order: nextSortOrder(employees),
+            created_by: user?.id,
+        })
+
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+
+        setAddingPerson(false)
+        setPersonForm(NEW_PERSON)
         load()
     }
 
@@ -260,7 +330,7 @@ export default function RosterPage() {
                             onClick={() => setEditingDay(date)}
                             className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors text-xs"
                         >
-                            Change
+                            Options
                         </button>
                     </span>
                 </div>
@@ -277,6 +347,16 @@ export default function RosterPage() {
                 </div>
             </div>
 
+            <div className="flex justify-end mb-2">
+                <button
+                    type="button"
+                    onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                    Somebody missing? Add them
+                </button>
+            </div>
+
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
             ) : (
@@ -285,6 +365,9 @@ export default function RosterPage() {
                     shifts={dayShifts}
                     positions={positions}
                     dayHours={dayHours}
+                    dayNote={noteFor(date)}
+                    events={events.filter(ev => ev.event_date === date)}
+                    onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({
                         shift: { employee_id: employeeId, starts_at: startsAt, ends_at: endsAt },
@@ -297,7 +380,6 @@ export default function RosterPage() {
                     shift={editingShift.shift}
                     date={date}
                     employees={roster}
-                    positions={positions.filter(p => p.is_active)}
                     dayHours={dayHours}
                     breakRules={activeRestaurant?.break_rules}
                     onSave={saveShift}
@@ -305,6 +387,25 @@ export default function RosterPage() {
                     onClose={() => setEditingShift(null)}
                     saving={saving}
                 />
+            )}
+
+            {/* The same form as the team list, so somebody starting on Monday
+                can be put on Monday's roster without leaving the screen. */}
+            {addingPerson && (
+                <Modal title="Add someone" onClose={() => setAddingPerson(false)}>
+                    <EmployeeForm
+                        formData={personForm}
+                        onChange={(field, value) => setPersonForm(f => ({ ...f, [field]: value }))}
+                        onSubmit={addPerson}
+                        onCancel={() => setAddingPerson(false)}
+                        submitLabel="Add them"
+                        saving={saving}
+                        problem={employeeProblem(personForm)}
+                        positions={positions.filter(p => p.is_active)}
+                        users={[]}
+                        employees={employees}
+                    />
+                </Modal>
             )}
 
             {editingDay && (

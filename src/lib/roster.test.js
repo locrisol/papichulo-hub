@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, hoursForDate, timelineRange, DEFAULT_BREAK_RULES,
+    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, DEFAULT_BREAK_RULES,
 } from './roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -302,19 +302,60 @@ describe('publishState', () => {
 })
 
 describe('fmtHours', () => {
-    it('drops the trailing noughts', () => {
-        expect(fmtHours(8)).toBe('8')
-        expect(fmtHours(8.5)).toBe('8.5')
-        expect(fmtHours(43.5)).toBe('43.5')
+    it('always shows two decimals, the way the sheet does', () => {
+        expect(fmtHours(8)).toBe('8.00')
+        expect(fmtHours(8.5)).toBe('8.50')
+        expect(fmtHours(43.5)).toBe('43.50')
+        expect(fmtHours(44.5)).toBe('44.50')
     })
 
     it('reads nothing as nought', () => {
-        expect(fmtHours(0)).toBe('0')
-        expect(fmtHours(null)).toBe('0')
+        expect(fmtHours(0)).toBe('0.00')
+        expect(fmtHours(null)).toBe('0.00')
+        expect(fmtHours(undefined)).toBe('0.00')
     })
 
     it('does not print a floating point tail', () => {
-        expect(fmtHours(0.1 + 0.2)).toBe('0.3')
+        expect(fmtHours(0.1 + 0.2)).toBe('0.30')
+    })
+})
+
+describe('staffAt and staffPerSlot', () => {
+    const day = [
+        shift('09:00', '17:00'),
+        { ...shift('12:00', '21:00'), employee_id: 'e2' },
+        { ...shift('12:00', '14:00'), employee_id: 'e3' },
+    ]
+
+    it('counts who is on at a moment', () => {
+        expect(staffAt(day, toMinutes('09:30'))).toBe(1)
+        expect(staffAt(day, toMinutes('13:00'))).toBe(3)
+        expect(staffAt(day, toMinutes('18:00'))).toBe(1)
+    })
+
+    it('counts somebody in on the minute they start', () => {
+        expect(staffAt(day, toMinutes('09:00'))).toBe(1)
+    })
+
+    it('counts somebody out on the minute they finish', () => {
+        // Seventeen hundred is when the first one leaves, so only the late two.
+        expect(staffAt(day, toMinutes('17:00'))).toBe(1)
+    })
+
+    it('is nobody outside the day', () => {
+        expect(staffAt(day, toMinutes('06:00'))).toBe(0)
+        expect(staffAt(day, toMinutes('23:00'))).toBe(0)
+        expect(staffAt([], toMinutes('12:00'))).toBe(0)
+    })
+
+    it('walks a whole day in slots', () => {
+        const counts = staffPerSlot(day, toMinutes('09:00'), toMinutes('11:00'), 30)
+        expect(counts).toEqual([1, 1, 1, 1])
+    })
+
+    it('gives one entry per slot and no more', () => {
+        const counts = staffPerSlot(day, 0, 1440, 30)
+        expect(counts).toHaveLength(48)
     })
 })
 
