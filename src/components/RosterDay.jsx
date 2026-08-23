@@ -576,7 +576,7 @@ export default function RosterDay({
                                                 }`}
                                             >
                                                 <span className="block text-xs font-bold text-gray-900 whitespace-nowrap">
-                                                    {shortTime(preview.starts_at)} – {endLabel(preview, dayHours)}
+                                                    {shortTime(preview.starts_at)} - {endLabel(preview, dayHours)}
                                                 </span>
                                                 <span className="block text-[10px] text-gray-600 whitespace-nowrap">
                                                     {fmtHours(shiftHours(preview))}h · {breakLabel(

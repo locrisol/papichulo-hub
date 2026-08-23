@@ -103,7 +103,7 @@ export function weekTable({
                     return {
                         start,
                         end,
-                        text: `${start} – ${end}`,
+                        text: `${start} - ${end}`,
                         opens: edges.opening,
                         closes: edges.closing,
                         break: breakLabel(s.break_minutes),
@@ -133,12 +133,27 @@ export function weekTable({
     }
 }
 
+// What has to go at the front of the file for Excel to read it properly.
+//
+// A comma separated file carries no encoding of its own, so Excel on Windows
+// opens one as the local codepage rather than as UTF-8 unless the file says
+// otherwise. That is why a shared week came back with Maria's name mangled and
+// every shift reading 08:30 a stray symbol Closing. The bytes were right and
+// they were being read as the wrong alphabet.
+//
+// Three bytes at the front settle it. Excel, Sheets and Numbers all understand
+// them and none of them show them.
+export const CSV_BOM = '\uFEFF'
+
 // The spreadsheet.
 //
 // A comma separated file rather than a real workbook, because Sheets and Excel
 // both open one and it needs nothing added to the project. A workbook would be
 // about four hundred kilobytes of dependency to make the columns slightly
 // prettier.
+//
+// Lines end the way the standard says and the way Excel expects rather than the
+// way this file happens to be written.
 export function weekCsv(table) {
     const rows = []
     const escape = value => {
@@ -165,7 +180,7 @@ export function weekCsv(table) {
     line(['Hours on the day', ...table.dayHours, table.totalHours])
     for (const message of table.messages) line([message])
 
-    return rows.join('\n')
+    return rows.join('\r\n')
 }
 
 // Breaking a line of text so it fits a column.

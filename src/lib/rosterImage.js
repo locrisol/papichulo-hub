@@ -89,7 +89,7 @@ export function drawWeek(canvas, table) {
     const marked = (shift, centreX, y) => {
         const parts = [
             { text: shift.start, mark: shift.opens },
-            { text: ' – ', mark: false },
+            { text: ' - ', mark: false },
             { text: shift.end, mark: shift.closes },
         ]
         const widths = parts.map(p => c.measureText(p.text).width)

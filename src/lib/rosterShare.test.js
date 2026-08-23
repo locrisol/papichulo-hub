@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY } from './rosterShare'
+import {
+    shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY, CSV_BOM,
+} from './rosterShare'
 import { ABSENCE_KINDS } from './absences'
 
 const DATES = [
@@ -57,7 +59,7 @@ describe('weekTable', () => {
 
     it('resolves the times rather than leaving that to whoever draws it', () => {
         const t = build()
-        expect(t.people[0].days[1].shifts[0].text).toBe('09:00 – 17:00')
+        expect(t.people[0].days[1].shifts[0].text).toBe('09:00 - 17:00')
     })
 
     it('says Closing on a shift that runs past it, the same as the screen does', () => {
@@ -207,7 +209,7 @@ describe('weekCsv', () => {
             ],
         })
         const line = weekCsv(table).split('\n').find(l => l.startsWith('Ana'))
-        expect(line).toContain('09:00 – 17:00 / 18:00 – 21:00')
+        expect(line).toContain('09:00 - 17:00 / 18:00 - 21:00')
     })
 
     it('ends with the totals', () => {
@@ -356,5 +358,29 @@ describe('time off on a shared week', () => {
         const csv = weekCsv(build({ absences: clash }))
         expect(csv).toContain('09:00')
         expect(csv).toContain(AWAY.label)
+    })
+})
+
+// What Excel does with the file, which is not the same question as what is in
+// it. A week came back with a name mangled and every shift reading a stray
+// symbol where the dash should be, and none of that was in the string.
+describe('a spreadsheet Excel can actually read', () => {
+    it('carries the mark that says which alphabet it is', () => {
+        expect(CSV_BOM).toBe('\uFEFF')
+    })
+
+    it('ends its lines the way the standard says', () => {
+        const csv = weekCsv(build())
+        expect(csv).toContain('\r\n')
+        expect(csv.split('\r\n').length).toBeGreaterThan(5)
+    })
+
+    // A plain hyphen and nothing cleverer. The dash between two times is the
+    // one character on the sheet that has to survive being read as the wrong
+    // alphabet, and the pretty one does not.
+    it('separates the times with a plain hyphen', () => {
+        const csv = weekCsv(build())
+        expect(csv).toContain('09:00 - 17:00')
+        expect(csv).not.toMatch(/[\u2010-\u2015]/)
     })
 })

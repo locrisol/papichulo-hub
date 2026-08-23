@@ -243,7 +243,7 @@ export default function RosterWeek({
                                                         <span className={edges.opening ? mark : ''}>
                                                             {shortTime(s.starts_at)}
                                                         </span>
-                                                        {' – '}
+                                                        {' - '}
                                                         <span className={edges.closing ? mark : ''}>
                                                             {endLabel(s, hours)}
                                                         </span>
