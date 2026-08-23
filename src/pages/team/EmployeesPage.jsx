@@ -30,6 +30,8 @@ import PositionsModal from '../../components/PositionsModal'
 // before it. A list with a delete button on it loses last March.
 const EMPTY = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
+    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
 }
 
 export default function EmployeesPage() {
@@ -62,8 +64,11 @@ export default function EmployeesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId])
 
-    async function load() {
-        setLoading(true)
+    // Same as the roster: a quiet refetch swaps the data under what is on
+    // screen rather than blanking it, so saving somebody does not throw the
+    // list back to the top.
+    async function load({ quiet = false } = {}) {
+        if (!quiet) setLoading(true)
         setError('')
 
         const [empRes, posRes, userRes] = await Promise.all([
@@ -97,6 +102,12 @@ export default function EmployeesPage() {
             endedOn: employee.ended_on || '',
             userId: employee.user_id || '',
             notes: employee.notes || '',
+            dateOfBirth: employee.date_of_birth || '',
+            workPermission: employee.work_permission || '',
+            workPermissionExpires: employee.work_permission_expires || '',
+            foodSafetyLevel: employee.food_safety_level || '',
+            foodSafetyIssued: employee.food_safety_issued || '',
+            foodSafetyExpires: employee.food_safety_expires || '',
         })
         setEditing(employee)
     }
@@ -113,6 +124,12 @@ export default function EmployeesPage() {
             ended_on: form.endedOn || null,
             user_id: form.userId || null,
             notes: form.notes.trim() || null,
+            date_of_birth: form.dateOfBirth || null,
+            work_permission: form.workPermission || null,
+            work_permission_expires: form.workPermissionExpires || null,
+            food_safety_level: form.foodSafetyLevel || null,
+            food_safety_issued: form.foodSafetyIssued || null,
+            food_safety_expires: form.foodSafetyExpires || null,
         }
     }
 
@@ -136,7 +153,7 @@ export default function EmployeesPage() {
 
         setAdding(false)
         setEditing(null)
-        load()
+        load({ quiet: true })
     }
 
     // Moving somebody writes the two rows that swapped, not the whole list.
@@ -155,7 +172,7 @@ export default function EmployeesPage() {
             changes.map(c => supabase.from('employees').update({ sort_order: c.sort_order }).eq('id', c.id)),
         )
         const failed = results.find(r => r.error)
-        if (failed) { setError(friendlyError(failed.error)); load() }
+        if (failed) { setError(friendlyError(failed.error)); load({ quiet: true }) }
     }
 
     // There is no delete. This sets the last day, which is the only thing that
@@ -378,7 +395,7 @@ export default function EmployeesPage() {
                     positions={positions}
                     restaurantId={restaurantId}
                     onClose={() => setShowPositions(false)}
-                    onChanged={load}
+                    onChanged={() => load({ quiet: true })}
                 />
             )}
         </div>

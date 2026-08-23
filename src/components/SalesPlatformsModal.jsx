@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow } from '../lib/controlStyles'
+import { tableHeadRow, modalFooter } from '../lib/controlStyles'
+import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
 // The stored value stays 'catering'. Only what you read changes, so nothing
@@ -281,7 +282,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     const rows = platformsForBucket(bucket)
     return (
       <div className="mb-6">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
           {BUCKET_LABEL[bucket]}
         </h3>
         {rows.length === 0 ? (
@@ -325,7 +326,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
 
           <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Add platform</h3>
+            <ModalSectionBar title="Add a platform" />
             <form onSubmit={handleAdd} className="flex gap-2 items-start">
               <div className="flex-1">
                 <input
@@ -360,7 +361,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           </div>
         </div>
 
-        <div className="px-6 py-3 border-t border-border bg-gray-50 flex justify-end">
+        <div className={modalFooter}>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"

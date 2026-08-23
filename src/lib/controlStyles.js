@@ -62,6 +62,24 @@ export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wi
 // it with cardEdge and overflow-hidden so the bar is clipped by the rounded
 // corners, and put the card's own padding on the body underneath rather than on
 // the card, or the bar will not reach the edges.
+// The bar across the top of a dialog, and the bar over each of its sections.
+//
+// Two levels rather than one. They were the same dark green and sat directly on
+// top of each other, so a dialog opened looking like it had one very tall
+// heading with two lines of text in it.
+//
+// The dialog's own title is the heavier of the two and a size up. A section is
+// the same green at a tenth of its strength with the green as the text instead,
+// which keeps it in the family while being unmistakably a level down.
+//
+// Separate from cardHeader on purpose. Cards all over the app use that one and
+// none of them should move because a dialog needed a second level.
+export const modalHeader =
+    'bg-sidebar px-6 py-3.5 text-sm font-bold text-white uppercase tracking-wider'
+
+export const modalSectionHeader =
+    'bg-sidebar/10 border-y border-border px-6 py-2.5 text-xs font-bold text-sidebar uppercase tracking-wider'
+
 export const cardHeader =
     'bg-sidebar px-5 py-3 text-xs font-bold text-white uppercase tracking-wider'
 
@@ -93,6 +111,14 @@ export const card = `bg-white ${cardEdge}`
 // vertically before is still clipped, so nothing else moves.
 // Same edge as any other card, with the sideways scrolling added.
 export const tableCard = `${card} overflow-x-auto overflow-y-hidden`
+
+// The row of buttons at the bottom of a dialog.
+//
+// Same shape as the older screens already use: full width, its own rule above
+// it, and a grey ground so it reads as the floor of the dialog rather than as
+// one more thing in the list of fields.
+export const modalFooter =
+    'px-6 py-4 border-t border-border bg-gray-50 flex flex-wrap justify-end gap-3'
 
 // The small coloured pills in a table cell: a role, a section, a status.
 //

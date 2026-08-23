@@ -615,7 +615,7 @@ export default function ProductsPage() {
           from the rows around it, and everything below it jumped down the page. */}
       {editingProduct && (
         <Modal title={`Edit ${editingProduct.name}`} onClose={resetForm} width="max-w-2xl">
-          <div className="p-5">
+          <div className="px-6 py-4">
             <ProductForm
               formData={formData}
               onChange={handleFieldChange}

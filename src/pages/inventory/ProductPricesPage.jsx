@@ -442,7 +442,7 @@ export default function ProductPricesPage() {
                     onClose={() => setFormatsForPriceId(null)}
                     width="max-w-2xl"
                 >
-                    <div className="p-5">
+                    <div className="px-6 py-4">
                         <PriceCountUnitsEditor
                             price={formatsPrice}
                             unit={product?.unit}

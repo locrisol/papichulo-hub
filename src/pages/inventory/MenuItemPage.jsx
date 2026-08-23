@@ -591,7 +591,7 @@ export default function MenuItemPage() {
           onClose={resetComponentForm}
           width="max-w-2xl"
         >
-          <div className="p-5">
+          <div className="px-6 py-4">
             <ComponentForm
               formData={componentForm}
               onChange={handleComponentChange}

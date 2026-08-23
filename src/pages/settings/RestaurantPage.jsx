@@ -5,9 +5,14 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
 import SalesTendersModal from '../../components/SalesTendersModal'
 import CostTargetModal from '../../components/CostTargetModal'
+import OpeningHoursModal from '../../components/OpeningHoursModal'
+import BreakRulesModal from '../../components/BreakRulesModal'
+import RosterRulesModal from '../../components/RosterRulesModal'
 import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
+import { DEFAULT_BREAK_RULES } from '../../lib/roster'
+import { DEFAULT_RULES } from '../../lib/workRules'
 import PageContainer from '../../components/layout/PageContainer'
 import { numberField } from '../../lib/numberInput'
 import { card } from '../../lib/controlStyles'
@@ -44,6 +49,9 @@ export default function RestaurantPage() {
     const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
     const [showTendersModal, setShowTendersModal] = useState(false)
+    const [showHoursModal, setShowHoursModal] = useState(false)
+    const [showBreaksModal, setShowBreaksModal] = useState(false)
+    const [showRulesModal, setShowRulesModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
     const [refresh, setRefresh] = useState(0)
 
@@ -99,6 +107,28 @@ export default function RestaurantPage() {
             setSuccess('Settings saved.')
         }
     }
+
+    // Enough of each setting to see at a glance whether it has been done,
+    // without opening the dialog to find out.
+    const openDays = Object.values(activeRestaurant?.opening_hours || {})
+        .filter(d => d?.open && d?.close).length
+    const openingSummary = openDays === 0
+        ? 'Not set yet. Until they are, the roster cannot mark opening or closing shifts.'
+        : `Open ${openDays} ${openDays === 1 ? 'day' : 'days'} a week. Used by the roster to mark opening and closing shifts.`
+
+    const ladder = activeRestaurant?.break_rules?.length
+        ? [...activeRestaurant.break_rules].sort((a, b) => b.hours - a.hours)
+        : DEFAULT_BREAK_RULES
+    const breakSummary = ladder
+        .map(r => `${r.hours}h ${r.operator === 'gt' ? 'over' : 'up'} gives ${r.minutes} min`)
+        .join(', ')
+
+    // How many checks are switched on, so it is obvious at a glance whether
+    // anybody has been through them.
+    const rules = { ...DEFAULT_RULES, ...(activeRestaurant?.roster_rules || {}) }
+    const warnCount = ['dailyRest', 'weeklyRest', 'daysOff', 'maxWeek'].filter(k => rules[k]?.on).length
+    const blockCount = ['visaCap', 'underAge'].filter(k => rules[k]?.on).length
+    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours, under 18s, food safety expiry and how wide the grid is drawn.`
 
     // What is in force this week for one target, and how long it runs.
     function targetSummary(type) {
@@ -264,6 +294,67 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
+                    {/* Opening hours and break rules.
+
+                        Both are here rather than on the roster because they are
+                        properties of a restaurant, not of a week. Both are also
+                        the two things the roster cannot work out for itself:
+                        what counts as an opening or closing shift, and what
+                        break somebody has earned. */}
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Opening hours</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {openingSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowHoursModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set hours
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Break rules</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {breakSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowBreaksModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set breaks
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Roster rules</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {rulesSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowRulesModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set rules
+                            </button>
+                        </div>
+                    </div>
+
                     {/* The till receipt rows.
 
                         Super Admin only, and the database says so too rather
@@ -314,6 +405,10 @@ export default function RestaurantPage() {
                     onClose={() => setShowTendersModal(false)}
                 />
             )}
+
+            {showHoursModal && <OpeningHoursModal onClose={() => setShowHoursModal(false)} />}
+            {showBreaksModal && <BreakRulesModal onClose={() => setShowBreaksModal(false)} />}
+            {showRulesModal && <RosterRulesModal onClose={() => setShowRulesModal(false)} />}
         </PageContainer>
     )
 }

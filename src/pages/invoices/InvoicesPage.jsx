@@ -404,7 +404,7 @@ export default function InvoicesPage() {
                     onClose={cancelEdit}
                     width="max-w-2xl"
                 >
-                    <div className="p-5">
+                    <div className="px-6 py-4">
                         <InvoiceForm
                             formData={editForm}
                             onChange={setEditField}

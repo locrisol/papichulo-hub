@@ -1,5 +1,8 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
+import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 
 // The add and edit form for a person.
 //
@@ -25,7 +28,8 @@ export default function EmployeeForm({
     const available = linkableUsers(users, employees, editingId)
 
     return (
-        <form onSubmit={onSubmit} className="p-5">
+        <form onSubmit={onSubmit}>
+            <ModalSection title="Who they are">
             <div className="mb-3">
                 <label className={labelCls}>Name</label>
                 <input
@@ -114,8 +118,137 @@ export default function EmployeeForm({
                 </p>
             </div>
 
-            <div className="mb-4">
-                <label className={labelCls}>Notes</label>
+            {/* Right to work.
+
+                Only the stamp and the date it runs out. No nationality, no
+                document numbers, nothing scanned. That is everything the hour
+                rules need and none of what we would then have to protect.
+
+                The date of birth is here for one reason: under 18s have their
+                own limits and the roster cannot apply them without it. */}
+            </ModalSection>
+
+            <ModalSection
+                title="Right to work"
+                description="The stamp and the date it runs out, and nothing else. That is everything the hour rules need and none of what we would then have to protect."
+            >
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label className={labelCls}>Date of birth</label>
+                        <input
+                            type="date"
+                            value={formData.dateOfBirth}
+                            onChange={e => onChange('dateOfBirth', e.target.value)}
+                            className={fieldCls}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                            Only used to apply the under 18 limits. Leave empty otherwise.
+                        </p>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Permission</label>
+                        <select
+                            value={formData.workPermission}
+                            onChange={e => onChange('workPermission', e.target.value)}
+                            className={fieldCls}
+                        >
+                            {WORK_PERMISSIONS.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                        {permissionFor(formData.workPermission).term !== null && (
+                            <p className="text-xs text-amber-700 mt-1">
+                                {permissionFor(formData.workPermission).term} hours a week in term time,
+                                {' '}{permissionFor(formData.workPermission).holiday} in the holiday periods.
+                                The roster will not let a week go out over it.
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mb-1">
+                    <label className={labelCls}>Permission runs out</label>
+                    <input
+                        type="date"
+                        value={formData.workPermissionExpires}
+                        onChange={e => onChange('workPermissionExpires', e.target.value)}
+                        className={fieldCls}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                        The roster starts saying so two months out, and stops a week going out once
+                        it has passed.
+                    </p>
+                </div>
+
+            {/* Food safety.
+
+                The expiry is the part that matters. A certificate nobody is
+                watching is one that has quietly run out, and finding that out
+                during an inspection is the expensive way round.
+
+                Two years is offered when a date is sat, and it can be changed,
+                because a certificate that says something different should be
+                able to say something different here. */}
+            </ModalSection>
+
+            <ModalSection
+                title="Food safety"
+                description="The expiry is the part that matters. A certificate nobody is watching is one that has quietly run out."
+            >
+
+                <div className="mb-3">
+                    <label className={labelCls}>Training held</label>
+                    <select
+                        value={formData.foodSafetyLevel}
+                        onChange={e => onChange('foodSafetyLevel', e.target.value)}
+                        className={fieldCls}
+                    >
+                        {FOOD_SAFETY_LEVELS.map(l => (
+                            <option key={l.value} value={l.value}>{l.label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={labelCls}>Sat on</label>
+                        <input
+                            type="date"
+                            value={formData.foodSafetyIssued}
+                            onChange={e => {
+                                onChange('foodSafetyIssued', e.target.value)
+                                // The expiry follows the date it was sat, every
+                                // time that date changes. Two years is the term,
+                                // and the box underneath is still free, so a
+                                // certificate saying eighteen months can say so.
+                                // Filling only an empty box was too timid: it
+                                // meant correcting a wrong sat date left the old
+                                // expiry sitting there being wrong.
+                                onChange('foodSafetyExpires',
+                                    e.target.value ? expiryFrom(e.target.value) : '')
+                            }}
+                            className={fieldCls}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Runs out</label>
+                        <input
+                            type="date"
+                            value={formData.foodSafetyExpires}
+                            onChange={e => onChange('foodSafetyExpires', e.target.value)}
+                            className={fieldCls}
+                        />
+                    </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                    Two years from the date it was sat, filled in whenever that date changes and free
+                    to change afterwards. The roster says so two months before it runs out.
+                </p>
+
+            </ModalSection>
+
+            <ModalSection title="Notes">
                 <input
                     type="text"
                     value={formData.notes}
@@ -123,13 +256,13 @@ export default function EmployeeForm({
                     className={fieldCls}
                     placeholder="Anything worth remembering"
                 />
-            </div>
+            </ModalSection>
 
             {problem && (
-                <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
             )}
 
-            <div className="flex justify-end gap-3">
+            <div className={modalFooter}>
                 <button
                     type="button"
                     onClick={onCancel}
