@@ -77,8 +77,20 @@ export default function RosterPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart])
 
-    async function load() {
-        setLoading(true)
+    // quiet means fetch again without blanking the screen.
+    //
+    // Adding a shift used to throw you back to the top of the page, and the
+    // reason was here rather than anywhere near the scroll. Refetching set
+    // loading, loading swapped the whole grid for a one line "Loading..."
+    // paragraph, the page collapsed to a few hundred pixels, and the browser
+    // clamped the scroll to the top of what was left. The content came back a
+    // moment later and the position did not.
+    //
+    // So the full loading state is only for the first arrival, when there is
+    // genuinely nothing to look at. Everything after it swaps the data
+    // underneath what is already on screen.
+    async function load({ quiet = false } = {}) {
+        if (!quiet) setLoading(true)
         setError('')
 
         const [empRes, posRes, shiftRes, noteRes, eventRes] = await Promise.all([
@@ -176,7 +188,7 @@ export default function RosterPage() {
         if (err) { setError(friendlyError(err)); return }
 
         setEditingShift(null)
-        load()
+        load({ quiet: true })
     }
 
     // Dragging puts the shift in without asking anything. The position comes
@@ -200,7 +212,7 @@ export default function RosterPage() {
 
         setSaving(false)
         if (err) setError(friendlyError(err))
-        else load()
+        else load({ quiet: true })
     }
 
     async function addPerson(e) {
@@ -232,14 +244,14 @@ export default function RosterPage() {
 
         setAddingPerson(false)
         setPersonForm(NEW_PERSON)
-        load()
+        load({ quiet: true })
     }
 
     async function removeShift(shift) {
         const { error: err } = await supabase.from('roster_shifts').delete().eq('id', shift.id)
         if (err) { setError(friendlyError(err)); return }
         setEditingShift(null)
-        load()
+        load({ quiet: true })
     }
 
     // The whole week at once, never a shift on its own. Half a roster is worse
@@ -287,7 +299,7 @@ export default function RosterPage() {
 
         setSaving(false)
         if (err) setError(friendlyError(err))
-        else load()
+        else load({ quiet: true })
     }
 
     const stateBadge = {
@@ -553,7 +565,7 @@ export default function RosterPage() {
                     userId={user?.id}
                     usualHours={activeRestaurant?.opening_hours}
                     onClose={() => setEditingDay(null)}
-                    onSaved={() => { setEditingDay(null); load() }}
+                    onSaved={() => { setEditingDay(null); load({ quiet: true }) }}
                 />
             )}
         </div>

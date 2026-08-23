@@ -64,8 +64,11 @@ export default function EmployeesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId])
 
-    async function load() {
-        setLoading(true)
+    // Same as the roster: a quiet refetch swaps the data under what is on
+    // screen rather than blanking it, so saving somebody does not throw the
+    // list back to the top.
+    async function load({ quiet = false } = {}) {
+        if (!quiet) setLoading(true)
         setError('')
 
         const [empRes, posRes, userRes] = await Promise.all([
@@ -150,7 +153,7 @@ export default function EmployeesPage() {
 
         setAdding(false)
         setEditing(null)
-        load()
+        load({ quiet: true })
     }
 
     // Moving somebody writes the two rows that swapped, not the whole list.
@@ -169,7 +172,7 @@ export default function EmployeesPage() {
             changes.map(c => supabase.from('employees').update({ sort_order: c.sort_order }).eq('id', c.id)),
         )
         const failed = results.find(r => r.error)
-        if (failed) { setError(friendlyError(failed.error)); load() }
+        if (failed) { setError(friendlyError(failed.error)); load({ quiet: true }) }
     }
 
     // There is no delete. This sets the last day, which is the only thing that
@@ -392,7 +395,7 @@ export default function EmployeesPage() {
                     positions={positions}
                     restaurantId={restaurantId}
                     onClose={() => setShowPositions(false)}
-                    onChanged={load}
+                    onChanged={() => load({ quiet: true })}
                 />
             )}
         </div>
