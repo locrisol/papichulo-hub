@@ -30,6 +30,7 @@ import EmployeeForm from '../../components/EmployeeForm'
 const NEW_PERSON = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
     dateOfBirth: '', workPermission: '', workPermissionExpires: '',
+    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
 }
 
 export default function RosterPage() {
@@ -213,6 +214,9 @@ export default function RosterPage() {
             date_of_birth: personForm.dateOfBirth || null,
             work_permission: personForm.workPermission || null,
             work_permission_expires: personForm.workPermissionExpires || null,
+            food_safety_level: personForm.foodSafetyLevel || null,
+            food_safety_issued: personForm.foodSafetyIssued || null,
+            food_safety_expires: personForm.foodSafetyExpires || null,
             sort_order: nextSortOrder(employees),
             created_by: user?.id,
         })
@@ -443,6 +447,7 @@ export default function RosterPage() {
                     positions={positions}
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
+                    gridHours={activeRestaurant?.roster_rules?.gridHours}
                     events={events.filter(ev => ev.event_date === date)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}

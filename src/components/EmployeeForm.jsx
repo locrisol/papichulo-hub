@@ -1,6 +1,6 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
-import { WORK_PERMISSIONS, permissionFor } from '../lib/workRules'
+import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
 
 // The add and edit form for a person.
 //
@@ -175,6 +175,67 @@ export default function EmployeeForm({
                         it has passed.
                     </p>
                 </div>
+            </div>
+
+            {/* Food safety.
+
+                The expiry is the part that matters. A certificate nobody is
+                watching is one that has quietly run out, and finding that out
+                during an inspection is the expensive way round.
+
+                Two years is offered when a date is sat, and it can be changed,
+                because a certificate that says something different should be
+                able to say something different here. */}
+            <div className="border-t border-border pt-4 mb-3">
+                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
+                    Food safety
+                </p>
+
+                <div className="mb-3">
+                    <label className={labelCls}>Training held</label>
+                    <select
+                        value={formData.foodSafetyLevel}
+                        onChange={e => onChange('foodSafetyLevel', e.target.value)}
+                        className={fieldCls}
+                    >
+                        {FOOD_SAFETY_LEVELS.map(l => (
+                            <option key={l.value} value={l.value}>{l.label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={labelCls}>Sat on</label>
+                        <input
+                            type="date"
+                            value={formData.foodSafetyIssued}
+                            onChange={e => {
+                                onChange('foodSafetyIssued', e.target.value)
+                                // Two years is offered, not imposed. It only
+                                // fills an empty box, so a date already typed is
+                                // never quietly rewritten.
+                                if (e.target.value && !formData.foodSafetyExpires) {
+                                    onChange('foodSafetyExpires', expiryFrom(e.target.value))
+                                }
+                            }}
+                            className={fieldCls}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Runs out</label>
+                        <input
+                            type="date"
+                            value={formData.foodSafetyExpires}
+                            onChange={e => onChange('foodSafetyExpires', e.target.value)}
+                            className={fieldCls}
+                        />
+                    </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                    Two years from the date it was sat is filled in for you and can be changed.
+                    The roster says so two months before it runs out.
+                </p>
             </div>
 
             <div className="mb-4">

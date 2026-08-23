@@ -254,13 +254,20 @@ export function hoursForDate(openingHours, dayNote, date) {
 
 // The stretch of the day the timeline draws.
 //
-// Wide enough for the store's hours with an hour either side, and then widened
-// again for anything already rostered outside that, because a shift you cannot
-// see is worse than a wide grid. Rounded out to whole hours so the axis reads
-// in round numbers.
-export function timelineRange(dayHours, shifts) {
-    let from = dayHours ? toMinutes(dayHours.open) - 60 : 7 * 60
-    let to = dayHours ? toMinutes(dayHours.close) + 60 : 23 * 60
+// The store's hours with a few hours either side, three by default, which is
+// enough to see a delivery at six in the morning and a clean down at midnight
+// without the grid being mostly empty. How much is a setting, because a
+// restaurant with a bakery starting at four wants more than one that does not.
+//
+// Then widened again for anything already rostered outside that, because a
+// shift you cannot see is worse than a wide grid. Rounded out to whole hours so
+// the axis reads in round numbers.
+export function timelineRange(dayHours, shifts, padding) {
+    const before = (padding?.before ?? 3) * 60
+    const after = (padding?.after ?? 3) * 60
+
+    let from = dayHours ? toMinutes(dayHours.open) - before : 7 * 60
+    let to = dayHours ? toMinutes(dayHours.close) + after : 23 * 60
 
     for (const shift of shifts || []) {
         from = Math.min(from, toMinutes(shift.starts_at))

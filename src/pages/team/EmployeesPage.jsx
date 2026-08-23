@@ -31,6 +31,7 @@ import PositionsModal from '../../components/PositionsModal'
 const EMPTY = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
     dateOfBirth: '', workPermission: '', workPermissionExpires: '',
+    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
 }
 
 export default function EmployeesPage() {
@@ -101,6 +102,9 @@ export default function EmployeesPage() {
             dateOfBirth: employee.date_of_birth || '',
             workPermission: employee.work_permission || '',
             workPermissionExpires: employee.work_permission_expires || '',
+            foodSafetyLevel: employee.food_safety_level || '',
+            foodSafetyIssued: employee.food_safety_issued || '',
+            foodSafetyExpires: employee.food_safety_expires || '',
         })
         setEditing(employee)
     }
@@ -120,6 +124,9 @@ export default function EmployeesPage() {
             date_of_birth: form.dateOfBirth || null,
             work_permission: form.workPermission || null,
             work_permission_expires: form.workPermissionExpires || null,
+            food_safety_level: form.foodSafetyLevel || null,
+            food_safety_issued: form.foodSafetyIssued || null,
+            food_safety_expires: form.foodSafetyExpires || null,
         }
     }
 

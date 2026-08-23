@@ -38,13 +38,14 @@ export default function RosterDay({
     dayHours,
     dayNote,
     events,
+    gridHours,
     onOpenShift,
     onNewShift,
     onDragShift,
 }) {
     const [drag, setDrag] = useState(null)
 
-    const { from, to } = timelineRange(dayHours, shifts)
+    const { from, to } = timelineRange(dayHours, shifts, gridHours)
     const slots = Math.max(1, Math.round((to - from) / SLOT))
     const slotAt = index => from + index * SLOT
     const span = to - from
@@ -162,6 +163,15 @@ export default function RosterDay({
                             Staff
                         </div>
                         <div className="flex-1 relative h-11">
+                            {dayHours && !closed && (
+                                <span
+                                    className="absolute top-0 h-full bg-white/70 border-x border-gray-300 pointer-events-none"
+                                    style={{
+                                        left: `${pct(toMinutes(dayHours.open))}%`,
+                                        width: `${pct(toMinutes(dayHours.close)) - pct(toMinutes(dayHours.open))}%`,
+                                    }}
+                                />
+                            )}
                             {hourMarks.map(m => (
                                 <span
                                     key={m}
@@ -257,14 +267,30 @@ export default function RosterDay({
                                         ))}
                                     </div>
 
-                                    {/* Where the store shuts, so a block sticking
-                                        out past it is obvious at a glance. */}
-                                    {dayHours && !closed && (
+                                    {/* The hours the store is shut, shaded, with a
+                                        line at each edge. The grid runs wider
+                                        than the opening hours on purpose, so
+                                        without this there is no way to tell a
+                                        six in the morning delivery from an
+                                        ordinary start. */}
+                                    {dayHours && !closed && <>
                                         <span
-                                            className="absolute top-0 bottom-0 w-px bg-gray-300 pointer-events-none"
+                                            className="absolute top-0 bottom-0 left-0 bg-gray-200/50 pointer-events-none"
+                                            style={{ width: `${pct(toMinutes(dayHours.open))}%` }}
+                                        />
+                                        <span
+                                            className="absolute top-0 bottom-0 right-0 bg-gray-200/50 pointer-events-none"
+                                            style={{ width: `${100 - pct(toMinutes(dayHours.close))}%` }}
+                                        />
+                                        <span
+                                            className="absolute top-0 bottom-0 w-px bg-gray-400 pointer-events-none"
+                                            style={{ left: `${pct(toMinutes(dayHours.open))}%` }}
+                                        />
+                                        <span
+                                            className="absolute top-0 bottom-0 w-px bg-gray-400 pointer-events-none"
                                             style={{ left: `${pct(toMinutes(dayHours.close))}%` }}
                                         />
-                                    )}
+                                    </>}
 
                                     {mine.map(shift => {
                                         const shiftColour = positionOf(shift.position_id)?.colour || colour

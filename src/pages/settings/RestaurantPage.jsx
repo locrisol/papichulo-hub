@@ -128,7 +128,7 @@ export default function RestaurantPage() {
     const rules = { ...DEFAULT_RULES, ...(activeRestaurant?.roster_rules || {}) }
     const warnCount = ['dailyRest', 'weeklyRest', 'daysOff', 'maxWeek'].filter(k => rules[k]?.on).length
     const blockCount = ['visaCap', 'underAge'].filter(k => rules[k]?.on).length
-    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours and under 18s.`
+    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours, under 18s, food safety expiry and how wide the grid is drawn.`
 
     // What is in force this week for one target, and how long it runs.
     function targetSummary(type) {

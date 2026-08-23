@@ -30,17 +30,54 @@ export const WORK_PERMISSIONS = [
     { value: 'stamp1g', label: 'Stamp 1G (graduate)', term: null, holiday: null },
 ]
 
+// The food safety training a restaurant records against somebody.
+export const FOOD_SAFETY_LEVELS = [
+    { value: '', label: 'None recorded' },
+    { value: 'induction', label: 'Induction skills' },
+    { value: 'level1', label: 'Level 1, additional skills' },
+    { value: 'level2', label: 'Level 2, HACCP' },
+    { value: 'level3', label: 'Level 3, management' },
+]
+
 export const DEFAULT_RULES = {
     dailyRest: { on: false, hours: 11 },
     weeklyRest: { on: false, hours: 35 },
     daysOff: { on: false, count: 2 },
     maxWeek: { on: false, hours: 48, lookbackWeeks: 17 },
     underAge: { on: true },
-    visaCap: { on: true },
+    // blocks says whether going over somebody's permitted hours holds the week
+    // back or only says so. It holds by default, because going over is the
+    // company's offence rather than the person's. Turning it down to a warning
+    // is a decision a restaurant can make, and the check keeps saying it either
+    // way rather than going quiet.
+    visaCap: { on: true, blocks: true },
+    foodSafety: { on: true, warnDays: 60, validMonths: 24 },
+    gridHours: { before: 3, after: 3 },
     holidayPeriods: [
         { from: '06-01', to: '09-30' },
         { from: '12-15', to: '01-15' },
     ],
+}
+
+// Two years on from a date, which is the usual term for a food safety
+// certificate. Offered rather than enforced: a certificate that says something
+// different should be able to say something different here.
+export function expiryFrom(issued, months = 24) {
+    if (!issued) return ''
+    const d = new Date(issued + 'T00:00:00')
+    d.setMonth(d.getMonth() + months)
+    const pad = n => String(n).padStart(2, '0')
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+}
+
+// How something expiring reads against a week: already gone, going part way
+// through it, or coming up soon enough to do something about.
+export function expiryState(expires, weekStart, weekEnd, warnDays) {
+    if (!expires || !weekStart || !weekEnd) return null
+    if (expires < weekStart) return 'expired'
+    if (expires <= weekEnd) return 'expiring'
+    if (daysBetween(weekEnd, expires) <= (warnDays ?? 60)) return 'soon'
+    return null
 }
 
 export function permissionFor(value) {
@@ -153,19 +190,37 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
         const name = employee.full_name
         const add = (level, kind, text) => findings.push({ level, kind, employeeId: employee.id, name, text })
 
-        // Permission that has run out, or is about to. Checked before the hour
-        // rules, because if this is wrong none of the rest matters.
-        if (employee.work_permission_expires && weekEnd) {
-            const expires = employee.work_permission_expires
-            if (expires < weekDates[0]) {
-                add('block', 'permissionExpired',
-                    `${name}'s permission to work ran out on ${expires}.`)
-            } else if (expires <= weekEnd) {
-                add('block', 'permissionExpiring',
-                    `${name}'s permission to work runs out on ${expires}, part way through this week.`)
-            } else if (daysBetween(weekEnd, expires) <= 56) {
-                add('warn', 'permissionSoon',
-                    `${name}'s permission to work runs out on ${expires}.`)
+        // Anything with an expiry date, checked before the hour rules, because
+        // if one of these is wrong none of the rest matters.
+        const permission = expiryState(
+            employee.work_permission_expires, weekDates?.[0], weekEnd, 60,
+        )
+        if (permission === 'expired') {
+            add('block', 'permissionExpired',
+                `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
+        } else if (permission === 'expiring') {
+            add('block', 'permissionExpiring',
+                `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)
+        } else if (permission === 'soon') {
+            add('warn', 'permissionSoon',
+                `${name}'s permission to work runs out on ${employee.work_permission_expires}.`)
+        }
+
+        // Food safety training. A certificate nobody is watching is one that
+        // has quietly run out, and finding that out during an inspection is the
+        // expensive way. It warns rather than blocks: an expired certificate is
+        // a course to book, not a reason the roster cannot go out.
+        if (settings.foodSafety?.on) {
+            const food = expiryState(
+                employee.food_safety_expires, weekDates?.[0], weekEnd,
+                settings.foodSafety.warnDays,
+            )
+            if (food === 'expired') {
+                add('warn', 'foodSafetyExpired',
+                    `${name}'s food safety training ran out on ${employee.food_safety_expires}.`)
+            } else if (food === 'expiring' || food === 'soon') {
+                add('warn', 'foodSafetySoon',
+                    `${name}'s food safety training runs out on ${employee.food_safety_expires}.`)
             }
         }
 
@@ -176,7 +231,7 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
         if (settings.visaCap?.on) {
             const cap = weeklyCap(employee, weekDates, settings)
             if (cap && hours > cap.hours) {
-                add('block', 'visaCap',
+                add(settings.visaCap.blocks === false ? 'warn' : 'block', 'visaCap',
                     `${name} is on ${cap.permission.label} and is rostered ${hours.toFixed(2)} hours against a limit of ${cap.hours}.`)
             }
         }

@@ -156,6 +156,30 @@ export default function RosterRulesModal({ onClose }) {
                                 </span>
                             </span>
                         </label>
+
+                        {/* The number itself is not editable, and that is
+                            deliberate. It is a legal ceiling rather than a
+                            preference, and a limit you can type over is not a
+                            limit. What a restaurant can decide is whether going
+                            over it holds the week or only says so. */}
+                        {rules.visaCap?.on && (
+                            <div className="ml-7 mt-2">
+                                <select
+                                    value={rules.visaCap.blocks === false ? 'warn' : 'block'}
+                                    onChange={e => set('visaCap', { blocks: e.target.value === 'block' })}
+                                    className="w-full sm:w-auto border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                                >
+                                    <option value="block">Hold the week back until it is fixed</option>
+                                    <option value="warn">Say it, but let the week go out</option>
+                                </select>
+                                {rules.visaCap.blocks === false && (
+                                    <p className="text-xs text-amber-700 mt-1.5">
+                                        Going over is the company's offence rather than the person's, so this
+                                        will keep saying it every week rather than going quiet.
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div className="py-3">
                         <label className="flex items-start gap-3 cursor-pointer">
@@ -177,6 +201,75 @@ export default function RosterRulesModal({ onClose }) {
                             </span>
                         </label>
                     </div>
+                </div>
+
+                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
+                    Certificates
+                </p>
+                <div className="mb-6">
+                    <div className="py-3">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!rules.foodSafety?.on}
+                                onChange={e => set('foodSafety', { on: e.target.checked })}
+                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Food safety training running out
+                                </span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    A certificate nobody is watching is one that has quietly run out, and
+                                    finding that out during an inspection is the expensive way. This warns
+                                    rather than holds the week: an expired certificate is a course to book,
+                                    not a reason the roster cannot go out.
+                                </span>
+                            </span>
+                        </label>
+                        {rules.foodSafety?.on && (
+                            <div className="flex items-center gap-2 mt-2 ml-7">
+                                <input
+                                    {...numberField({
+                                        value: String(rules.foodSafety.warnDays ?? ''),
+                                        onChange: v => set('foodSafety', { warnDays: Number(v) || 0 }),
+                                        whole: true,
+                                    })}
+                                    className={numCls}
+                                />
+                                <span className="text-sm text-gray-500">days notice before it runs out</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
+                    The grid
+                </p>
+                <p className="text-xs text-gray-500 mb-2">
+                    How much of the day the roster draws either side of the opening hours. Enough to
+                    see a delivery at six in the morning and a clean down at midnight, without the
+                    grid being mostly empty. The hours the store is shut are shaded.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                    <input
+                        {...numberField({
+                            value: String(rules.gridHours?.before ?? 3),
+                            onChange: v => set('gridHours', { before: Number(v) || 0 }),
+                            whole: true,
+                        })}
+                        className={numCls}
+                    />
+                    <span className="text-sm text-gray-500">hours before opening, and</span>
+                    <input
+                        {...numberField({
+                            value: String(rules.gridHours?.after ?? 3),
+                            onChange: v => set('gridHours', { after: Number(v) || 0 }),
+                            whole: true,
+                        })}
+                        className={numCls}
+                    />
+                    <span className="text-sm text-gray-500">after closing</span>
                 </div>
 
                 <p className="text-xs text-gray-400 border-t border-border pt-4 mb-4">

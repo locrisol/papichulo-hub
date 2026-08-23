@@ -405,8 +405,15 @@ describe('hoursForDate', () => {
 })
 
 describe('timelineRange', () => {
-    it('gives an hour either side of the store hours', () => {
-        expect(timelineRange({ open: '09:00', close: '21:00' }, [])).toEqual({ from: 480, to: 1320 })
+    it('gives three hours either side of the store hours by default', () => {
+        expect(timelineRange({ open: '09:00', close: '21:00' }, [])).toEqual({ from: 360, to: 1440 })
+    })
+
+    it('takes however much either side it is told to', () => {
+        expect(timelineRange({ open: '09:00', close: '21:00' }, [], { before: 1, after: 1 }))
+            .toEqual({ from: 480, to: 1320 })
+        expect(timelineRange({ open: '09:00', close: '18:00' }, [], { before: 0, after: 0 }))
+            .toEqual({ from: 540, to: 1080 })
     })
 
     it('falls back to a sensible day when there are no hours', () => {
@@ -414,13 +421,14 @@ describe('timelineRange', () => {
     })
 
     it('widens for a shift that starts before the window', () => {
-        const early = [{ starts_at: '06:30', ends_at: '12:00' }]
-        expect(timelineRange({ open: '09:00', close: '21:00' }, early).from).toBe(360)
+        const early = [{ starts_at: '04:30', ends_at: '12:00' }]
+        expect(timelineRange({ open: '09:00', close: '21:00' }, early).from).toBe(240)
     })
 
     it('widens for a shift that runs past the window', () => {
         const late = [{ starts_at: '18:00', ends_at: '23:30' }]
-        expect(timelineRange({ open: '09:00', close: '21:00' }, late).to).toBe(1440)
+        expect(timelineRange({ open: '09:00', close: '18:00' }, late, { before: 1, after: 1 }).to)
+            .toBe(1440)
     })
 
     it('never runs off either end of the day', () => {
