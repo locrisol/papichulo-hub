@@ -17,6 +17,7 @@ import {
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
 import PositionsModal from '../../components/PositionsModal'
+import CalendarLinkDialog from '../../components/CalendarLinkDialog'
 
 // Who works here.
 //
@@ -50,6 +51,7 @@ export default function EmployeesPage() {
     const [editing, setEditing] = useState(null)
     const [showPositions, setShowPositions] = useState(false)
     const [showPast, setShowPast] = useState(false)
+    const [calendarFor, setCalendarFor] = useState(null)
     const [form, setForm] = useState(EMPTY)
 
     const today = todayISO()
@@ -339,6 +341,13 @@ export default function EmployeesPage() {
                                                 >
                                                     Edit
                                                 </button>
+                                                <button
+                                                    onClick={() => setCalendarFor(employee)}
+                                                    className={`ml-3 ${employee.calendar_token ? 'text-gray-500' : 'text-gray-400'} hover:text-gray-800`}
+                                                    title="A link they can subscribe their phone's calendar to"
+                                                >
+                                                    Calendar
+                                                </button>
                                                 {!employee.ended_on && (
                                                     <button
                                                         onClick={() => recordLastDay(employee)}
@@ -388,6 +397,14 @@ export default function EmployeesPage() {
                         editingId={editing?.id}
                     />
                 </Modal>
+            )}
+
+            {calendarFor && (
+                <CalendarLinkDialog
+                    employee={calendarFor}
+                    onClose={() => setCalendarFor(null)}
+                    onChanged={() => load({ quiet: true })}
+                />
             )}
 
             {showPositions && (
