@@ -1,0 +1,386 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
+import { useRestaurant } from '../../context/RestaurantContext'
+import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmContext'
+import { friendlyError } from '../../lib/errors'
+import { todayISO, fullDate } from '../../lib/dates'
+import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow } from '../../lib/controlStyles'
+import {
+    sortEmployees,
+    nextSortOrder,
+    moveEmployee,
+    employeeStatus,
+    employeeProblem,
+    NO_COLOUR,
+} from '../../lib/team'
+import Modal from '../../components/Modal'
+import EmployeeForm from '../../components/EmployeeForm'
+import PositionsModal from '../../components/PositionsModal'
+
+// Who works here.
+//
+// The first piece of rostering, and on its own it is just a list. It is worth
+// having on its own anyway: it is the first time the app has known who works at
+// a restaurant rather than only who has an account, and those are not the same
+// people. Half the staff never log in and two of them are on trial.
+//
+// Nothing here deletes. Somebody leaving gets a last day, and every question
+// answers itself from that date: off the rosters after it, still on the ones
+// before it. A list with a delete button on it loses last March.
+const EMPTY = {
+    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+}
+
+export default function EmployeesPage() {
+    const { activeRestaurant } = useRestaurant()
+    const { user } = useAuth()
+    const confirm = useConfirm()
+
+    const [employees, setEmployees] = useState([])
+    const [positions, setPositions] = useState([])
+    const [users, setUsers] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
+
+    const [adding, setAdding] = useState(false)
+    const [editing, setEditing] = useState(null)
+    const [showPositions, setShowPositions] = useState(false)
+    const [showPast, setShowPast] = useState(false)
+    const [form, setForm] = useState(EMPTY)
+
+    const today = todayISO()
+    const restaurantId = activeRestaurant?.id
+
+    // No setLoading here for the no-restaurant case. The page returns before it
+    // ever reads loading, and setting state straight out of an effect is the one
+    // lint rule this project has been careful not to add to.
+    useEffect(() => {
+        if (!restaurantId) return
+        load()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [restaurantId])
+
+    async function load() {
+        setLoading(true)
+        setError('')
+
+        const [empRes, posRes, userRes] = await Promise.all([
+            supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
+            supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
+            supabase.from('users').select('id, full_name, role').eq('is_active', true).order('full_name'),
+        ])
+
+        if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
+
+        setEmployees(empRes.data || [])
+        setPositions(posRes.data || [])
+        setUsers(userRes.data || [])
+        setLoading(false)
+    }
+
+    const change = (field, value) => setForm(f => ({ ...f, [field]: value }))
+    const problem = employeeProblem(form)
+
+    function openAdd() {
+        setForm(EMPTY)
+        setAdding(true)
+    }
+
+    function openEdit(employee) {
+        setForm({
+            fullName: employee.full_name || '',
+            positionId: employee.position_id || '',
+            hourlyRate: employee.hourly_rate == null ? '' : String(employee.hourly_rate),
+            startedOn: employee.started_on || '',
+            endedOn: employee.ended_on || '',
+            userId: employee.user_id || '',
+            notes: employee.notes || '',
+        })
+        setEditing(employee)
+    }
+
+    // Empty boxes are stored as nothing rather than as a nought or an empty
+    // string. A date the database can read as a date is the whole point of
+    // ended_on, and '' is not one.
+    function toRow() {
+        return {
+            full_name: form.fullName.trim(),
+            position_id: form.positionId || null,
+            hourly_rate: form.hourlyRate === '' ? null : Number(form.hourlyRate),
+            started_on: form.startedOn || null,
+            ended_on: form.endedOn || null,
+            user_id: form.userId || null,
+            notes: form.notes.trim() || null,
+        }
+    }
+
+    async function save(e) {
+        e.preventDefault()
+        if (problem) return
+        setSaving(true)
+        setError('')
+
+        const { error: err } = editing
+            ? await supabase.from('employees').update(toRow()).eq('id', editing.id)
+            : await supabase.from('employees').insert({
+                ...toRow(),
+                restaurant_id: restaurantId,
+                sort_order: nextSortOrder(employees),
+                created_by: user?.id,
+            })
+
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+
+        setAdding(false)
+        setEditing(null)
+        load()
+    }
+
+    // Moving somebody writes the two rows that swapped, not the whole list.
+    async function move(id, direction) {
+        const changes = moveEmployee(shown, id, direction)
+        if (changes.length === 0) return
+
+        // Moved on screen first so the list does not sit still while two round
+        // trips happen. If either fails, reloading puts it back.
+        setEmployees(prev => prev.map(emp => {
+            const change = changes.find(c => c.id === emp.id)
+            return change ? { ...emp, sort_order: change.sort_order } : emp
+        }))
+
+        const results = await Promise.all(
+            changes.map(c => supabase.from('employees').update({ sort_order: c.sort_order }).eq('id', c.id)),
+        )
+        const failed = results.find(r => r.error)
+        if (failed) { setError(friendlyError(failed.error)); load() }
+    }
+
+    // There is no delete. This sets the last day, which is the only thing that
+    // should ever happen to somebody who leaves.
+    async function recordLastDay(employee) {
+        const ok = await confirm({
+            title: `Record a last day for ${employee.full_name}?`,
+            message: 'They stay on every roster they have already worked. Set the date on their record, and they drop off the ones after it.',
+            confirmLabel: 'Open their record',
+        })
+        if (ok) openEdit(employee)
+    }
+
+    const sorted = sortEmployees(employees)
+    const current = sorted.filter(e => employeeStatus(e, today).state !== 'left')
+    const past = sorted.filter(e => employeeStatus(e, today).state === 'left')
+    const shown = showPast ? sorted : current
+
+    const positionOf = id => positions.find(p => p.id === id)
+    const userOf = id => users.find(u => u.id === id)
+
+    const statusPill = employee => {
+        const s = employeeStatus(employee, today)
+        const tone = {
+            working: 'bg-green-50 text-green-700',
+            starting: 'bg-blue-50 text-blue-700',
+            leaving: 'bg-amber-50 text-amber-700',
+            left: 'bg-gray-100 text-gray-600',
+        }[s.state]
+        return (
+            <span className={`${badge} ${tone}`}>
+                {s.label}{s.date ? ` ${fullDate(s.date)}` : ''}
+            </span>
+        )
+    }
+
+    if (!restaurantId) {
+        return <p className="text-sm text-gray-400">Pick a restaurant first.</p>
+    }
+
+    return (
+        <div className="w-full">
+            <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                    <h2 className="font-serif text-2xl font-bold text-gray-900">Team</h2>
+                    <p className="text-sm text-muted mt-1">
+                        Everyone who works at {activeRestaurant?.name}, whether or not they log in.
+                    </p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setShowPositions(true)} className={secondaryButton}>
+                        Positions
+                    </button>
+                    <button
+                        onClick={openAdd}
+                        className="px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 transition-colors whitespace-nowrap"
+                    >
+                        Add someone
+                    </button>
+                </div>
+            </div>
+
+            {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+
+            {loading ? (
+                <p className="text-sm text-gray-400">Loading...</p>
+            ) : sorted.length === 0 ? (
+                <div className={`${cardEdge} bg-white overflow-hidden`}>
+                    <div className={cardHeader}>Nobody yet</div>
+                    <div className="p-8 text-center">
+                        <p className="text-sm text-muted max-w-sm mx-auto">
+                            Add the people who work here. They do not need an account, and somebody on
+                            a trial should go in the same as anybody else.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div className={tableCard}>
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className={tableHeadRow}>
+                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider w-16">Order</th>
+                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Name</th>
+                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Position</th>
+                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Status</th>
+                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Account</th>
+                                    <th className="px-3 py-3 text-right text-xs uppercase tracking-wider">Per hour</th>
+                                    <th className="px-3 py-3 text-right text-xs uppercase tracking-wider"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {shown.map((employee, i) => {
+                                    const position = positionOf(employee.position_id)
+                                    const account = userOf(employee.user_id)
+                                    const gone = employeeStatus(employee, today).state === 'left'
+                                    return (
+                                        <tr
+                                            key={employee.id}
+                                            className={`border-b border-border last:border-b-0 ${gone ? 'bg-gray-50' : ''}`}
+                                        >
+                                            {/* Up and down rather than dragging. Dragging a
+                                                row on a phone means holding still on a thing
+                                                that scrolls, and this list gets arranged
+                                                once and then left alone. */}
+                                            <td className="px-3 py-2">
+                                                <div className="flex gap-0.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => move(employee.id, 'up')}
+                                                        disabled={i === 0}
+                                                        aria-label={`Move ${employee.full_name} up`}
+                                                        className="px-1.5 py-0.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-25"
+                                                    >
+                                                        ↑
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => move(employee.id, 'down')}
+                                                        disabled={i === shown.length - 1}
+                                                        aria-label={`Move ${employee.full_name} down`}
+                                                        className="px-1.5 py-0.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-25"
+                                                    >
+                                                        ↓
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <span className={`font-medium ${gone ? 'text-gray-500' : 'text-gray-900'}`}>
+                                                    {employee.full_name}
+                                                </span>
+                                                {employee.notes && (
+                                                    <span className="block text-xs text-gray-400">{employee.notes}</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {position ? (
+                                                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                                        <span
+                                                            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                                            style={{ backgroundColor: position.colour || NO_COLOUR }}
+                                                        />
+                                                        <span className="text-gray-700">{position.name}</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-300">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2">{statusPill(employee)}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                {account
+                                                    ? <span className="text-gray-600 capitalize">{account.role.replace('_', ' ')}</span>
+                                                    : <span className="text-gray-300">No account</span>}
+                                            </td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap text-gray-700">
+                                                {employee.hourly_rate == null
+                                                    ? <span className="text-gray-300">—</span>
+                                                    : `€${Number(employee.hourly_rate).toFixed(2)}`}
+                                            </td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                <button
+                                                    onClick={() => openEdit(employee)}
+                                                    className="text-blue-600 hover:text-blue-800 font-medium"
+                                                >
+                                                    Edit
+                                                </button>
+                                                {!employee.ended_on && (
+                                                    <button
+                                                        onClick={() => recordLastDay(employee)}
+                                                        className="ml-3 text-gray-500 hover:text-gray-800"
+                                                    >
+                                                        Leaving
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {past.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setShowPast(p => !p)}
+                            className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                            {showPast
+                                ? 'Hide people who have left'
+                                : `Show ${past.length} ${past.length === 1 ? 'person who has' : 'people who have'} left`}
+                        </button>
+                    )}
+                </>
+            )}
+
+            {(adding || editing) && (
+                <Modal
+                    title={editing ? editing.full_name : 'Add someone'}
+                    onClose={() => { setAdding(false); setEditing(null) }}
+                >
+                    <EmployeeForm
+                        formData={form}
+                        onChange={change}
+                        onSubmit={save}
+                        onCancel={() => { setAdding(false); setEditing(null) }}
+                        submitLabel={editing ? 'Save' : 'Add them'}
+                        saving={saving}
+                        problem={problem}
+                        positions={positions.filter(p => p.is_active || p.id === form.positionId)}
+                        users={users}
+                        employees={employees}
+                        editingId={editing?.id}
+                    />
+                </Modal>
+            )}
+
+            {showPositions && (
+                <PositionsModal
+                    positions={positions}
+                    restaurantId={restaurantId}
+                    onClose={() => setShowPositions(false)}
+                    onChanged={load}
+                />
+            )}
+        </div>
+    )
+}

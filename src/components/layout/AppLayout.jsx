@@ -45,6 +45,8 @@ const navItems = [
     // concert night are the ones who most need to know it is happening.
     { path: '/forecast', label: 'Events', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES, needsForecasting: true },
 
+    { path: '/team', label: 'Team', icon: 'users', section: 'People', roles: MANAGERS },
+
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: MANAGERS },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 ]

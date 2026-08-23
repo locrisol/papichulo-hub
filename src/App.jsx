@@ -46,6 +46,7 @@ import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
+import EmployeesPage from './pages/team/EmployeesPage'
 
 export default function App() {
   return (
@@ -99,6 +100,11 @@ export default function App() {
                 <Route path="/inventory/public-allergens" element={<RequireRole allowed={MANAGERS}><PublicAllergensPreviewPage /></RequireRole>} />
 
                 <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
+
+                {/* The people who work here. Managers and above, and nothing
+                    below that: the row carries what somebody costs per hour, and
+                    the database refuses the whole table to anyone else. */}
+                <Route path="/team" element={<RequireRole allowed={MANAGERS}><EmployeesPage /></RequireRole>} />
 
                 {/* Settings. Restaurant configuration excludes owners. */}
                 <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
