@@ -30,7 +30,12 @@ export default function RosterWeek({
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const positionOf = id => (positions || []).find(p => p.id === id)
 
-    const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-top'
+    // Down the middle, not up at the top.
+    //
+    // A row is as tall as its tallest cell, so a day with two shifts in it or a
+    // long event name made every other cell on that row sit high with a gap
+    // under it. The week reads as rows and the rows were not lining up.
+    const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-middle'
     // The same hatch the day timeline uses for the hours somebody cannot work.
     // Here it can only say the whole day, since this view has no hours in it.
     const awayHatch =
@@ -138,7 +143,7 @@ export default function RosterWeek({
                         const hasAlerts = mineAlerts.length > 0
                         return [
                             <tr key={row.employee.id} className="border-b border-border">
-                                <td className="px-3 py-1.5 border-r border-border sticky left-0 bg-white">
+                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 bg-white">
                                     <span className="flex items-center gap-2">
                                         <span
                                             className="w-1 h-6 rounded-full flex-shrink-0"
@@ -241,7 +246,7 @@ export default function RosterWeek({
                                         </td>
                                     )
                                 })}
-                                <td className="px-2 py-1.5 text-center font-semibold text-gray-900 border-l border-border whitespace-nowrap">
+                                <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">
                                     {fmtHours(row.hours)}
                                 </td>
                             </tr>,
@@ -251,7 +256,7 @@ export default function RosterWeek({
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
-                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 text-center text-[10px] text-red-600 leading-tight">
+                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[10px] text-red-600 leading-tight">
                                         {day.shifts.length === 0 ? '' : day.shifts.map(s => (
                                             <span key={s.id} className="block">
                                                 {breakLabel(s.break_minutes)}
