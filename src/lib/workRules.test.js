@@ -242,4 +242,50 @@ describe('checkWeek', () => {
     it('says nothing at all about somebody with no shifts', () => {
         expect(run([], [person({ work_permission: 'stamp2a' })])).toEqual([])
     })
+
+    // Availability. On by default, which is only safe because it can never say
+    // anything about somebody who has none recorded, and nobody has until they
+    // are typed in.
+    it('leaves everybody alone until availability is typed in', () => {
+        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[1], '09:00', '17:00')]
+        expect(run(shifts, [person()])).toEqual([])
+    })
+
+    it('says so when somebody is on a day they said they cannot work', () => {
+        const off = person({ availability: { 0: [] } })
+        const found = run([shift(WEEK[0], '09:00', '17:00')], [off])
+        const said = found.find(f => f.kind === 'availabilityDay')
+        expect(said.level).toBe('warn')
+        expect(said.text).toContain('Sunday')
+    })
+
+    it('says nothing about the days that record says nothing about', () => {
+        const off = person({ availability: { 0: [] } })
+        expect(run([shift(WEEK[1], '09:00', '17:00')], [off])).toEqual([])
+    })
+
+    it('says so when a shift runs outside the hours they can work', () => {
+        const student = person({ availability: { 1: [['17:00', '23:00']] } })
+        const found = run([shift(WEEK[1], '09:00', '17:00')], [student])
+        const said = found.find(f => f.kind === 'availabilityTime')
+        expect(said.level).toBe('warn')
+        expect(said.text).toContain('17:00 to 23:00')
+    })
+
+    it('is happy with a shift inside them', () => {
+        const student = person({ availability: { 1: [['17:00', '23:00']] } })
+        expect(run([shift(WEEK[1], '18:00', '22:00')], [student])).toEqual([])
+    })
+
+    it('never holds a week back over availability', () => {
+        const off = person({ availability: { 0: [], 1: [] } })
+        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[1], '09:00', '17:00')]
+        expect(run(shifts, [off]).every(f => f.level === 'warn')).toBe(true)
+    })
+
+    it('goes quiet when the rule is turned off', () => {
+        const off = person({ availability: { 0: [] } })
+        const found = run([shift(WEEK[0], '09:00', '17:00')], [off], { availability: { on: false } })
+        expect(found).toEqual([])
+    })
 })

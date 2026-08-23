@@ -15,7 +15,8 @@
 // current guidance. They are here as settings rather than as constants for
 // exactly that reason.
 
-import { shiftHours, shiftMinutes, toMinutes } from './roster'
+import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
+import { outsideAvailability, windowsLabel, dayNameOf } from './availability'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -45,6 +46,10 @@ export const DEFAULT_RULES = {
     daysOff: { on: false, count: 2 },
     maxWeek: { on: false, hours: 48, lookbackWeeks: 17 },
     underAge: { on: true },
+    // On from the start, unlike the rest of the warnings, because it can
+    // only ever fire about somebody whose availability has actually been
+    // typed in. A restaurant that never fills any in never hears from it.
+    availability: { on: true },
     // blocks says whether going over somebody's permitted hours holds the week
     // back or only says so. It holds by default, because going over is the
     // company's offence rather than the person's. Turning it down to a warning
@@ -256,6 +261,27 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
                 const gap = shortestGap(mine, weekDates)
                 if (gap.hours < 12) {
                     add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, against 12.`)
+                }
+            }
+        }
+
+        // What they said they can work.
+        //
+        // A warning and never a block. It is a promise to the person rather
+        // than the law about the company, and a manager who knows the college
+        // timetable changed this term should be able to roster straight over it
+        // and be told once.
+        if (settings.availability?.on) {
+            for (const s of mine) {
+                const outside = outsideAvailability(employee.availability, s)
+                if (!outside) continue
+
+                if (outside.kind === 'day') {
+                    add('warn', 'availabilityDay',
+                        `${name} is rostered on ${s.shift_date}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
+                } else {
+                    add('warn', 'availabilityTime',
+                        `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${s.shift_date} and can work ${windowsLabel(outside.windows)}.`)
                 }
             }
         }
