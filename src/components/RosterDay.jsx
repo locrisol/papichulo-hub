@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
@@ -84,6 +84,7 @@ export default function RosterDay({
     function beginDrag(employeeId, index, e) {
         // Only a mouse drags. A finger presses and releases, and that is a tap.
         if (e.pointerType !== 'mouse') return
+        if (resizeRef.current) return
         setDrag({ employeeId, from: index, to: index })
     }
 
@@ -92,6 +93,17 @@ export default function RosterDay({
     }
 
     function endPress(employeeId, index) {
+        // Letting go of a resize almost always happens over a slot rather than
+        // over the shift, because the block has just moved out from under the
+        // pointer. Without this the slot takes the release as a press of its
+        // own and opens the dialog to add a new shift, which is what was
+        // happening every time an end was dragged.
+        //
+        // The slot's own handler runs before the one on the window that ends the
+        // resize, so this reads the ref set when the resize began rather than a
+        // flag set when it finished.
+        if (resizeRef.current) return
+
         const dragging = drag?.employeeId === employeeId && drag.from !== drag.to
         setDrag(null)
 
@@ -430,8 +442,33 @@ export default function RosterDay({
                                             ? { ...shift, starts_at: toTime(live.from), ends_at: toTime(live.to) }
                                             : shift
                                         return (
+                                            <Fragment key={shift.id}>
+                                            {/* The two handles are siblings of
+                                                the block rather than children
+                                                of it, which is the only way to
+                                                keep a drag from ending as a
+                                                click on it.
+
+                                                A click is dispatched on the
+                                                nearest common ancestor of where
+                                                the pointer went down and where
+                                                it came up. Inside the block that
+                                                ancestor was the block. Outside
+                                                it, it is the row, which has
+                                                nothing listening. */}
+                                            <span
+                                                onPointerDown={e => beginResize(shift, 'start', e)}
+                                                style={{ left: `${pct(start)}%` }}
+                                                className="absolute top-2 bottom-2 w-2 z-10 cursor-ew-resize rounded-l-md hover:bg-black/10"
+                                                aria-hidden="true"
+                                            />
+                                            <span
+                                                onPointerDown={e => beginResize(shift, 'end', e)}
+                                                style={{ left: `calc(${pct(start + length)}% - 0.5rem)` }}
+                                                className="absolute top-2 bottom-2 w-2 z-10 cursor-ew-resize rounded-r-md hover:bg-black/10"
+                                                aria-hidden="true"
+                                            />
                                             <button
-                                                key={shift.id}
                                                 type="button"
                                                 onClick={() => {
                                                     if (justResized.current) return
@@ -461,24 +498,8 @@ export default function RosterDay({
                                                         live ? breakFor(shiftHours(preview), breakRules) : shift.break_minutes,
                                                     )}
                                                 </span>
-
-                                                {/* A handle at each end. Eight
-                                                    pixels, which is enough to
-                                                    grab and small enough that
-                                                    the middle of the block is
-                                                    still the thing you click to
-                                                    open it. */}
-                                                <span
-                                                    onPointerDown={e => beginResize(shift, 'start', e)}
-                                                    onClick={e => e.stopPropagation()}
-                                                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-l-md"
-                                                />
-                                                <span
-                                                    onPointerDown={e => beginResize(shift, 'end', e)}
-                                                    onClick={e => e.stopPropagation()}
-                                                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-r-md"
-                                                />
                                             </button>
+                                            </Fragment>
                                         )
                                     })}
                                 </div>
