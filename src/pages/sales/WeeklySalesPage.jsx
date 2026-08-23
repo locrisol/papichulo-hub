@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
@@ -94,6 +95,8 @@ export default function WeeklySalesPage() {
 
     // Working copy of the week, keyed by date.
     const [days, setDays] = useState({})
+    // The roster's word on these seven days, which decides which are closed.
+    const [dayNotes, setDayNotes] = useState([])
 
     // Which restaurant and week `days` currently holds. Guards against reloading
     // (and so discarding unsaved edits) when nothing has actually changed.
@@ -182,6 +185,17 @@ export default function WeeklySalesPage() {
         const byDate = {}
         for (const r of recs || []) byDate[r.sale_date] = r
 
+        // What the roster says about these days. It decides which are closed.
+        const { data: notes } = await supabase
+            .from('day_notes')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .gte('note_date', dates[0]).lte('note_date', dates[6])
+
+        const noteByDate = {}
+        for (const n of notes || []) noteByDate[n.note_date] = n
+        setDayNotes(notes || [])
+
         const next = {}
         for (const d of dates) {
             const r = byDate[d]
@@ -191,7 +205,7 @@ export default function WeeklySalesPage() {
             }
             next[d] = {
                 id: r?.id ?? null,
-                isClosed: r?.is_closed ?? false,
+                isClosed: dayIsClosed(noteByDate[d], r),
                 gross: r?.gross_sales != null ? String(r.gross_sales) : '',
                 net: r?.net_sales != null ? String(r.net_sales) : '',
                 staffFood: r?.staff_food != null ? String(r.staff_food) : '',
@@ -458,6 +472,13 @@ export default function WeeklySalesPage() {
             else toInsert.push(payload)
         }
 
+        // The roster's days, told once for the whole week. Ticking a day closed
+        // here used to leave the roster still printing hours for it.
+        const notePlan = planNoteWrites(dayNotes, dates.map(d => ({
+            date: d,
+            closed: !!days[d]?.isClosed,
+        })))
+
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('sales_records').insert(toInsert)
             if (e1) {
@@ -483,6 +504,11 @@ export default function WeeklySalesPage() {
         } catch {
             // Failing to clear a draft is harmless.
         }
+
+        const noteErr = await applyNoteWrites(supabase, {
+            restaurantId, userId: user.id, plan: notePlan,
+        })
+        if (noteErr) { setSaving(false); setError(friendlyError(noteErr)); return }
 
         setSaving(false)
         setDirty(false)
