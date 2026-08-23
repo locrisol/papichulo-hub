@@ -279,3 +279,37 @@ export function timelineRange(dayHours, shifts, padding) {
     if (to <= from) to = Math.min(1440, from + 60)
     return { from, to }
 }
+
+// The week as a grid: one row per person, one cell per day.
+//
+// Shaped here rather than in the markup because the same shape feeds four
+// different things. The screen draws it, and so do the image, the PDF and the
+// spreadsheet, and four of them working it out separately is four chances for
+// the printed copy to disagree with the screen.
+export function weekRows(employees, shifts, dates) {
+    return (employees || []).map(employee => {
+        const days = (dates || []).map(date => {
+            const mine = (shifts || []).filter(
+                s => s.employee_id === employee.id && s.shift_date === date,
+            ).sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
+            return {
+                date,
+                shifts: mine,
+                hours: mine.reduce((t, s) => t + shiftHours(s), 0),
+            }
+        })
+        return {
+            employee,
+            days,
+            hours: days.reduce((t, d) => t + d.hours, 0),
+        }
+    })
+}
+
+// What each day of the week comes to, for the row along the bottom.
+export function dayTotals(shifts, dates, employeesById) {
+    return (dates || []).map(date => ({
+        date,
+        ...totals((shifts || []).filter(s => s.shift_date === date), employeesById),
+    }))
+}

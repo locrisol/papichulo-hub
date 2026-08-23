@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, DEFAULT_BREAK_RULES,
+    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, DEFAULT_BREAK_RULES,
 } from './roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -435,5 +435,48 @@ describe('timelineRange', () => {
         const r = timelineRange({ open: '00:00', close: '23:59' }, [])
         expect(r.from).toBe(0)
         expect(r.to).toBe(1440)
+    })
+})
+
+describe('weekRows and dayTotals', () => {
+    const WEEK = ['2026-08-23', '2026-08-24', '2026-08-25']
+    const people = [{ id: 'e1', full_name: 'Ana' }, { id: 'e2', full_name: 'Bea' }]
+    const week = [
+        { ...shift('09:00', '17:00'), shift_date: WEEK[0] },
+        { ...shift('18:00', '21:00'), shift_date: WEEK[0] },
+        { ...shift('09:00', '13:00'), shift_date: WEEK[1], employee_id: 'e2' },
+    ]
+
+    it('gives every person a cell for every day, empty or not', () => {
+        const rows = weekRows(people, week, WEEK)
+        expect(rows).toHaveLength(2)
+        expect(rows[0].days).toHaveLength(3)
+        expect(rows[0].days[2].shifts).toEqual([])
+    })
+
+    it('adds a person up across the week', () => {
+        const rows = weekRows(people, week, WEEK)
+        expect(rows[0].hours).toBe(11)
+        expect(rows[1].hours).toBe(4)
+    })
+
+    it('puts two shifts on one day in order', () => {
+        const rows = weekRows(people, [week[1], week[0]], WEEK)
+        expect(rows[0].days[0].shifts.map(s => s.starts_at)).toEqual(['09:00', '18:00'])
+    })
+
+    it('adds each day up across everybody', () => {
+        const by = { e1: { hourly_rate: 10 }, e2: { hourly_rate: 20 } }
+        const out = dayTotals(week, WEEK, by)
+        expect(out[0].hours).toBe(11)
+        expect(out[0].cost).toBe(110)
+        expect(out[1].hours).toBe(4)
+        expect(out[1].cost).toBe(80)
+        expect(out[2].hours).toBe(0)
+    })
+
+    it('copes with nobody and nothing', () => {
+        expect(weekRows([], [], WEEK)).toEqual([])
+        expect(weekRows(null, null, null)).toEqual([])
     })
 })

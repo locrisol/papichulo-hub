@@ -7,13 +7,17 @@ import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
 import { DAY_NAMES } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
-import { iconButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
+import { secondaryButton, iconButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
 import { checkWeek } from '../../lib/workRules'
 import RosterDay from '../../components/RosterDay'
+import RosterWeek from '../../components/RosterWeek'
+import OpeningHoursModal from '../../components/OpeningHoursModal'
+import BreakRulesModal from '../../components/BreakRulesModal'
+import RosterRulesModal from '../../components/RosterRulesModal'
 import ShiftDialog from '../../components/ShiftDialog'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
@@ -52,6 +56,8 @@ export default function RosterPage() {
     const [editingDay, setEditingDay] = useState(null)
     const [events, setEvents] = useState([])
     const [priorHours, setPriorHours] = useState({})
+    const [view, setView] = useState('day')
+    const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
     const [personForm, setPersonForm] = useState(NEW_PERSON)
 
@@ -364,6 +370,7 @@ export default function RosterPage() {
             )}
 
             {/* Day tabs. */}
+            {view === 'day' && <>
             <div className="flex gap-1 mb-4 overflow-x-auto">
                 {dates.map((d, i) => {
                     const count = shifts.filter(s => s.shift_date === d).length
@@ -427,19 +434,63 @@ export default function RosterPage() {
                     )}
                 </div>
             </div>
+            </>}
 
-            <div className="flex justify-end mb-2">
-                <button
-                    type="button"
-                    onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                    Somebody missing? Add them
-                </button>
+            {/* Day or week, and the four things you reach for while building
+                one. They were a link in the corner and three trips to the
+                settings screen, which is three trips too many when the reason
+                you want the break rules is that the roster in front of you is
+                giving somebody the wrong break. */}
+            <div className={`${cardEdge} bg-white p-2 mb-4 flex flex-wrap items-center gap-2`}>
+                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label="Roster view">
+                    {['day', 'week'].map(v => (
+                        <button
+                            key={v}
+                            type="button"
+                            onClick={() => setView(v)}
+                            aria-pressed={view === v}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize ${
+                                view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            {v}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2 ml-auto">
+                    <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
+                        Add staff
+                    </button>
+                    <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
+                        Opening hours
+                    </button>
+                    <button type="button" onClick={() => setSettingsOpen('breaks')} className={secondaryButton}>
+                        Break rules
+                    </button>
+                    <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
+                        Roster rules
+                    </button>
+                </div>
             </div>
 
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
+            ) : view === 'week' ? (
+                <RosterWeek
+                    dates={dates}
+                    employees={roster}
+                    shifts={shifts}
+                    positions={positions}
+                    dayNotes={dayNotes}
+                    events={events}
+                    openingHours={activeRestaurant?.opening_hours}
+                    today={today}
+                    onOpenShift={shift => {
+                        setDayIndex(dates.indexOf(shift.shift_date))
+                        setEditingShift({ shift })
+                    }}
+                />
             ) : (
                 <RosterDay
                     employees={roster}
@@ -489,6 +540,10 @@ export default function RosterPage() {
                     />
                 </Modal>
             )}
+
+            {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
+            {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
+            {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
 
             {editingDay && (
                 <DayNoteDialog
