@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { shareName, weekTable, weekCsv, sheetLayout } from './rosterShare'
+import { shareName, weekTable, weekCsv, sheetLayout, wrapLines } from './rosterShare'
 
 const DATES = [
     '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',
@@ -186,8 +186,20 @@ describe('sheetLayout', () => {
 
     it('leaves the name and hours columns out of the seven', () => {
         const l = sheetLayout(build(), { width: 1500, pad: 28 })
-        expect(l.columnX(0)).toBe(28 + 190)
+        expect(l.columnX(0)).toBe(28 + l.nameCol)
         expect(l.columnX(7)).toBeCloseTo(l.hoursX, 6)
+    })
+
+    it('puts the hours down the middle of their own column rather than at the edge', () => {
+        const l = sheetLayout(build(), { width: 1500, pad: 28 })
+        expect(l.hoursCentreX).toBeCloseTo(l.hoursX + l.hoursCol / 2, 6)
+    })
+
+    it('makes the events row taller when a day needs more than one line', () => {
+        const one = sheetLayout(build(), { eventLines: 1 })
+        const three = sheetLayout(build(), { eventLines: 3 })
+        expect(three.eventsH).toBeGreaterThan(one.eventsH)
+        expect(three.height - one.height).toBe(three.eventsH - one.eventsH)
     })
 
     it('grows with the number of people', () => {
@@ -206,5 +218,40 @@ describe('sheetLayout', () => {
         }))
         expect(without.messagesH).toBe(0)
         expect(with_.height).toBeGreaterThan(without.height)
+    })
+})
+
+describe('wrapLines', () => {
+    // A ruler that counts characters, so the wrapping can be tested without a
+    // canvas or a PDF to measure with.
+    const chars = t => t.length
+
+    it('leaves something that fits on one line', () => {
+        expect(wrapLines('Westlife', 20, chars)).toEqual(['Westlife'])
+    })
+
+    it('breaks at a space rather than mid word', () => {
+        expect(wrapLines('The Rock Orchestra', 10, chars)).toEqual(['The Rock', 'Orchestra'])
+    })
+
+    it('keeps going over as many lines as it needs', () => {
+        const out = wrapLines('One Two Three Four Five Six', 9, chars)
+        expect(out).toEqual(['One Two', 'Three', 'Four Five', 'Six'])
+        expect(out.join(' ')).toBe('One Two Three Four Five Six')
+    })
+
+    it('lets a single long word overflow rather than cutting it in half', () => {
+        expect(wrapLines('Supercalifragilistic', 8, chars)).toEqual(['Supercalifragilistic'])
+    })
+
+    it('has nothing to wrap when there is nothing there', () => {
+        expect(wrapLines('', 10, chars)).toEqual([])
+        expect(wrapLines(null, 10, chars)).toEqual([])
+        expect(wrapLines('   ', 10, chars)).toEqual([])
+    })
+
+    it('loses no words on the way through', () => {
+        const text = 'Diljit Dosanjh Aura World Tour (18:30), KATSEYE (18:00)'
+        expect(wrapLines(text, 14, chars).join(' ')).toBe(text)
     })
 })

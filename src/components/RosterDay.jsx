@@ -329,7 +329,7 @@ export default function RosterDay({
                                 )
                             })}
                         </div>
-                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[10px] font-bold text-muted uppercase tracking-wider text-right">
+                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[10px] font-bold text-muted uppercase tracking-wider text-center">
                             Hours
                         </div>
                     </div>
@@ -504,7 +504,7 @@ export default function RosterDay({
                                     })}
                                 </div>
 
-                                <div className="w-20 flex-shrink-0 px-2 flex items-center justify-end border-l border-border">
+                                <div className="w-20 flex-shrink-0 px-2 flex items-center justify-center border-l border-border">
                                     <span className={`text-sm font-semibold ${dayTotal ? 'text-gray-900' : 'text-gray-300'}`}>
                                         {dayTotal ? fmtHours(dayTotal) : '—'}
                                     </span>

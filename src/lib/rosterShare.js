@@ -115,19 +115,53 @@ export function weekCsv(table) {
     return rows.join('\n')
 }
 
+// Breaking a line of text so it fits a column.
+//
+// The measuring is handed in rather than done here, because a canvas measures
+// with its own context and a PDF measures with its own, and neither belongs in
+// a file that knows nothing about either. It also means this can be tested with
+// a ruler that counts characters.
+//
+// A single word longer than the column goes on a line of its own and overflows
+// it. Breaking a word in half to fit reads worse than a name running slightly
+// wide, and an event with one word that long has never happened.
+export function wrapLines(text, maxWidth, measure) {
+    const words = String(text ?? '').split(/\s+/).filter(Boolean)
+    if (words.length === 0) return []
+
+    const lines = []
+    let line = words[0]
+    for (const word of words.slice(1)) {
+        const next = `${line} ${word}`
+        if (measure(next) <= maxWidth) line = next
+        else { lines.push(line); line = word }
+    }
+    lines.push(line)
+    return lines
+}
+
 // Where everything sits on the picture.
 //
 // Worked out rather than guessed so the same numbers can be tested and so the
 // PDF and the image agree about the shape. Everything is in points, and the
 // image multiplies them up for a screen.
-export function sheetLayout(table, { width = 1500, pad = 28 } = {}) {
-    const nameCol = 190
-    const hoursCol = 90
+//
+// The width is narrower than a screen would want on purpose. A chat app scales
+// a picture down to fit, so what decides whether the small print survives is not
+// how many pixels it has, it is how big the text is next to the whole width. A
+// wide sheet with small text loses either way.
+//
+// eventLines is how many lines the busiest day of events needs. It is measured
+// by whoever is drawing, because only they know how wide their letters are.
+export function sheetLayout(table, { width = 1180, pad = 24, eventLines = 1 } = {}) {
+    const nameCol = 160
+    const hoursCol = 78
     const dayCol = (width - pad * 2 - nameCol - hoursCol) / 7
 
-    const titleH = 64
+    const titleH = 62
     const headH = 44
-    const metaH = 34
+    const metaH = 32
+    const eventsH = Math.max(metaH, eventLines * 15 + 14)
     const shiftH = 34
     const breakH = 20
     const notesH = 28
@@ -136,14 +170,17 @@ export function sheetLayout(table, { width = 1500, pad = 28 } = {}) {
     const bodyRows = table.people.length
     const messagesH = table.messages.length ? 22 * table.messages.length + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH * 2
+    const height = pad * 2 + titleH + headH + metaH + eventsH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
 
     return {
         width, height, pad, nameCol, hoursCol, dayCol, columnX,
-        titleH, headH, metaH, shiftH, breakH, notesH, totalH, messagesH,
+        titleH, headH, metaH, eventsH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
+        // Centred, not right aligned. It is a column of figures under a heading
+        // and it reads better down the middle of its own space.
+        hoursCentreX: width - pad - hoursCol / 2,
     }
 }

@@ -54,7 +54,7 @@ export default function RosterWeek({
                                 <span className="block font-normal opacity-75">{fullDate(d)}</span>
                             </th>
                         ))}
-                        <th className="px-2 py-2 text-right text-xs w-20">Hours</th>
+                        <th className="px-2 py-2 text-center text-xs w-20">Hours</th>
                     </tr>
                 </thead>
 
@@ -103,7 +103,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-tight break-words">
+                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -172,7 +172,7 @@ export default function RosterWeek({
                                         </td>
                                     )
                                 })}
-                                <td className="px-2 py-1.5 text-right font-semibold text-gray-900 border-l border-border whitespace-nowrap">
+                                <td className="px-2 py-1.5 text-center font-semibold text-gray-900 border-l border-border whitespace-nowrap">
                                     {fmtHours(row.hours)}
                                 </td>
                             </tr>,
@@ -218,7 +218,7 @@ export default function RosterWeek({
                                 {d.hours ? fmtHours(d.hours) : '—'}
                             </td>
                         ))}
-                        <td className="px-2 py-2 text-right border-l border-white/20 whitespace-nowrap">
+                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap">
                             {fmtHours(perDay.reduce((t, d) => t + d.hours, 0))}
                         </td>
                     </tr>

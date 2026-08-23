@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import { sheetLayout, shareName } from './rosterShare'
+import { sheetLayout, shareName, wrapLines } from './rosterShare'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -17,7 +17,19 @@ export function weekPdf(table, restaurantName, weekStart) {
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()
 
-    const l = sheetLayout(table, { width: pageWidth, pad: 24 })
+    // Measured before the sheet is sized, because a day with two acts on it
+    // makes that row taller and everything below it moves down.
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    const probe = sheetLayout(table, { width: pageWidth, pad: 24 })
+    const eventLines = table.whatIsOn.map(
+        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+    )
+    const l = sheetLayout(table, {
+        width: pageWidth,
+        pad: 24,
+        eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+    })
 
     // The picture can be as tall as it likes. A page cannot, so the rows are
     // squeezed to fit rather than spilling onto a second sheet nobody prints.
@@ -55,24 +67,32 @@ export function weekPdf(table, restaurantName, weekStart) {
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
         at(head.label, x, y + h(30), { align: 'center', size: 7, rgb: [225, 230, 226] })
     })
-    at('HOURS', pageWidth - l.pad - 8, y + h(l.headH) / 2 + 3, {
-        align: 'right', size: 8, style: 'bold', rgb: [255, 255, 255],
+    at('HOURS', l.hoursCentreX, y + h(l.headH) / 2 + 3, {
+        align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255],
     })
     y += h(l.headH)
 
     // ---- the rows about the day
-    const metaRow = (label, values, rgb, ink) => {
-        box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), rgb)
-        at(label.toUpperCase(), l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: ink })
-        values.forEach((v, i) => {
-            at(v, l.columnX(i) + l.dayCol / 2, y + h(l.metaH) / 2 + 3, {
-                align: 'center', size: 7, rgb: ink, max: l.dayCol - 8,
-            })
+    box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), SLATE)
+    at('STORE HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
+    table.storeHours.forEach((v, i) => {
+        at(v, l.columnX(i) + l.dayCol / 2, y + h(l.metaH) / 2 + 3, {
+            align: 'center', size: 7, rgb: [51, 65, 85], max: l.dayCol - 8,
         })
-        y += h(l.metaH)
-    }
-    metaRow('Store hours', table.storeHours, SLATE, [51, 65, 85])
-    metaRow('What is on', table.whatIsOn, WARM, [154, 74, 38])
+    })
+    y += h(l.metaH)
+
+    // Written out in full over as many lines as it needs, rather than cut short.
+    box(l.pad, y, pageWidth - l.pad * 2, h(l.eventsH), WARM)
+    at('WHAT IS ON', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
+    eventLines.forEach((lines, i) => {
+        const x = l.columnX(i) + l.dayCol / 2
+        const top = y + h(l.eventsH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
+        lines.forEach((line, n) => {
+            at(line, x, top + n * h(9), { align: 'center', size: 7, rgb: [154, 74, 38] })
+        })
+    })
+    y += h(l.eventsH)
 
     // ---- the people
     pdf.setDrawColor(216, 211, 202)
@@ -86,8 +106,8 @@ export function weekPdf(table, restaurantName, weekStart) {
         at(person.name, l.pad + 8, y + h(l.shiftH) / 2 + 3, {
             size: 9, style: 'bold', max: l.nameCol - 16,
         })
-        at(person.hours, pageWidth - l.pad - 8, y + h(l.shiftH) / 2 + 3, {
-            align: 'right', size: 9, style: 'bold',
+        at(person.hours, l.hoursCentreX, y + h(l.shiftH) / 2 + 3, {
+            align: 'center', size: 9, style: 'bold',
         })
 
         person.days.forEach((day, i) => {
@@ -131,8 +151,8 @@ export function weekPdf(table, restaurantName, weekStart) {
             align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
         })
     })
-    at(table.totalHours, pageWidth - l.pad - 8, y + h(l.totalH) / 2 + 3, {
-        align: 'right', size: 9, style: 'bold', rgb: [255, 255, 255],
+    at(table.totalHours, l.hoursCentreX, y + h(l.totalH) / 2 + 3, {
+        align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
     })
     y += h(l.totalH)
 

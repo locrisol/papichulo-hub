@@ -8,7 +8,7 @@
 // Everything comes off weekTable, the same shape the screen reads, so the
 // picture cannot say something the roster did not.
 
-import { sheetLayout } from './rosterShare'
+import { sheetLayout, wrapLines } from './rosterShare'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -19,22 +19,41 @@ const WARM = '#f0e8e0'
 const SLATE = '#e8ecef'
 const RED = '#b91c1c'
 
-// Two device pixels for one point, so it is sharp on a phone. Any more and the
-// file gets big enough that WhatsApp recompresses it and the small print goes.
-const SCALE = 2
+// Three device pixels to the point.
+//
+// Two was not enough. A chat app resizes what it is given, so the picture that
+// arrives is always smaller than the one that was sent, and starting with more
+// is the only part of that we control.
+//
+// The other half is the sheet being narrower than a screen would want, which is
+// in the layout: what decides whether the small print survives a resize is not
+// the pixel count, it is how big the text is next to the whole width.
+const SCALE = 3
+
+const FONT = (size, weight = '400') =>
+    `${weight} ${size}px "DM Sans", system-ui, -apple-system, sans-serif`
 
 export function drawWeek(canvas, table) {
-    const l = sheetLayout(table)
+    const c = canvas.getContext('2d')
+
+    // The events have to be measured before the sheet can be sized, because a
+    // day with two acts on it makes that row taller and everything below it
+    // moves down.
+    const probe = sheetLayout(table)
+    c.font = FONT(12)
+    const eventLines = table.whatIsOn.map(
+        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
+    )
+    const l = sheetLayout(table, {
+        eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+    })
+
     canvas.width = l.width * SCALE
     canvas.height = l.height * SCALE
-
-    const c = canvas.getContext('2d')
     c.scale(SCALE, SCALE)
     c.textBaseline = 'middle'
 
-    const font = (size, weight = '400') => {
-        c.font = `${weight} ${size}px "DM Sans", system-ui, sans-serif`
-    }
+    const font = (size, weight = '400') => { c.font = FONT(size, weight) }
     const box = (x, y, w, h, fill) => { c.fillStyle = fill; c.fillRect(x, y, w, h) }
     const rule = (x1, y1, x2, y2, colour = RULE) => {
         c.strokeStyle = colour
@@ -45,8 +64,6 @@ export function drawWeek(canvas, table) {
         c.stroke()
     }
 
-    // Anything too long for its column is cut with an ellipsis rather than
-    // running into the next one, which is what a name like a support act does.
     const text = (value, x, y, { align = 'left', colour = INK, max = null } = {}) => {
         c.fillStyle = colour
         c.textAlign = align
@@ -80,25 +97,36 @@ export function drawWeek(canvas, table) {
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
     })
     font(13, '700')
-    text('HOURS', l.width - l.pad - 12, y + l.headH / 2, { align: 'right', colour: '#ffffff' })
+    text('HOURS', l.hoursCentreX, y + l.headH / 2, { align: 'center', colour: '#ffffff' })
     y += l.headH
 
-    // ---- the two rows about the day
-    const metaRow = (label, values, fill, colour) => {
-        box(l.pad, y, l.width - l.pad * 2, l.metaH, fill)
-        font(11, '700')
-        text(label.toUpperCase(), l.pad + 12, y + l.metaH / 2, { colour })
-        font(12)
-        values.forEach((v, i) => {
-            text(v, l.columnX(i) + l.dayCol / 2, y + l.metaH / 2, {
-                align: 'center', colour, max: l.dayCol - 10,
-            })
+    // ---- the store's own hours
+    box(l.pad, y, l.width - l.pad * 2, l.metaH, SLATE)
+    font(11, '700')
+    text('STORE HOURS', l.pad + 12, y + l.metaH / 2, { colour: '#334155' })
+    font(12)
+    table.storeHours.forEach((v, i) => {
+        text(v, l.columnX(i) + l.dayCol / 2, y + l.metaH / 2, {
+            align: 'center', colour: '#334155', max: l.dayCol - 10,
         })
-        rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH)
-        y += l.metaH
-    }
-    metaRow('Store hours', table.storeHours, SLATE, '#334155')
-    metaRow('What is on', table.whatIsOn, WARM, '#9a4a26')
+    })
+    rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH)
+    y += l.metaH
+
+    // ---- what is on, written out in full rather than cut short
+    box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
+    font(11, '700')
+    text('WHAT IS ON', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
+    font(12)
+    eventLines.forEach((lines, i) => {
+        const x = l.columnX(i) + l.dayCol / 2
+        const top = y + l.eventsH / 2 - ((lines.length - 1) * 15) / 2
+        lines.forEach((line, n) => {
+            text(line, x, top + n * 15, { align: 'center', colour: '#9a4a26' })
+        })
+    })
+    rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH)
+    y += l.eventsH
 
     // ---- the people
     table.people.forEach((person, row) => {
@@ -107,8 +135,7 @@ export function drawWeek(canvas, table) {
 
         font(14, '700')
         text(person.name, l.pad + 12, y + l.shiftH / 2, { max: l.nameCol - 20 })
-        font(14, '700')
-        text(person.hours, l.width - l.pad - 12, y + l.shiftH / 2, { align: 'right' })
+        text(person.hours, l.hoursCentreX, y + l.shiftH / 2, { align: 'center' })
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
@@ -128,8 +155,6 @@ export function drawWeek(canvas, table) {
 
         y += l.shiftH + l.breakH
         rule(l.pad, y, l.width - l.pad, y)
-
-        // The column lines, drawn per row so they stop at the edges of the sheet.
         for (let i = 0; i <= 7; i++) rule(l.columnX(i), top, l.columnX(i), y)
     })
 
@@ -155,7 +180,7 @@ export function drawWeek(canvas, table) {
     table.dayHours.forEach((h, i) => {
         text(h, l.columnX(i) + l.dayCol / 2, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
     })
-    text(table.totalHours, l.width - l.pad - 12, y + l.totalH / 2, { align: 'right', colour: '#ffffff' })
+    text(table.totalHours, l.hoursCentreX, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
     y += l.totalH
 
     // ---- messages
@@ -171,6 +196,10 @@ export function drawWeek(canvas, table) {
 }
 
 // The picture as a file, ready to hand to the share sheet.
+//
+// PNG rather than JPEG. A table is flat colour and sharp edges, which is what
+// PNG is for and what JPEG makes a mess of: the small red break text would come
+// out with a halo round every letter.
 export function weekImageBlob(table) {
     const canvas = document.createElement('canvas')
     drawWeek(canvas, table)
