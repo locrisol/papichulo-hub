@@ -4,6 +4,8 @@ import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { tableHeadRow } from '../lib/controlStyles'
 import Modal from './Modal'
+import { ModalSectionBar } from './ModalSection'
+import { modalFooter } from '../lib/controlStyles'
 
 // Manages the categories menu items are grouped under.
 //
@@ -204,7 +206,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
           </table>
 
           <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Add Category</h3>
+            <ModalSectionBar title="Add a category" />
             <form onSubmit={handleAdd} className="flex gap-2 items-start">
               <div className="flex-1">
                 <input
@@ -235,7 +237,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
           </div>
         </div>
 
-        <div className="px-6 py-3 border-t border-border bg-gray-50 flex justify-end">
+        <div className={modalFooter}>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"

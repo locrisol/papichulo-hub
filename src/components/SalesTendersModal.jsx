@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, card } from '../lib/controlStyles'
+import { tableHeadRow, card, modalFooter } from '../lib/controlStyles'
+import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
 // The rows on the till receipt.
@@ -313,7 +314,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
           <form onSubmit={handleAdd} className="mt-4 flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs text-gray-500 mb-1">Add a row</label>
+              <ModalSectionBar title="Add a row" />
               <input
                 type="text"
                 value={newLabel}
@@ -331,7 +332,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
           </form>
         </div>
 
-        <div className="px-6 py-4 border-t border-border flex justify-end">
+        <div className={modalFooter}>
           <button
             onClick={onClose}
             className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"

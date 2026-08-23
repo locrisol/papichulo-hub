@@ -21,11 +21,19 @@ import { modalSectionHeader } from '../lib/controlStyles'
 // The description is a prop rather than something the caller writes first,
 // because that is the bit that kept coming out in a different size and colour in
 // each dialog.
+// A heading on its own, for a dialog whose body is already one scrolling block
+// and cannot easily be cut into sections. The negative margin is what lets it
+// reach both edges from inside the padding, which is the whole point of it: a
+// bar that stops short of the edges is not a heading, it is a box.
+export function ModalSectionBar({ title, className = '' }) {
+    return <div className={`${modalSectionHeader} -mx-6 mb-4 ${className}`}>{title}</div>
+}
+
 export default function ModalSection({ title, description, children, className = '' }) {
     return (
         <div>
             {title && <div className={modalSectionHeader}>{title}</div>}
-            <div className={`px-5 py-4 ${className}`}>
+            <div className={`px-6 py-4 ${className}`}>
                 {description && (
                     <p className="text-xs text-muted mb-3 leading-relaxed">{description}</p>
                 )}

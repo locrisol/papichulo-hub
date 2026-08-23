@@ -7,6 +7,8 @@ import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { numberField } from '../lib/numberInput'
 import Modal from './Modal'
+import { ModalSectionBar } from './ModalSection'
+import { modalFooter } from '../lib/controlStyles'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -190,7 +192,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                     {/* A timeline rather than a list. A target with no end week is
                         really ended by the next one that starts, so each gets a
                         real range instead of everything saying ongoing. */}
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Target history</h3>
+                    <ModalSectionBar title="Target history" />
                     {timeline.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">
                             Nothing set yet, so the restaurant default is being used.
@@ -224,7 +226,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                     )}
                 </div>
 
-                <div className="px-6 py-3 border-t border-border bg-gray-50 flex justify-end">
+                <div className={modalFooter}>
                     <button onClick={onClose}
                         className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
                         Done

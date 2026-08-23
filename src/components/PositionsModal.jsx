@@ -5,6 +5,7 @@ import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { POSITION_COLOURS, nextColour } from '../lib/team'
 import { badge } from '../lib/controlStyles'
+import { ModalSectionBar } from './ModalSection'
 
 // The positions a restaurant uses: Kitchen, Counter, Delivery, whatever they
 // call them.
@@ -100,7 +101,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
 
     return (
         <Modal title="Positions" onClose={onClose}>
-            <div className="p-5">
+            <div className="px-6 py-4">
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
                 {positions.length === 0 ? (
@@ -172,8 +173,8 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                     </div>
                 )}
 
-                <form onSubmit={add} className="border-t border-border pt-4 space-y-3">
-                    <label className="text-xs text-gray-500 block">Add one</label>
+                <form onSubmit={add} className="space-y-3">
+                    <ModalSectionBar title="Add a position" />
                     <input
                         type="text"
                         value={name}

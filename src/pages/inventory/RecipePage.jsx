@@ -485,7 +485,7 @@ export default function RecipePage() {
           onClose={resetForm}
           width="max-w-2xl"
         >
-          <div className="p-5">
+          <div className="px-6 py-4">
             <RecipeIngredientForm
               formData={formData}
               onChange={handleFieldChange}

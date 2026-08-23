@@ -75,10 +75,10 @@ export const tableHeadCell = 'text-xs font-bold text-white uppercase tracking-wi
 // Separate from cardHeader on purpose. Cards all over the app use that one and
 // none of them should move because a dialog needed a second level.
 export const modalHeader =
-    'bg-sidebar px-5 py-3.5 text-sm font-bold text-white uppercase tracking-wider'
+    'bg-sidebar px-6 py-3.5 text-sm font-bold text-white uppercase tracking-wider'
 
 export const modalSectionHeader =
-    'bg-sidebar/10 border-y border-border px-5 py-2.5 text-xs font-bold text-sidebar uppercase tracking-wider'
+    'bg-sidebar/10 border-y border-border px-6 py-2.5 text-xs font-bold text-sidebar uppercase tracking-wider'
 
 export const cardHeader =
     'bg-sidebar px-5 py-3 text-xs font-bold text-white uppercase tracking-wider'

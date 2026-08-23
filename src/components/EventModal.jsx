@@ -49,7 +49,7 @@ export default function EventModal({ event, onClose }) {
 
     return (
         <Modal title={event.name} onClose={onClose}>
-            <div className="p-5">
+            <div className="px-6 py-4">
                 <div className="mb-4">
                     <span className={`${badge} border ${categoryStyle(event.category)}`}>
                         {event.category || 'Other'}
