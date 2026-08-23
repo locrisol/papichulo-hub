@@ -73,7 +73,7 @@ Deno.serve(async (request) => {
 
     const { data: employee } = await supabase
         .from('employees')
-        .select('id, full_name, restaurant_id, position_id')
+        .select('id, full_name, restaurant_id')
         .eq('calendar_token', token)
         .maybeSingle()
 
@@ -84,11 +84,11 @@ Deno.serve(async (request) => {
     const from = shift(-WEEKS_BACK * 7)
     const to = shift(WEEKS_FORWARD * 7)
 
-    const [restaurantRes, shiftsRes, notesRes, positionsRes] = await Promise.all([
+    const [restaurantRes, shiftsRes, notesRes] = await Promise.all([
         supabase.from('restaurants').select('name, opening_hours')
             .eq('id', employee.restaurant_id).maybeSingle(),
         supabase.from('roster_shifts')
-            .select('id, shift_date, starts_at, ends_at, note, position_id')
+            .select('id, shift_date, starts_at, ends_at, note')
             .eq('employee_id', employee.id)
             .not('published_at', 'is', null)
             .gte('shift_date', from).lte('shift_date', to)
@@ -97,25 +97,27 @@ Deno.serve(async (request) => {
             .select('note_date, opens_at, closes_at, is_closed, is_bank_holiday')
             .eq('restaurant_id', employee.restaurant_id)
             .gte('note_date', from).lte('note_date', to),
-        supabase.from('positions').select('id, name').eq('restaurant_id', employee.restaurant_id),
     ])
 
     const restaurant = restaurantRes.data
     const notes = notesRes.data || []
-    const positions = positionsRes.data || []
     const noteFor = (date: string) => notes.find(n => n.note_date === date) || null
-    const nameOf = (id: string) => positions.find(p => p.id === id)?.name || ''
 
+    // Just Work.
+    //
+    // It said Work, Manager, which is a job title somebody is reading off their
+    // own diary. They know what they do. The restaurant is on the event as its
+    // location, so a phone showing Work at Point Campus has said everything
+    // there is to say, and the positions no longer have to be fetched at all.
     const events = (shiftsRes.data || []).map(s => {
         const hours = hoursForDate(restaurant?.opening_hours, noteFor(s.shift_date), s.shift_date)
-        const position = nameOf(s.position_id || employee.position_id)
         return {
             id: s.id,
             date: s.shift_date,
             start: String(s.starts_at).slice(0, 5),
             end: String(s.ends_at).slice(0, 5),
             closesStore: closesStore(s, hours),
-            summary: position ? `Work, ${position}` : 'Work',
+            summary: 'Work',
             location: restaurant?.name || '',
             description: s.note || '',
         }
