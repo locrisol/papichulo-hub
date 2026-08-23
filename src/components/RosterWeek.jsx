@@ -2,6 +2,7 @@ import { cardEdge, tableHeadRow } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
+import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -28,6 +29,10 @@ export default function RosterWeek({
     const positionOf = id => (positions || []).find(p => p.id === id)
 
     const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-top'
+    // The same hatch the day timeline uses for the hours somebody cannot work.
+    // Here it can only say the whole day, since this view has no hours in it.
+    const awayHatch =
+        'repeating-linear-gradient(45deg, rgba(100,116,139,0.16) 0, rgba(100,116,139,0.16) 3px, transparent 3px, transparent 7px)'
     const headCell = 'px-2 py-2 text-center text-xs border-r border-white/20 last:border-r-0'
 
     return (
@@ -146,10 +151,25 @@ export default function RosterWeek({
                                 {row.days.map(day => {
                                     const note = noteFor(day.date)
                                     const hours = hoursForDate(openingHours, note, day.date)
+                                    // Only the whole day is worth marking here.
+                                    // This view has no hours in it, so a day
+                                    // somebody can work part of reads the same
+                                    // as any other and the day timeline is
+                                    // where that gets drawn.
+                                    const away = dayState(row.employee.availability, day.date)
                                     return (
-                                        <td key={day.date} className={`${cell} text-center ${
-                                            note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
-                                        }`}>
+                                        <td
+                                            key={day.date}
+                                            title={away === 'none'
+                                                ? `${row.employee.full_name} is not available this day`
+                                                : away === 'windows'
+                                                    ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
+                                                    : undefined}
+                                            style={away === 'none' ? { backgroundImage: awayHatch } : undefined}
+                                            className={`${cell} text-center ${
+                                                note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
+                                            }`}
+                                        >
                                             {day.shifts.length === 0 ? (
                                                 <button
                                                     type="button"

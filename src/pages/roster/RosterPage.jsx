@@ -556,6 +556,7 @@ export default function RosterPage() {
                     employees={roster}
                     shifts={dayShifts}
                     positions={positions}
+                    date={date}
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
                     gridHours={activeRestaurant?.roster_rules?.gridHours}

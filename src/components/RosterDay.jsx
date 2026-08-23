@@ -2,6 +2,7 @@ import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
+import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -31,10 +32,23 @@ import {
 // from the rules, which is what they would have been anyway.
 const SLOT = 30
 
+// The hours somebody said they cannot work, drawn as a hatch rather than as
+// another flat colour.
+//
+// The row already has flat shading on it for the hours the store is shut, and
+// the whole day can be red for closed or blue for a bank holiday. A fourth flat
+// tone would be a fourth thing to remember. A texture is not on that list at
+// all: it reads as "not this person" next to shading that means "not the store",
+// and it survives being printed or looked at by somebody who does not see the
+// colours the same way.
+const AWAY_HATCH =
+    'repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0, rgba(100,116,139,0.18) 3px, transparent 3px, transparent 7px)'
+
 export default function RosterDay({
     employees,
     shifts,
     positions,
+    date,
     dayHours,
     dayNote,
     events,
@@ -77,6 +91,11 @@ export default function RosterDay({
     // day would draw as nothing at all.
     const counts = staffPerSlot(shifts, from, to, SLOT)
     const busiest = Math.max(1, ...counts)
+
+    // Only worth explaining when somebody's availability is actually drawn on
+    // the day. On a day where nobody has any recorded there is nothing hatched
+    // and a note about hatching is one more line to read past.
+    const anyAway = employees.some(e => unavailableSpans(e.availability, date, from, to).length > 0)
 
     const closed = dayNote?.is_closed
     const bankHoliday = dayNote?.is_bank_holiday
@@ -345,6 +364,9 @@ export default function RosterDay({
                         const dragFrom = dragging ? Math.min(drag.from, drag.to) : -1
                         const dragTo = dragging ? Math.max(drag.from, drag.to) + 1 : -1
                         const colour = positionOf(employee.position_id)?.colour || NO_COLOUR
+                        const away = dayState(employee.availability, date)
+                        const awaySpans = unavailableSpans(employee.availability, date, from, to)
+                        const canWork = windowsFor(employee.availability, date)
 
                         return (
                             <div
@@ -363,7 +385,9 @@ export default function RosterDay({
                                             {employee.full_name}
                                         </span>
                                         <span className="block text-[10px] text-muted truncate">
-                                            {positionOf(employee.position_id)?.name || 'No position'}
+                                            {away === 'none'
+                                                ? 'Not available today'
+                                                : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                 </div>
@@ -424,6 +448,28 @@ export default function RosterDay({
                                             style={{ left: `${pct(toMinutes(dayHours.close))}%`, width: '2px', marginLeft: '-1px' }}
                                         />
                                     </>}
+
+                                    {/* The hours this person said they cannot
+                                        work. Over the slots so it is visible
+                                        before anything is put in, under the
+                                        shifts so a shift rostered anyway is
+                                        still perfectly readable, and not
+                                        pressable, so the row still takes a drag
+                                        straight through it. */}
+                                    {awaySpans.map(([spanFrom, spanTo]) => (
+                                        <span
+                                            key={spanFrom}
+                                            title={away === 'none'
+                                                ? `${employee.full_name} is not available today`
+                                                : `${employee.full_name} can work ${windowsLabel(canWork)}`}
+                                            className="absolute top-0 bottom-0 pointer-events-none"
+                                            style={{
+                                                left: `${pct(spanFrom)}%`,
+                                                width: `${pct(spanTo) - pct(spanFrom)}%`,
+                                                backgroundImage: AWAY_HATCH,
+                                            }}
+                                        />
+                                    ))}
 
                                     {mine.map(shift => {
                                         const shiftColour = positionOf(shift.position_id)?.colour || colour
@@ -519,6 +565,12 @@ export default function RosterDay({
                 Drag across a row with a mouse to put a shift straight in, or drag either end of one to
                 move its start or finish. Tap a row to add a shift through the dialog, and tap a shift
                 to change or remove it.
+                {anyAway && (
+                    <span className="block mt-1">
+                        The hatched stretches are hours somebody said they cannot work. Nothing stops you
+                        rostering there, it just says so.
+                    </span>
+                )}
             </p>
         </div>
     )
