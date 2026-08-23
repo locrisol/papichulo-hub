@@ -14,6 +14,7 @@ import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
 } from './roster'
 import { absencesOn } from './absences'
+import { extrasFor, extraLabel } from './dayExtras'
 
 // A day somebody is not there, as it goes out.
 //
@@ -54,6 +55,7 @@ export function shareName(restaurantName, weekStart, extension) {
 // the screen never showed them.
 export function weekTable({
     dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
+    standingNote,
 }) {
     const employeesById = Object.fromEntries((employees || []).map(e => [e.id, e]))
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
@@ -113,6 +115,10 @@ export function weekTable({
         }),
     }))
 
+    // Everything else the day has on. One line per day, in the order they
+    // land, which is the order the row is read in.
+    const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel).join(', '))
+
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
         .map(n => `${shortDate(n.note_date)}: ${n.message}`)
@@ -125,9 +131,15 @@ export function weekTable({
         head,
         storeHours,
         whatIsOn,
+        deliveries,
         people,
         notes,
         messages,
+        // The line that is on every roster, kept apart from the day messages
+        // rather than dropped in with them. They are about this week and it is
+        // not, and printing them as one list would make it look like one more
+        // thing that happened.
+        standing: String(standingNote || '').trim(),
         dayHours: perDay.map(d => (d.hours ? fmtHours(d.hours) : '')),
         totalHours: fmtHours(perDay.reduce((t, d) => t + d.hours, 0)),
     }
@@ -166,6 +178,7 @@ export function weekCsv(table) {
     line(['', ...table.head.map(h => h.label), ''])
     line(['Store hours', ...table.storeHours, ''])
     line(['What is on', ...table.whatIsOn, ''])
+    if (table.deliveries.some(Boolean)) line(['Deliveries', ...table.deliveries, ''])
 
     for (const person of table.people) {
         line([person.name, ...person.days.map(d => {
@@ -179,6 +192,7 @@ export function weekCsv(table) {
     line(['Notes', ...table.notes, ''])
     line(['Hours on the day', ...table.dayHours, table.totalHours])
     for (const message of table.messages) line([message])
+    if (table.standing) line([table.standing])
 
     return rows.join('\r\n')
 }
@@ -221,7 +235,9 @@ export function wrapLines(text, maxWidth, measure) {
 //
 // eventLines is how many lines the busiest day of events needs. It is measured
 // by whoever is drawing, because only they know how wide their letters are.
-export function sheetLayout(table, { width = 1180, pad = 24, eventLines = 1 } = {}) {
+export function sheetLayout(table, {
+    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1,
+} = {}) {
     const nameCol = 160
     const hoursCol = 78
     const dayCol = (width - pad * 2 - nameCol - hoursCol) / 7
@@ -230,22 +246,27 @@ export function sheetLayout(table, { width = 1180, pad = 24, eventLines = 1 } = 
     const headH = 44
     const metaH = 32
     const eventsH = Math.max(metaH, eventLines * 15 + 14)
+    // Nothing at all when no day has one, rather than an empty band. Most weeks
+    // have deliveries every day and some have none all week.
+    const hasDeliveries = table.deliveries?.some(Boolean)
+    const deliveriesH = hasDeliveries ? Math.max(metaH, deliveryLines * 15 + 12) : 0
     const shiftH = 34
     const breakH = 20
     const notesH = 28
     const totalH = 34
 
     const bodyRows = table.people.length
-    const messagesH = table.messages.length ? 22 * table.messages.length + 12 : 0
+    const lines = table.messages.length + (table.standing ? 1 : 0)
+    const messagesH = lines ? 22 * lines + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH + eventsH
+    const height = pad * 2 + titleH + headH + metaH + eventsH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
 
     return {
         width, height, pad, nameCol, hoursCol, dayCol, columnX,
-        titleH, headH, metaH, eventsH, shiftH, breakH, notesH, totalH, messagesH,
+        titleH, headH, metaH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         // Centred, not right aligned. It is a column of figures under a heading
         // and it reads better down the middle of its own space.

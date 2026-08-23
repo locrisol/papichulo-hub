@@ -26,10 +26,14 @@ export function weekPdf(table, restaurantName, weekStart) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
     )
+    const deliveryLines = table.deliveries.map(
+        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+    )
     const l = sheetLayout(table, {
         width: pageWidth,
         pad: 24,
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
     })
 
     // The picture can be as tall as it likes. A page cannot, so the rows are
@@ -125,6 +129,22 @@ export function weekPdf(table, restaurantName, weekStart) {
     })
     y += h(l.eventsH)
 
+    // ---- everything else the day has on
+    if (l.deliveriesH) {
+        box(l.pad, y, pageWidth - l.pad * 2, h(l.deliveriesH), [241, 245, 249])
+        at('DELIVERIES', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
+            size: 7, style: 'bold', rgb: [71, 85, 105],
+        })
+        deliveryLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + h(l.deliveriesH) / 2 + 3 - ((lines.length - 1) * h(11)) / 2
+            lines.forEach((line, n) => {
+                at(line, x, top + n * h(11), { align: 'center', size: 7, rgb: [71, 85, 105] })
+            })
+        })
+        y += h(l.deliveriesH)
+    }
+
     // ---- the people
     pdf.setDrawColor(216, 211, 202)
     pdf.setLineWidth(0.5)
@@ -206,6 +226,13 @@ export function weekPdf(table, restaurantName, weekStart) {
     table.messages.forEach((m, i) => {
         at(m, l.pad, y + h(16) + i * h(14), { size: 8, rgb: [107, 114, 128] })
     })
+    // Last and lighter, the same as the picture. It is on every roster, so it
+    // is the one nobody needs to read twice.
+    if (table.standing) {
+        at(table.standing, l.pad, y + h(16) + table.messages.length * h(14), {
+            size: 7, rgb: [156, 163, 175],
+        })
+    }
 
     pdf.save(shareName(restaurantName, weekStart, 'pdf'))
 }

@@ -384,3 +384,64 @@ describe('a spreadsheet Excel can actually read', () => {
         expect(csv).not.toMatch(/[\u2010-\u2015]/)
     })
 })
+
+// The other things a day has on, and the line at the bottom of every roster.
+describe('deliveries and the standing note', () => {
+    const notes = [{
+        id: 'n1', note_date: DATES[1],
+        extras: [{ name: 'Clockmeal', time: '15:00' }, { name: 'Feedr', time: '12:00' }],
+    }]
+
+    it('puts them on the day in the order they land', () => {
+        const table = build({ dayNotes: notes })
+        expect(table.deliveries[1]).toBe('12:00 Feedr, 15:00 Clockmeal')
+    })
+
+    it('leaves the other days empty', () => {
+        const table = build({ dayNotes: notes })
+        expect(table.deliveries[0]).toBe('')
+    })
+
+    it('keeps one with no time, at the end', () => {
+        const loose = [{
+            id: 'n1', note_date: DATES[1],
+            extras: [{ name: 'Office delivery' }, { name: 'Feedr', time: '12:00' }],
+        }]
+        expect(build({ dayNotes: loose }).deliveries[1]).toBe('12:00 Feedr, Office delivery')
+    })
+
+    it('gives the spreadsheet a row only when there is something in it', () => {
+        expect(weekCsv(build({ dayNotes: notes }))).toContain('Deliveries')
+        expect(weekCsv(build())).not.toContain('Deliveries')
+    })
+
+    // The sheet is a fixed height worked out before anything is drawn, so a
+    // week with no deliveries has to come out shorter rather than carrying an
+    // empty band.
+    it('takes no room on the sheet when no day has one', () => {
+        expect(sheetLayout(build()).deliveriesH).toBe(0)
+        expect(sheetLayout(build({ dayNotes: notes })).deliveriesH).toBeGreaterThan(0)
+    })
+
+    // Apart from the day messages rather than in with them. They are about this
+    // week and it is not, and one list would make it read as one more thing
+    // that happened.
+    it('keeps the standing note apart from the day messages', () => {
+        const table = build({
+            dayNotes: [{ id: 'n1', note_date: DATES[1], message: 'Back door this week' }],
+            standingNote: 'Swaps have to be agreed with a manager.',
+        })
+        expect(table.messages).toHaveLength(1)
+        expect(table.standing).toBe('Swaps have to be agreed with a manager.')
+    })
+
+    it('is empty rather than missing when there is none', () => {
+        expect(build().standing).toBe('')
+        expect(build({ standingNote: '   ' }).standing).toBe('')
+    })
+
+    it('prints it at the bottom of the spreadsheet', () => {
+        const csv = weekCsv(build({ standingNote: 'Swaps need a manager.' }))
+        expect(csv.trimEnd().endsWith('Swaps need a manager.')).toBe(true)
+    })
+})

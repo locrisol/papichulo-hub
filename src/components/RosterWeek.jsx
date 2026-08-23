@@ -5,6 +5,7 @@ import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { absenceOn, kindOf } from '../lib/absences'
+import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -21,7 +22,7 @@ import {
 // reading 21:30 off this will leave at 21:30 with the floor unswept, and then
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, events, openingHours, today,
+    dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
     alerts, absences, onOpenShift, onNewShift,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
@@ -130,6 +131,32 @@ export default function RosterWeek({
                         })}
                         <td className="border-l border-border" />
                     </tr>
+
+                    {(dayNotes || []).some(n => extrasFor(n).length > 0) && (
+                        <tr className="bg-slate-50 border-b border-border">
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
+                                Deliveries
+                            </td>
+                            {dates.map(d => {
+                                const extras = extrasFor(noteFor(d))
+                                return (
+                                    <td key={d} className={`${cell} text-center`}>
+                                        {extras.length === 0 ? (
+                                            <span className="text-gray-300 text-xs">-</span>
+                                        ) : extras.map(extra => (
+                                            <span
+                                                key={extra.name}
+                                                className="block text-[11px] text-slate-700 leading-snug break-words"
+                                            >
+                                                {extraLabel(extra)}
+                                            </span>
+                                        ))}
+                                    </td>
+                                )
+                            })}
+                            <td className="border-l border-border" />
+                        </tr>
+                    )}
 
                     {/* Two rows per person: the shifts, and the breaks under
                         them. The breaks are printed and never taken off the
@@ -320,13 +347,18 @@ export default function RosterWeek({
                 </tbody>
             </table>
 
-            {(dayNotes || []).some(n => n.message) && (
+            {((dayNotes || []).some(n => n.message) || standingNote) && (
                 <div className="border-t border-border">
                     {(dayNotes || []).filter(n => n.message).map(n => (
                         <p key={n.id} className="px-4 py-2 text-sm text-gray-700">
                             <span className="font-semibold">{fullDate(n.note_date)}:</span> {n.message}
                         </p>
                     ))}
+                    {standingNote && (
+                        <p className="px-4 py-2 text-sm text-gray-500 border-t border-border">
+                            {standingNote}
+                        </p>
+                    )}
                 </div>
             )}
         </div>

@@ -48,8 +48,12 @@ export function drawWeek(canvas, table) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
+    const deliveryLines = table.deliveries.map(
+        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
+    )
     const l = sheetLayout(table, {
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
     })
 
     canvas.width = l.width * SCALE
@@ -168,6 +172,23 @@ export function drawWeek(canvas, table) {
     rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH)
     y += l.eventsH
 
+    // ---- everything else the day has on, when any of it does
+    if (l.deliveriesH) {
+        box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
+        font(11, '700')
+        text('DELIVERIES', l.pad + 12, y + l.deliveriesH / 2, { colour: '#475569' })
+        font(12)
+        deliveryLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + l.deliveriesH / 2 - ((lines.length - 1) * 15) / 2
+            lines.forEach((line, n) => {
+                text(line, x, top + n * 15, { align: 'center', colour: '#475569' })
+            })
+        })
+        rule(l.pad, y + l.deliveriesH, l.width - l.pad, y + l.deliveriesH)
+        y += l.deliveriesH
+    }
+
     // ---- the people
     table.people.forEach((person, row) => {
         const top = y
@@ -244,12 +265,20 @@ export function drawWeek(canvas, table) {
     y += l.totalH
 
     // ---- messages
-    if (table.messages.length) {
+    if (table.messages.length || table.standing) {
         y += 8
         font(12)
         table.messages.forEach((m, i) => {
             text(m, l.pad, y + 8 + i * 22, { colour: MUTED, max: l.width - l.pad * 2 })
         })
+        // The standing line last and lighter. It is on every roster, so it is
+        // the one nobody needs to read twice.
+        if (table.standing) {
+            font(11)
+            text(table.standing, l.pad, y + 8 + table.messages.length * 22, {
+                colour: '#9ca3af', max: l.width - l.pad * 2,
+            })
+        }
     }
 
     return canvas

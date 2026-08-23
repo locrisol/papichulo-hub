@@ -7,6 +7,10 @@ import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
 import { modalFooter } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
+import { secondaryButton } from '../lib/controlStyles'
+import {
+    cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
+} from '../lib/dayExtras'
 
 // When one day is not like the others.
 //
@@ -22,7 +26,7 @@ import ModalSection from './ModalSection'
 // becoming a table with three hundred and sixty five rows a year in it saying
 // nothing. Clearing the last field on a day deletes the row.
 export default function DayNoteDialog({
-    date, note, restaurantId, userId, usualHours, onClose, onSaved,
+    date, note, restaurantId, userId, usualHours, usualExtras, onClose, onSaved,
 }) {
     const usual = hoursForDay(usualHours, date)
 
@@ -32,7 +36,10 @@ export default function DayNoteDialog({
         isClosed: note?.is_closed || false,
         isBankHoliday: note?.is_bank_holiday || false,
         note: note?.note || '',
+        message: note?.message || '',
+        extras: cleanExtras(note?.extras),
     })
+    const [oneOff, setOneOff] = useState({ name: '', time: '' })
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
@@ -44,7 +51,8 @@ export default function DayNoteDialog({
 
     // Nothing left to say means no record, rather than a row of empties.
     const isEmpty = !form.opensAt && !form.closesAt && !form.isClosed
-        && !form.isBankHoliday && !form.note.trim()
+        && !form.isBankHoliday && !form.note.trim() && !form.message.trim()
+        && form.extras.length === 0
 
     async function save() {
         if (problem) return
@@ -65,6 +73,8 @@ export default function DayNoteDialog({
                 is_closed: form.isClosed,
                 is_bank_holiday: form.isBankHoliday,
                 note: form.note.trim() || null,
+                message: form.message.trim() || null,
+                extras: form.extras.length ? sortExtras(form.extras) : null,
                 updated_by: userId,
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'restaurant_id,note_date' }))
@@ -78,6 +88,17 @@ export default function DayNoteDialog({
     const fieldCls =
         'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
     const labelCls = 'text-xs text-gray-500 mb-1 block'
+    const timeCls =
+        'border border-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
+
+    // A delivery that is on today and one that is not. Filled when it is on,
+    // because the question the day asks is which of these are happening, and a
+    // tick box row answers it more slowly than a row of things lit up.
+    const ON_OFF = on => (
+        'px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ' + (on
+            ? 'bg-accent text-white border-accent'
+            : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400')
+    )
 
     return (
         <Modal title={`${dayName(date)} ${shortDate(date)} · options`} onClose={onClose}>
@@ -172,6 +193,119 @@ export default function DayNoteDialog({
                         onChange={e => set('note', e.target.value)}
                         className={fieldCls}
                         placeholder="Deep Cleaning Day"
+                    />
+                </ModalSection>
+
+                {/* Everything a day has on that is not the Arena.
+                    Feedr, Lunch Team, Clockmeal, an office delivery, somebody
+                    coming to look at the extraction. None of it arrives from an
+                    API and all of it changes how many people you want on.
+
+                    Ticking one copies its name and time onto the day rather
+                    than pointing at the usual list, so a delivery that came at
+                    half one this week can say so, and renaming one next year
+                    does not rewrite last March. */}
+                <ModalSection
+                    title="Deliveries and orders"
+                    description="What else is on, and the time it lands. Ticking one copies its usual time, and the day is free to disagree with it."
+                >
+                    {(usualExtras || []).length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {sortExtras(usualExtras).map(one => {
+                                const on = hasExtra(form.extras, one.name)
+                                return (
+                                    <button
+                                        key={one.name}
+                                        type="button"
+                                        onClick={() => set('extras', toggleExtra(form.extras, one))}
+                                        aria-pressed={on}
+                                        className={ON_OFF(on)}
+                                    >
+                                        {one.name}
+                                        {one.time && (
+                                            <span className={on ? 'text-white/70' : 'text-gray-400'}>
+                                                {' '}{one.time}
+                                            </span>
+                                        )}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+
+                    {form.extras.length > 0 && (
+                        <div className="divide-y divide-border mb-4">
+                            {sortExtras(form.extras).map(extra => (
+                                <div key={extra.name} className="py-2 flex flex-wrap items-center gap-2">
+                                    <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
+                                        {extra.name}
+                                    </span>
+                                    <input
+                                        type="time"
+                                        value={extra.time}
+                                        onChange={e => set('extras', setExtraTime(form.extras, extra.name, e.target.value))}
+                                        aria-label={extra.name + ' time'}
+                                        className={timeCls}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => set('extras', removeExtra(form.extras, extra.name))}
+                                        aria-label={'Take ' + extra.name + ' off this day'}
+                                        className="text-gray-400 hover:text-red-600 px-1"
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* A one off, without going near the usual list. Somebody
+                        coming to service the coffee machine on Thursday is not
+                        a thing to set up, it is a thing to type. */}
+                    <div className="flex flex-wrap items-end gap-2">
+                        <div className="flex-1 min-w-40">
+                            <label className={labelCls}>Something else, just this day</label>
+                            <input
+                                type="text"
+                                value={oneOff.name}
+                                onChange={e => setOneOff(o => ({ ...o, name: e.target.value }))}
+                                className={fieldCls}
+                                placeholder="Coffee machine service"
+                            />
+                        </div>
+                        <input
+                            type="time"
+                            value={oneOff.time}
+                            onChange={e => setOneOff(o => ({ ...o, time: e.target.value }))}
+                            aria-label="Time for the one off"
+                            className={timeCls}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!oneOff.name.trim()) return
+                                set('extras', toggleExtra(form.extras, oneOff))
+                                setOneOff({ name: '', time: '' })
+                            }}
+                            disabled={!oneOff.name.trim()}
+                            className={secondaryButton}
+                        >
+                            Add it
+                        </button>
+                    </div>
+                </ModalSection>
+
+                <ModalSection
+                    title="Note at the bottom of the roster"
+                    description="Printed under the week on the copy that goes out, with this day's date in front of it. This is the one people read, because it is only there when there is something to say."
+                >
+                    <textarea
+                        value={form.message}
+                        onChange={e => set('message', e.target.value)}
+                        rows={2}
+                        className={fieldCls}
+                        placeholder="Deliveries go to the back door this week"
                     />
                 </ModalSection>
 

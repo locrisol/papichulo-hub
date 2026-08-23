@@ -21,6 +21,7 @@ import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
 import ShiftDialog from '../../components/ShiftDialog'
 import TimeOffDialog from '../../components/TimeOffDialog'
+import WeeklyExtrasModal from '../../components/WeeklyExtrasModal'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
@@ -525,6 +526,9 @@ export default function RosterPage() {
                     <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
                         Roster rules
                     </button>
+                    <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
+                        Every week
+                    </button>
                 </div>
             </div>
 
@@ -548,6 +552,7 @@ export default function RosterPage() {
                         events={events}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
+                        standingNote={activeRestaurant?.roster_note}
                         restaurantName={activeRestaurant?.name}
                         weekStart={weekStart}
                         disabled={shifts.length === 0}
@@ -566,6 +571,7 @@ export default function RosterPage() {
                     dayNotes={dayNotes}
                     events={events}
                     openingHours={activeRestaurant?.opening_hours}
+                    standingNote={activeRestaurant?.roster_note}
                     today={today}
                     alerts={alerts}
                     absences={absences}
@@ -644,6 +650,7 @@ export default function RosterPage() {
                 />
             )}
 
+            {settingsOpen === 'weekly' && <WeeklyExtrasModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
@@ -655,6 +662,7 @@ export default function RosterPage() {
                     restaurantId={restaurantId}
                     userId={user?.id}
                     usualHours={activeRestaurant?.opening_hours}
+                    usualExtras={activeRestaurant?.usual_extras}
                     onClose={() => setEditingDay(null)}
                     onSaved={() => { setEditingDay(null); load({ quiet: true }) }}
                 />

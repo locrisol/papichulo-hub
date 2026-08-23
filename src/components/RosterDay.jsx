@@ -5,6 +5,7 @@ import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { absenceOn, kindOf } from '../lib/absences'
+import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -100,6 +101,17 @@ export default function RosterDay({
     // the day. On a day where nobody has any recorded there is nothing hatched
     // and a note about hatching is one more line to read past.
     const anyAway = employees.some(e => unavailableSpans(e.availability, date, from, to).length > 0)
+
+    // What else the day has on. Feedr at twelve and a delivery at three are the
+    // reason the middle of the day needs another pair of hands, and neither of
+    // them is in the ticketing API that fills What is on.
+    //
+    // Split by whether it has a time. One can be put on the grid where it
+    // happens and the other cannot, and pretending otherwise would mean drawing
+    // an office delivery at midnight because that is where nothing sorts to.
+    const extras = extrasFor(dayNote)
+    const timedExtras = extras.filter(e => e.time && toMinutes(e.time) >= from && toMinutes(e.time) <= to)
+    const looseExtras = extras.filter(e => !timedExtras.includes(e))
 
     const closed = dayNote?.is_closed
     const bankHoliday = dayNote?.is_bank_holiday
@@ -274,6 +286,41 @@ export default function RosterDay({
                         </div>
                         <div className="w-20 flex-shrink-0" />
                     </div>
+
+                    {/* Everything else the day has on, at the time it lands.
+                        Its own strip rather than crowded in with the Arena
+                        events above, because a concert is a run of hours and a
+                        delivery is a moment, and drawing them the same way
+                        would say they are the same kind of thing. */}
+                    {extras.length > 0 && (
+                        <div className="flex border-b border-border bg-slate-50">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5">
+                                <span className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                                    Deliveries
+                                </span>
+                                {looseExtras.map(extra => (
+                                    <span key={extra.name} className="block text-[10px] text-slate-500 truncate">
+                                        {extra.name}
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="flex-1 relative min-h-7">
+                                {timedExtras.map(extra => (
+                                    <span
+                                        key={extra.name}
+                                        className="absolute top-0 bottom-0 flex items-center"
+                                        style={{ left: `${pct(toMinutes(extra.time))}%` }}
+                                    >
+                                        <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
+                                        <span className="text-[10px] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                            {extraLabel(extra)}
+                                        </span>
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="w-20 flex-shrink-0" />
+                        </div>
+                    )}
 
                     {/* The hours across the top, with anything on at the Arena
                         drawn underneath them. A concert at half six is the
