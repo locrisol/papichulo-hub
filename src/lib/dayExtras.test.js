@@ -9,6 +9,7 @@ import {
     setExtraTime,
     removeExtra,
     usualProblem,
+    extraLanes,
 } from './dayExtras'
 
 describe('cleanExtras', () => {
@@ -143,5 +144,54 @@ describe('usualProblem', () => {
     // works by name.
     it('catches the same name twice', () => {
         expect(usualProblem([{ name: 'Feedr' }, { name: 'feedr' }])).toContain('twice')
+    })
+})
+
+// Which line of the strip each one goes on.
+//
+// Two things landing half an hour apart put their labels on top of each other,
+// which is exactly what happened: 11:30 Lunch Team and 12:00 Feedr came out as
+// one unreadable word.
+describe('extraLanes', () => {
+    it('shares a line when they are far enough apart', () => {
+        const lanes = extraLanes([
+            { name: 'Feedr', time: '09:00' },
+            { name: 'Clockmeal', time: '18:00' },
+        ])
+        expect(lanes).toHaveLength(1)
+        expect(lanes[0].map(e => e.name)).toEqual(['Feedr', 'Clockmeal'])
+    })
+
+    it('takes a second line when they are close', () => {
+        const lanes = extraLanes([
+            { name: 'Lunch Team', time: '11:30' },
+            { name: 'Feedr', time: '12:00' },
+        ])
+        expect(lanes).toHaveLength(2)
+        expect(lanes[0][0].name).toBe('Lunch Team')
+        expect(lanes[1][0].name).toBe('Feedr')
+    })
+
+    // It reuses a line the moment there is room, so a busy lunchtime and one
+    // thing in the evening does not cost three lines all day.
+    it('goes back to the first line once there is room', () => {
+        const lanes = extraLanes([
+            { name: 'Lunch Team', time: '11:30' },
+            { name: 'Feedr', time: '12:00' },
+            { name: 'Clockmeal', time: '18:00' },
+        ])
+        expect(lanes).toHaveLength(2)
+        expect(lanes[0].map(e => e.name)).toEqual(['Lunch Team', 'Clockmeal'])
+        expect(lanes[1].map(e => e.name)).toEqual(['Feedr'])
+    })
+
+    // The one thing they cannot say is when, so they are named beside the row
+    // label instead of being drawn at a time they never had.
+    it('leaves out anything with no time', () => {
+        expect(extraLanes([{ name: 'Office delivery' }])).toEqual([])
+    })
+
+    it('is happy with nothing', () => {
+        expect(extraLanes(null)).toEqual([])
     })
 })

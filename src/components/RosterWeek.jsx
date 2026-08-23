@@ -23,7 +23,7 @@ import {
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -108,7 +108,7 @@ export default function RosterWeek({
 
                     <tr className="bg-accent-light/60 border-b border-border">
                         <td className="px-3 py-1.5 text-xs font-semibold text-accent border-r border-border sticky left-0 bg-accent-light">
-                            What is on
+                            Events
                         </td>
                         {dates.map(d => {
                             const on = (events || []).filter(e => e.event_date === d)
@@ -132,31 +132,43 @@ export default function RosterWeek({
                         <td className="border-l border-border" />
                     </tr>
 
-                    {(dayNotes || []).some(n => extrasFor(n).length > 0) && (
-                        <tr className="bg-slate-50 border-b border-border">
+                    {/* Always here, empty or not, because it is also the way
+                        in. A row that only appears once something is in it is a
+                        row you cannot use to put the first thing in. */}
+                    <tr className="bg-slate-50 border-b border-border">
                             <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
-                                Deliveries
+                                Also on
                             </td>
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))
                                 return (
-                                    <td key={d} className={`${cell} text-center`}>
-                                        {extras.length === 0 ? (
-                                            <span className="text-gray-300 text-xs">-</span>
-                                        ) : extras.map(extra => (
-                                            <span
-                                                key={extra.name}
-                                                className="block text-[11px] text-slate-700 leading-snug break-words"
-                                            >
-                                                {extraLabel(extra)}
-                                            </span>
-                                        ))}
+                                    <td key={d} className={`${cell} text-center p-0`}>
+                                        {/* The same way in as an empty cell on
+                                            somebody's row: press it and the
+                                            day opens, which is where all of
+                                            this is typed anyway. */}
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenDay?.(d)}
+                                            aria-label={`Add something to ${fullDate(d)}`}
+                                            className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors"
+                                        >
+                                            {extras.length === 0 ? (
+                                                <span className="text-gray-300 text-xs">+</span>
+                                            ) : extras.map(extra => (
+                                                <span
+                                                    key={extra.name}
+                                                    className="block text-[11px] text-slate-700 leading-snug break-words"
+                                                >
+                                                    {extraLabel(extra)}
+                                                </span>
+                                            ))}
+                                        </button>
                                     </td>
                                 )
                             })}
                             <td className="border-l border-border" />
                         </tr>
-                    )}
 
                     {/* Two rows per person: the shifts, and the breaks under
                         them. The breaks are printed and never taken off the

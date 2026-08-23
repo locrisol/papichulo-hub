@@ -177,8 +177,8 @@ export function weekCsv(table) {
     line([table.title, ...table.head.map(h => h.day), 'Hours'])
     line(['', ...table.head.map(h => h.label), ''])
     line(['Store hours', ...table.storeHours, ''])
-    line(['What is on', ...table.whatIsOn, ''])
-    if (table.deliveries.some(Boolean)) line(['Deliveries', ...table.deliveries, ''])
+    line(['Events', ...table.whatIsOn, ''])
+    if (table.deliveries.some(Boolean)) line(['Also on', ...table.deliveries, ''])
 
     for (const person of table.people) {
         line([person.name, ...person.days.map(d => {

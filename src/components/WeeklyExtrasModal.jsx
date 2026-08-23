@@ -74,12 +74,12 @@ export default function WeeklyExtrasModal({ onClose }) {
             {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
             <ModalSection
-                title="Deliveries and orders you usually get"
-                description="A list to tick from on the day rather than a schedule. Nothing appears on a roster until somebody puts it there, so a week Feedr does not come is a week you simply do not tick it."
+                title="What usually happens in the store"
+                description="Office deliveries, Feedr, Lunch Team, Clockmeal, anything that comes round most weeks. A list to tick from on the day rather than a schedule, so a week something does not come is a week you simply do not tick it."
             >
                 {extras.length === 0 ? (
                     <p className="text-sm text-gray-400 italic mb-4">
-                        None yet. Add whatever comes in most weeks and you will never type it again.
+                        None yet. Add whatever happens most weeks and you will never type it again.
                     </p>
                 ) : (
                     <div className="divide-y divide-border mb-4">

@@ -119,7 +119,7 @@ export function weekPdf(table, restaurantName, weekStart) {
 
     // Written out in full over as many lines as it needs, rather than cut short.
     box(l.pad, y, pageWidth - l.pad * 2, h(l.eventsH), WARM)
-    at('WHAT IS ON', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
+    at('EVENTS', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
     eventLines.forEach((lines, i) => {
         const x = l.columnX(i) + l.dayCol / 2
         const top = y + h(l.eventsH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
@@ -132,7 +132,7 @@ export function weekPdf(table, restaurantName, weekStart) {
     // ---- everything else the day has on
     if (l.deliveriesH) {
         box(l.pad, y, pageWidth - l.pad * 2, h(l.deliveriesH), [241, 245, 249])
-        at('DELIVERIES', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
+        at('ALSO ON', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
             size: 7, style: 'bold', rgb: [71, 85, 105],
         })
         deliveryLines.forEach((lines, i) => {

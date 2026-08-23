@@ -191,7 +191,7 @@ describe('weekCsv', () => {
                 { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
             ],
         })
-        const line = weekCsv(table).split('\n').find(l => l.startsWith('What is on'))
+        const line = weekCsv(table).split('\r\n').find(l => l.startsWith('Events'))
         expect(line).toContain('"One (13:00), Two (19:00)"')
     })
 
@@ -411,8 +411,8 @@ describe('deliveries and the standing note', () => {
     })
 
     it('gives the spreadsheet a row only when there is something in it', () => {
-        expect(weekCsv(build({ dayNotes: notes }))).toContain('Deliveries')
-        expect(weekCsv(build())).not.toContain('Deliveries')
+        expect(weekCsv(build({ dayNotes: notes }))).toContain('Also on')
+        expect(weekCsv(build())).not.toContain('Also on')
     })
 
     // The sheet is a fixed height worked out before anything is drawn, so a

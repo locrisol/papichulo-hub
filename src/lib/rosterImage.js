@@ -160,7 +160,7 @@ export function drawWeek(canvas, table) {
     // ---- what is on, written out in full rather than cut short
     box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
     font(11, '700')
-    text('WHAT IS ON', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
+    text('EVENTS', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
     font(12)
     eventLines.forEach((lines, i) => {
         const x = l.columnX(i) + l.dayCol / 2
@@ -176,7 +176,7 @@ export function drawWeek(canvas, table) {
     if (l.deliveriesH) {
         box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
         font(11, '700')
-        text('DELIVERIES', l.pad + 12, y + l.deliveriesH / 2, { colour: '#475569' })
+        text('ALSO ON', l.pad + 12, y + l.deliveriesH / 2, { colour: '#475569' })
         font(12)
         deliveryLines.forEach((lines, i) => {
             const x = l.columnX(i) + l.dayCol / 2

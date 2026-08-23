@@ -5,7 +5,7 @@ import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { absenceOn, kindOf } from '../lib/absences'
-import { extrasFor, extraLabel } from '../lib/dayExtras'
+import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -110,8 +110,8 @@ export default function RosterDay({
     // happens and the other cannot, and pretending otherwise would mean drawing
     // an office delivery at midnight because that is where nothing sorts to.
     const extras = extrasFor(dayNote)
-    const timedExtras = extras.filter(e => e.time && toMinutes(e.time) >= from && toMinutes(e.time) <= to)
-    const looseExtras = extras.filter(e => !timedExtras.includes(e))
+    const extraRows = extraLanes(extras)
+    const looseExtras = extras.filter(e => !e.time)
 
     const closed = dayNote?.is_closed
     const bankHoliday = dayNote?.is_bank_holiday
@@ -287,6 +287,46 @@ export default function RosterDay({
                         <div className="w-20 flex-shrink-0" />
                     </div>
 
+                    {/* What is on at the Arena.
+                        Its own strip rather than sharing the band with the
+                        hours. Down there it was drawn over the tick marks and
+                        over the lines showing when the store opens and closes,
+                        and two concerts on one night were drawn over each
+                        other, since every one of them runs from its own time to
+                        the end of the day. Here each gets a line. */}
+                    {(events || []).length > 0 && (
+                        <div className="flex border-b border-border bg-accent-light/40">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[10px] font-bold text-accent uppercase tracking-wider">
+                                Events
+                            </div>
+                            <div className="flex-1 relative py-1">
+                                {(events || []).map(event => {
+                                    const at = toMinutes(event.event_time)
+                                    const start = at < 0 ? from : Math.max(from, at)
+                                    return (
+                                        <span
+                                            key={event.id}
+                                            title={`${event.name} · doors ${shortTime(event.event_time)}`}
+                                            className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
+                                            style={{
+                                                marginLeft: `${pct(start)}%`,
+                                                width: `${Math.max(0, 100 - pct(start))}%`,
+                                                backgroundColor: 'rgba(212,114,74,0.18)',
+                                                borderLeft: '2px solid #D4724A',
+                                            }}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
+                                            <span className="text-[9px] font-semibold text-gray-700 truncate">
+                                                {shortTime(event.event_time)} {event.name}
+                                            </span>
+                                        </span>
+                                    )
+                                })}
+                            </div>
+                            <div className="w-20 flex-shrink-0" />
+                        </div>
+                    )}
+
                     {/* Everything else the day has on, at the time it lands.
                         Its own strip rather than crowded in with the Arena
                         events above, because a concert is a run of hours and a
@@ -296,7 +336,7 @@ export default function RosterDay({
                         <div className="flex border-b border-border bg-slate-50">
                             <div className="w-40 flex-shrink-0 px-3 py-1.5">
                                 <span className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                                    Deliveries
+                                    Also on
                                 </span>
                                 {looseExtras.map(extra => (
                                     <span key={extra.name} className="block text-[10px] text-slate-500 truncate">
@@ -304,18 +344,22 @@ export default function RosterDay({
                                     </span>
                                 ))}
                             </div>
-                            <div className="flex-1 relative min-h-7">
-                                {timedExtras.map(extra => (
-                                    <span
-                                        key={extra.name}
-                                        className="absolute top-0 bottom-0 flex items-center"
-                                        style={{ left: `${pct(toMinutes(extra.time))}%` }}
-                                    >
-                                        <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
-                                        <span className="text-[10px] font-semibold text-slate-700 whitespace-nowrap pl-1">
-                                            {extraLabel(extra)}
-                                        </span>
-                                    </span>
+                            <div className="flex-1 py-1">
+                                {extraRows.map((row, i) => (
+                                    <div key={i} className="relative h-4 mb-0.5 last:mb-0">
+                                        {row.map(extra => (
+                                            <span
+                                                key={extra.name}
+                                                className="absolute top-0 bottom-0 flex items-center"
+                                                style={{ left: `${pct(toMinutes(extra.time))}%` }}
+                                            >
+                                                <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
+                                                <span className="text-[10px] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                                    {extraLabel(extra)}
+                                                </span>
+                                            </span>
+                                        ))}
+                                    </div>
                                 ))}
                             </div>
                             <div className="w-20 flex-shrink-0" />
@@ -375,29 +419,6 @@ export default function RosterDay({
                                 />
                             ))}
 
-                            {(events || []).map(event => {
-                                const at = toMinutes(event.event_time)
-                                if (at < 0) return null
-                                const start = Math.max(from, at)
-                                return (
-                                    <span
-                                        key={event.id}
-                                        title={`${event.name} · doors ${shortTime(event.event_time)}`}
-                                        className="absolute bottom-1 h-4 rounded-sm flex items-center px-1 overflow-hidden"
-                                        style={{
-                                            left: `${pct(start)}%`,
-                                            width: `${Math.max(0, 100 - pct(start))}%`,
-                                            backgroundColor: 'rgba(212,114,74,0.18)',
-                                            borderLeft: '2px solid #D4724A',
-                                        }}
-                                    >
-                                        <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
-                                        <span className="text-[9px] font-semibold text-gray-700 truncate">
-                                            {shortTime(event.event_time)} {event.name}
-                                        </span>
-                                    </span>
-                                )
-                            })}
                         </div>
                         <div className="w-20 flex-shrink-0 px-2 py-2 text-[10px] font-bold text-muted uppercase tracking-wider text-center">
                             Hours

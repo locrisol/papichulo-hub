@@ -206,8 +206,8 @@ export default function DayNoteDialog({
                     half one this week can say so, and renaming one next year
                     does not rewrite last March. */}
                 <ModalSection
-                    title="Deliveries and orders"
-                    description="What else is on, and the time it lands. Ticking one copies its usual time, and the day is free to disagree with it."
+                    title="Also on"
+                    description="Anything else happening in the store that day, and the time it lands. An office delivery, Feedr, somebody servicing the coffee machine. Ticking one copies its usual time, and the day is free to disagree with it."
                 >
                     {(usualExtras || []).length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">

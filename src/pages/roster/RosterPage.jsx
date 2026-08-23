@@ -583,6 +583,7 @@ export default function RosterPage() {
                         setDayIndex(dates.indexOf(d))
                         setEditingShift({ shift: { employee_id: employeeId } })
                     }}
+                    onOpenDay={d => setEditingDay(d)}
                 />
             ) : (
                 <RosterDay

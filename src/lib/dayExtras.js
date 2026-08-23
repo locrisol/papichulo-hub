@@ -85,6 +85,35 @@ export function removeExtra(list, name) {
     return cleanExtras(list).filter(e => e.name.toLowerCase() !== wanted)
 }
 
+// Which line of the strip each one goes on.
+//
+// Two things landing half an hour apart put their labels on top of each other,
+// which is what happened the first time this was drawn: 11:30 Lunch Team and
+// 12:00 Feedr came out as one unreadable word.
+//
+// Greedy, and it reuses a line as soon as there is room. Anything far enough
+// from the last thing on a line shares it, so a day with a delivery in the
+// morning and one at night is still one line rather than two.
+//
+// The gap is in minutes rather than in pixels because this file cannot measure
+// letters. Two hours is about as much room as a short label needs on a normal
+// day, and being wrong here costs a line of height and never a collision.
+export function extraLanes(list, minGapMinutes = 120) {
+    const lanes = []
+    for (const extra of sortExtras(list)) {
+        if (!extra.time) {
+            // No time, no place on the strip. These are named beside the label
+            // instead, since the one thing they cannot say is when.
+            continue
+        }
+        const at = toMinutes(extra.time)
+        const lane = lanes.findIndex(row => at - toMinutes(row[row.length - 1].time) >= minGapMinutes)
+        if (lane === -1) lanes.push([extra])
+        else lanes[lane].push(extra)
+    }
+    return lanes
+}
+
 // What is wrong with the usual list before it is saved.
 export function usualProblem(list) {
     const seen = new Set()
