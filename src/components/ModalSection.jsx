@@ -1,24 +1,31 @@
-import { sectionHeading } from '../lib/controlStyles'
+import { cardHeader } from '../lib/controlStyles'
 
 // One part of a dialog.
 //
-// Dialogs have grown. Adding somebody now asks for their name, their pay, their
-// dates, their right to work and their food safety training, and as one long run
-// of fields that is a wall rather than a form.
+// A filled bar in the app's dark green, exactly the same one the table headings
+// and the card headings use, and the description underneath it on white where it
+// can actually be read.
 //
-// The divider runs the full width of the dialog rather than sitting inside the
-// padding, which is what the older screens in this project already do and is the
-// thing that was missing. A rule that stops short of both edges reads as a line
-// somebody drew under some text. One that reaches the edges reads as the dialog
-// being in parts.
+// This is the third attempt at it. A plain bold label was not enough of a break,
+// and neither was a rule under the label, because both of them read as text with
+// a line near it rather than as a heading. The rest of the project had already
+// settled this: everywhere else a heading is a filled row, on the sales tables,
+// on the till receipt rows, on every card. A dialog had no business inventing a
+// fourth way of doing it.
 //
-// No border on the first one, so a dialog does not open with a rule directly
-// under its own heading bar.
-export default function ModalSection({ title, children, className = '' }) {
+// The description is a prop rather than something the caller writes first,
+// because that is the bit that kept coming out in a different size and colour in
+// each dialog.
+export default function ModalSection({ title, description, children, className = '' }) {
     return (
-        <div className={`px-6 py-4 border-t border-border first:border-t-0 ${className}`}>
-            {title && <h3 className={sectionHeading}>{title}</h3>}
-            {children}
+        <div>
+            {title && <div className={cardHeader}>{title}</div>}
+            <div className={`px-5 py-4 ${className}`}>
+                {description && (
+                    <p className="text-xs text-muted mb-3 leading-relaxed">{description}</p>
+                )}
+                {children}
+            </div>
         </div>
     )
 }

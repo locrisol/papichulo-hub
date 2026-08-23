@@ -128,7 +128,10 @@ export default function EmployeeForm({
                 own limits and the roster cannot apply them without it. */}
             </ModalSection>
 
-            <ModalSection title="Right to work">
+            <ModalSection
+                title="Right to work"
+                description="The stamp and the date it runs out, and nothing else. That is everything the hour rules need and none of what we would then have to protect."
+            >
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
@@ -189,7 +192,10 @@ export default function EmployeeForm({
                 able to say something different here. */}
             </ModalSection>
 
-            <ModalSection title="Food safety">
+            <ModalSection
+                title="Food safety"
+                description="The expiry is the part that matters. A certificate nobody is watching is one that has quietly run out."
+            >
 
                 <div className="mb-3">
                     <label className={labelCls}>Training held</label>

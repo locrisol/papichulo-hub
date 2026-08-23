@@ -94,19 +94,6 @@ export const card = `bg-white ${cardEdge}`
 // Same edge as any other card, with the sideways scrolling added.
 export const tableCard = `${card} overflow-x-auto overflow-y-hidden`
 
-// A heading inside a dialog.
-//
-// Dialogs have grown. Adding somebody now asks for their name, their pay, their
-// dates, their right to work and their food safety training, and as one long run
-// of fields that is a wall rather than a form. This breaks it into parts that
-// can be found by eye.
-//
-// A labelled rule rather than another bar. The dialog already has a dark green
-// heading across the top, and a second one inside it would compete with it and
-// make the whole thing read as two dialogs stacked up.
-export const sectionHeading =
-    'text-xs font-bold text-sidebar uppercase tracking-wider mb-3'
-
 // The row of buttons at the bottom of a dialog.
 //
 // Same shape as the older screens already use: full width, its own rule above

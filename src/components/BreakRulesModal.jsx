@@ -88,14 +88,10 @@ export default function BreakRulesModal({ onClose }) {
     return (
         <Modal title="Break rules" onClose={onClose} width="max-w-xl">
             <div>
-                <ModalSection title="The ladder">
-                <p className="text-sm text-muted mb-1">
-                    Read top down. The first rung a shift is long enough for is the one it gets.
-                </p>
-                <p className="text-xs text-gray-400 mb-4">
-                    Breaks are paid and are never taken off the hours. This decides what is printed
-                    beside a shift, not what the shift is worth.
-                </p>
+                <ModalSection
+                    title="The ladder"
+                    description="Read top down, and the first rung a shift is long enough for is the one it gets. Breaks are paid and are never taken off the hours: this decides what is printed beside a shift, not what the shift is worth."
+                >
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 

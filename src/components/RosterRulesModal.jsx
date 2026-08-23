@@ -92,11 +92,10 @@ export default function RosterRulesModal({ onClose }) {
             <div>
                 {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
-                <ModalSection title="Warnings">
-                <p className="text-xs text-gray-500 mb-2">
-                    These say something is worth a second look. None of them stop a week going out.
-                </p>
-
+                <ModalSection
+                    title="Warnings"
+                    description="These say something is worth a second look. None of them stop a week going out."
+                >
                 <div>
                     {[
                         {
@@ -128,12 +127,10 @@ export default function RosterRulesModal({ onClose }) {
                 </div>
                 </ModalSection>
 
-                <ModalSection title="Stops a week going out">
-                <p className="text-xs text-gray-500 mb-2">
-                    These two are the law about the employer rather than guidance about the employee.
-                    Going over them is the company's problem and not the person's, so they hold the week
-                    until something is changed.
-                </p>
+                <ModalSection
+                    title="Stops a week going out"
+                    description="These two are the law about the employer rather than guidance about the employee. Going over them is the company's problem and not the person's, so they hold the week until something is changed."
+                >
 
                 <div>
                     <div className="py-3 border-b border-border">
@@ -242,12 +239,10 @@ export default function RosterRulesModal({ onClose }) {
                 </div>
                 </ModalSection>
 
-                <ModalSection title="The grid">
-                <p className="text-xs text-gray-500 mb-2">
-                    How much of the day the roster draws either side of the opening hours. Enough to
-                    see a delivery at six in the morning and a clean down at midnight, without the
-                    grid being mostly empty. The hours the store is shut are shaded.
-                </p>
+                <ModalSection
+                    title="The grid"
+                    description="How much of the day the roster draws either side of the opening hours. Enough to see a delivery at six in the morning and a clean down at midnight, without the grid being mostly empty. The hours the store is shut are shaded."
+                >
                 <div className="flex flex-wrap items-center gap-2">
                     <input
                         {...numberField({

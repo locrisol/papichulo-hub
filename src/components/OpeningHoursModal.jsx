@@ -99,11 +99,10 @@ export default function OpeningHoursModal({ onClose }) {
     return (
         <Modal title="Opening hours" onClose={onClose}>
             <div>
-                <ModalSection title="The usual week">
-                <p className="text-sm text-muted mb-4">
-                    The usual week. The roster uses this to mark opening and closing shifts, and to print
-                    Closing instead of a time on anything that runs past the end of the day.
-                </p>
+                <ModalSection
+                    title="The usual week"
+                    description="The roster uses this to mark opening and closing shifts, and to print Closing instead of a time on anything that runs past the end of the day."
+                >
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
@@ -152,12 +151,10 @@ export default function OpeningHoursModal({ onClose }) {
 
                 </ModalSection>
 
-                <ModalSection title="Bank holidays">
-                    <p className="text-xs text-gray-500 mb-2">
-                        One setting for all of them, since they open the same here. Tick a day as a bank
-                        holiday on the roster and it uses these instead of its usual hours. Leave empty to
-                        treat them like any other day.
-                    </p>
+                <ModalSection
+                    title="Bank holidays"
+                    description="One setting for all of them, since they open the same here. Tick a day as a bank holiday on the roster and it uses these instead of its usual hours. Leave empty to treat them like any other day."
+                >
                     <div className="flex items-center gap-2">
                         <input
                             type="time"

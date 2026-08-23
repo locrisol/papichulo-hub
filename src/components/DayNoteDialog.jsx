@@ -84,7 +84,10 @@ export default function DayNoteDialog({
             <div>
                 {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
-                <ModalSection title="Hours">
+                <ModalSection
+                    title="Hours"
+                    description="Leave the times empty to use the usual hours for this day of the week."
+                >
 
                 {!form.isClosed && (
                     <div className="mb-4">
@@ -113,8 +116,7 @@ export default function DayNoteDialog({
                             />
                         </div>
                         <p className="text-xs text-gray-400">
-                            Leave both empty to use the usual hours. This is where a late night for a concert
-                            or an early close for renovations goes.
+                            This is where a late night for a concert or an early close for renovations goes.
                         </p>
                     </div>
                 )}
@@ -160,7 +162,10 @@ export default function DayNoteDialog({
 
                 </ModalSection>
 
-                <ModalSection title="Label across the day">
+                <ModalSection
+                    title="Label across the day"
+                    description="Shown under the day on the roster and on anything sent out from it."
+                >
                     <input
                         type="text"
                         value={form.note}
