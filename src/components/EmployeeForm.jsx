@@ -1,5 +1,6 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
+import { WORK_PERMISSIONS, permissionFor } from '../lib/workRules'
 
 // The add and edit form for a person.
 //
@@ -112,6 +113,68 @@ export default function EmployeeForm({
                     Only if they log in. Someone on a trial does not need one, and joining them up
                     is what lets them see their own shifts later.
                 </p>
+            </div>
+
+            {/* Right to work.
+
+                Only the stamp and the date it runs out. No nationality, no
+                document numbers, nothing scanned. That is everything the hour
+                rules need and none of what we would then have to protect.
+
+                The date of birth is here for one reason: under 18s have their
+                own limits and the roster cannot apply them without it. */}
+            <div className="border-t border-border pt-4 mb-3">
+                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
+                    Right to work
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label className={labelCls}>Date of birth</label>
+                        <input
+                            type="date"
+                            value={formData.dateOfBirth}
+                            onChange={e => onChange('dateOfBirth', e.target.value)}
+                            className={fieldCls}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                            Only used to apply the under 18 limits. Leave empty otherwise.
+                        </p>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Permission</label>
+                        <select
+                            value={formData.workPermission}
+                            onChange={e => onChange('workPermission', e.target.value)}
+                            className={fieldCls}
+                        >
+                            {WORK_PERMISSIONS.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                        {permissionFor(formData.workPermission).term !== null && (
+                            <p className="text-xs text-amber-700 mt-1">
+                                {permissionFor(formData.workPermission).term} hours a week in term time,
+                                {' '}{permissionFor(formData.workPermission).holiday} in the holiday periods.
+                                The roster will not let a week go out over it.
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mb-1">
+                    <label className={labelCls}>Permission runs out</label>
+                    <input
+                        type="date"
+                        value={formData.workPermissionExpires}
+                        onChange={e => onChange('workPermissionExpires', e.target.value)}
+                        className={fieldCls}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                        The roster starts saying so two months out, and stops a week going out once
+                        it has passed.
+                    </p>
+                </div>
             </div>
 
             <div className="mb-4">

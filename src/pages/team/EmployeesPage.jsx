@@ -30,6 +30,7 @@ import PositionsModal from '../../components/PositionsModal'
 // before it. A list with a delete button on it loses last March.
 const EMPTY = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
 }
 
 export default function EmployeesPage() {
@@ -97,6 +98,9 @@ export default function EmployeesPage() {
             endedOn: employee.ended_on || '',
             userId: employee.user_id || '',
             notes: employee.notes || '',
+            dateOfBirth: employee.date_of_birth || '',
+            workPermission: employee.work_permission || '',
+            workPermissionExpires: employee.work_permission_expires || '',
         })
         setEditing(employee)
     }
@@ -113,6 +117,9 @@ export default function EmployeesPage() {
             ended_on: form.endedOn || null,
             user_id: form.userId || null,
             notes: form.notes.trim() || null,
+            date_of_birth: form.dateOfBirth || null,
+            work_permission: form.workPermission || null,
+            work_permission_expires: form.workPermissionExpires || null,
         }
     }
 

@@ -10,8 +10,9 @@ import { fmtMoney } from '../../lib/format'
 import { iconButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
-    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor,
+    hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
+import { checkWeek } from '../../lib/workRules'
 import RosterDay from '../../components/RosterDay'
 import ShiftDialog from '../../components/ShiftDialog'
 import DayNoteDialog from '../../components/DayNoteDialog'
@@ -28,6 +29,7 @@ import EmployeeForm from '../../components/EmployeeForm'
 // never a shift on its own. Half a roster going out is worse than none.
 const NEW_PERSON = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
 }
 
 export default function RosterPage() {
@@ -48,6 +50,7 @@ export default function RosterPage() {
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
     const [events, setEvents] = useState([])
+    const [priorHours, setPriorHours] = useState({})
     const [addingPerson, setAddingPerson] = useState(false)
     const [personForm, setPersonForm] = useState(NEW_PERSON)
 
@@ -97,6 +100,31 @@ export default function RosterPage() {
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
         setLoading(false)
+
+        // The weeks behind this one, for the forty eight hour average. It is an
+        // average over four months rather than a ceiling on any one week, so
+        // there is no way to check it without looking back. Fetched after the
+        // screen has drawn, because nothing on it waits for this.
+        const rules = { ...activeRestaurant?.roster_rules }
+        if (rules?.maxWeek?.on) {
+            const back = addDays(weekStart, -7 * (rules.maxWeek.lookbackWeeks || 17))
+            const { data } = await supabase.from('roster_shifts')
+                .select('employee_id, shift_date, starts_at, ends_at')
+                .eq('restaurant_id', restaurantId)
+                .gte('shift_date', back).lt('shift_date', weekStart)
+
+            const byPerson = {}
+            for (const s of data || []) {
+                const week = weekStartOf(s.shift_date)
+                if (!byPerson[s.employee_id]) byPerson[s.employee_id] = {}
+                byPerson[s.employee_id][week] = (byPerson[s.employee_id][week] || 0) + shiftHours(s)
+            }
+            setPriorHours(Object.fromEntries(
+                Object.entries(byPerson).map(([id, weeks]) => [id, Object.values(weeks)]),
+            ))
+        } else {
+            setPriorHours({})
+        }
     }
 
     // Only the people actually working that week. Somebody who left in June is
@@ -114,6 +142,16 @@ export default function RosterPage() {
     const day = totals(dayShifts, employeesById)
     const state = publishState(shifts)
     const clashes = findOverlaps(shifts)
+
+    const findings = checkWeek({
+        shifts,
+        employees: roster,
+        weekDates: dates,
+        rules: activeRestaurant?.roster_rules,
+        priorHoursByEmployee: priorHours,
+    })
+    const blocks = findings.filter(f => f.level === 'block')
+    const warnings = findings.filter(f => f.level === 'warn')
 
     async function saveShift(row) {
         setSaving(true)
@@ -172,6 +210,9 @@ export default function RosterPage() {
             ended_on: personForm.endedOn || null,
             user_id: personForm.userId || null,
             notes: personForm.notes.trim() || null,
+            date_of_birth: personForm.dateOfBirth || null,
+            work_permission: personForm.workPermission || null,
+            work_permission_expires: personForm.workPermissionExpires || null,
             sort_order: nextSortOrder(employees),
             created_by: user?.id,
         })
@@ -195,6 +236,22 @@ export default function RosterPage() {
     // than none, and somebody seeing three of their five shifts will plan
     // around the three.
     async function publish() {
+        // A block is the law about the employer rather than guidance about the
+        // employee, so it holds the week rather than colouring something amber.
+        // It can still be got past, deliberately and by somebody who has read
+        // what they are getting past.
+        if (blocks.length > 0) {
+            const past = await confirm({
+                title: 'This week cannot go out as it is',
+                message: blocks.map(b => b.text).join('\n\n'),
+                notice: 'These are limits on the company rather than on the person. Publishing anyway is a decision, not a shortcut.',
+                confirmLabel: 'Publish it anyway',
+                cancelLabel: 'Go back and fix it',
+                tone: 'danger',
+            })
+            if (!past) return
+        }
+
         const ok = await confirm({
             title: `Publish ${weekMonthLabel(weekStart)}?`,
             message: 'Every shift in the week goes out together. Change anything afterwards and the week will say it has unpublished changes.',
@@ -274,6 +331,26 @@ export default function RosterPage() {
                     </button>
                 </div>
             </div>
+
+            {blocks.length > 0 && (
+                <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3 mb-3">
+                    <p className="font-semibold mb-1">
+                        {blocks.length === 1 ? 'One thing has to be fixed' : `${blocks.length} things have to be fixed`} before this week goes out
+                    </p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                        {blocks.map((b, i) => <li key={i}>{b.text}</li>)}
+                    </ul>
+                </div>
+            )}
+
+            {warnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3 mb-3">
+                    <p className="font-semibold mb-1">Worth a look</p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                        {warnings.map((w, i) => <li key={i}>{w.text}</li>)}
+                    </ul>
+                </div>
+            )}
 
             {clashes.length > 0 && (
                 <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">

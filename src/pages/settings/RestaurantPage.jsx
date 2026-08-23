@@ -7,10 +7,12 @@ import SalesTendersModal from '../../components/SalesTendersModal'
 import CostTargetModal from '../../components/CostTargetModal'
 import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
+import RosterRulesModal from '../../components/RosterRulesModal'
 import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
+import { DEFAULT_RULES } from '../../lib/workRules'
 import PageContainer from '../../components/layout/PageContainer'
 import { numberField } from '../../lib/numberInput'
 import { card } from '../../lib/controlStyles'
@@ -49,6 +51,7 @@ export default function RestaurantPage() {
     const [showTendersModal, setShowTendersModal] = useState(false)
     const [showHoursModal, setShowHoursModal] = useState(false)
     const [showBreaksModal, setShowBreaksModal] = useState(false)
+    const [showRulesModal, setShowRulesModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
     const [refresh, setRefresh] = useState(0)
 
@@ -119,6 +122,13 @@ export default function RestaurantPage() {
     const breakSummary = ladder
         .map(r => `${r.hours}h ${r.operator === 'gt' ? 'over' : 'up'} gives ${r.minutes} min`)
         .join(', ')
+
+    // How many checks are switched on, so it is obvious at a glance whether
+    // anybody has been through them.
+    const rules = { ...DEFAULT_RULES, ...(activeRestaurant?.roster_rules || {}) }
+    const warnCount = ['dailyRest', 'weeklyRest', 'daysOff', 'maxWeek'].filter(k => rules[k]?.on).length
+    const blockCount = ['visaCap', 'underAge'].filter(k => rules[k]?.on).length
+    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours and under 18s.`
 
     // What is in force this week for one target, and how long it runs.
     function targetSummary(type) {
@@ -327,6 +337,24 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Roster rules</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {rulesSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowRulesModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set rules
+                            </button>
+                        </div>
+                    </div>
+
                     {/* The till receipt rows.
 
                         Super Admin only, and the database says so too rather
@@ -380,6 +408,7 @@ export default function RestaurantPage() {
 
             {showHoursModal && <OpeningHoursModal onClose={() => setShowHoursModal(false)} />}
             {showBreaksModal && <BreakRulesModal onClose={() => setShowBreaksModal(false)} />}
+            {showRulesModal && <RosterRulesModal onClose={() => setShowRulesModal(false)} />}
         </PageContainer>
     )
 }
