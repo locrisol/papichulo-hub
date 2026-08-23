@@ -13,6 +13,8 @@ import {
     availabilityProblem,
     windowShape,
     windowLabel,
+    copyDay,
+    DAY_GROUPS,
     DAY_END,
 } from './availability'
 
@@ -258,6 +260,55 @@ describe('the rows the dialog edits', () => {
 
     it('trims seconds off times that came back with them', () => {
         expect(fromRows(toRows({ 1: [['09:00:00', '17:00:00']] }))).toEqual({ 1: [['09:00', '17:00']] })
+    })
+})
+
+describe('copying a day onto others', () => {
+    const monToFri = DAY_GROUPS.find(g => g.label === 'Mon to Fri').keys
+
+    const fromOne = () => {
+        const rows = toRows(null)
+        rows[1].state = 'windows'
+        rows[1].windows = [['13:00', DAY_END]]
+        return rows
+    }
+
+    it('puts the same hours on Monday to Friday', () => {
+        const copied = copyDay(fromOne(), '1', monToFri)
+        expect(fromRows(copied)).toEqual({
+            1: [['13:00', DAY_END]],
+            2: [['13:00', DAY_END]],
+            3: [['13:00', DAY_END]],
+            4: [['13:00', DAY_END]],
+            5: [['13:00', DAY_END]],
+        })
+    })
+
+    it('leaves the weekend alone', () => {
+        const copied = copyDay(fromOne(), '1', monToFri)
+        expect(copied[0].state).toBe('any')
+        expect(copied[6].state).toBe('any')
+    })
+
+    it('copies a day off as well as a day of hours', () => {
+        const rows = toRows(null)
+        rows[0].state = 'none'
+        const copied = copyDay(rows, '0', ['0', '6'])
+        expect(fromRows(copied)).toEqual({ 0: [], 6: [] })
+    })
+
+    // Shared hours would mean editing Tuesday afterwards quietly changed
+    // Monday, which is the worst kind of wrong: it looks right until somebody
+    // reads the week back.
+    it('copies the hours rather than sharing them', () => {
+        const copied = copyDay(fromOne(), '1', monToFri)
+        copied[2].windows[0][0] = '17:00'
+        expect(copied[1].windows[0][0]).toBe('13:00')
+    })
+
+    it('does nothing when the day is not there', () => {
+        const rows = toRows(null)
+        expect(copyDay(rows, '9', monToFri)).toEqual(rows)
     })
 })
 

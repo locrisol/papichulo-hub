@@ -5,7 +5,8 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { modalFooter, secondaryButton } from '../lib/controlStyles'
 import {
-    toRows, fromRows, availabilityProblem, windowShape, DAY_START, DAY_END,
+    toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
+    DAY_START, DAY_END,
 } from '../lib/availability'
 
 // When somebody can work.
@@ -80,6 +81,8 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             return { ...r, windows }
         }))
 
+    const copyRow = (key, keys) => setRows(list => copyDay(list, key, keys))
+
     const addWindow = key =>
         patch(key, { windows: [...rows.find(r => r.key === key).windows, ['17:00', '22:00']] })
 
@@ -138,6 +141,34 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                         </button>
                                     ))}
                                 </div>
+
+                                {/* Copying a day onto the rest of the week.
+                                    Somebody who can only start at one is almost
+                                    never saying it about one day, they are
+                                    saying it about the college week, and typing
+                                    the same thing five times is how the fifth
+                                    one ends up different from the other four.
+
+                                    Only on a day that says something, since
+                                    there is nothing to copy off a day left on
+                                    any time. */}
+                                {row.state !== 'any' && (
+                                    <span className="flex items-center gap-1 ml-auto">
+                                        <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+                                            Copy to
+                                        </span>
+                                        {DAY_GROUPS.map(group => (
+                                            <button
+                                                key={group.label}
+                                                type="button"
+                                                onClick={() => copyRow(row.key, group.keys)}
+                                                className="px-2 py-1 text-[11px] font-semibold text-blue-600 rounded-md hover:bg-blue-50"
+                                            >
+                                                {group.label}
+                                            </button>
+                                        ))}
+                                    </span>
+                                )}
                             </div>
 
                             {row.state === 'windows' && (

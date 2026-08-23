@@ -212,6 +212,34 @@ export function fromRows(rows) {
     return Object.keys(out).length ? out : null
 }
 
+// The three sets of days worth copying onto in one go.
+//
+// Monday to Friday is the one this exists for. Somebody who can only start at
+// one is almost never saying it about one day, they are saying it about the
+// college week, and typing the same thing five times is how the fifth one ends
+// up different from the other four.
+export const DAY_GROUPS = [
+    { label: 'Mon to Fri', keys: ['1', '2', '3', '4', '5'] },
+    { label: 'Sat and Sun', keys: ['0', '6'] },
+    { label: 'Every day', keys: ['0', '1', '2', '3', '4', '5', '6'] },
+]
+
+// One day's answer put onto several others.
+//
+// The hours are copied rather than shared, or editing Tuesday afterwards would
+// quietly change Monday as well.
+export function copyDay(rows, fromKey, toKeys) {
+    const source = (rows || []).find(r => r.key === fromKey)
+    if (!source) return rows || []
+
+    const targets = new Set(toKeys || [])
+    return rows.map(row => (
+        targets.has(row.key)
+            ? { ...row, state: source.state, windows: source.windows.map(w => [...w]) }
+            : row
+    ))
+}
+
 // What is wrong with the rows, before any of it is saved.
 export function availabilityProblem(rows) {
     for (const row of rows || []) {
