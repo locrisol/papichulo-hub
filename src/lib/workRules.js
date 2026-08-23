@@ -17,6 +17,7 @@
 
 import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
 import { outsideAvailability, windowsLabel, dayNameOf } from './availability'
+import { absencesOn, kindPhrase } from './absences'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -50,6 +51,10 @@ export const DEFAULT_RULES = {
     // only ever fire about somebody whose availability has actually been
     // typed in. A restaurant that never fills any in never hears from it.
     availability: { on: true },
+    // Same reasoning as availability: it can only ever say something about a
+    // day somebody has actually been marked away for, so it stays quiet on its
+    // own until there is something to say.
+    timeOff: { on: true },
     // blocks says whether going over somebody's permitted hours holds the week
     // back or only says so. It holds by default, because going over is the
     // company's offence rather than the person's. Turning it down to a warning
@@ -184,7 +189,9 @@ export function shortestGap(shifts, weekDates) {
 // A finding is either a block or a warning. Blocks stop the week going out,
 // warnings do not. Nothing here throws anything away or refuses to save: it is
 // all said out loud and left to the person building the roster.
-export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmployee }) {
+export function checkWeek({
+    shifts, employees, weekDates, rules, priorHoursByEmployee, absences,
+}) {
     const settings = { ...DEFAULT_RULES, ...(rules || {}) }
     const findings = []
     const weekEnd = weekDates?.[6]
@@ -283,6 +290,20 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
                     add('warn', 'availabilityTime',
                         `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${s.shift_date} and can work ${windowsLabel(outside.windows)}.`)
                 }
+            }
+        }
+
+        // Days they are down as away.
+        //
+        // A warning, and for the same reason as availability. Somebody back
+        // early from a holiday, or coming in for one shift in the middle of a
+        // week off, is a real thing rather than a mistake.
+        if (settings.timeOff?.on) {
+            for (const s of mine) {
+                const off = absencesOn(absences, employee.id, s.shift_date)
+                if (off.length === 0) continue
+                add('warn', 'timeOff',
+                    `${name} is rostered on ${s.shift_date} and is down as ${kindPhrase(off[0].kind)}.`)
             }
         }
 

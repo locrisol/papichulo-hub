@@ -288,6 +288,47 @@ describe('checkWeek', () => {
         const found = run([shift(WEEK[0], '09:00', '17:00')], [off], { availability: { on: false } })
         expect(found).toEqual([])
     })
+
+    // Time off. A warning like availability, because somebody back early from a
+    // holiday or coming in for one shift is a real thing rather than a mistake.
+    const holiday = {
+        id: 'a1', employee_id: 'e1', kind: 'holiday',
+        starts_on: WEEK[1], ends_on: WEEK[3], status: 'approved',
+    }
+    const withAbsences = (shifts, employees, absences) => checkWeek({
+        shifts, employees, weekDates: WEEK, rules: DEFAULT_RULES, absences,
+    })
+
+    it('says so when somebody is rostered on their time off', () => {
+        const found = withAbsences([shift(WEEK[2], '09:00', '17:00')], [person()], [holiday])
+        const said = found.find(f => f.kind === 'timeOff')
+        expect(said.level).toBe('warn')
+        expect(said.text).toContain('on holiday')
+    })
+
+    it('counts the last day of the stretch', () => {
+        const found = withAbsences([shift(WEEK[3], '09:00', '17:00')], [person()], [holiday])
+        expect(found.find(f => f.kind === 'timeOff')).toBeTruthy()
+    })
+
+    it('leaves the day after it alone', () => {
+        const found = withAbsences([shift(WEEK[4], '09:00', '17:00')], [person()], [holiday])
+        expect(found).toEqual([])
+    })
+
+    it('says nothing when there is no time off recorded', () => {
+        expect(withAbsences([shift(WEEK[2], '09:00', '17:00')], [person()], [])).toEqual([])
+    })
+
+    it('ignores one that was turned down', () => {
+        const declined = [{ ...holiday, status: 'declined' }]
+        expect(withAbsences([shift(WEEK[2], '09:00', '17:00')], [person()], declined)).toEqual([])
+    })
+
+    it('never holds a week back over time off', () => {
+        const found = withAbsences([shift(WEEK[2], '09:00', '17:00')], [person()], [holiday])
+        expect(found.every(f => f.level === 'warn')).toBe(true)
+    })
 })
 
 // Getting the findings onto the row they are about. A banner above the grid is
