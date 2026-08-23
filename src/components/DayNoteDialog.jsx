@@ -6,6 +6,7 @@ import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
 import { modalFooter } from '../lib/controlStyles'
+import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import { secondaryButton } from '../lib/controlStyles'
 import {
@@ -86,6 +87,16 @@ export default function DayNoteDialog({
                 updated_by: userId,
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'restaurant_id,note_date' }))
+        }
+
+        // The sales side keeps its own copy, and the cost dashboard and the
+        // labour page read it. Ticking the box here used to leave that copy
+        // saying the opposite, so the roster printed Closed while the week's
+        // averages counted a zero.
+        if (!err) {
+            err = await mirrorClosedToSales(supabase, {
+                restaurantId, date, closed: form.isClosed,
+            })
         }
 
         setSaving(false)

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
@@ -71,6 +72,8 @@ export default function SalesPage() {
 
     // Marks a non-trading day. Closed days are excluded from per-day averages.
     const [isClosed, setIsClosed] = useState(false)
+    // The roster's word on this day, which decides the box above.
+    const [dayNote, setDayNote] = useState(null)
 
     const [platforms, setPlatforms] = useState([])
 
@@ -131,6 +134,15 @@ export default function SalesPage() {
         )
         setPlatforms(sortedPlats)
 
+        const { data: note } = await supabase
+            .from('day_notes')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('note_date', saleDate)
+            .maybeSingle()
+
+        setDayNote(note || null)
+
         const { data: rec, error: rErr } = await supabase
             .from('sales_records')
             .select('*')
@@ -142,7 +154,7 @@ export default function SalesPage() {
 
         if (rec) {
             setRecordId(rec.id)
-            setIsClosed(rec.is_closed || false)
+            setIsClosed(dayIsClosed(note, rec))
             setValues({
                 gross: rec.gross_sales != null ? String(rec.gross_sales) : '',
                 net: rec.net_sales != null ? String(rec.net_sales) : '',
@@ -157,6 +169,7 @@ export default function SalesPage() {
             }
             setPlatformSales(ps)
         } else {
+            setIsClosed(dayIsClosed(note, null))
             setRecordId(null)
             setIsClosed(false)
             setValues({ gross: '', net: '' })
@@ -294,6 +307,14 @@ export default function SalesPage() {
 
         setSaving(false)
         if (resErr) { setError(friendlyError(resErr)); return }
+        // And the roster's day is told, so it is one tick rather than two.
+        const noteErr = await applyNoteWrites(supabase, {
+            restaurantId,
+            userId: user.id,
+            plan: planNoteWrites(dayNote ? [dayNote] : [], [{ date: saleDate, closed: isClosed }]),
+        })
+        if (noteErr) { setError(friendlyError(noteErr)); return }
+
         setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
         loadDay()
     }
