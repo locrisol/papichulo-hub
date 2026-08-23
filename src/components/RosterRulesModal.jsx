@@ -124,6 +124,36 @@ export default function RosterRulesModal({ onClose }) {
                             unit: 'hours a week on average',
                         },
                     ].map(row)}
+
+                    {/* No number on this one, so it is written out rather than
+                        going through the row helper above.
+
+                        It is the only warning that starts turned on, and that is
+                        safe rather than inconsistent: it can never say anything
+                        about somebody with no availability recorded, and nobody
+                        has any until it is typed in. A restaurant that never
+                        uses it never hears from it. */}
+                    <div className="py-3 border-t border-border">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!rules.availability?.on}
+                                onChange={e => set('availability', { on: e.target.checked })}
+                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    When somebody said they can work
+                                </span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    Says so when a shift lands on a day or at an hour somebody said they
+                                    cannot do. Only ever about people with availability set on the team
+                                    list, and it never holds a week back: if you know something the roster
+                                    does not, roster it.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
                 </ModalSection>
 

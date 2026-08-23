@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     inHolidayPeriod, weeklyCap, ageOn, longestRest, shortestGap, checkWeek,
-    permissionFor, DEFAULT_RULES,
+    permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, overlapFindings,
 } from './workRules'
 
 // Sunday 23 August 2026 to Saturday the 29th.
@@ -241,5 +241,97 @@ describe('checkWeek', () => {
 
     it('says nothing at all about somebody with no shifts', () => {
         expect(run([], [person({ work_permission: 'stamp2a' })])).toEqual([])
+    })
+
+    // Availability. On by default, which is only safe because it can never say
+    // anything about somebody who has none recorded, and nobody has until they
+    // are typed in.
+    it('leaves everybody alone until availability is typed in', () => {
+        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[1], '09:00', '17:00')]
+        expect(run(shifts, [person()])).toEqual([])
+    })
+
+    it('says so when somebody is on a day they said they cannot work', () => {
+        const off = person({ availability: { 0: [] } })
+        const found = run([shift(WEEK[0], '09:00', '17:00')], [off])
+        const said = found.find(f => f.kind === 'availabilityDay')
+        expect(said.level).toBe('warn')
+        expect(said.text).toContain('Sunday')
+    })
+
+    it('says nothing about the days that record says nothing about', () => {
+        const off = person({ availability: { 0: [] } })
+        expect(run([shift(WEEK[1], '09:00', '17:00')], [off])).toEqual([])
+    })
+
+    it('says so when a shift runs outside the hours they can work', () => {
+        const student = person({ availability: { 1: [['17:00', '23:00']] } })
+        const found = run([shift(WEEK[1], '09:00', '17:00')], [student])
+        const said = found.find(f => f.kind === 'availabilityTime')
+        expect(said.level).toBe('warn')
+        expect(said.text).toContain('17:00 to 23:00')
+    })
+
+    it('is happy with a shift inside them', () => {
+        const student = person({ availability: { 1: [['17:00', '23:00']] } })
+        expect(run([shift(WEEK[1], '18:00', '22:00')], [student])).toEqual([])
+    })
+
+    it('never holds a week back over availability', () => {
+        const off = person({ availability: { 0: [], 1: [] } })
+        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[1], '09:00', '17:00')]
+        expect(run(shifts, [off]).every(f => f.level === 'warn')).toBe(true)
+    })
+
+    it('goes quiet when the rule is turned off', () => {
+        const off = person({ availability: { 0: [] } })
+        const found = run([shift(WEEK[0], '09:00', '17:00')], [off], { availability: { on: false } })
+        expect(found).toEqual([])
+    })
+})
+
+// Getting the findings onto the row they are about. A banner above the grid is
+// only read on the way past, and by the time somebody is putting a shift in on
+// Thursday they have scrolled well past it.
+describe('filing findings under the person', () => {
+    const found = [
+        { level: 'warn', kind: 'daysOff', employeeId: 'e1', text: 'a' },
+        { level: 'block', kind: 'visaCap', employeeId: 'e1', text: 'b' },
+        { level: 'warn', kind: 'daysOff', employeeId: 'e2', text: 'c' },
+    ]
+
+    it('groups them by person', () => {
+        const by = findingsByEmployee(found)
+        expect(by.e1).toHaveLength(2)
+        expect(by.e2).toHaveLength(1)
+        expect(by.e3).toBe(undefined)
+    })
+
+    it('leaves out anything not about a person', () => {
+        expect(findingsByEmployee([{ level: 'warn', text: 'a' }])).toEqual({})
+    })
+
+    // One mark has to stand for everything on the row, so it has to be the
+    // worse of them or a block hides behind a warning.
+    it('takes the worse of what somebody has', () => {
+        expect(worstLevel(found.filter(f => f.employeeId === 'e1'))).toBe('block')
+        expect(worstLevel(found.filter(f => f.employeeId === 'e2'))).toBe('warn')
+        expect(worstLevel([])).toBe(null)
+        expect(worstLevel(null)).toBe(null)
+    })
+
+    it('puts a double booking in the same shape as the rest', () => {
+        const a = { employee_id: 'e1', shift_date: '2026-08-24', starts_at: '09:00', ends_at: '17:00' }
+        const b = { employee_id: 'e1', shift_date: '2026-08-24', starts_at: '12:00', ends_at: '20:00' }
+        const [finding] = overlapFindings([[a, b]], { e1: { full_name: 'Ana' } })
+        expect(finding.employeeId).toBe('e1')
+        expect(finding.level).toBe('warn')
+        expect(finding.text).toContain('09:00')
+        expect(finding.text).toContain('12:00')
+    })
+
+    it('is happy with no clashes at all', () => {
+        expect(overlapFindings([], {})).toEqual([])
+        expect(overlapFindings(null, {})).toEqual([])
     })
 })

@@ -15,7 +15,8 @@
 // current guidance. They are here as settings rather than as constants for
 // exactly that reason.
 
-import { shiftHours, shiftMinutes, toMinutes } from './roster'
+import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
+import { outsideAvailability, windowsLabel, dayNameOf } from './availability'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -45,6 +46,10 @@ export const DEFAULT_RULES = {
     daysOff: { on: false, count: 2 },
     maxWeek: { on: false, hours: 48, lookbackWeeks: 17 },
     underAge: { on: true },
+    // On from the start, unlike the rest of the warnings, because it can
+    // only ever fire about somebody whose availability has actually been
+    // typed in. A restaurant that never fills any in never hears from it.
+    availability: { on: true },
     // blocks says whether going over somebody's permitted hours holds the week
     // back or only says so. It holds by default, because going over is the
     // company's offence rather than the person's. Turning it down to a warning
@@ -260,6 +265,27 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
             }
         }
 
+        // What they said they can work.
+        //
+        // A warning and never a block. It is a promise to the person rather
+        // than the law about the company, and a manager who knows the college
+        // timetable changed this term should be able to roster straight over it
+        // and be told once.
+        if (settings.availability?.on) {
+            for (const s of mine) {
+                const outside = outsideAvailability(employee.availability, s)
+                if (!outside) continue
+
+                if (outside.kind === 'day') {
+                    add('warn', 'availabilityDay',
+                        `${name} is rostered on ${s.shift_date}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
+                } else {
+                    add('warn', 'availabilityTime',
+                        `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${s.shift_date} and can work ${windowsLabel(outside.windows)}.`)
+                }
+            }
+        }
+
         if (settings.dailyRest?.on) {
             const gap = shortestGap(mine, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
@@ -300,6 +326,43 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
     }
 
     return findings
+}
+
+// Everything the week found, filed under the person it is about.
+//
+// The roster reads down a column of names, so a warning that only exists in a
+// banner above the grid is a warning nobody sees. This is what lets the row
+// itself carry it.
+export function findingsByEmployee(findings) {
+    const out = {}
+    for (const finding of findings || []) {
+        if (!finding.employeeId) continue
+        if (!out[finding.employeeId]) out[finding.employeeId] = []
+        out[finding.employeeId].push(finding)
+    }
+    return out
+}
+
+// The worse of what a person has, since one mark has to stand for all of it.
+export function worstLevel(findings) {
+    if (!findings?.length) return null
+    return findings.some(f => f.level === 'block') ? 'block' : 'warn'
+}
+
+// Somebody in two places at once, in the same shape as everything else.
+//
+// It is worked out separately from checkWeek because it is about two shifts
+// rather than about a person, but on the grid it is the same thing: something
+// wrong with that row. A warning rather than a block, which is what it already
+// was before it had anywhere to appear.
+export function overlapFindings(clashes, employeesById) {
+    return (clashes || []).map(([a, b]) => ({
+        level: 'warn',
+        kind: 'clash',
+        employeeId: a.employee_id,
+        name: employeesById?.[a.employee_id]?.full_name || '',
+        text: `Rostered twice over the same hours on ${a.shift_date}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
+    }))
 }
 
 function daysBetween(from, to) {

@@ -12,7 +12,7 @@ import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../.
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
-import { checkWeek } from '../../lib/workRules'
+import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
 import RosterDay from '../../components/RosterDay'
 import RosterWeek from '../../components/RosterWeek'
 import ShareWeekButton from '../../components/ShareWeekButton'
@@ -172,6 +172,13 @@ export default function RosterPage() {
     })
     const blocks = findings.filter(f => f.level === 'block')
     const warnings = findings.filter(f => f.level === 'warn')
+
+    // The same findings again, filed under the person they are about, so the
+    // grid can put them on the row rather than leaving them in a banner you
+    // have scrolled past. Double bookings join them here and only here: they
+    // already have their own line above, and saying it twice in the same place
+    // would read as two problems.
+    const alerts = findingsByEmployee([...findings, ...overlapFindings(clashes, employeesById)])
 
     async function saveShift(row) {
         setSaving(true)
@@ -542,6 +549,7 @@ export default function RosterPage() {
                     events={events}
                     openingHours={activeRestaurant?.opening_hours}
                     today={today}
+                    alerts={alerts}
                     onOpenShift={shift => {
                         setDayIndex(dates.indexOf(shift.shift_date))
                         setEditingShift({ shift })
@@ -556,6 +564,8 @@ export default function RosterPage() {
                     employees={roster}
                     shifts={dayShifts}
                     positions={positions}
+                    date={date}
+                    alerts={alerts}
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
