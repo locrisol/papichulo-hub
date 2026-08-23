@@ -349,7 +349,7 @@ export default function StockTakeCountPage() {
                 <button
                     type="button"
                     onClick={() => navigate('/inventory/stock-takes')}
-                    className="mt-4 text-sm font-semibold text-accent"
+                    className="mt-4 text-sm font-semibold text-accent-ink"
                 >
                     ← Back to stock takes
                 </button>
@@ -397,7 +397,7 @@ export default function StockTakeCountPage() {
                         <button
                             type="button"
                             onClick={() => navigate(`/inventory/stock-takes/${id}/review`)}
-                            className="text-sm font-semibold text-accent flex-shrink-0"
+                            className="text-sm font-semibold text-accent-ink flex-shrink-0"
                         >
                             Review
                         </button>

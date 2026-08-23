@@ -104,13 +104,13 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                             }`}>
                                 <span className={`text-sm font-bold ${
                                     events.length === 0 ? 'text-gray-400'
-                                        : date === today ? 'text-accent' : 'text-gray-900'
+                                        : date === today ? 'text-accent-ink' : 'text-gray-900'
                                 }`}>
                                     {DAY_NAMES[d.getDay()]}
                                 </span>
                                 <span className="text-xs text-muted">{shortDate(date)}</span>
                                 {date === today && (
-                                    <span className="text-[0.625rem] font-bold text-accent uppercase tracking-wider">Today</span>
+                                    <span className="text-[0.625rem] font-bold text-accent-ink uppercase tracking-wider">Today</span>
                                 )}
                             </div>
 

@@ -194,11 +194,18 @@ export default function AppLayout({ children }) {
                 <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 md:px-7 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         {/* Hamburger: mobile only */}
+                        {/* Three lines and nothing else in it, so to
+                            anything that cannot see the drawing this button had
+                            no name at all. It is the only way into the menu on
+                            a phone, which makes it the worst one to leave
+                            unnamed. */}
                         <button
                             onClick={() => setSidebarOpen(!sidebarOpen)}
+                            aria-label={sidebarOpen ? 'Close the menu' : 'Open the menu'}
+                            aria-expanded={sidebarOpen}
                             className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
                         >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg aria-hidden="true" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
                         </button>

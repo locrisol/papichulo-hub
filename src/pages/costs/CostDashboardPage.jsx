@@ -61,7 +61,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: { text: 'On track', cls: 'bg-green-50 text-green-700' },
         amber: { text: 'Near limit', cls: 'bg-amber-50 text-amber-700' },
         red: { text: 'Over target', cls: 'bg-red-50 text-red-700' },
-        none: { text: 'No data', cls: 'bg-gray-100 text-gray-500' },
+        none: { text: 'No data', cls: 'bg-gray-100 text-gray-600' },
     }[status]
 
     const fill = pct != null && target ? Math.min((pct / target) * 100, 100) : 0
@@ -129,6 +129,19 @@ export default function CostDashboardPage() {
     const [tenders, setTenders] = useState([])
 
     const [loading, setLoading] = useState(true)
+    // Whether this page has ever finished loading, which is not the same
+    // question as whether it is loading now.
+    //
+    // The first arrival painted the week picker and the cards straight away and
+    // then dropped a notice in above them once the figures came back, shoving
+    // everything down the page while somebody was already reading it. Waiting
+    // for the first load means the page arrives once, in the shape it is going
+    // to stay in.
+    //
+    // Only the first. Stepping to another week keeps what is on screen and
+    // swaps the numbers underneath it, the same as the roster does, because
+    // blanking the page on every press is how you lose your place in it.
+    const [ready, setReady] = useState(false)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
     const [editing, setEditing] = useState(null)
@@ -138,6 +151,11 @@ export default function CostDashboardPage() {
 
     useEffect(() => {
         if (!restaurantId) return
+
+        function finishLoading() {
+            setLoading(false)
+            setReady(true)
+        }
 
         async function load() {
             setLoading(true)
@@ -152,7 +170,7 @@ export default function CostDashboardPage() {
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
-            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); finishLoading(); return }
             setSalesRows(sales || [])
 
             const { data: tends, error: tErr } = await supabase
@@ -162,7 +180,7 @@ export default function CostDashboardPage() {
                 .order('sort_order')
                 .order('label')
 
-            if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
+            if (tErr) { setError(friendlyError(tErr)); finishLoading(); return }
             setTenders(tends || [])
 
             const { data: invoices, error: iErr } = await supabase
@@ -172,7 +190,7 @@ export default function CostDashboardPage() {
                 .gte('invoice_date', weekStart)
                 .lte('invoice_date', end)
 
-            if (iErr) { setError(friendlyError(iErr)); setLoading(false); return }
+            if (iErr) { setError(friendlyError(iErr)); finishLoading(); return }
 
             setFoodCost((invoices || [])
                 .filter(i => i.category === 'food')
@@ -192,7 +210,7 @@ export default function CostDashboardPage() {
                 .gte('entry_date', weekStart)
                 .lte('entry_date', end)
 
-            if (lErr) { setError(friendlyError(lErr)); setLoading(false); return }
+            if (lErr) { setError(friendlyError(lErr)); finishLoading(); return }
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
 
             const { data: waste, error: wErr } = await supabase
@@ -202,7 +220,7 @@ export default function CostDashboardPage() {
                 .gte('log_date', weekStart)
                 .lte('log_date', end)
 
-            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
+            if (wErr) { setError(friendlyError(wErr)); finishLoading(); return }
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
 
             const { data: overrideRows, error: oErr } = await supabase
@@ -210,10 +228,10 @@ export default function CostDashboardPage() {
                 .select('*')
                 .eq('restaurant_id', restaurantId)
 
-            if (oErr) { setError(friendlyError(oErr)); setLoading(false); return }
+            if (oErr) { setError(friendlyError(oErr)); finishLoading(); return }
             setOverrides(overrideRows || [])
 
-            setLoading(false)
+            finishLoading()
         }
 
         load()
@@ -291,6 +309,14 @@ export default function CostDashboardPage() {
     for (const s of salesRows) salesByDate[s.sale_date] = s
 
     const isThisWeek = weekStart === weekStartOf(todayISO())
+
+    if (!ready) {
+        return (
+            <PageContainer>
+                <p className="text-sm text-gray-400">Loading...</p>
+            </PageContainer>
+        )
+    }
 
     return (
         <PageContainer>
@@ -411,7 +437,7 @@ export default function CostDashboardPage() {
                 the way they came in, straight from what was entered on the
                 weekly sales grid. */}
             <div className={`${card} p-6 mb-6`}>
-                <h3 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h3>
+                <h2 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h2>
                 <p className="text-xs text-muted mb-4">
                     One share for every row on the till receipt. Change what the till takes and this follows it.
                 </p>
@@ -421,7 +447,7 @@ export default function CostDashboardPage() {
             {/* Gross profit and the week day by day */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className={`${card} p-6`}>
-                    <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h3>
+                    <h2 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h2>
                     <div className="flex flex-col">
                         <div className="flex justify-between text-sm py-2 border-b border-border">
                             <span className="text-muted">Net sales</span>
@@ -451,7 +477,7 @@ export default function CostDashboardPage() {
                 </div>
 
                 <div className={`${card} p-6`}>
-                    <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Sales day by day</h3>
+                    <h2 className="font-serif text-base font-bold text-gray-900 mb-4">Sales day by day</h2>
                     {dates.map((d, i) => {
                         const row = salesByDate[d]
                         return (

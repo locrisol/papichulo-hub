@@ -193,7 +193,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     <div className="min-h-screen bg-app-bg">
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <header className="mb-6">
-          <p className="text-xs font-bold text-accent uppercase tracking-widest mb-1">Allergen Information</p>
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
           <p className="text-xs text-gray-500 mt-2">Last updated: {formatDate(lastUpdated)}</p>
         </header>

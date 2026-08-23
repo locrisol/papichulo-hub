@@ -273,7 +273,7 @@ export default function RosterDay({
                             {counts.map((count, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
                                     {count > 0 && (
-                                        <span className="text-[0.5625rem] font-bold text-accent leading-none mb-0.5">
+                                        <span className="text-[0.5625rem] font-bold text-accent-ink leading-none mb-0.5">
                                             {count}
                                         </span>
                                     )}
@@ -296,7 +296,7 @@ export default function RosterDay({
                         the end of the day. Here each gets a line. */}
                     {(events || []).length > 0 && (
                         <div className="flex border-b border-border bg-accent-light/40">
-                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent uppercase tracking-wider">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent-ink uppercase tracking-wider">
                                 Events
                             </div>
                             <div className="flex-1 relative py-1">
@@ -311,8 +311,8 @@ export default function RosterDay({
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
                                                 width: `${Math.max(0, 100 - pct(start))}%`,
-                                                backgroundColor: 'rgba(212,114,74,0.18)',
-                                                borderLeft: '2px solid #D4724A',
+                                                backgroundColor: 'rgba(188,85,43,0.18)',
+                                                borderLeft: '2px solid var(--color-accent)',
                                             }}
                                         >
                                             <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />

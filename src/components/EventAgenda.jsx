@@ -90,7 +90,7 @@ export default function EventAgenda({ events, today, onOpenEvent, footnote }) {
                                     {DAY_NAMES[d.getDay()]}
                                 </p>
                                 <p className={`font-serif text-xl font-bold leading-none ${
-                                    row.date === today ? 'text-accent' : 'text-gray-900'
+                                    row.date === today ? 'text-accent-ink' : 'text-gray-900'
                                 }`}>
                                     {d.getDate()}
                                 </p>

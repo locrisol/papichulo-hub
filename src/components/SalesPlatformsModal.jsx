@@ -282,9 +282,9 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     const rows = platformsForBucket(bucket)
     return (
       <div className="mb-6">
-        <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+        <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
           {BUCKET_LABEL[bucket]}
-        </h3>
+        </h2>
         {rows.length === 0 ? (
           <p className="text-xs text-gray-400 italic mb-2">No platforms in this bucket yet.</p>
         ) : (

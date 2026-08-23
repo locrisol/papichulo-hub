@@ -182,7 +182,7 @@ export default function StockTakeReviewPage() {
     return (
       <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent">← Back</button>
+        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent-ink">← Back</button>
       </div>
     )
   }
@@ -193,7 +193,7 @@ export default function StockTakeReviewPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           Only managers can review and close a stock take.
         </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}`)} className="mt-4 text-sm font-semibold text-accent">← Back to counting</button>
+        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}`)} className="mt-4 text-sm font-semibold text-accent-ink">← Back to counting</button>
       </div>
     )
   }
@@ -204,7 +204,7 @@ export default function StockTakeReviewPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           This stock take is already closed.
         </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent">View summary →</button>
+        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent-ink">View summary →</button>
       </div>
     )
   }

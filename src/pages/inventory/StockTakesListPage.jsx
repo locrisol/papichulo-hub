@@ -192,7 +192,7 @@ export default function StockTakesListPage() {
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-accent">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-accent-ink">
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
                   Active stock take
                 </span>
