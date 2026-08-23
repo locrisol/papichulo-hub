@@ -39,7 +39,7 @@ export function AlertBadge({ findings }) {
         <span className={`inline-flex items-center gap-0.5 flex-shrink-0 ${tone}`}>
             <Triangle className="w-3.5 h-3.5" />
             {findings.length > 1 && (
-                <span className="text-[10px] font-bold leading-none">{findings.length}</span>
+                <span className="text-[0.625rem] font-bold leading-none">{findings.length}</span>
             )}
         </span>
     )

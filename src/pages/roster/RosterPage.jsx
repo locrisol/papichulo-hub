@@ -372,11 +372,11 @@ export default function RosterPage() {
                 <div className="flex items-center gap-4 ml-auto">
                     <div className="text-right">
                         <p className="font-serif text-xl font-bold text-gray-900 leading-none">{fmtHours(week.hours)}</p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider mt-0.5">Hours</p>
+                        <p className="text-[0.625rem] text-muted uppercase tracking-wider mt-0.5">Hours</p>
                     </div>
                     <div className="text-right">
                         <p className="font-serif text-xl font-bold text-gray-900 leading-none">{fmtMoney(week.cost)}</p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider mt-0.5">Cost</p>
+                        <p className="text-[0.625rem] text-muted uppercase tracking-wider mt-0.5">Cost</p>
                     </div>
                     <span className={`${badge} ${stateBadge.cls}`}>{stateBadge.text}</span>
                     <button
@@ -435,13 +435,13 @@ export default function RosterPage() {
                                     : 'bg-white border-border text-gray-700 hover:border-gray-400'
                             }`}
                         >
-                            <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
+                            <span className="block text-[0.625rem] font-bold uppercase tracking-wider opacity-80">
                                 {DAY_NAMES[i]}
                             </span>
                             <span className={`block text-sm font-semibold ${d === today && i !== dayIndex ? 'text-accent' : ''}`}>
                                 {new Date(d + 'T00:00:00').getDate()}
                             </span>
-                            <span className="block text-[10px] opacity-70">
+                            <span className="block text-[0.625rem] opacity-70">
                                 {note?.is_closed ? 'Closed' : count ? `${count}` : '—'}
                             </span>
                         </button>

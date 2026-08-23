@@ -96,7 +96,7 @@ export default function EventMonth({
 
             <div className="grid grid-cols-7 border-b border-border bg-gray-50">
                 {DAY_NAMES.map(d => (
-                    <div key={d} className="px-1 py-2 text-center text-[10px] sm:text-xs font-bold text-muted uppercase tracking-wider">
+                    <div key={d} className="px-1 py-2 text-center text-[0.625rem] sm:text-xs font-bold text-muted uppercase tracking-wider">
                         {d}
                     </div>
                 ))}
@@ -197,7 +197,7 @@ export default function EventMonth({
                 kind of night it is. On a laptop the chip carries the name. */}
             <div className="sm:hidden flex flex-wrap gap-x-3 gap-y-1.5 border-t border-border px-4 py-2.5">
                 {LEGEND.map(c => (
-                    <span key={c} className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                    <span key={c} className="flex items-center gap-1.5 text-[0.6875rem] text-gray-600">
                         <span className={`w-2 h-2 rounded-full ${categoryDot(c)}`} />
                         {c === 'Arts & Theatre' ? 'Arts' : c === 'Miscellaneous' ? 'Other' : c}
                     </span>

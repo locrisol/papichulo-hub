@@ -71,7 +71,7 @@ export default function EventAgenda({ events, today, onOpenEvent, footnote }) {
                         return (
                             <p
                                 key={row.key}
-                                className="bg-gray-100 border-b border-border px-4 py-1.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider"
+                                className="bg-gray-100 border-b border-border px-4 py-1.5 text-[0.6875rem] font-bold text-gray-600 uppercase tracking-wider"
                             >
                                 {row.label}
                             </p>
@@ -86,7 +86,7 @@ export default function EventAgenda({ events, today, onOpenEvent, footnote }) {
                                 of a sentence. Only the day number, since the
                                 month band above it says the rest. */}
                             <div className="w-10 flex-shrink-0 text-center">
-                                <p className="text-[10px] font-bold text-muted uppercase tracking-wider">
+                                <p className="text-[0.625rem] font-bold text-muted uppercase tracking-wider">
                                     {DAY_NAMES[d.getDay()]}
                                 </p>
                                 <p className={`font-serif text-xl font-bold leading-none ${

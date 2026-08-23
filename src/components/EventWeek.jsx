@@ -71,7 +71,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                                 date === today ? 'bg-accent-light' : 'hover:bg-gray-50'
                             }`}
                         >
-                            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">
+                            <span className="text-[0.625rem] font-bold text-muted uppercase tracking-wider">
                                 {DAY_NAMES[d.getDay()]}
                             </span>
                             {date === today ? (
@@ -110,7 +110,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                                 </span>
                                 <span className="text-xs text-muted">{shortDate(date)}</span>
                                 {date === today && (
-                                    <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Today</span>
+                                    <span className="text-[0.625rem] font-bold text-accent uppercase tracking-wider">Today</span>
                                 )}
                             </div>
 

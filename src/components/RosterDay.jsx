@@ -266,14 +266,14 @@ export default function RosterDay({
                         the question a roster is really answering, and a column
                         of names does not answer it. */}
                     <div className="flex border-b border-border">
-                        <div className="w-40 flex-shrink-0 px-3 py-1 text-[10px] font-bold text-muted uppercase tracking-wider flex items-end">
+                        <div className="w-40 flex-shrink-0 px-3 py-1 text-[0.625rem] font-bold text-muted uppercase tracking-wider flex items-end">
                             On at once
                         </div>
                         <div className="flex-1 flex h-10 items-end">
                             {counts.map((count, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
                                     {count > 0 && (
-                                        <span className="text-[9px] font-bold text-accent leading-none mb-0.5">
+                                        <span className="text-[0.5625rem] font-bold text-accent leading-none mb-0.5">
                                             {count}
                                         </span>
                                     )}
@@ -296,7 +296,7 @@ export default function RosterDay({
                         the end of the day. Here each gets a line. */}
                     {(events || []).length > 0 && (
                         <div className="flex border-b border-border bg-accent-light/40">
-                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[10px] font-bold text-accent uppercase tracking-wider">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent uppercase tracking-wider">
                                 Events
                             </div>
                             <div className="flex-1 relative py-1">
@@ -316,7 +316,7 @@ export default function RosterDay({
                                             }}
                                         >
                                             <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
-                                            <span className="text-[9px] font-semibold text-gray-700 truncate">
+                                            <span className="text-[0.5625rem] font-semibold text-gray-700 truncate">
                                                 {shortTime(event.event_time)} {event.name}
                                             </span>
                                         </span>
@@ -335,11 +335,11 @@ export default function RosterDay({
                     {extras.length > 0 && (
                         <div className="flex border-b border-border bg-slate-50">
                             <div className="w-40 flex-shrink-0 px-3 py-1.5">
-                                <span className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                                <span className="block text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
                                     Also on
                                 </span>
                                 {looseExtras.map(extra => (
-                                    <span key={extra.name} className="block text-[10px] text-slate-500 truncate">
+                                    <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
                                         {extra.name}
                                     </span>
                                 ))}
@@ -354,7 +354,7 @@ export default function RosterDay({
                                                 style={{ left: `${pct(toMinutes(extra.time))}%` }}
                                             >
                                                 <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
-                                                <span className="text-[10px] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                                <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
                                                     {extraLabel(extra)}
                                                 </span>
                                             </span>
@@ -371,7 +371,7 @@ export default function RosterDay({
                         reason half the week is rostered the way it is, so it
                         belongs on the grid rather than in a note above it. */}
                     <div className="flex border-b border-border bg-gray-50">
-                        <div className="w-40 flex-shrink-0 px-3 py-2 text-[10px] font-bold text-muted uppercase tracking-wider">
+                        <div className="w-40 flex-shrink-0 px-3 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider">
                             Staff
                         </div>
                         <div className="flex-1 relative h-11">
@@ -399,7 +399,7 @@ export default function RosterDay({
                             {hourMarks.map(m => (
                                 <span key={m}>
                                     <span
-                                        className="absolute top-1 text-[10px] text-gray-500 -translate-x-1/2 whitespace-nowrap"
+                                        className="absolute top-1 text-[0.625rem] text-gray-500 -translate-x-1/2 whitespace-nowrap"
                                         style={{ left: `${pct(m)}%` }}
                                     >
                                         {toTime(m)}
@@ -420,7 +420,7 @@ export default function RosterDay({
                             ))}
 
                         </div>
-                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[10px] font-bold text-muted uppercase tracking-wider text-center">
+                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
                             Hours
                         </div>
                     </div>
@@ -463,7 +463,7 @@ export default function RosterDay({
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
-                                        <span className="block text-[10px] text-muted truncate">
+                                        <span className="block text-[0.625rem] text-muted truncate">
                                             {offKind
                                                 ? offKind.label
                                                 : away === 'none'
@@ -548,7 +548,7 @@ export default function RosterDay({
                                             style={{ backgroundColor: tint(offKind.colour, 0.22) }}
                                         >
                                             <span
-                                                className="text-[11px] font-bold uppercase tracking-wider"
+                                                className="text-[0.6875rem] font-bold uppercase tracking-wider"
                                                 style={{ color: offKind.colour }}
                                             >
                                                 {offKind.label}
@@ -646,7 +646,7 @@ export default function RosterDay({
                                                 <span className="block text-xs font-bold text-gray-900 whitespace-nowrap">
                                                     {shortTime(preview.starts_at)} - {endLabel(preview, dayHours)}
                                                 </span>
-                                                <span className="block text-[10px] text-gray-600 whitespace-nowrap">
+                                                <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap">
                                                     {fmtHours(shiftHours(preview))}h · {breakLabel(
                                                         live ? breakFor(shiftHours(preview), breakRules) : shift.break_minutes,
                                                     )}

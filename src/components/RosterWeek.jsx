@@ -118,7 +118,7 @@ export default function RosterWeek({
                                             ? `${hours.open} to ${hours.close}`
                                             : '—'}
                                     {note?.is_bank_holiday && !note?.is_closed && (
-                                        <span className="block text-[10px]">Bank holiday</span>
+                                        <span className="block text-[0.625rem]">Bank holiday</span>
                                     )}
                                 </td>
                             )
@@ -137,7 +137,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
+                                        <span key={e.id} className="block text-[0.6875rem] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -178,7 +178,7 @@ export default function RosterWeek({
                                             ) : extras.map(extra => (
                                                 <span
                                                     key={extra.name}
-                                                    className="block text-[11px] text-slate-700 leading-snug break-words"
+                                                    className="block text-[0.6875rem] text-slate-700 leading-snug break-words"
                                                 >
                                                     {extraLabel(extra)}
                                                 </span>
@@ -219,7 +219,7 @@ export default function RosterWeek({
                                             <span className="block font-medium text-gray-900 truncate">
                                                 {row.employee.full_name}
                                             </span>
-                                            <span className="block text-[10px] text-muted truncate">
+                                            <span className="block text-[0.625rem] text-muted truncate">
                                                 {positionOf(row.employee.position_id)?.name || ''}
                                             </span>
                                         </span>
@@ -267,7 +267,7 @@ export default function RosterWeek({
                                                     // what the week is being
                                                     // read for.
                                                     <span
-                                                        className="block text-[10px] font-semibold uppercase tracking-wider py-0.5"
+                                                        className="block text-[0.625rem] font-semibold uppercase tracking-wider py-0.5"
                                                         style={{ color: offKind.colour }}
                                                     >
                                                         {offKind.label}
@@ -331,11 +331,11 @@ export default function RosterWeek({
                                 // and closes under that instead.
                                 className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
                             >
-                                <td className="px-3 py-0 pl-6 text-[10px] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
+                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
-                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[10px] text-red-600 leading-tight">
+                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight">
                                         {day.shifts.length === 0 ? '' : day.shifts.map(s => (
                                             <span key={s.id} className="block">
                                                 {breakLabel(s.break_minutes)}
@@ -363,7 +363,7 @@ export default function RosterWeek({
                             Notes
                         </td>
                         {dates.map(d => (
-                            <td key={d} className="px-2 py-1.5 border-r border-red-100 last:border-r-0 text-center text-[11px] font-semibold text-red-700">
+                            <td key={d} className="px-2 py-1.5 border-r border-red-100 last:border-r-0 text-center text-[0.6875rem] font-semibold text-red-700">
                                 {noteFor(d)?.note || ''}
                             </td>
                         ))}
