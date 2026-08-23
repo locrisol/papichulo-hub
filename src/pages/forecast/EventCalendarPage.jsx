@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { secondaryButton, card } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge } from '../../lib/controlStyles'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
-import { todayISO, weekStartOf, addDays, shortDate, monthStart, addMonths, monthLabel } from '../../lib/dates'
+import { todayISO, weekStartOf, addDays, monthStart } from '../../lib/dates'
 import { syncEvents, syncIsDue, markSynced } from '../../lib/ticketmaster'
-import { fmtMoney } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { byDate as groupByDate } from '../../lib/events'
+import EventModal from '../../components/EventModal'
+import EventMonth from '../../components/EventMonth'
+import EventWeek from '../../components/EventWeek'
+import EventAgenda from '../../components/EventAgenda'
 
 // What is on at 3Arena.
 //
@@ -16,23 +20,18 @@ import { friendlyError } from '../../lib/errors'
 //
 // It also quietly builds the history. Ticketmaster forgets an event once it has
 // happened, so every sync writes what it finds into our own table and never
-// deletes. Given a few months that becomes something a model could learn from,
-// which is why #59 is deferred rather than dropped.
+// deletes. Given a few months that becomes something a model could learn from.
+//
+// The calendar is one screen with two shapes. A phone opens on the week because
+// a week is what you roster, and a laptop opens on the month because that is
+// what you plan against. Either can be switched to the other, and the choice is
+// only about which one you land on.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-// Colour by the broad type, so a glance tells you what kind of night it is.
-const CATEGORY_STYLE = {
-    Music: 'bg-purple-50 text-purple-800 border-purple-200',
-    Sports: 'bg-blue-50 text-blue-800 border-blue-200',
-    Arts: 'bg-pink-50 text-pink-800 border-pink-200',
-    'Arts & Theatre': 'bg-pink-50 text-pink-800 border-pink-200',
-    Family: 'bg-amber-50 text-amber-800 border-amber-200',
-}
-
-function categoryStyle(category) {
-    return CATEGORY_STYLE[category] || 'bg-gray-100 text-gray-700 border-gray-200'
-}
+// The width at which a month grid stops being useless. Below this a cell is
+// about fifty pixels and cannot hold a word, which is why the phone version of
+// the month drops to dots. Matches Tailwind's lg, where the layout goes to two
+// columns anyway.
+const WIDE = '(min-width: 1024px)'
 
 export default function EventCalendarPage() {
     const { activeRestaurant } = useRestaurant()
@@ -50,17 +49,28 @@ export default function EventCalendarPage() {
     const [error, setError] = useState('')
     const [note, setNote] = useState('')
     const [refresh, setRefresh] = useState(0)
+    const [openEvent, setOpenEvent] = useState(null)
 
     const today = todayISO()
 
-    // Which month the grid is showing. Starts on this one, and you can move
-    // either way from there.
-    const [viewMonth, setViewMonth] = useState(monthStart(todayISO()))
+    // Which shape the calendar is in. Worked out once, when the page first
+    // opens, rather than watched: somebody who switches to the month and then
+    // turns their phone should stay on the month.
+    const [view, setView] = useState(
+        () => (typeof window !== 'undefined' && window.matchMedia?.(WIDE).matches ? 'month' : 'week'),
+    )
 
-    // Six weeks always, so the grid does not change height as you move between
-    // months. It starts on the Sunday before the first, so the columns line up.
-    const gridStart = weekStartOf(viewMonth)
-    const gridEnd = addDays(gridStart, 41)
+    const [viewMonth, setViewMonth] = useState(monthStart(today))
+    const [weekStart, setWeekStart] = useState(weekStartOf(today))
+    const [selectedDay, setSelectedDay] = useState(today)
+
+    // What to fetch. Both shapes are asked for at once, so switching between
+    // them is instant and does not go back to the database for something it
+    // could already have had. It is at most eight weeks of a small table.
+    const monthFrom = weekStartOf(viewMonth)
+    const monthTo = addDays(monthFrom, 41)
+    const from = weekStart < monthFrom ? weekStart : monthFrom
+    const to = addDays(weekStart, 6) > monthTo ? addDays(weekStart, 6) : monthTo
 
     const venueId = activeRestaurant?.forecasting_venue_id
     const enabled = activeRestaurant?.forecasting_enabled
@@ -95,14 +105,14 @@ export default function EventCalendarPage() {
             const { data, error: e1 } = await supabase
                 .from('events')
                 .select('*')
-                .gte('event_date', gridStart)
-                .lte('event_date', gridEnd)
+                .gte('event_date', from)
+                .lte('event_date', to)
                 .order('event_date', { ascending: true })
 
             if (e1) { setError(friendlyError(e1)); setLoading(false); return }
             setEvents(data || [])
 
-            // Everything still to come, whatever month the grid is showing. The
+            // Everything still to come, whatever the calendar is showing. The
             // list is for planning ahead, so it should not change when you look
             // back at last month.
             const { data: ahead } = await supabase
@@ -118,7 +128,7 @@ export default function EventCalendarPage() {
 
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeRestaurant, viewMonth, refresh])
+    }, [activeRestaurant, from, to, refresh])
 
     async function forceSync() {
         if (!venueId) return
@@ -137,15 +147,32 @@ export default function EventCalendarPage() {
         }
     }
 
-    // Events grouped by the day they are on, so the grid can look each day up.
-    const byDate = {}
-    for (const e of events) {
-        if (!byDate[e.event_date]) byDate[e.event_date] = []
-        byDate[e.event_date].push(e)
+    const byDate = groupByDate(events)
+
+    // Switching to the week from the month lands on the week you were looking
+    // at rather than back on today, and the other way round. Nothing is more
+    // annoying than a view that throws away where you were.
+    function switchTo(next) {
+        if (next === 'week' && view === 'month') setWeekStart(weekStartOf(selectedDay))
+        if (next === 'month' && view === 'week') {
+            setViewMonth(monthStart(weekStart))
+            setSelectedDay(weekStart)
+        }
+        setView(next)
     }
 
-    // The whole grid as a flat list of dates.
-    const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
+    const viewToggle = value => (
+        <button
+            type="button"
+            onClick={() => switchTo(value)}
+            aria-pressed={view === value}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize ${
+                view === value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+        >
+            {value}
+        </button>
+    )
 
     if (!enabled) {
         return (
@@ -166,7 +193,7 @@ export default function EventCalendarPage() {
 
     return (
         <div className="w-full">
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+            <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="font-serif text-2xl font-bold text-gray-900">Events at 3Arena</h2>
                     <p className="text-sm text-muted mt-1">
@@ -174,11 +201,7 @@ export default function EventCalendarPage() {
                     </p>
                 </div>
                 {canSync && (
-                    <button
-                        onClick={forceSync}
-                        disabled={syncing}
-                        className={secondaryButton}
-                    >
+                    <button onClick={forceSync} disabled={syncing} className={secondaryButton}>
                         {syncing ? 'Checking...' : 'Check for new events'}
                     </button>
                 )}
@@ -187,157 +210,58 @@ export default function EventCalendarPage() {
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {note && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{note}</div>}
 
-            {/* Month navigation.
-
-                The buttons carry a whole month name, so "‹ July 2026" and
-                "September 2026 ›" together are far wider than a phone. Wrapping
-                let them fall onto three lines with the month you are actually
-                looking at stuck in the middle of them.
-
-                On a phone the month you are on goes on top where it belongs, and
-                the two buttons sit side by side underneath, each taking half the
-                row. From the small breakpoint up it goes back to one row with
-                the month between the buttons. */}
-            <div className={`${card} p-3 mb-4`}>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <p className="font-serif text-lg font-bold text-gray-900 sm:hidden">
-                        {monthLabel(viewMonth)}
-                    </p>
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-                            className={`${secondaryButton} flex-1 sm:flex-none`}>
-                            ‹ {monthLabel(addMonths(viewMonth, -1))}
-                        </button>
-                        <span className="hidden sm:block font-serif text-lg font-bold text-gray-900 px-2">
-                            {monthLabel(viewMonth)}
-                        </span>
-                        <button type="button" onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                            className={`${secondaryButton} flex-1 sm:flex-none`}>
-                            {monthLabel(addMonths(viewMonth, 1))} ›
-                        </button>
-                    </div>
-                    {viewMonth !== monthStart(today) && (
-                        <button type="button" onClick={() => setViewMonth(monthStart(today))}
-                            className="sm:ml-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium text-left sm:text-center">
-                            This month
-                        </button>
-                    )}
+            {/* Month or week. The arrows that move through them belong to the
+                calendar itself and sit on its heading bar, so this row only
+                holds the one choice and does not turn into a control panel. */}
+            <div className={`${cardEdge} bg-white p-2 mb-4 flex justify-center`}>
+                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label="Calendar view">
+                    {viewToggle('week')}
+                    {viewToggle('month')}
                 </div>
             </div>
 
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
             ) : (
-                // Full width on a laptop: the calendar takes two thirds and the
-                // list sits beside it. On anything narrower they stack.
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-
-                    <div className={`xl:col-span-2 ${card} overflow-hidden`}>
-                        <div className="grid grid-cols-7 border-b border-border bg-gray-50">
-                            {DAY_NAMES.map(d => (
-                                <div key={d} className="px-2 py-2 text-center text-xs font-semibold text-muted uppercase tracking-wider">
-                                    {d}
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="grid grid-cols-7">
-                            {days.map(date => {
-                                const dayEvents = byDate[date] || []
-                                const isToday = date === today
-                                const isPast = date < today
-                                // Days either side of the month being shown are
-                                // greyed, so the month you are looking at stands out.
-                                const inMonth = date.slice(0, 7) === viewMonth.slice(0, 7)
-                                const d = new Date(date + 'T00:00:00')
-
-                                return (
-                                    <div
-                                        key={date}
-                                        className={`min-h-24 border-b border-r border-border p-1.5 ${
-                                            !inMonth ? 'bg-gray-50' : isPast ? 'bg-gray-50/50' : 'bg-white'
-                                        }`}
-                                    >
-                                        <div className={`text-xs mb-1 ${
-                                            isToday ? 'font-bold text-accent'
-                                                : !inMonth ? 'text-gray-300'
-                                                    : isPast ? 'text-gray-400' : 'text-gray-500'
-                                        }`}>
-                                            {d.getDate()}
-                                            {d.getDate() === 1 && (
-                                                <span className="ml-1">{d.toLocaleDateString('en-IE', { month: 'short' })}</span>
-                                            )}
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            {dayEvents.map(e => (
-                                                <div
-                                                    key={e.id}
-                                                    title={`${e.name}${e.event_time ? ` at ${e.event_time.slice(0, 5)}` : ''}`}
-                                                    className={`text-xs px-1.5 py-1 rounded border leading-tight ${categoryStyle(e.category)} ${
-                                                        isPast || !inMonth ? 'opacity-50' : ''
-                                                    }`}
-                                                >
-                                                    <div className="truncate font-medium">{e.name}</div>
-                                                    {e.event_time && (
-                                                        <div className="opacity-70">{e.event_time.slice(0, 5)}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
+                // The calendar takes two thirds on a laptop and the list sits
+                // beside it. items-start stops each being stretched to whichever
+                // is taller, which is what left the big empty gap under the
+                // calendar when the list had thirty events in it.
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+                    <div className="lg:col-span-2">
+                        {view === 'month' ? (
+                            <EventMonth
+                                viewMonth={viewMonth}
+                                setViewMonth={setViewMonth}
+                                today={today}
+                                byDate={byDate}
+                                selected={selectedDay}
+                                onSelect={setSelectedDay}
+                                onOpenEvent={setOpenEvent}
+                            />
+                        ) : (
+                            <EventWeek
+                                weekStart={weekStart}
+                                setWeekStart={setWeekStart}
+                                today={today}
+                                byDate={byDate}
+                                onOpenEvent={setOpenEvent}
+                            />
+                        )}
                     </div>
 
-                    <div className={`${card} p-5`}>
-                        <h3 className="font-serif text-base font-bold text-gray-900 mb-1">Coming up</h3>
-                        <p className="text-xs text-muted mb-4">
-                            {upcoming.length === 0
-                                ? 'Nothing scheduled yet.'
-                                : `The next ${upcoming.length} ${upcoming.length === 1 ? 'event' : 'events'}, whatever month you are looking at.`}
-                        </p>
-
-                        <div className="divide-y divide-border">
-                            {upcoming.map(e => (
-                                <div key={e.id} className="py-3">
-                                    <div className="flex items-start justify-between gap-2 mb-1">
-                                        <p className="text-sm font-medium text-gray-900">{e.name}</p>
-                                        <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${categoryStyle(e.category)}`}>
-                                            {e.category || 'Other'}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-muted">
-                                        {shortDate(e.event_date)}
-                                        {e.event_time && ` at ${e.event_time.slice(0, 5)}`}
-                                    </p>
-                                    {/* Off sale well before the date usually means it
-                                        sold out, which says more about how busy we
-                                        will be than the category does. */}
-                                    {e.status === 'offsale' && (
-                                        <p className="text-xs text-amber-700 mt-0.5">
-                                            No longer on sale, so it has probably sold out
-                                        </p>
-                                    )}
-                                    {(e.min_price != null || e.max_price != null) && (
-                                        <p className="text-xs text-gray-400 mt-0.5">
-                                            Tickets {e.min_price != null ? fmtMoney(e.min_price) : '?'}
-                                            {e.max_price != null && e.max_price !== e.min_price && ` to ${fmtMoney(e.max_price)}`}
-                                        </p>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-border">
-                            {canSync
-                                ? 'Ticket numbers and how many people will attend are not in the free Ticketmaster API, so we cannot show them. Events are saved here as they are found, so once there are a few months of them we can start comparing event nights against what we actually sold.'
-                                : 'Events come from Ticketmaster and are updated a couple of times a day.'}
-                        </p>
-                    </div>
+                    <EventAgenda
+                        events={upcoming}
+                        today={today}
+                        onOpenEvent={setOpenEvent}
+                        footnote={canSync
+                            ? 'Ticket numbers and how many people will attend are not in the free Ticketmaster API, so we cannot show them. Events are saved here as they are found, so once there are a few months of them we can start comparing event nights against what we actually sold.'
+                            : 'Events come from Ticketmaster and are updated a couple of times a day.'}
+                    />
                 </div>
             )}
+
+            {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
         </div>
     )
 }
