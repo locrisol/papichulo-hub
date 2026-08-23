@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { cardEdge, cardHeader } from '../lib/controlStyles'
+import { cardEdge, modalHeader } from '../lib/controlStyles'
 
 // The shell every dialog in the app sits in.
 //
@@ -51,7 +51,7 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
                 // click in the form would close the dialog.
                 onClick={e => e.stopPropagation()}
             >
-                <div className={`${cardHeader} flex items-center justify-between gap-3`}>
+                <div className={`${modalHeader} flex items-center justify-between gap-3`}>
                     <span>{title}</span>
                     <button
                         type="button"
