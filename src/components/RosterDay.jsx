@@ -373,7 +373,11 @@ export default function RosterDay({
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
                         const mineAlerts = alerts?.[employee.id] || []
-                        const alertOpen = openAlert === employee.id
+                        // Open only while there is still something to show.
+                        // Deleting the shift that caused a warning takes the
+                        // warning with it, and the row has to close on its own
+                        // rather than waiting to be pressed again.
+                        const alertOpen = openAlert === employee.id && mineAlerts.length > 0
 
                         return (
                             <Fragment key={employee.id}>

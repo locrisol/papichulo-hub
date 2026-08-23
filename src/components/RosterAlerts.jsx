@@ -59,6 +59,11 @@ export function AlertBadge({ findings, open, onToggle, name }) {
 //
 // The ground it sits on says which kind it is before anybody reads a word.
 export function AlertStrip({ findings, className = '' }) {
+    // Nothing at all when there is nothing to say. Fixing the shift that caused
+    // a warning leaves the row still marked as open, and without this the strip
+    // stayed behind as a bare yellow band with no words in it.
+    if (!findings?.length) return null
+
     const ground = worstLevel(findings) === 'block'
         ? 'bg-red-50 border-red-200'
         : 'bg-amber-50 border-amber-200'

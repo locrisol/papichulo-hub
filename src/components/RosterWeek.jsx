@@ -136,7 +136,9 @@ export default function RosterWeek({
                     {rows.map(row => {
                         const colour = positionOf(row.employee.position_id)?.colour || NO_COLOUR
                         const mineAlerts = alerts?.[row.employee.id] || []
-                        const alertOpen = openAlert === row.employee.id
+                        // Same as the day view: the last warning going away
+                        // closes the row, rather than leaving an empty strip.
+                        const alertOpen = openAlert === row.employee.id && mineAlerts.length > 0
                         return [
                             <tr key={row.employee.id} className="border-b border-border">
                                 <td className="px-3 py-1.5 border-r border-border sticky left-0 bg-white">
