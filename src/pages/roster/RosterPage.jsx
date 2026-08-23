@@ -20,6 +20,7 @@ import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
 import ShiftDialog from '../../components/ShiftDialog'
+import TimeOffDialog from '../../components/TimeOffDialog'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
@@ -47,6 +48,7 @@ export default function RosterPage() {
     const [positions, setPositions] = useState([])
     const [shifts, setShifts] = useState([])
     const [dayNotes, setDayNotes] = useState([])
+    const [absences, setAbsences] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -94,7 +96,7 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -109,6 +111,12 @@ export default function RosterPage() {
             supabase.from('events').select('*')
                 .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
                 .order('event_time'),
+            // Anything overlapping the week, which is not the same as anything
+            // starting in it. A fortnight off that began last Thursday still
+            // covers Monday and would be missed by a date range on starts_on.
+            supabase.from('absences').select('*')
+                .eq('restaurant_id', restaurantId)
+                .lte('starts_on', addDays(weekStart, 6)).gte('ends_on', weekStart),
         ])
 
         if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
@@ -119,6 +127,7 @@ export default function RosterPage() {
         setShifts(shiftRes.data || [])
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
+        setAbsences(offRes.data || [])
         setLoading(false)
 
         // The weeks behind this one, for the forty eight hour average. It is an
@@ -169,6 +178,7 @@ export default function RosterPage() {
         weekDates: dates,
         rules: activeRestaurant?.roster_rules,
         priorHoursByEmployee: priorHours,
+        absences,
     })
     const blocks = findings.filter(f => f.level === 'block')
     const warnings = findings.filter(f => f.level === 'warn')
@@ -499,6 +509,13 @@ export default function RosterPage() {
                     <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
                         Add staff
                     </button>
+                    {/* Reached from here as well as from the team list, because
+                        finding out somebody is off sick happens while you are
+                        looking at the week rather than while you are on the
+                        team screen. */}
+                    <button type="button" onClick={() => setSettingsOpen('timeOff')} className={secondaryButton}>
+                        Time off
+                    </button>
                     <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
                         Opening hours
                     </button>
@@ -550,6 +567,7 @@ export default function RosterPage() {
                     openingHours={activeRestaurant?.opening_hours}
                     today={today}
                     alerts={alerts}
+                    absences={absences}
                     onOpenShift={shift => {
                         setDayIndex(dates.indexOf(shift.shift_date))
                         setEditingShift({ shift })
@@ -566,6 +584,7 @@ export default function RosterPage() {
                     positions={positions}
                     date={date}
                     alerts={alerts}
+                    absences={absences}
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
@@ -611,6 +630,17 @@ export default function RosterPage() {
                         employees={employees}
                     />
                 </Modal>
+            )}
+
+            {settingsOpen === 'timeOff' && (
+                <TimeOffDialog
+                    employees={roster}
+                    initialEmployeeId={roster[0]?.id}
+                    restaurantId={restaurantId}
+                    userId={user?.id}
+                    onClose={() => setSettingsOpen(null)}
+                    onChanged={() => load({ quiet: true })}
+                />
             )}
 
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}

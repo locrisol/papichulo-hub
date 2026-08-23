@@ -4,6 +4,7 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { absenceOn, kindOf } from '../lib/absences'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -51,6 +52,7 @@ export default function RosterDay({
     positions,
     date,
     alerts,
+    absences,
     dayHours,
     dayNote,
     events,
@@ -369,6 +371,8 @@ export default function RosterDay({
                         const away = dayState(employee.availability, date)
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
+                        const off = absenceOn(absences, employee.id, date)
+                        const offKind = off ? kindOf(off.kind) : null
                         const mineAlerts = alerts?.[employee.id] || []
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
@@ -392,9 +396,11 @@ export default function RosterDay({
                                             {employee.full_name}
                                         </span>
                                         <span className="block text-[10px] text-muted truncate">
-                                            {away === 'none'
-                                                ? 'Not available today'
-                                                : positionOf(employee.position_id)?.name || 'No position'}
+                                            {offKind
+                                                ? offKind.label
+                                                : away === 'none'
+                                                    ? 'Not available today'
+                                                    : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                     {/* Beside the name, where the eye already
@@ -461,6 +467,26 @@ export default function RosterDay({
                                             style={{ left: `${pct(toMinutes(dayHours.close))}%`, width: '2px', marginLeft: '-1px' }}
                                         />
                                     </>}
+
+                                    {/* A whole day off, drawn across the row.
+                                        Flat and in the kind's own colour, not
+                                        the hatch: hatching says they can work
+                                        but not then, and this says they are not
+                                        here at all. It goes under the shifts so
+                                        one rostered anyway still reads. */}
+                                    {offKind && (
+                                        <span
+                                            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+                                            style={{ backgroundColor: tint(offKind.colour, 0.22) }}
+                                        >
+                                            <span
+                                                className="text-[11px] font-bold uppercase tracking-wider"
+                                                style={{ color: offKind.colour }}
+                                            >
+                                                {offKind.label}
+                                            </span>
+                                        </span>
+                                    )}
 
                                     {/* The hours this person said they cannot
                                         work. Over the slots so it is visible

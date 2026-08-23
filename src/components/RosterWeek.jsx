@@ -4,6 +4,7 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { absenceOn, kindOf } from '../lib/absences'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -21,7 +22,7 @@ import {
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, today,
-    alerts, onOpenShift, onNewShift,
+    alerts, absences, onOpenShift, onNewShift,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -163,28 +164,53 @@ export default function RosterWeek({
                                     // as any other and the day timeline is
                                     // where that gets drawn.
                                     const away = dayState(row.employee.availability, day.date)
+                                    // Time off beats everything else the cell
+                                    // could be saying. Somebody on holiday is
+                                    // away whatever their usual Tuesday is.
+                                    const off = absenceOn(absences, row.employee.id, day.date)
+                                    const offKind = off ? kindOf(off.kind) : null
                                     return (
                                         <td
                                             key={day.date}
-                                            title={away === 'none'
-                                                ? `${row.employee.full_name} is not available this day`
-                                                : away === 'windows'
-                                                    ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
-                                                    : undefined}
-                                            style={away === 'none' ? { backgroundImage: awayHatch } : undefined}
+                                            title={offKind
+                                                ? `${row.employee.full_name} is down as ${offKind.label.toLowerCase()}`
+                                                : away === 'none'
+                                                    ? `${row.employee.full_name} is not available this day`
+                                                    : away === 'windows'
+                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
+                                                        : undefined}
+                                            style={offKind
+                                                ? { backgroundColor: tint(offKind.colour, 0.22) }
+                                                : away === 'none' ? { backgroundImage: awayHatch } : undefined}
                                             className={`${cell} text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                             }`}
                                         >
                                             {day.shifts.length === 0 ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onNewShift?.(row.employee.id, day.date)}
-                                                    className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
-                                                    aria-label={`Add a shift for ${row.employee.full_name}`}
-                                                >
-                                                    +
-                                                </button>
+                                                offKind ? (
+                                                    // The label rather than a
+                                                    // plus. There is no sense
+                                                    // offering to add a shift
+                                                    // on a day somebody is not
+                                                    // here, and the label is
+                                                    // what the week is being
+                                                    // read for.
+                                                    <span
+                                                        className="block text-[10px] font-semibold uppercase tracking-wider py-0.5"
+                                                        style={{ color: offKind.colour }}
+                                                    >
+                                                        {offKind.label}
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onNewShift?.(row.employee.id, day.date)}
+                                                        className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
+                                                        aria-label={`Add a shift for ${row.employee.full_name}`}
+                                                    >
+                                                        +
+                                                    </button>
+                                                )
                                             ) : day.shifts.map(s => {
                                                 // The opening or the closing
                                                 // time is picked out rather than
