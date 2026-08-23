@@ -4,6 +4,7 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
+    shiftEdges,
 } from '../lib/roster'
 
 // The whole week at once, laid out the way the one that goes out to the staff
@@ -54,7 +55,7 @@ export default function RosterWeek({
                                 <span className="block font-normal opacity-75">{fullDate(d)}</span>
                             </th>
                         ))}
-                        <th className="px-2 py-2 text-right text-xs w-20">Hours</th>
+                        <th className="px-2 py-2 text-center text-xs w-20">Hours</th>
                     </tr>
                 </thead>
 
@@ -103,7 +104,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-tight break-words">
+                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -158,21 +159,37 @@ export default function RosterWeek({
                                                 >
                                                     +
                                                 </button>
-                                            ) : day.shifts.map(s => (
-                                                <button
-                                                    key={s.id}
-                                                    type="button"
-                                                    onClick={() => onOpenShift?.(s)}
-                                                    style={{ backgroundColor: tint(colour), borderColor: colour }}
-                                                    className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
-                                                >
-                                                    {shortTime(s.starts_at)} – {endLabel(s, hours)}
-                                                </button>
-                                            ))}
+                                            ) : day.shifts.map(s => {
+                                                // The opening or the closing
+                                                // time is picked out rather than
+                                                // the whole shift, the same as
+                                                // the spreadsheet does it and
+                                                // the same as the picture and
+                                                // the PDF now do.
+                                                const edges = shiftEdges(s, hours)
+                                                const mark = 'bg-amber-200 rounded px-0.5'
+                                                return (
+                                                    <button
+                                                        key={s.id}
+                                                        type="button"
+                                                        onClick={() => onOpenShift?.(s)}
+                                                        style={{ backgroundColor: tint(colour), borderColor: colour }}
+                                                        className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
+                                                    >
+                                                        <span className={edges.opening ? mark : ''}>
+                                                            {shortTime(s.starts_at)}
+                                                        </span>
+                                                        {' – '}
+                                                        <span className={edges.closing ? mark : ''}>
+                                                            {endLabel(s, hours)}
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
                                         </td>
                                     )
                                 })}
-                                <td className="px-2 py-1.5 text-right font-semibold text-gray-900 border-l border-border whitespace-nowrap">
+                                <td className="px-2 py-1.5 text-center font-semibold text-gray-900 border-l border-border whitespace-nowrap">
                                     {fmtHours(row.hours)}
                                 </td>
                             </tr>,
@@ -218,7 +235,7 @@ export default function RosterWeek({
                                 {d.hours ? fmtHours(d.hours) : '—'}
                             </td>
                         ))}
-                        <td className="px-2 py-2 text-right border-l border-white/20 whitespace-nowrap">
+                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap">
                             {fmtHours(perDay.reduce((t, d) => t + d.hours, 0))}
                         </td>
                     </tr>

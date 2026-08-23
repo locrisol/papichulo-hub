@@ -15,6 +15,7 @@ import {
 import { checkWeek } from '../../lib/workRules'
 import RosterDay from '../../components/RosterDay'
 import RosterWeek from '../../components/RosterWeek'
+import ShareWeekButton from '../../components/ShareWeekButton'
 import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
@@ -502,6 +503,32 @@ export default function RosterPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Sharing sits on the week rather than in the toolbar, because it
+                is the last thing you do rather than one of the things you reach
+                for while building. */}
+            {view === 'week' && (
+                <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center justify-between gap-3`}>
+                    <p className="text-xs text-muted">
+                        {state === 'published'
+                            ? 'This week is published. Send it out.'
+                            : state === 'changed'
+                                ? 'Changed since it went out. Publish again before sharing, or the staff get two different weeks.'
+                                : 'Still a draft. Publishing first is what stops two versions going round.'}
+                    </p>
+                    <ShareWeekButton
+                        dates={dates}
+                        employees={roster}
+                        shifts={shifts}
+                        dayNotes={dayNotes}
+                        events={events}
+                        openingHours={activeRestaurant?.opening_hours}
+                        restaurantName={activeRestaurant?.name}
+                        weekStart={weekStart}
+                        disabled={shifts.length === 0}
+                    />
+                </div>
+            )}
 
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
