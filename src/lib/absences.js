@@ -131,6 +131,42 @@ export function absenceProblem(form) {
     return ''
 }
 
+// The holiday hours falling inside one week.
+//
+// A holiday carries the hours it came to as one number off the payslip, and a
+// fortnight off is one row rather than fourteen. So a week that only holds part
+// of it gets its share: the hours spread evenly across the days and only the
+// days inside the week counted.
+//
+// Even, rather than matched to what they would have been rostered. What they
+// would have been rostered is not a fact, it is a guess about a week nobody
+// built, and two weeks either side of a holiday would then quietly disagree
+// about how much of it each one owned. Split evenly, the pieces always add back
+// up to the number on the payslip.
+export function holidayHoursInWeek(absences, employeeId, weekDates) {
+    const dates = weekDates || []
+    let total = 0
+
+    for (const absence of absences || []) {
+        if (absence.employee_id !== employeeId) continue
+        if (absence.status === 'declined') continue
+        if (absence.hours == null) continue
+
+        const hours = Number(absence.hours)
+        if (isNaN(hours)) continue
+
+        const days = absenceDays(absence)
+        if (days === 0) continue
+
+        const inWeek = dates.filter(d => coversDate(absence, d)).length
+        total += (hours / days) * inWeek
+    }
+
+    // Two decimals, the same as every other hour figure, and rounded once at
+    // the end rather than per absence.
+    return Math.round(total * 100) / 100
+}
+
 // Newest first, which is the order somebody wants to read their own list in.
 export function sortAbsences(absences) {
     return (absences || []).slice().sort((a, b) =>

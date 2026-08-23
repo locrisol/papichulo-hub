@@ -339,9 +339,22 @@ describe('time off on a shared week', () => {
     it('never carries the reason, whatever the kind is', () => {
         for (const kind of ABSENCE_KINDS) {
             const table = build({ absences: [{ ...away[0], kind: kind.value }] })
-            const printed = JSON.stringify(table)
+            // The days are where a reason could hide, and they are all it is
+            // ever handed. Checked here rather than over the whole table,
+            // because the table also carries a holiday hours column that is
+            // asked for and is a number rather than a reason.
+            const printed = JSON.stringify(table.people.flatMap(p => p.days))
             expect(printed).not.toContain(kind.label)
             expect(printed).not.toContain(kind.value)
+        }
+    })
+
+    // Whatever a day carries, it is these and nothing else. A new field with a
+    // reason in it would have to get past this line first.
+    it('gives a day nothing but the date, the shifts and away', () => {
+        const table = build({ absences: away })
+        for (const day of table.people.flatMap(p => p.days)) {
+            expect(Object.keys(day).sort()).toEqual(['away', 'date', 'shifts'])
         }
     })
 
@@ -392,14 +405,17 @@ describe('deliveries and the standing note', () => {
         extras: [{ name: 'Clockmeal', time: '15:00' }, { name: 'Feedr', time: '12:00' }],
     }]
 
-    it('puts them on the day in the order they land', () => {
+    // One entry each rather than one string. Joined, Feedr and Clockmeal came
+    // out on the same line of the picture and only broke where the column ran
+    // out, which had nothing to do with where one ended and the next began.
+    it('puts them on the day in the order they land, one each', () => {
         const table = build({ dayNotes: notes })
-        expect(table.deliveries[1]).toBe('12:00 Feedr, 15:00 Clockmeal')
+        expect(table.deliveries[1]).toEqual(['12:00 Feedr', '15:00 Clockmeal'])
     })
 
     it('leaves the other days empty', () => {
         const table = build({ dayNotes: notes })
-        expect(table.deliveries[0]).toBe('')
+        expect(table.deliveries[0]).toEqual([])
     })
 
     it('keeps one with no time, at the end', () => {
@@ -407,7 +423,7 @@ describe('deliveries and the standing note', () => {
             id: 'n1', note_date: DATES[1],
             extras: [{ name: 'Office delivery' }, { name: 'Feedr', time: '12:00' }],
         }]
-        expect(build({ dayNotes: loose }).deliveries[1]).toBe('12:00 Feedr, Office delivery')
+        expect(build({ dayNotes: loose }).deliveries[1]).toEqual(['12:00 Feedr', 'Office delivery'])
     })
 
     it('gives the spreadsheet a row only when there is something in it', () => {
@@ -443,5 +459,46 @@ describe('deliveries and the standing note', () => {
     it('prints it at the bottom of the spreadsheet', () => {
         const csv = weekCsv(build({ standingNote: 'Swaps need a manager.' }))
         expect(csv.trimEnd().endsWith('Swaps need a manager.')).toBe(true)
+    })
+})
+
+// The holiday column, which is only there in a week that needs one.
+describe('holiday hours on a shared week', () => {
+    const holiday = employeeId => ([{
+        id: 'a1', employee_id: employeeId, kind: 'holiday', hours: 20,
+        starts_on: DATES[1], ends_on: DATES[5], status: 'approved',
+    }])
+
+    it('is not there at all in an ordinary week', () => {
+        const table = build()
+        expect(table.anyHoliday).toBe(false)
+        expect(table.people.every(p => p.holiday === '')).toBe(true)
+        expect(sheetLayout(table).holidayCol).toBe(0)
+    })
+
+    it('appears when somebody has some', () => {
+        const table = build({ absences: holiday('e1') })
+        expect(table.anyHoliday).toBe(true)
+        expect(sheetLayout(table).holidayCol).toBeGreaterThan(0)
+    })
+
+    it('puts the hours against the right person and nobody else', () => {
+        const table = build({ absences: holiday('e1') })
+        expect(table.people.find(p => p.name === 'Ana').holiday).toBe('20.00')
+        expect(table.people.find(p => p.name === 'Bea').holiday).toBe('')
+    })
+
+    // The column comes out of the seven days rather than off the edge of the
+    // sheet, or a week with holiday in it would be wider than one without.
+    it('takes its width out of the days', () => {
+        const plain = sheetLayout(build())
+        const withHoliday = sheetLayout(build({ absences: holiday('e1') }))
+        expect(withHoliday.width).toBe(plain.width)
+        expect(withHoliday.dayCol).toBeLessThan(plain.dayCol)
+    })
+
+    it('gives the spreadsheet a column only when there is one', () => {
+        expect(weekCsv(build({ absences: holiday('e1') }))).toContain('Holiday')
+        expect(weekCsv(build())).not.toContain('Holiday')
     })
 })

@@ -13,7 +13,7 @@ import { fullDate, shortDate } from './dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
 } from './roster'
-import { absencesOn } from './absences'
+import { absencesOn, holidayHoursInWeek } from './absences'
 import { extrasFor, extraLabel } from './dayExtras'
 
 // A day somebody is not there, as it goes out.
@@ -89,6 +89,10 @@ export function weekTable({
     const people = weekRows(employees, shifts, dates).map(row => ({
         name: row.employee.full_name,
         hours: fmtHours(row.hours),
+        // What of their holiday falls in this week. Empty rather than 0.00
+        // when there is none, so a column of figures is only the people it is
+        // about.
+        holiday: holidayHoursInWeek(absences, row.employee.id, dates) || '',
         days: row.days.map(day => {
             const hours = hoursFor(day.date)
             return {
@@ -115,15 +119,23 @@ export function weekTable({
         }),
     }))
 
-    // Everything else the day has on. One line per day, in the order they
-    // land, which is the order the row is read in.
-    const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel).join(', '))
+    // Everything else the day has on, as a list rather than as one string.
+    //
+    // Joined, Feedr and Clockmeal came out on the same line and only broke
+    // where the column ran out, so where a line ended had nothing to do with
+    // where one thing ended and the next began. They are separate things and
+    // they get separate lines.
+    const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel))
 
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
         .map(n => `${shortDate(n.note_date)}: ${n.message}`)
 
     const perDay = dayTotals(shifts, dates, employeesById)
+
+    // The column only exists in a week somebody was actually on holiday, so an
+    // ordinary week is laid out exactly as it was before any of this.
+    const anyHoliday = people.some(p => p.holiday !== '')
 
     return {
         title: restaurantName || '',
@@ -132,7 +144,8 @@ export function weekTable({
         storeHours,
         whatIsOn,
         deliveries,
-        people,
+        people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
+        anyHoliday,
         notes,
         messages,
         // The line that is on every roster, kept apart from the day messages
@@ -174,23 +187,35 @@ export function weekCsv(table) {
     }
     const line = cells => rows.push(cells.map(escape).join(','))
 
-    line([table.title, ...table.head.map(h => h.day), 'Hours'])
-    line(['', ...table.head.map(h => h.label), ''])
-    line(['Store hours', ...table.storeHours, ''])
-    line(['Events', ...table.whatIsOn, ''])
-    if (table.deliveries.some(Boolean)) line(['Also on', ...table.deliveries, ''])
+    // The holiday column is only there in a week that needs it, and every row
+    // has to agree about that or the columns walk sideways.
+    const tail = table.anyHoliday ? ['Holiday', 'Hours'] : ['Hours']
+    const pad = table.anyHoliday ? ['', ''] : ['']
+
+    line([table.title, ...table.head.map(h => h.day), ...tail])
+    line(['', ...table.head.map(h => h.label), ...pad])
+    line(['Store hours', ...table.storeHours, ...pad])
+    line(['Events', ...table.whatIsOn, ...pad])
+    if (table.deliveries.some(d => d.length)) {
+        line(['Also on', ...table.deliveries.map(d => d.join(', ')), ...pad])
+    }
 
     for (const person of table.people) {
         line([person.name, ...person.days.map(d => {
             const shifts = d.shifts.map(s => s.text).join(' / ')
             if (!d.away) return shifts
             return shifts ? `${shifts} (${AWAY.label})` : AWAY.label
-        }), person.hours])
-        line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ''])
+        }), ...(table.anyHoliday ? [person.holiday] : []), person.hours])
+        line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ...pad])
     }
 
-    line(['Notes', ...table.notes, ''])
-    line(['Hours on the day', ...table.dayHours, table.totalHours])
+    line(['Notes', ...table.notes, ...pad])
+    line([
+        'Hours on the day',
+        ...table.dayHours,
+        ...(table.anyHoliday ? [''] : []),
+        table.totalHours,
+    ])
     for (const message of table.messages) line([message])
     if (table.standing) line([table.standing])
 
@@ -240,7 +265,10 @@ export function sheetLayout(table, {
 } = {}) {
     const nameCol = 160
     const hoursCol = 78
-    const dayCol = (width - pad * 2 - nameCol - hoursCol) / 7
+    // Only in a week somebody was on holiday. It comes out of the days, so an
+    // ordinary week keeps every pixel it had.
+    const holidayCol = table.anyHoliday ? 62 : 0
+    const dayCol = (width - pad * 2 - nameCol - hoursCol - holidayCol) / 7
 
     const titleH = 62
     const headH = 44
@@ -248,7 +276,7 @@ export function sheetLayout(table, {
     const eventsH = Math.max(metaH, eventLines * 15 + 14)
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
-    const hasDeliveries = table.deliveries?.some(Boolean)
+    const hasDeliveries = table.deliveries?.some(d => d.length)
     const deliveriesH = hasDeliveries ? Math.max(metaH, deliveryLines * 15 + 12) : 0
     const shiftH = 34
     const breakH = 20
@@ -265,9 +293,11 @@ export function sheetLayout(table, {
     const columnX = i => pad + nameCol + i * dayCol
 
     return {
-        width, height, pad, nameCol, hoursCol, dayCol, columnX,
+        width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
         titleH, headH, metaH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
+        holidayX: width - pad - hoursCol - holidayCol,
+        holidayCentreX: width - pad - hoursCol - holidayCol / 2,
         // Centred, not right aligned. It is a column of figures under a heading
         // and it reads better down the middle of its own space.
         hoursCentreX: width - pad - hoursCol / 2,

@@ -13,6 +13,8 @@ import { sheetLayout, wrapLines, AWAY } from './rosterShare'
 const INK = '#111827'
 const MUTED = '#6b7280'
 const RULE = '#d8d3ca'
+// The week's own total, which is not one of the seven days beside it.
+const ACCENT = '#c2410c'
 // A shade lighter, for the line inside a person's own row.
 const FAINT = '#ece8e2'
 const GREEN = '#182F24'
@@ -48,8 +50,11 @@ export function drawWeek(canvas, table) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
+    // Each thing wrapped on its own rather than the day wrapped as one string.
+    // Joined, Feedr and Clockmeal broke wherever the column ran out, which had
+    // nothing to do with where one of them ended and the next began.
     const deliveryLines = table.deliveries.map(
-        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
+        list => list.flatMap(v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width)),
     )
     const l = sheetLayout(table, {
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
@@ -130,6 +135,7 @@ export function drawWeek(canvas, table) {
     text('opens or closes the store', l.width - l.pad - 146, l.pad + 15, { colour: MUTED })
 
     // ---- the days
+    const headTop = y
     box(l.pad, y, l.width - l.pad * 2, l.headH, GREEN)
     font(13, '700')
     text('STAFF', l.pad + 12, y + l.headH / 2, { colour: '#ffffff' })
@@ -141,7 +147,11 @@ export function drawWeek(canvas, table) {
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
     })
     font(13, '700')
+    if (l.holidayCol) {
+        text('HOLIDAY', l.holidayCentreX, y + l.headH / 2, { align: 'center', colour: '#ffffff' })
+    }
     text('HOURS', l.hoursCentreX, y + l.headH / 2, { align: 'center', colour: '#ffffff' })
+    const gridTop = y + l.headH
     y += l.headH
 
     // ---- the store's own hours
@@ -199,9 +209,12 @@ export function drawWeek(canvas, table) {
         // row looked top heavy.
         const middle = y + (l.shiftH + l.breakH) / 2
 
-        font(14, '700')
+            font(14, '700')
         text(person.name, l.pad + 12, middle, { max: l.nameCol - 20 })
         text(person.hours, l.hoursCentreX, middle, { align: 'center' })
+        if (l.holidayCol && person.holiday) {
+            text(person.holiday, l.holidayCentreX, middle, { align: 'center', colour: '#4a7fb5' })
+        }
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
@@ -236,7 +249,6 @@ export function drawWeek(canvas, table) {
 
         y += l.shiftH + l.breakH
         rule(l.pad, y, l.width - l.pad, y, RULE, 2)
-        for (let i = 0; i <= 7; i++) rule(l.columnX(i), top, l.columnX(i), y)
     })
 
     // ---- anything the manager wants read
@@ -261,8 +273,31 @@ export function drawWeek(canvas, table) {
     table.dayHours.forEach((h, i) => {
         text(h, l.columnX(i) + l.dayCol / 2, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
     })
+    // The week's total in its own cell. It is the one number on the sheet
+    // anybody is asked about, and sitting in the same green as the seven days
+    // beside it, it read as an eighth day.
+    box(l.hoursX, y, l.hoursCol, l.totalH, ACCENT)
     text(table.totalHours, l.hoursCentreX, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
+    const gridBottom = y + l.totalH
     y += l.totalH
+
+    // ---- the lines between the days, drawn last and in one pass
+    //
+    // They run from the day names all the way to the total at the bottom, so
+    // every band between them is divided the same way. Per row they only ever
+    // covered the people, which left the store hours, the events and what each
+    // day came to floating in seven unmarked spaces.
+    const edges = []
+    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    if (l.holidayCol) edges.push(l.holidayX)
+    edges.push(l.hoursX)
+    for (const x of edges) {
+        // White over the two green bands, because a cream rule on dark green is
+        // no rule at all.
+        rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
+        rule(x, gridTop, x, gridBottom - l.totalH, RULE)
+        rule(x, gridBottom - l.totalH, x, gridBottom, 'rgba(255,255,255,0.3)')
+    }
 
     // ---- messages
     if (table.messages.length || table.standing) {

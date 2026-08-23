@@ -4,7 +4,7 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
-import { absenceOn, kindOf } from '../lib/absences'
+import { absenceOn, kindOf, holidayHoursInWeek } from '../lib/absences'
 import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
@@ -36,6 +36,20 @@ export default function RosterWeek({
     // A row is as tall as its tallest cell, so a day with two shifts in it or a
     // long event name made every other cell on that row sit high with a gap
     // under it. The week reads as rows and the rows were not lining up.
+    // What of anybody's holiday falls in this week, and whether the column is
+    // worth having at all. An ordinary week is laid out exactly as it was.
+    const holidayFor = employee => holidayHoursInWeek(absences, employee.id, dates) || 0
+    const anyHoliday = (employees || []).some(e => holidayFor(e) > 0)
+
+    // The blank cells at the end of every row that is not about a person, so
+    // all of them agree about how many columns there are.
+    const tail = (
+        <>
+            {anyHoliday && <td className="border-l border-border" />}
+            <td className="border-l border-border" />
+        </>
+    )
+
     const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-middle'
     // The same hatch the day timeline uses for the hours somebody cannot work.
     // Here it can only say the whole day, since this view has no hours in it.
@@ -55,6 +69,7 @@ export default function RosterWeek({
                 <colgroup>
                     <col className="w-40" />
                     {dates.map(d => <col key={d} />)}
+                    {anyHoliday && <col className="w-20" />}
                     <col className="w-20" />
                 </colgroup>
                 <thead>
@@ -68,6 +83,11 @@ export default function RosterWeek({
                                 <span className="block font-normal opacity-75">{fullDate(d)}</span>
                             </th>
                         ))}
+                        {anyHoliday && (
+                            <th className="px-2 py-2 text-center text-xs w-20 border-r border-white/20">
+                                Holiday
+                            </th>
+                        )}
                         <th className="px-2 py-2 text-center text-xs w-20">Hours</th>
                     </tr>
                 </thead>
@@ -103,7 +123,7 @@ export default function RosterWeek({
                                 </td>
                             )
                         })}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
 
                     <tr className="bg-accent-light/60 border-b border-border">
@@ -129,7 +149,7 @@ export default function RosterWeek({
                                 </td>
                             )
                         })}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
 
                     {/* Always here, empty or not, because it is also the way
@@ -167,7 +187,7 @@ export default function RosterWeek({
                                     </td>
                                 )
                             })}
-                            <td className="border-l border-border" />
+                            {tail}
                         </tr>
 
                     {/* Two rows per person: the shifts, and the breaks under
@@ -292,6 +312,13 @@ export default function RosterWeek({
                                         </td>
                                     )
                                 })}
+                                {anyHoliday && (
+                                    <td className="px-2 py-1.5 text-center align-middle font-semibold border-l border-border whitespace-nowrap">
+                                        {holidayFor(row.employee) > 0
+                                            ? <span className="text-blue-700">{fmtHours(holidayFor(row.employee))}</span>
+                                            : <span className="text-gray-300">-</span>}
+                                    </td>
+                                )}
                                 <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">
                                     {fmtHours(row.hours)}
                                 </td>
@@ -316,12 +343,12 @@ export default function RosterWeek({
                                         ))}
                                     </td>
                                 ))}
-                                <td className="border-l border-border" />
+                                {tail}
                             </tr>,
 
                             hasAlerts ? (
                                 <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
-                                    <td colSpan={dates.length + 2} className="p-0">
+                                    <td colSpan={dates.length + (anyHoliday ? 3 : 2)} className="p-0">
                                         <AlertStrip findings={mineAlerts} />
                                     </td>
                                 </tr>
@@ -340,7 +367,7 @@ export default function RosterWeek({
                                 {noteFor(d)?.note || ''}
                             </td>
                         ))}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
 
                     <tr className="bg-sidebar font-semibold text-white">
@@ -352,7 +379,12 @@ export default function RosterWeek({
                                 {d.hours ? fmtHours(d.hours) : '—'}
                             </td>
                         ))}
-                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap">
+                        {anyHoliday && <td className="border-l border-white/20" />}
+                        {/* The week's own total, picked out from the seven days
+                            beside it. It is the one number anybody is asked
+                            about, and in the same green as the days it read as
+                            an eighth one. */}
+                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap bg-accent">
                             {fmtHours(perDay.reduce((t, d) => t + d.hours, 0))}
                         </td>
                     </tr>

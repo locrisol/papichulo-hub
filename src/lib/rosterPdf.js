@@ -12,6 +12,8 @@ const GREEN = [24, 47, 36]
 const SLATE = [232, 236, 239]
 const WARM = [240, 232, 224]
 const RED = [185, 28, 28]
+// The week's own total, which is not one of the seven days beside it.
+const ACCENT = [194, 65, 12]
 const YELLOW = [253, 230, 138]
 
 export function weekPdf(table, restaurantName, weekStart) {
@@ -26,8 +28,9 @@ export function weekPdf(table, restaurantName, weekStart) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
     )
+    // Each thing on its own line, the same as the picture.
     const deliveryLines = table.deliveries.map(
-        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+        list => list.flatMap(v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t))),
     )
     const l = sheetLayout(table, {
         width: pageWidth,
@@ -95,6 +98,7 @@ export function weekPdf(table, restaurantName, weekStart) {
     y += h(l.titleH)
 
     // ---- days
+    const headTop = y
     box(l.pad, y, pageWidth - l.pad * 2, h(l.headH), GREEN)
     at('STAFF', l.pad + 8, y + h(l.headH) / 2 + 3, { size: 8, style: 'bold', rgb: [255, 255, 255] })
     table.head.forEach((head, i) => {
@@ -102,9 +106,15 @@ export function weekPdf(table, restaurantName, weekStart) {
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
         at(head.label, x, y + h(30), { align: 'center', size: 7, rgb: [225, 230, 226] })
     })
+    if (l.holidayCol) {
+        at('HOLIDAY', l.holidayCentreX, y + h(l.headH) / 2 + 3, {
+            align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255],
+        })
+    }
     at('HOURS', l.hoursCentreX, y + h(l.headH) / 2 + 3, {
         align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255],
     })
+    const gridTop = y + h(l.headH)
     y += h(l.headH)
 
     // ---- the rows about the day
@@ -160,6 +170,11 @@ export function weekPdf(table, restaurantName, weekStart) {
 
         at(person.name, l.pad + 8, middle, { size: 9, style: 'bold', max: l.nameCol - 16 })
         at(person.hours, l.hoursCentreX, middle, { align: 'center', size: 9, style: 'bold' })
+        if (l.holidayCol && person.holiday) {
+            at(person.holiday, l.holidayCentreX, middle, {
+                align: 'center', size: 9, style: 'bold', rgb: [74, 127, 181],
+            })
+        }
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
@@ -192,7 +207,6 @@ export function weekPdf(table, restaurantName, weekStart) {
         pdf.setLineWidth(1)
         pdf.line(l.pad, y, pageWidth - l.pad, y)
         pdf.setLineWidth(0.5)
-        for (let i = 0; i <= 7; i++) pdf.line(l.columnX(i), top, l.columnX(i), y)
     })
 
     // ---- notes
@@ -217,10 +231,36 @@ export function weekPdf(table, restaurantName, weekStart) {
             align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
         })
     })
+    // The week's total in its own colour. It is the one number anybody is asked
+    // about, and in the same green as the seven days beside it, it read as an
+    // eighth day.
+    box(l.hoursX, y, l.hoursCol, h(l.totalH), ACCENT)
     at(table.totalHours, l.hoursCentreX, y + h(l.totalH) / 2 + 3, {
         align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
     })
+    const gridBottom = y + h(l.totalH)
     y += h(l.totalH)
+
+    // ---- the lines between the days, drawn last and in one pass
+    //
+    // From the day names down to the total, so every band between them is
+    // divided the same way. Per row they only covered the people, which left
+    // the store hours, the events and what each day came to floating in seven
+    // unmarked spaces.
+    const edges = []
+    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    if (l.holidayCol) edges.push(l.holidayX)
+    edges.push(l.hoursX)
+    pdf.setLineWidth(0.5)
+    for (const x of edges) {
+        // White over the two dark bands, since a cream rule on dark green is no
+        // rule at all.
+        pdf.setDrawColor(255, 255, 255)
+        pdf.line(x, headTop, x, gridTop)
+        pdf.line(x, gridBottom - h(l.totalH), x, gridBottom)
+        pdf.setDrawColor(216, 211, 202)
+        pdf.line(x, gridTop, x, gridBottom - h(l.totalH))
+    }
 
     // ---- messages
     table.messages.forEach((m, i) => {

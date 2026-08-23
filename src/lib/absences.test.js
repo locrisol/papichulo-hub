@@ -13,6 +13,7 @@ import {
     absenceProblem,
     sortAbsences,
     nextAbsence,
+    holidayHoursInWeek,
 } from './absences'
 
 const away = (extra = {}) => ({
@@ -195,5 +196,65 @@ describe('the list', () => {
 
     it('says nothing when it is all behind them', () => {
         expect(nextAbsence(list, 'e1', '2026-12-01')).toBe(null)
+    })
+})
+
+// The holiday hours falling inside one week.
+//
+// A fortnight off is one row carrying one number off the payslip, so a week
+// holding half of it gets half. Split evenly rather than matched to what
+// somebody would have been rostered, because that is a guess about a week
+// nobody built, and the pieces have to add back up to the payslip.
+describe('holidayHoursInWeek', () => {
+    const WEEK = [
+        '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',
+        '2026-08-27', '2026-08-28', '2026-08-29',
+    ]
+
+    it('gives the whole lot to a week that holds all of it', () => {
+        const off = [away({ hours: 20, starts_on: WEEK[1], ends_on: WEEK[5] })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(20)
+    })
+
+    it('splits one that runs over two weeks', () => {
+        // Ten days at four hours each, four of them inside this week.
+        const off = [away({ hours: 40, starts_on: '2026-08-20', ends_on: '2026-08-29' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(28)
+    })
+
+    it('adds two of them up', () => {
+        const off = [
+            away({ id: 'a1', hours: 8, starts_on: WEEK[1], ends_on: WEEK[1] }),
+            away({ id: 'a2', hours: 8, starts_on: WEEK[4], ends_on: WEEK[4] }),
+        ]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(16)
+    })
+
+    it('leaves out other people', () => {
+        const off = [away({ hours: 20, employee_id: 'e2' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    it('leaves out one that was turned down', () => {
+        const off = [away({ hours: 20, status: 'declined' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    // A day off with no hours on it is not a holiday anybody is counting.
+    it('leaves out anything with no hours recorded', () => {
+        const off = [away({ kind: 'day_off', hours: null })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    it('says nothing when there is nothing', () => {
+        expect(holidayHoursInWeek([], 'e1', WEEK)).toBe(0)
+        expect(holidayHoursInWeek(null, 'e1', WEEK)).toBe(0)
+    })
+
+    // Rounded once at the end, so three days of a seven day holiday does not
+    // come back with a tail of decimals on it.
+    it('comes back to two decimals', () => {
+        const off = [away({ hours: 10, starts_on: WEEK[0], ends_on: '2026-08-31' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(7.78)
     })
 })
