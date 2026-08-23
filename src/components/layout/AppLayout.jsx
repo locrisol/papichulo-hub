@@ -191,8 +191,15 @@ export default function AppLayout({ children }) {
 
             {/* Main area */}
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 md:px-7 flex-shrink-0">
-                    <div className="flex items-center gap-3">
+                {/* Two lines on a phone, one on anything wider.
+                    Side by side, the title and the restaurant switcher were
+                    fighting over about three hundred pixels: Cost Dashboard and
+                    Menu Items broke onto two lines and the switcher was pushed
+                    half off the right edge with the restaurant name cut in the
+                    middle. Neither of them is optional, so they get a line
+                    each. */}
+                <header className="bg-white border-b border-border flex-shrink-0 px-4 md:px-7 py-3 md:py-0 md:h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
                         {/* Hamburger: mobile only */}
                         {/* Three lines and nothing else in it, so to
                             anything that cannot see the drawing this button had
@@ -218,11 +225,15 @@ export default function AppLayout({ children }) {
                         easy to miss, and being on the wrong restaurant means
                         every number on every page is the wrong one. */}
                     {(user?.role === 'super_admin' || user?.role === 'owner') && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full md:w-auto">
                             <span className="hidden sm:block text-xs font-bold uppercase tracking-widest text-muted">
                                 Restaurant
                             </span>
-                            <div className="relative">
+                            {/* Full width on a phone. It is the control that
+                                decides what every number on the page is about,
+                                so it is worth the whole line rather than
+                                whatever is left of one. */}
+                            <div className="relative flex-1 md:flex-none">
                                 {/* The native arrow goes with appearance-none, so
                                     both icons are drawn here instead. */}
                                 <svg
@@ -236,7 +247,7 @@ export default function AppLayout({ children }) {
                                     value={activeRestaurant?.id || ''}
                                     onChange={e => switchRestaurant(restaurants.find(r => r.id === e.target.value))}
                                     aria-label="Active restaurant"
-                                    className="appearance-none text-sm font-semibold border-2 border-accent/40 rounded-lg pl-9 pr-9 py-2 bg-white text-gray-900 cursor-pointer transition-colors hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                                    className="w-full appearance-none text-sm font-semibold border-2 border-accent/40 rounded-lg pl-9 pr-9 py-2 bg-white text-gray-900 cursor-pointer transition-colors hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                                 >
                                     {restaurants.map(r => (
                                         <option key={r.id} value={r.id}>{r.name}</option>
