@@ -4,11 +4,54 @@
 // feed, so it depends on nothing: no React, no Supabase, no imports at all. It
 // runs in a browser and in Deno without changing.
 //
-// The times are floating, which is to say written as 09:00 with no timezone on
-// them. A calendar reading a floating time shows it as nine in the morning
-// wherever it is. That is right for a shift: the person is standing in a
-// restaurant in Dublin at nine, and the alternative is a block of timezone
-// boilerplate in every feed to say the same thing.
+// The times carry a timezone, and they have to.
+//
+// They were floating at first, written as 09:00 with nothing after them, on the
+// reasoning that a calendar would show nine in the morning wherever it was. What
+// actually happens is that the calendar picks its own timezone, and a calendar
+// set to GMT reads a nine o'clock start as nine UTC. Ireland is an hour ahead of
+// that from late March to late October, so every summer shift landed an hour out
+// while looking perfectly reasonable.
+//
+// So the feed carries the rules for Europe/Dublin and every time points at them.
+// The rules rather than an offset: an offset would be right for half the year
+// and wrong for the other half, and wrong across the two weekends nobody would
+// think to check.
+
+// Both restaurants are in Dublin. A restaurant somewhere else would need its own
+// zone here and its own block below, which is the moment to make this a setting
+// rather than a constant.
+export const TZID = 'Europe/Dublin'
+
+// What Ireland does with the clocks, written the way a calendar file wants it.
+//
+// The European rule: forward on the last Sunday in March, back on the last
+// Sunday in October. The times on these two are local to the offset being left
+// behind, which is the part that is easy to get backwards.
+//
+// Ireland is the odd one in Europe in that its summer time is legally the
+// standard and winter is the variation. Calendars do not model it that way and
+// neither does anything else, so this follows the ordinary convention: GMT is
+// standard and IST is the daylight saving.
+const VTIMEZONE = [
+    'BEGIN:VTIMEZONE',
+    `TZID:${TZID}`,
+    'BEGIN:DAYLIGHT',
+    'TZOFFSETFROM:+0000',
+    'TZOFFSETTO:+0100',
+    'TZNAME:IST',
+    'DTSTART:19700329T010000',
+    'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU',
+    'END:DAYLIGHT',
+    'BEGIN:STANDARD',
+    'TZOFFSETFROM:+0100',
+    'TZOFFSETTO:+0000',
+    'TZNAME:GMT',
+    'DTSTART:19701025T020000',
+    'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU',
+    'END:STANDARD',
+    'END:VTIMEZONE',
+]
 
 // A calendar file is line based and a line may not run past 75 octets. Anything
 // longer is continued on the next line beginning with a space. Get this wrong
@@ -87,6 +130,7 @@ export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
         `NAME:${escapeIcs(calendarName)}`,
         'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
         'X-PUBLISHED-TTL:PT1H',
+        ...VTIMEZONE,
     ]
 
     if (calendarDescription) {
@@ -101,8 +145,8 @@ export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
         lines.push('BEGIN:VEVENT')
         lines.push(`UID:shift-${shift.id}@papichulo`)
         lines.push(`DTSTAMP:${now}`)
-        lines.push(`DTSTART:${start}`)
-        lines.push(`DTEND:${end}`)
+        lines.push(`DTSTART;TZID=${TZID}:${start}`)
+        lines.push(`DTEND;TZID=${TZID}:${end}`)
         lines.push(`SUMMARY:${escapeIcs(shift.summary)}`)
         if (shift.location) lines.push(`LOCATION:${escapeIcs(shift.location)}`)
         if (shift.description) lines.push(`DESCRIPTION:${escapeIcs(shift.description)}`)

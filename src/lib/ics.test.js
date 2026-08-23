@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
-    hoursForDate as feedHours, closesStore,
+    hoursForDate as feedHours, closesStore, TZID,
 } from '../../supabase/functions/roster-calendar/ics'
 import { hoursForDate as appHours } from './roster'
 
@@ -117,11 +117,31 @@ describe('buildIcs', () => {
         expect(out).toContain('UID:shift-abc@papichulo')
     })
 
-    it('writes the times with no timezone on them', () => {
-        // Floating, so a calendar shows nine in the morning wherever it is.
+    it('points every time at Dublin rather than leaving it to the calendar', () => {
+        // Left floating, a calendar set to GMT reads a nine o'clock start as
+        // nine UTC, and Ireland is an hour ahead of that all summer.
         const out = buildIcs({ calendarName: 'Shifts', shifts: [shift()], now })
-        expect(out).toContain('DTSTART:20260824T090000')
-        expect(out).not.toContain('DTSTART:20260824T090000Z')
+        expect(out).toContain(`DTSTART;TZID=${TZID}:20260824T090000`)
+        expect(out).toContain(`DTEND;TZID=${TZID}:20260824T170000`)
+        expect(out).not.toContain('DTSTART:20260824T090000')
+    })
+
+    it('carries the rules for the clocks changing, not just an offset', () => {
+        // An offset would be right for half the year and wrong for the other
+        // half, and wrong across the two weekends nobody would think to check.
+        const out = buildIcs({ calendarName: 'Shifts', shifts: [], now })
+        expect(out).toContain(`BEGIN:VTIMEZONE`)
+        expect(out).toContain(`TZID:${TZID}`)
+        expect(out).toContain('TZNAME:IST')
+        expect(out).toContain('TZNAME:GMT')
+        expect(out).toContain('RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU')
+        expect(out).toContain('RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU')
+        expect(out).toContain('END:VTIMEZONE')
+    })
+
+    it('puts the clock rules before any event that points at them', () => {
+        const out = buildIcs({ calendarName: 'Shifts', shifts: [shift()], now })
+        expect(out.indexOf('BEGIN:VTIMEZONE')).toBeLessThan(out.indexOf('BEGIN:VEVENT'))
     })
 
     it('leaves out what it was not given rather than writing an empty line', () => {
