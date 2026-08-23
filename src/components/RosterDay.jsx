@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
-    breakLabel, fmtHours, timelineRange, staffPerSlot, tint,
+    breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
 } from '../lib/roster'
 
 // One day, drawn as a timeline.
@@ -39,11 +39,15 @@ export default function RosterDay({
     dayNote,
     events,
     gridHours,
+    breakRules,
     onOpenShift,
     onNewShift,
     onDragShift,
+    onResizeShift,
 }) {
     const [drag, setDrag] = useState(null)
+    const [resize, setResize] = useState(null)
+    const resizeRef = useRef(null)
 
     const { from, to } = timelineRange(dayHours, shifts, gridHours)
     const slots = Math.max(1, Math.round((to - from) / SLOT))
@@ -99,6 +103,72 @@ export default function RosterDay({
             // the dialog it opens is where the real times get set anyway.
             endsAt: toTime(Math.min(to, slotAt(index) + 8 * 60)),
         })
+    }
+
+    // Dragging an edge of a shift, rather than opening it to type a time.
+    //
+    // Mouse only, the same rule as dragging a new one. A finger has no edge to
+    // grab that is not also the thing it would tap, and eight pixels of handle
+    // on a touch screen is a way of making a shift impossible to open.
+    //
+    // The live value lives in a ref and the preview in state. Only the preview
+    // needs a redraw, and reading the final value off state in the pointerup
+    // would read whatever the last render happened to have rather than where
+    // the pointer actually stopped.
+    function beginResize(shift, edge, e) {
+        if (e.pointerType !== 'mouse') return
+        e.preventDefault()
+        e.stopPropagation()
+
+        const track = e.currentTarget.closest('[data-track]')
+        if (!track) return
+        const rect = track.getBoundingClientRect()
+
+        const start = toMinutes(shift.starts_at)
+        const state = {
+            id: shift.id,
+            shift,
+            edge,
+            rect,
+            from: start,
+            to: start + shiftMinutes(shift.starts_at, shift.ends_at),
+        }
+        resizeRef.current = state
+        setResize(state)
+
+        const onMove = move => {
+            const live = resizeRef.current
+            if (!live) return
+            const ratio = (move.clientX - live.rect.left) / live.rect.width
+            const raw = from + ratio * span
+            const snapped = Math.round(raw / SLOT) * SLOT
+
+            const next = live.edge === 'start'
+                ? { ...live, from: Math.max(from, Math.min(snapped, live.to - SLOT)) }
+                : { ...live, to: Math.min(to, Math.max(snapped, live.from + SLOT)) }
+
+            resizeRef.current = next
+            setResize(next)
+        }
+
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+
+            const live = resizeRef.current
+            resizeRef.current = null
+            setResize(null)
+            if (!live) return
+
+            const startsAt = toTime(live.from)
+            const endsAt = toTime(live.to)
+            if (startsAt !== shortTime(live.shift.starts_at) || endsAt !== shortTime(live.shift.ends_at)) {
+                onResizeShift?.(live.shift, startsAt, endsAt)
+            }
+        }
+
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
     }
 
     const hourMarks = []
@@ -270,7 +340,7 @@ export default function RosterDay({
                                     </span>
                                 </div>
 
-                                <div className="flex-1 relative h-14">
+                                <div className="flex-1 relative h-14" data-track>
                                     {/* The slots you press on. They sit under the
                                         shifts, so pressing a shift opens that
                                         shift rather than making a new one. */}
@@ -330,8 +400,19 @@ export default function RosterDay({
                                     {mine.map(shift => {
                                         const shiftColour = positionOf(shift.position_id)?.colour || colour
                                         const edges = shiftEdges(shift, dayHours)
-                                        const start = toMinutes(shift.starts_at)
-                                        const length = shiftMinutes(shift.starts_at, shift.ends_at)
+                                        // While an edge is being dragged the
+                                        // block follows the pointer, so the
+                                        // times on it are the times you are
+                                        // about to get rather than the ones you
+                                        // started with.
+                                        const live = resize?.id === shift.id ? resize : null
+                                        const start = live ? live.from : toMinutes(shift.starts_at)
+                                        const length = live
+                                            ? live.to - live.from
+                                            : shiftMinutes(shift.starts_at, shift.ends_at)
+                                        const preview = live
+                                            ? { ...shift, starts_at: toTime(live.from), ends_at: toTime(live.to) }
+                                            : shift
                                         return (
                                             <button
                                                 key={shift.id}
@@ -354,11 +435,30 @@ export default function RosterDay({
                                                 }`}
                                             >
                                                 <span className="block text-xs font-bold text-gray-900 whitespace-nowrap">
-                                                    {shortTime(shift.starts_at)} – {endLabel(shift, dayHours)}
+                                                    {shortTime(preview.starts_at)} – {endLabel(preview, dayHours)}
                                                 </span>
                                                 <span className="block text-[10px] text-gray-600 whitespace-nowrap">
-                                                    {fmtHours(shiftHours(shift))}h · {breakLabel(shift.break_minutes)}
+                                                    {fmtHours(shiftHours(preview))}h · {breakLabel(
+                                                        live ? breakFor(shiftHours(preview), breakRules) : shift.break_minutes,
+                                                    )}
                                                 </span>
+
+                                                {/* A handle at each end. Eight
+                                                    pixels, which is enough to
+                                                    grab and small enough that
+                                                    the middle of the block is
+                                                    still the thing you click to
+                                                    open it. */}
+                                                <span
+                                                    onPointerDown={e => beginResize(shift, 'start', e)}
+                                                    onClick={e => e.stopPropagation()}
+                                                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-l-md"
+                                                />
+                                                <span
+                                                    onPointerDown={e => beginResize(shift, 'end', e)}
+                                                    onClick={e => e.stopPropagation()}
+                                                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-r-md"
+                                                />
                                             </button>
                                         )
                                     })}
@@ -376,8 +476,9 @@ export default function RosterDay({
             </div>
 
             <p className="px-4 py-2.5 border-t border-border text-xs text-gray-400">
-                Drag across a row with a mouse to put a shift straight in. Tap a row to add one through
-                the dialog. Tap a shift to change or remove it.
+                Drag across a row with a mouse to put a shift straight in, or drag either end of one to
+                move its start or finish. Tap a row to add a shift through the dialog, and tap a shift
+                to change or remove it.
             </p>
         </div>
     )

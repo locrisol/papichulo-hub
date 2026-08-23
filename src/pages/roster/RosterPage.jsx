@@ -215,6 +215,23 @@ export default function RosterPage() {
         else load({ quiet: true })
     }
 
+    // Dragging an edge saves straight away, the same as dragging a new shift
+    // does. The break is worked out again from the new length, since that is
+    // the whole reason it is not typed by hand.
+    async function resizeShift(shift, startsAt, endsAt) {
+        setError('')
+        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        const { error: err } = await supabase.from('roster_shifts').update({
+            starts_at: startsAt,
+            ends_at: endsAt,
+            break_minutes: breakFor(hours, activeRestaurant?.break_rules),
+            published_at: null,
+        }).eq('id', shift.id)
+
+        if (err) setError(friendlyError(err))
+        else load({ quiet: true })
+    }
+
     async function addPerson(e) {
         e.preventDefault()
         if (employeeProblem(personForm)) return
@@ -515,6 +532,8 @@ export default function RosterPage() {
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
+                    breakRules={activeRestaurant?.break_rules}
+                    onResizeShift={resizeShift}
                     events={events.filter(ev => ev.event_date === date)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
