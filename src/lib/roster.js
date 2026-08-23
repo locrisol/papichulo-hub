@@ -313,3 +313,22 @@ export function dayTotals(shifts, dates, employeesById) {
         ...totals((shifts || []).filter(s => s.shift_date === date), employeesById),
     }))
 }
+
+// A position's colour mixed with white, as a solid colour.
+//
+// The shift blocks used to be the position colour at fifteen percent, which
+// meant the grid lines, the shading and the hour marks all showed straight
+// through them and the times sat on top of a striped background. An opaque
+// colour is the fix, and mixing rather than picking one keeps every position
+// looking like itself.
+export function tint(hex, weight = 0.16) {
+    const h = String(hex || '').replace('#', '')
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return '#ffffff'
+
+    const pad = n => n.toString(16).padStart(2, '0')
+    const mix = i => {
+        const channel = parseInt(h.slice(i, i + 2), 16)
+        return Math.round(channel * weight + 255 * (1 - weight))
+    }
+    return '#' + pad(mix(0)) + pad(mix(2)) + pad(mix(4))
+}

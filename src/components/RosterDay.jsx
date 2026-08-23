@@ -4,7 +4,7 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
-    breakLabel, fmtHours, timelineRange, staffPerSlot,
+    breakLabel, fmtHours, timelineRange, staffPerSlot, tint,
 } from '../lib/roster'
 
 // One day, drawn as a timeline.
@@ -337,10 +337,16 @@ export default function RosterDay({
                                                 key={shift.id}
                                                 type="button"
                                                 onClick={() => onOpenShift(shift)}
+                                                // Solid, not the colour at
+                                                // fifteen percent. Transparent
+                                                // let the grid lines, the
+                                                // shading and the hour marks
+                                                // show straight through, so the
+                                                // times sat on a striped ground.
                                                 style={{
                                                     left: `${pct(start)}%`,
                                                     width: `${(length / span) * 100}%`,
-                                                    backgroundColor: `${shiftColour}26`,
+                                                    backgroundColor: tint(shiftColour),
                                                     borderColor: shiftColour,
                                                 }}
                                                 className={`absolute top-2 bottom-2 rounded-lg border-2 px-2 text-left overflow-hidden hover:brightness-95 transition ${

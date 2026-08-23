@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, DEFAULT_BREAK_RULES,
+    fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
 } from './roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -478,5 +478,27 @@ describe('weekRows and dayTotals', () => {
     it('copes with nobody and nothing', () => {
         expect(weekRows([], [], WEEK)).toEqual([])
         expect(weekRows(null, null, null)).toEqual([])
+    })
+})
+
+describe('tint', () => {
+    it('gives back a solid colour, never a transparent one', () => {
+        expect(tint('#1f6fd0')).toMatch(/^#[0-9a-f]{6}$/)
+    })
+
+    it('is white at no weight and the colour itself at full', () => {
+        expect(tint('#1f6fd0', 0)).toBe('#ffffff')
+        expect(tint('#1f6fd0', 1)).toBe('#1f6fd0')
+    })
+
+    it('lands between the two', () => {
+        // Black at a quarter strength is three quarters of the way to white.
+        expect(tint('#000000', 0.25)).toBe('#bfbfbf')
+    })
+
+    it('falls back to white rather than breaking on rubbish', () => {
+        expect(tint(null)).toBe('#ffffff')
+        expect(tint('nonsense')).toBe('#ffffff')
+        expect(tint('#fff')).toBe('#ffffff')
     })
 })

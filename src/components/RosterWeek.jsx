@@ -3,7 +3,7 @@ import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate,
+    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
 } from '../lib/roster'
 
 // The whole week at once, laid out the way the one that goes out to the staff
@@ -18,7 +18,7 @@ import {
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, today,
-    onOpenShift,
+    onOpenShift, onNewShift,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -31,7 +31,18 @@ export default function RosterWeek({
 
     return (
         <div className={`${cardEdge} bg-white overflow-x-auto`}>
-            <table className="w-full text-sm min-w-[60rem]">
+            {/* table-fixed, with a colgroup, so the seven days are the same
+                width whatever is in them. Without it a long event name or a
+                corporate order stretches its own column and squeezes the other
+                six, and the week stops being readable as a week. Anything too
+                long for its column wraps inside it now rather than pushing it
+                wider. */}
+            <table className="w-full text-sm min-w-[64rem] table-fixed">
+                <colgroup>
+                    <col className="w-40" />
+                    {dates.map(d => <col key={d} />)}
+                    <col className="w-20" />
+                </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
                         <th className="px-3 py-2 text-left text-xs w-40 sticky left-0 bg-sidebar z-10">
@@ -48,20 +59,24 @@ export default function RosterWeek({
                 </thead>
 
                 <tbody>
-                    {/* The three rows about the day rather than about a person.
-                        They sit at the top because they are what the rest of the
-                        week is arranged around. */}
-                    <tr className="bg-gray-50 border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-muted border-r border-border sticky left-0 bg-gray-50">
+                    {/* The rows about the day rather than about a person. They
+                        sit at the top because they are what the rest of the week
+                        is arranged around, and they carry their own colour
+                        so they read as being about the day rather than about a
+                        person. Slate for the store's own hours, warm for what is
+                        on at the Arena, red for anything the manager wants read.
+                        Only the people rows are on white. */}
+                    <tr className="bg-slate-100 border-b border-slate-200">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 bg-slate-100">
                             Store hours
                         </td>
                         {dates.map(d => {
                             const note = noteFor(d)
                             const hours = hoursForDate(openingHours, note, d)
                             return (
-                                <td key={d} className={`${cell} text-center text-xs ${
+                                <td key={d} className={`${cell} text-center text-xs border-slate-200 ${
                                     note?.is_closed ? 'bg-red-100 text-red-800 font-semibold'
-                                        : note?.is_bank_holiday ? 'bg-blue-100 text-blue-800' : 'text-gray-700'
+                                        : note?.is_bank_holiday ? 'bg-blue-100 text-blue-800' : 'text-slate-700'
                                 }`}>
                                     {note?.is_closed
                                         ? 'Closed'
@@ -77,8 +92,8 @@ export default function RosterWeek({
                         <td className="border-l border-border" />
                     </tr>
 
-                    <tr className="border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-muted border-r border-border sticky left-0 bg-white">
+                    <tr className="bg-accent-light/60 border-b border-border">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-accent border-r border-border sticky left-0 bg-accent-light">
                             What is on
                         </td>
                         {dates.map(d => {
@@ -88,7 +103,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-tight">
+                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-tight break-words">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -135,13 +150,21 @@ export default function RosterWeek({
                                             note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                         }`}>
                                             {day.shifts.length === 0 ? (
-                                                <span className="text-gray-300">—</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onNewShift?.(row.employee.id, day.date)}
+                                                    className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
+                                                    aria-label={`Add a shift for ${row.employee.full_name}`}
+                                                >
+                                                    +
+                                                </button>
                                             ) : day.shifts.map(s => (
                                                 <button
                                                     key={s.id}
                                                     type="button"
                                                     onClick={() => onOpenShift?.(s)}
-                                                    className="block w-full font-medium text-gray-900 hover:text-accent whitespace-nowrap"
+                                                    style={{ backgroundColor: tint(colour), borderColor: colour }}
+                                                    className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
                                                 >
                                                     {shortTime(s.starts_at)} – {endLabel(s, hours)}
                                                 </button>
@@ -154,17 +177,14 @@ export default function RosterWeek({
                                 </td>
                             </tr>,
 
-                            <tr key={`${row.employee.id}-breaks`} className="border-b border-border bg-gray-50/60">
-                                <td className="px-3 py-1 pl-6 text-[10px] text-gray-400 border-r border-border sticky left-0 bg-gray-50">
+                            <tr key={`${row.employee.id}-breaks`} className="border-b border-border">
+                                <td className="px-3 py-0 pl-6 text-[10px] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
-                                    <td key={day.date} className={`${cell} text-center text-[11px]`}>
+                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 text-center text-[10px] text-red-600 leading-tight">
                                         {day.shifts.length === 0 ? '' : day.shifts.map(s => (
-                                            <span
-                                                key={s.id}
-                                                className={`block ${s.break_minutes ? 'text-gray-500' : 'text-red-600'}`}
-                                            >
+                                            <span key={s.id} className="block">
                                                 {breakLabel(s.break_minutes)}
                                             </span>
                                         ))}
@@ -177,28 +197,28 @@ export default function RosterWeek({
 
                     {/* Anything the manager wants read, and what each day came
                         to. */}
-                    <tr className="border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-muted border-r border-border sticky left-0 bg-white">
+                    <tr className="bg-red-50 border-b border-red-100">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 bg-red-50">
                             Notes
                         </td>
                         {dates.map(d => (
-                            <td key={d} className={`${cell} text-center text-[11px] font-semibold text-red-700`}>
+                            <td key={d} className="px-2 py-1.5 border-r border-red-100 last:border-r-0 text-center text-[11px] font-semibold text-red-700">
                                 {noteFor(d)?.note || ''}
                             </td>
                         ))}
                         <td className="border-l border-border" />
                     </tr>
 
-                    <tr className="bg-gray-100 font-semibold">
-                        <td className="px-3 py-2 text-xs text-gray-700 border-r border-border sticky left-0 bg-gray-100">
+                    <tr className="bg-sidebar font-semibold text-white">
+                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 bg-sidebar">
                             Hours on the day
                         </td>
                         {perDay.map(d => (
-                            <td key={d.date} className={`${cell} text-center text-gray-900`}>
+                            <td key={d.date} className="px-2 py-2 border-r border-white/20 last:border-r-0 text-center">
                                 {d.hours ? fmtHours(d.hours) : '—'}
                             </td>
                         ))}
-                        <td className="px-2 py-2 text-right text-gray-900 border-l border-border whitespace-nowrap">
+                        <td className="px-2 py-2 text-right border-l border-white/20 whitespace-nowrap">
                             {fmtHours(perDay.reduce((t, d) => t + d.hours, 0))}
                         </td>
                     </tr>
