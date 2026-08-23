@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { shareName, weekTable, weekCsv, sheetLayout, wrapLines } from './rosterShare'
+import { shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY } from './rosterShare'
+import { ABSENCE_KINDS } from './absences'
 
 const DATES = [
     '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',
@@ -292,5 +293,68 @@ describe('wrapLines', () => {
     it('loses no words on the way through', () => {
         const text = 'Diljit Dosanjh Aura World Tour (18:30), KATSEYE (18:00)'
         expect(wrapLines(text, 14, chars).join(' ')).toBe(text)
+    })
+})
+
+// What goes out and what does not.
+//
+// The manager building the week sees whether somebody is on holiday, off sick
+// or at the other restaurant. Nothing that leaves the building says which, and
+// this is the one place that boundary is drawn, so it is the one place worth
+// holding down with tests.
+describe('time off on a shared week', () => {
+    const away = [{
+        id: 'a1', employee_id: 'e1', kind: 'sick',
+        starts_on: DATES[2], ends_on: DATES[3], status: 'approved',
+    }]
+
+    it('marks the days somebody is not about', () => {
+        const table = build({ absences: away })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.map(d => d.away)).toEqual([false, false, true, true, false, false, false])
+    })
+
+    it('leaves everybody else alone', () => {
+        const table = build({ absences: away })
+        const bea = table.people.find(p => p.name === 'Bea')
+        expect(bea.days.some(d => d.away)).toBe(false)
+    })
+
+    it('says nothing when there is no time off', () => {
+        const table = build({ absences: [] })
+        expect(table.people.every(p => p.days.every(d => d.away === false))).toBe(true)
+    })
+
+    it('ignores time off that was turned down', () => {
+        const declined = [{ ...away[0], status: 'declined' }]
+        const table = build({ absences: declined })
+        expect(table.people.flatMap(p => p.days).filter(d => d.away)).toEqual([])
+    })
+
+    // The one that matters. Every kind has to be unreachable from the shape the
+    // picture, the PDF and the spreadsheet are all drawn from, whatever any of
+    // them decides to print.
+    it('never carries the reason, whatever the kind is', () => {
+        for (const kind of ABSENCE_KINDS) {
+            const table = build({ absences: [{ ...away[0], kind: kind.value }] })
+            const printed = JSON.stringify(table)
+            expect(printed).not.toContain(kind.label)
+            expect(printed).not.toContain(kind.value)
+        }
+    })
+
+    it('says it in the spreadsheet without saying why', () => {
+        const csv = weekCsv(build({ absences: away }))
+        expect(csv).toContain(AWAY.label)
+        expect(csv).not.toContain('sick')
+    })
+
+    // A shift on a day somebody is down as away is still a shift, and the
+    // printed copy has to show it or the roster and the wall disagree.
+    it('keeps a shift rostered on a day they are away', () => {
+        const clash = [{ ...away[0], starts_on: DATES[1], ends_on: DATES[1] }]
+        const csv = weekCsv(build({ absences: clash }))
+        expect(csv).toContain('09:00')
+        expect(csv).toContain(AWAY.label)
     })
 })

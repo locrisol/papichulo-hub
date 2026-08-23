@@ -8,7 +8,7 @@
 // Everything comes off weekTable, the same shape the screen reads, so the
 // picture cannot say something the roster did not.
 
-import { sheetLayout, wrapLines } from './rosterShare'
+import { sheetLayout, wrapLines, AWAY } from './rosterShare'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -182,6 +182,18 @@ export function drawWeek(canvas, table) {
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+
+            // A day they are not about, filled and said in one word. Which kind
+            // of not about is deliberately not here: the manager sees that on
+            // screen, and a roster on a wall does not need to say who was sick.
+            if (day.away) {
+                box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, AWAY.fill)
+                font(11, '700')
+                text(AWAY.label, x, top + (l.shiftH + l.breakH) / 2, {
+                    align: 'center', colour: AWAY.ink, max: l.dayCol - 8,
+                })
+            }
+
             font(13, '600')
             day.shifts.forEach((s, n) => {
                 marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)

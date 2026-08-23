@@ -13,6 +13,26 @@ import { fullDate, shortDate } from './dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
 } from './roster'
+import { absencesOn } from './absences'
+
+// A day somebody is not there, as it goes out.
+//
+// One word and one colour for every kind of it. The manager building the week
+// sees whether it is a holiday, a day off or sick, because they are the one who
+// has to know. Nothing that leaves the building says which.
+//
+// That is not only about privacy, though a roster pinned to a wall saying who
+// was off sick is exactly the thing you would not print. It is also what the
+// people reading it actually need: somebody looking for a swap needs to know who
+// is not about, and the reason is none of their business.
+export const AWAY = {
+    label: 'Not available',
+    short: 'Not available',
+    fill: '#e3e9ed',
+    ink: '#4a5c68',
+    fillRgb: [227, 233, 237],
+    inkRgb: [74, 92, 104],
+}
 
 // What a shared week is called. The date is in it so three of them in a chat
 // are still three different weeks.
@@ -32,7 +52,9 @@ export function shareName(restaurantName, weekStart, extension) {
 // The times are already resolved here: a closing shift says Closing, exactly as
 // it does on screen, so nobody can read a finishing time off a printed copy that
 // the screen never showed them.
-export function weekTable({ dates, employees, shifts, dayNotes, events, openingHours, restaurantName }) {
+export function weekTable({
+    dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
+}) {
     const employeesById = Object.fromEntries((employees || []).map(e => [e.id, e]))
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const hoursFor = d => hoursForDate(openingHours, noteFor(d), d)
@@ -69,6 +91,11 @@ export function weekTable({ dates, employees, shifts, dayNotes, events, openingH
             const hours = hoursFor(day.date)
             return {
                 date: day.date,
+                // A flag and not a kind, and it is flattened here rather than in
+                // each of the four things that draw this. One boundary in one
+                // place is the only kind that holds: a renderer cannot leak a
+                // reason it was never handed.
+                away: absencesOn(absences, row.employee.id, day.date).length > 0,
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)
@@ -126,7 +153,11 @@ export function weekCsv(table) {
     line(['What is on', ...table.whatIsOn, ''])
 
     for (const person of table.people) {
-        line([person.name, ...person.days.map(d => d.shifts.map(s => s.text).join(' / ')), person.hours])
+        line([person.name, ...person.days.map(d => {
+            const shifts = d.shifts.map(s => s.text).join(' / ')
+            if (!d.away) return shifts
+            return shifts ? `${shifts} (${AWAY.label})` : AWAY.label
+        }), person.hours])
         line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ''])
     }
 

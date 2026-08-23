@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import { sheetLayout, shareName, wrapLines } from './rosterShare'
+import { sheetLayout, shareName, wrapLines, AWAY } from './rosterShare'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -143,6 +143,15 @@ export function weekPdf(table, restaurantName, weekStart) {
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+
+            // Same as the picture: filled, one word, and no reason on it.
+            if (day.away) {
+                box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
+                at(AWAY.label, x, top + rowH / 2 + 3, {
+                    align: 'center', size: 7, style: 'bold', rgb: AWAY.inkRgb, max: l.dayCol - 6,
+                })
+            }
+
             day.shifts.forEach((s, n) => {
                 marked(s, x, y + h(l.shiftH) / 2 + 3 + n * h(11))
             })
