@@ -142,7 +142,14 @@ export default function RosterWeek({
                         // true, and gone the moment it is not.
                         const hasAlerts = mineAlerts.length > 0
                         return [
-                            <tr key={row.employee.id} className="border-b border-border">
+                            // Two weights, because a person is one row made of
+                            // two. A hairline between somebody's times and
+                            // their breaks says they belong together; the
+                            // heavier line under the breaks is where one person
+                            // ends and the next begins. They were the same line
+                            // before, so the week read as fourteen rows rather
+                            // than seven.
+                            <tr key={row.employee.id} className="border-b border-gray-100">
                                 <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 bg-white">
                                     <span className="flex items-center gap-2">
                                         <span
@@ -251,7 +258,13 @@ export default function RosterWeek({
                                 </td>
                             </tr>,
 
-                            <tr key={`${row.employee.id}-breaks`} className="border-b border-border">
+                            <tr
+                                key={`${row.employee.id}-breaks`}
+                                // The alert strip belongs to the person above
+                                // it, so when there is one the heavy line waits
+                                // and closes under that instead.
+                                className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
+                            >
                                 <td className="px-3 py-0 pl-6 text-[10px] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
                                     Breaks
                                 </td>
@@ -268,7 +281,7 @@ export default function RosterWeek({
                             </tr>,
 
                             hasAlerts ? (
-                                <tr key={`${row.employee.id}-alerts`} className="border-b border-border">
+                                <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
                                     <td colSpan={dates.length + 2} className="p-0">
                                         <AlertStrip findings={mineAlerts} />
                                     </td>

@@ -162,8 +162,16 @@ export function weekPdf(table, restaurantName, weekStart) {
             })
         })
 
+        // Same two weights as the picture and the screen. A hairline between
+        // somebody's times and their breaks, a heavier one under the pair.
+        pdf.setDrawColor(236, 232, 226)
+        pdf.line(l.pad + l.nameCol, top + h(l.shiftH), pageWidth - l.pad - l.hoursCol, top + h(l.shiftH))
+
         y += rowH
+        pdf.setDrawColor(216, 211, 202)
+        pdf.setLineWidth(1)
         pdf.line(l.pad, y, pageWidth - l.pad, y)
+        pdf.setLineWidth(0.5)
         for (let i = 0; i <= 7; i++) pdf.line(l.columnX(i), top, l.columnX(i), y)
     })
 

@@ -13,6 +13,8 @@ import { sheetLayout, wrapLines, AWAY } from './rosterShare'
 const INK = '#111827'
 const MUTED = '#6b7280'
 const RULE = '#d8d3ca'
+// A shade lighter, for the line inside a person's own row.
+const FAINT = '#ece8e2'
 const GREEN = '#182F24'
 const CREAM = '#f7f5f0'
 const WARM = '#f0e8e0'
@@ -57,9 +59,9 @@ export function drawWeek(canvas, table) {
 
     const font = (size, weight = '400') => { c.font = FONT(size, weight) }
     const box = (x, y, w, h, fill) => { c.fillStyle = fill; c.fillRect(x, y, w, h) }
-    const rule = (x1, y1, x2, y2, colour = RULE) => {
+    const rule = (x1, y1, x2, y2, colour = RULE, width = 1) => {
         c.strokeStyle = colour
-        c.lineWidth = 1
+        c.lineWidth = width
         c.beginPath()
         c.moveTo(x1, y1)
         c.lineTo(x2, y2)
@@ -206,8 +208,13 @@ export function drawWeek(canvas, table) {
             })
         })
 
+        // A hairline between somebody's times and their breaks, and a heavier
+        // one under the pair. A person is one row made of two, and drawn with
+        // one weight the sheet reads as twice as many rows as it has people.
+        rule(l.pad + l.nameCol, top + l.shiftH, l.width - l.pad - l.hoursCol, top + l.shiftH, FAINT)
+
         y += l.shiftH + l.breakH
-        rule(l.pad, y, l.width - l.pad, y)
+        rule(l.pad, y, l.width - l.pad, y, RULE, 2)
         for (let i = 0; i <= 7; i++) rule(l.columnX(i), top, l.columnX(i), y)
     })
 
