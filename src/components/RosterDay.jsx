@@ -3,6 +3,7 @@ import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { AlertBadge, AlertStrip } from './RosterAlerts'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -49,6 +50,7 @@ export default function RosterDay({
     shifts,
     positions,
     date,
+    alerts,
     dayHours,
     dayNote,
     events,
@@ -60,6 +62,9 @@ export default function RosterDay({
     onResizeShift,
 }) {
     const [drag, setDrag] = useState(null)
+    // Which row has its alerts open. One at a time, because two rows of
+    // messages open at once pushes the day you are working on off the screen.
+    const [openAlert, setOpenAlert] = useState(null)
     const [resize, setResize] = useState(null)
     const resizeRef = useRef(null)
     // Set the moment a resize actually changes something, and read by the click
@@ -367,11 +372,13 @@ export default function RosterDay({
                         const away = dayState(employee.availability, date)
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
+                        const mineAlerts = alerts?.[employee.id] || []
+                        const alertOpen = openAlert === employee.id
 
                         return (
+                            <Fragment key={employee.id}>
                             <div
-                                key={employee.id}
-                                className={`flex border-b border-border last:border-b-0 ${
+                                className={`flex ${alertOpen ? '' : 'border-b border-border last:border-b-0'} ${
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
@@ -380,7 +387,7 @@ export default function RosterDay({
                                         className="w-1.5 h-7 rounded-full flex-shrink-0"
                                         style={{ backgroundColor: colour }}
                                     />
-                                    <span className="min-w-0">
+                                    <span className="min-w-0 flex-1">
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
@@ -390,6 +397,17 @@ export default function RosterDay({
                                                 : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
+                                    {/* Beside the name, where the eye already
+                                        is. Everything this says is also in the
+                                        banner above the grid, and that is a
+                                        banner nobody reads once they have
+                                        scrolled past it. */}
+                                    <AlertBadge
+                                        findings={mineAlerts}
+                                        name={employee.full_name}
+                                        open={alertOpen}
+                                        onToggle={() => setOpenAlert(alertOpen ? null : employee.id)}
+                                    />
                                 </div>
 
                                 <div className="flex-1 relative h-14" data-track>
@@ -556,6 +574,9 @@ export default function RosterDay({
                                     </span>
                                 </div>
                             </div>
+
+                            {alertOpen && <AlertStrip findings={mineAlerts} className="border-b" />}
+                            </Fragment>
                         )
                     })}
                 </div>

@@ -328,6 +328,43 @@ export function checkWeek({ shifts, employees, weekDates, rules, priorHoursByEmp
     return findings
 }
 
+// Everything the week found, filed under the person it is about.
+//
+// The roster reads down a column of names, so a warning that only exists in a
+// banner above the grid is a warning nobody sees. This is what lets the row
+// itself carry it.
+export function findingsByEmployee(findings) {
+    const out = {}
+    for (const finding of findings || []) {
+        if (!finding.employeeId) continue
+        if (!out[finding.employeeId]) out[finding.employeeId] = []
+        out[finding.employeeId].push(finding)
+    }
+    return out
+}
+
+// The worse of what a person has, since one mark has to stand for all of it.
+export function worstLevel(findings) {
+    if (!findings?.length) return null
+    return findings.some(f => f.level === 'block') ? 'block' : 'warn'
+}
+
+// Somebody in two places at once, in the same shape as everything else.
+//
+// It is worked out separately from checkWeek because it is about two shifts
+// rather than about a person, but on the grid it is the same thing: something
+// wrong with that row. A warning rather than a block, which is what it already
+// was before it had anywhere to appear.
+export function overlapFindings(clashes, employeesById) {
+    return (clashes || []).map(([a, b]) => ({
+        level: 'warn',
+        kind: 'clash',
+        employeeId: a.employee_id,
+        name: employeesById?.[a.employee_id]?.full_name || '',
+        text: `Rostered twice over the same hours on ${a.shift_date}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
+    }))
+}
+
 function daysBetween(from, to) {
     return Math.round(
         (new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000,

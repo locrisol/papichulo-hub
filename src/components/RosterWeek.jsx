@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { cardEdge, tableHeadRow } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { AlertBadge, AlertStrip } from './RosterAlerts'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -20,8 +22,11 @@ import {
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, today,
-    onOpenShift, onNewShift,
+    alerts, onOpenShift, onNewShift,
 }) {
+    // One row open at a time. Two sets of messages open at once pushes the
+    // week off the screen, which is the thing this was meant to stop.
+    const [openAlert, setOpenAlert] = useState(null)
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
     const perDay = dayTotals(shifts, dates, employeesById)
@@ -130,6 +135,8 @@ export default function RosterWeek({
                         and what the hours column here agrees with. */}
                     {rows.map(row => {
                         const colour = positionOf(row.employee.position_id)?.colour || NO_COLOUR
+                        const mineAlerts = alerts?.[row.employee.id] || []
+                        const alertOpen = openAlert === row.employee.id
                         return [
                             <tr key={row.employee.id} className="border-b border-border">
                                 <td className="px-3 py-1.5 border-r border-border sticky left-0 bg-white">
@@ -146,6 +153,12 @@ export default function RosterWeek({
                                                 {positionOf(row.employee.position_id)?.name || ''}
                                             </span>
                                         </span>
+                                        <AlertBadge
+                                            findings={mineAlerts}
+                                            name={row.employee.full_name}
+                                            open={alertOpen}
+                                            onToggle={() => setOpenAlert(alertOpen ? null : row.employee.id)}
+                                        />
                                     </span>
                                 </td>
                                 {row.days.map(day => {
@@ -229,6 +242,14 @@ export default function RosterWeek({
                                 ))}
                                 <td className="border-l border-border" />
                             </tr>,
+
+                            alertOpen ? (
+                                <tr key={`${row.employee.id}-alerts`} className="border-b border-border">
+                                    <td colSpan={dates.length + 2} className="p-0">
+                                        <AlertStrip findings={mineAlerts} />
+                                    </td>
+                                </tr>
+                            ) : null,
                         ]
                     })}
 
