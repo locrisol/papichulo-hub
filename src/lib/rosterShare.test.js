@@ -56,24 +56,63 @@ describe('weekTable', () => {
 
     it('resolves the times rather than leaving that to whoever draws it', () => {
         const t = build()
-        expect(t.people[0].days[1].times).toEqual(['09:00 – 17:00'])
+        expect(t.people[0].days[1].shifts[0].text).toBe('09:00 – 17:00')
     })
 
     it('says Closing on a shift that runs past it, the same as the screen does', () => {
         // Wednesday closes at 21:00 and the shift runs to 21:30.
         const t = build()
-        expect(t.people[0].days[3].times).toEqual(['14:00 – Closing'])
+        expect(t.people[0].days[3].shifts[0].end).toBe('Closing')
     })
 
     it('carries the breaks beside the times', () => {
         const t = build()
-        expect(t.people[0].days[1].breaks).toEqual(['30 minutes'])
-        expect(t.people[1].days[1].breaks).toEqual(['No break'])
+        expect(t.people[0].days[1].shifts[0].break).toBe('30 minutes')
+        expect(t.people[1].days[1].shifts[0].break).toBe('No break')
     })
 
     it('leaves an empty day empty rather than putting a dash in a spreadsheet', () => {
         const t = build()
-        expect(t.people[0].days[0].times).toEqual([])
+        expect(t.people[0].days[0].shifts).toEqual([])
+    })
+
+    it('marks the finish of a shift that closes the store, and not the start', () => {
+        const t = build()
+        const shift = t.people[0].days[3].shifts[0]
+        expect(shift.closes).toBe(true)
+        expect(shift.opens).toBe(false)
+    })
+
+    it('marks the start of a shift that opens the store', () => {
+        // Monday opens at 09:00 and this one starts at 08:00.
+        const t = build({
+            shifts: [{
+                id: 'x', employee_id: 'e1', shift_date: DATES[1],
+                starts_at: '08:00', ends_at: '16:00', break_minutes: 30,
+            }],
+        })
+        const shift = t.people[0].days[1].shifts[0]
+        expect(shift.opens).toBe(true)
+        expect(shift.closes).toBe(false)
+    })
+
+    it('marks both ends of a shift that opens and closes', () => {
+        const t = build({
+            shifts: [{
+                id: 'x', employee_id: 'e1', shift_date: DATES[1],
+                starts_at: '08:00', ends_at: '22:00', break_minutes: 60,
+            }],
+        })
+        const shift = t.people[0].days[1].shifts[0]
+        expect(shift.opens).toBe(true)
+        expect(shift.closes).toBe(true)
+    })
+
+    it('marks neither end of an ordinary shift', () => {
+        const t = build()
+        const shift = t.people[0].days[1].shifts[0]
+        expect(shift.opens).toBe(false)
+        expect(shift.closes).toBe(false)
     })
 
     it('reads the store hours off the day', () => {

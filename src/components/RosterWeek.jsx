@@ -4,6 +4,7 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
+    shiftEdges,
 } from '../lib/roster'
 
 // The whole week at once, laid out the way the one that goes out to the staff
@@ -158,17 +159,33 @@ export default function RosterWeek({
                                                 >
                                                     +
                                                 </button>
-                                            ) : day.shifts.map(s => (
-                                                <button
-                                                    key={s.id}
-                                                    type="button"
-                                                    onClick={() => onOpenShift?.(s)}
-                                                    style={{ backgroundColor: tint(colour), borderColor: colour }}
-                                                    className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
-                                                >
-                                                    {shortTime(s.starts_at)} – {endLabel(s, hours)}
-                                                </button>
-                                            ))}
+                                            ) : day.shifts.map(s => {
+                                                // The opening or the closing
+                                                // time is picked out rather than
+                                                // the whole shift, the same as
+                                                // the spreadsheet does it and
+                                                // the same as the picture and
+                                                // the PDF now do.
+                                                const edges = shiftEdges(s, hours)
+                                                const mark = 'bg-amber-200 rounded px-0.5'
+                                                return (
+                                                    <button
+                                                        key={s.id}
+                                                        type="button"
+                                                        onClick={() => onOpenShift?.(s)}
+                                                        style={{ backgroundColor: tint(colour), borderColor: colour }}
+                                                        className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
+                                                    >
+                                                        <span className={edges.opening ? mark : ''}>
+                                                            {shortTime(s.starts_at)}
+                                                        </span>
+                                                        {' – '}
+                                                        <span className={edges.closing ? mark : ''}>
+                                                            {endLabel(s, hours)}
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
                                         </td>
                                     )
                                 })}

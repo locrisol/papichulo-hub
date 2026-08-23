@@ -11,7 +11,7 @@
 import { DAY_NAMES } from './events'
 import { fullDate, shortDate } from './dates'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate,
+    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
 } from './roster'
 
 // What a shared week is called. The date is in it so three of them in a chat
@@ -55,13 +55,35 @@ export function weekTable({ dates, employees, shifts, dayNotes, events, openingH
         .map(e => (e.event_time ? `${e.name} (${shortTime(e.event_time)})` : e.name))
         .join(', '))
 
+    // A shift is kept in parts rather than as one string, because the start and
+    // the finish are marked separately.
+    //
+    // Somebody letting themselves into a dark building and somebody locking up
+    // are two different things, and a shift can be one, the other, or both. The
+    // spreadsheet this replaces marks the individual time in yellow rather than
+    // the whole shift, which is more precise and worth keeping.
     const people = weekRows(employees, shifts, dates).map(row => ({
         name: row.employee.full_name,
         hours: fmtHours(row.hours),
-        days: row.days.map(day => ({
-            times: day.shifts.map(s => `${shortTime(s.starts_at)} – ${endLabel(s, hoursFor(day.date))}`),
-            breaks: day.shifts.map(s => breakLabel(s.break_minutes)),
-        })),
+        days: row.days.map(day => {
+            const hours = hoursFor(day.date)
+            return {
+                date: day.date,
+                shifts: day.shifts.map(s => {
+                    const edges = shiftEdges(s, hours)
+                    const start = shortTime(s.starts_at)
+                    const end = endLabel(s, hours)
+                    return {
+                        start,
+                        end,
+                        text: `${start} – ${end}`,
+                        opens: edges.opening,
+                        closes: edges.closing,
+                        break: breakLabel(s.break_minutes),
+                    }
+                }),
+            }
+        }),
     }))
 
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
@@ -104,8 +126,8 @@ export function weekCsv(table) {
     line(['What is on', ...table.whatIsOn, ''])
 
     for (const person of table.people) {
-        line([person.name, ...person.days.map(d => d.times.join(' / ')), person.hours])
-        line(['  Breaks', ...person.days.map(d => d.breaks.join(' / ')), ''])
+        line([person.name, ...person.days.map(d => d.shifts.map(s => s.text).join(' / ')), person.hours])
+        line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ''])
     }
 
     line(['Notes', ...table.notes, ''])

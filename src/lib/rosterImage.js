@@ -18,6 +18,8 @@ const CREAM = '#f7f5f0'
 const WARM = '#f0e8e0'
 const SLATE = '#e8ecef'
 const RED = '#b91c1c'
+// The same yellow the spreadsheet uses on an opening or a closing time.
+const YELLOW = '#fde68a'
 
 // Three device pixels to the point.
 //
@@ -75,6 +77,35 @@ export function drawWeek(canvas, table) {
         c.fillText(out, x, y)
     }
 
+    // A shift written out with the opening or the closing time picked out in
+    // yellow behind it, the way the spreadsheet does.
+    //
+    // Drawn in three pieces rather than as one string, because only one of them
+    // is marked and it has to be measured to know how wide the highlight is.
+    // Laid out from the left after working out the whole width, so the three
+    // together still sit in the middle of the column.
+    const marked = (shift, centreX, y) => {
+        const parts = [
+            { text: shift.start, mark: shift.opens },
+            { text: ' – ', mark: false },
+            { text: shift.end, mark: shift.closes },
+        ]
+        const widths = parts.map(p => c.measureText(p.text).width)
+        const total = widths.reduce((a, b) => a + b, 0)
+
+        let x = centreX - total / 2
+        c.textAlign = 'left'
+        parts.forEach((p, i) => {
+            if (p.mark) {
+                c.fillStyle = YELLOW
+                c.fillRect(x - 2, y - 8, widths[i] + 4, 16)
+            }
+            c.fillStyle = INK
+            c.fillText(p.text, x, y)
+            x += widths[i]
+        })
+    }
+
     box(0, 0, l.width, l.height, CREAM)
 
     // ---- the title
@@ -84,6 +115,13 @@ export function drawWeek(canvas, table) {
     font(14)
     text(table.subtitle, l.pad, y + 44, { colour: MUTED })
     y += l.titleH
+
+    // ---- a word on what the yellow means, since a roster on a wall has
+    // nobody standing beside it to explain
+    font(11)
+    c.fillStyle = YELLOW
+    c.fillRect(l.width - l.pad - 168, l.pad + 8, 14, 14)
+    text('opens or closes the store', l.width - l.pad - 146, l.pad + 15, { colour: MUTED })
 
     // ---- the days
     box(l.pad, y, l.width - l.pad * 2, l.headH, GREEN)
@@ -133,21 +171,24 @@ export function drawWeek(canvas, table) {
         const top = y
         box(l.pad, y, l.width - l.pad * 2, l.shiftH + l.breakH, row % 2 ? '#ffffff' : '#fcfbf9')
 
+        // Down the middle of the whole row, breaks included, rather than of
+        // the shift half of it. Against the times alone they sat high and the
+        // row looked top heavy.
+        const middle = y + (l.shiftH + l.breakH) / 2
+
         font(14, '700')
-        text(person.name, l.pad + 12, y + l.shiftH / 2, { max: l.nameCol - 20 })
-        text(person.hours, l.hoursCentreX, y + l.shiftH / 2, { align: 'center' })
+        text(person.name, l.pad + 12, middle, { max: l.nameCol - 20 })
+        text(person.hours, l.hoursCentreX, middle, { align: 'center' })
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
             font(13, '600')
-            day.times.forEach((t, n) => {
-                text(t, x, y + l.shiftH / 2 + (n - (day.times.length - 1) / 2) * 15, {
-                    align: 'center', max: l.dayCol - 8,
-                })
+            day.shifts.forEach((s, n) => {
+                marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
             })
             font(10)
-            day.breaks.forEach((b, n) => {
-                text(b, x, y + l.shiftH + 10 + n * 11, {
+            day.shifts.forEach((s, n) => {
+                text(s.break, x, y + l.shiftH + 10 + n * 11, {
                     align: 'center', colour: RED, max: l.dayCol - 8,
                 })
             })

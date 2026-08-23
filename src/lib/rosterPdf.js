@@ -12,6 +12,7 @@ const GREEN = [24, 47, 36]
 const SLATE = [232, 236, 239]
 const WARM = [240, 232, 224]
 const RED = [185, 28, 28]
+const YELLOW = [253, 230, 138]
 
 export function weekPdf(table, restaurantName, weekStart) {
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
@@ -54,8 +55,38 @@ export function weekPdf(table, restaurantName, weekStart) {
         pdf.text(out, x, yy, { align })
     }
 
+    // A shift with its opening or closing time picked out in yellow, the way
+    // the spreadsheet does. Three pieces rather than one string, because only
+    // one of them is marked and it has to be measured to know how wide.
+    const marked = (shift, centreX, yy) => {
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(8)
+        const parts = [
+            { text: shift.start, mark: shift.opens },
+            { text: ' - ', mark: false },
+            { text: shift.end, mark: shift.closes },
+        ]
+        const widths = parts.map(p => pdf.getTextWidth(p.text))
+        const total = widths.reduce((a, b) => a + b, 0)
+
+        let x = centreX - total / 2
+        parts.forEach((p, i) => {
+            if (p.mark) {
+                pdf.setFillColor(...YELLOW)
+                pdf.rect(x - 1, yy - 6, widths[i] + 2, 9, 'F')
+            }
+            at(p.text, x, yy, { size: 8, style: 'bold' })
+            x += widths[i]
+        })
+    }
+
     // ---- title
     at(table.title, l.pad, y + h(18), { size: 16, style: 'bold' })
+    pdf.setFillColor(...YELLOW)
+    pdf.rect(pageWidth - l.pad - 130, y + h(8), 9, 9, 'F')
+    at('opens or closes the store', pageWidth - l.pad - 117, y + h(15), {
+        size: 7, rgb: [107, 114, 128],
+    })
     at(table.subtitle, l.pad, y + h(36), { size: 9, rgb: [107, 114, 128] })
     y += h(l.titleH)
 
@@ -103,22 +134,20 @@ export function weekPdf(table, restaurantName, weekStart) {
         const rowH = h(l.shiftH + l.breakH)
         if (row % 2 === 0) box(l.pad, y, pageWidth - l.pad * 2, rowH, [252, 251, 249])
 
-        at(person.name, l.pad + 8, y + h(l.shiftH) / 2 + 3, {
-            size: 9, style: 'bold', max: l.nameCol - 16,
-        })
-        at(person.hours, l.hoursCentreX, y + h(l.shiftH) / 2 + 3, {
-            align: 'center', size: 9, style: 'bold',
-        })
+        // Down the middle of the whole row, breaks included, rather than of
+        // the shift half of it.
+        const middle = y + rowH / 2 + 3
+
+        at(person.name, l.pad + 8, middle, { size: 9, style: 'bold', max: l.nameCol - 16 })
+        at(person.hours, l.hoursCentreX, middle, { align: 'center', size: 9, style: 'bold' })
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
-            day.times.forEach((t, n) => {
-                at(t, x, y + h(l.shiftH) / 2 + 3 + n * h(11), {
-                    align: 'center', size: 8, style: 'bold', max: l.dayCol - 6,
-                })
+            day.shifts.forEach((s, n) => {
+                marked(s, x, y + h(l.shiftH) / 2 + 3 + n * h(11))
             })
-            day.breaks.forEach((b, n) => {
-                at(b, x, y + h(l.shiftH) + h(9) + n * h(9), {
+            day.shifts.forEach((s, n) => {
+                at(s.break, x, y + h(l.shiftH) + h(9) + n * h(9), {
                     align: 'center', size: 6, rgb: RED, max: l.dayCol - 6,
                 })
             })
