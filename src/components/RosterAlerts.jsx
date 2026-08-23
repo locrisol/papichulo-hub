@@ -26,32 +26,31 @@ function Triangle({ className = '' }) {
 
 // The mark beside a name. Nothing at all when there is nothing wrong, so a
 // clean week looks exactly as it did before any of this.
-export function AlertBadge({ findings, open, onToggle, name }) {
+//
+// A mark and not a button. The messages are already open underneath it, so
+// there is nothing left for pressing it to do, and something that looks
+// pressable and does nothing is worse than something that plainly is not.
+export function AlertBadge({ findings }) {
     if (!findings?.length) return null
 
-    const level = worstLevel(findings)
-    const tone = level === 'block'
-        ? 'text-red-600 hover:bg-red-50'
-        : 'text-amber-500 hover:bg-amber-50'
+    const tone = worstLevel(findings) === 'block' ? 'text-red-600' : 'text-amber-500'
 
     return (
-        <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onToggle() }}
-            aria-expanded={!!open}
-            aria-label={`${findings.length} ${findings.length === 1 ? 'thing' : 'things'} to look at for ${name}`}
-            title={findings.map(f => f.text).join('\n')}
-            className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 flex-shrink-0 transition-colors ${tone}`}
-        >
+        <span className={`inline-flex items-center gap-0.5 flex-shrink-0 ${tone}`}>
             <Triangle className="w-3.5 h-3.5" />
             {findings.length > 1 && (
                 <span className="text-[10px] font-bold leading-none">{findings.length}</span>
             )}
-        </button>
+        </span>
     )
 }
 
-// The messages themselves, once the mark is pressed.
+// The messages themselves, sitting under the row for as long as they are true.
+//
+// Not behind a press. Something you have to open is something you have to know
+// is there, and not knowing is the whole problem being solved. A strip takes
+// itself away when the shift causing it is fixed, so the only way to clear one
+// is to deal with what it says.
 //
 // Full width under the row rather than floating beside the name. The grid
 // scrolls sideways inside a box that clips anything hanging out of it, so a
@@ -59,9 +58,8 @@ export function AlertBadge({ findings, open, onToggle, name }) {
 //
 // The ground it sits on says which kind it is before anybody reads a word.
 export function AlertStrip({ findings, className = '' }) {
-    // Nothing at all when there is nothing to say. Fixing the shift that caused
-    // a warning leaves the row still marked as open, and without this the strip
-    // stayed behind as a bare yellow band with no words in it.
+    // Nothing at all when there is nothing to say, so no caller can leave a
+    // bare yellow band behind with no words in it.
     if (!findings?.length) return null
 
     const ground = worstLevel(findings) === 'block'

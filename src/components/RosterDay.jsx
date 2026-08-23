@@ -62,9 +62,6 @@ export default function RosterDay({
     onResizeShift,
 }) {
     const [drag, setDrag] = useState(null)
-    // Which row has its alerts open. One at a time, because two rows of
-    // messages open at once pushes the day you are working on off the screen.
-    const [openAlert, setOpenAlert] = useState(null)
     const [resize, setResize] = useState(null)
     const resizeRef = useRef(null)
     // Set the moment a resize actually changes something, and read by the click
@@ -373,16 +370,15 @@ export default function RosterDay({
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
                         const mineAlerts = alerts?.[employee.id] || []
-                        // Open only while there is still something to show.
-                        // Deleting the shift that caused a warning takes the
-                        // warning with it, and the row has to close on its own
-                        // rather than waiting to be pressed again.
-                        const alertOpen = openAlert === employee.id && mineAlerts.length > 0
+                        // There for as long as the warning is true. Deleting
+                        // the shift that caused it takes it away, which is the
+                        // only way to clear one.
+                        const hasAlerts = mineAlerts.length > 0
 
                         return (
                             <Fragment key={employee.id}>
                             <div
-                                className={`flex ${alertOpen ? '' : 'border-b border-border last:border-b-0'} ${
+                                className={`flex ${hasAlerts ? '' : 'border-b border-border last:border-b-0'} ${
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
@@ -406,12 +402,7 @@ export default function RosterDay({
                                         banner above the grid, and that is a
                                         banner nobody reads once they have
                                         scrolled past it. */}
-                                    <AlertBadge
-                                        findings={mineAlerts}
-                                        name={employee.full_name}
-                                        open={alertOpen}
-                                        onToggle={() => setOpenAlert(alertOpen ? null : employee.id)}
-                                    />
+                                    <AlertBadge findings={mineAlerts} />
                                 </div>
 
                                 <div className="flex-1 relative h-14" data-track>
@@ -579,7 +570,7 @@ export default function RosterDay({
                                 </div>
                             </div>
 
-                            {alertOpen && <AlertStrip findings={mineAlerts} className="border-b" />}
+                            {hasAlerts && <AlertStrip findings={mineAlerts} className="border-b" />}
                             </Fragment>
                         )
                     })}
