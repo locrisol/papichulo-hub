@@ -8,17 +8,47 @@
 // It answers with that one person's published shifts and nothing else. Not the
 // week, not who else is on, and nothing at all about what anybody is paid.
 //
-// Deploy with: supabase functions deploy roster-calendar --no-verify-jwt
-// The flag matters. Without it Supabase demands a bearer token and Google
-// cannot send one.
+// It has to be reachable without a key of any kind, because a calendar app has
+// none to send. On the command line that is:
+//
+//   supabase functions deploy roster-calendar --no-verify-jwt
+//
+// From the dashboard it is the JWT verification setting on the function. Either
+// way, leave it on and every request comes back 401 with no clue why.
+//
+// Deliberately the plain Deno.serve form rather than the withSupabase wrapper
+// the dashboard template starts you with. That wrapper is there to check the
+// caller's key and hand you an authenticated client, which is exactly what this
+// cannot have.
 //
 // ics.js sits in this folder rather than in a shared one because only what is
 // inside a function's own folder gets deployed with it. Putting it a level up
 // works locally and then fails on the server with a missing import, which is a
 // poor way to find out.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { buildIcs, hoursForDate, closesStore } from './ics.js'
+
+// The key that can read past row level security, under whichever name this
+// project's runtime gives it.
+//
+// Supabase is part way through renaming these: older projects have
+// SUPABASE_SERVICE_ROLE_KEY and newer ones a secret key. Asking for all of them
+// and taking the first that exists costs three lines and saves finding out the
+// hard way, which here means a feed that returns an empty calendar rather than
+// an error.
+function serviceKey() {
+    const names = [
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'SUPABASE_SECRET_KEY',
+        'SB_SECRET_KEY',
+    ]
+    for (const name of names) {
+        const value = Deno.env.get(name)
+        if (value) return value
+    }
+    throw new Error('No service key. Set SUPABASE_SERVICE_ROLE_KEY in the function secrets.')
+}
 
 // How much of the roster to hand over. Far enough back that last month is still
 // in their diary, and far enough forward for anything published.
@@ -39,10 +69,7 @@ Deno.serve(async (request) => {
         return new Response('Not found', { status: 404 })
     }
 
-    const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
 
     const { data: employee } = await supabase
         .from('employees')
