@@ -26,8 +26,16 @@ import {
 // becoming a table with three hundred and sixty five rows a year in it saying
 // nothing. Clearing the last field on a day deletes the row.
 export default function DayNoteDialog({
-    date, note, restaurantId, userId, usualHours, usualExtras, onClose, onSaved,
+    date, note, restaurantId, userId, usualHours, usualExtras, only, onClose, onSaved,
 }) {
+    // Opened from one row of the week rather than from Options, this shows only
+    // the part that row is about.
+    //
+    // Everything else on the day is still in the form and still saved back
+    // untouched, which is the reason it is one dialog wearing a smaller hat
+    // rather than a second dialog: two of them writing the same row is how one
+    // of them ends up clearing what the other just set.
+    const show = part => !only || only === part
     const usual = hoursForDay(usualHours, date)
 
     const [form, setForm] = useState({
@@ -101,10 +109,14 @@ export default function DayNoteDialog({
     )
 
     return (
-        <Modal title={`${dayName(date)} ${shortDate(date)} · options`} onClose={onClose}>
+        <Modal
+            title={`${dayName(date)} ${shortDate(date)} · ${only === 'extras' ? 'also on' : 'options'}`}
+            onClose={onClose}
+        >
             <div>
                 {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
+                {show('hours') && (
                 <ModalSection
                     title="Hours"
                     description="Leave the times empty to use the usual hours for this day of the week."
@@ -145,7 +157,9 @@ export default function DayNoteDialog({
                 {/* The two switches under the times, because the times are the
                     thing you came here to change nine times out of ten. */}
                 </ModalSection>
+                )}
 
+                {show('kind') && (
                 <ModalSection title="What kind of day it is">
                 <div className="space-y-3">
                     <label className="flex items-start gap-3 cursor-pointer">
@@ -182,7 +196,9 @@ export default function DayNoteDialog({
                 </div>
 
                 </ModalSection>
+                )}
 
+                {show('label') && (
                 <ModalSection
                     title="Label across the day"
                     description="Shown under the day on the roster and on anything sent out from it."
@@ -195,6 +211,7 @@ export default function DayNoteDialog({
                         placeholder="Deep Cleaning Day"
                     />
                 </ModalSection>
+                )}
 
                 {/* Everything a day has on that is not the Arena.
                     Feedr, Lunch Team, Clockmeal, an office delivery, somebody
@@ -205,6 +222,7 @@ export default function DayNoteDialog({
                     than pointing at the usual list, so a delivery that came at
                     half one this week can say so, and renaming one next year
                     does not rewrite last March. */}
+                {show('extras') && (
                 <ModalSection
                     title="Also on"
                     description="Anything else happening in the store that day, and the time it lands. An office delivery, Feedr, somebody servicing the coffee machine. Ticking one copies its usual time, and the day is free to disagree with it."
@@ -295,7 +313,9 @@ export default function DayNoteDialog({
                         </button>
                     </div>
                 </ModalSection>
+                )}
 
+                {show('message') && (
                 <ModalSection
                     title="Note at the bottom of the roster"
                     description="Printed under the week on the copy that goes out, with this day's date in front of it. This is the one people read, because it is only there when there is something to say."
@@ -308,6 +328,7 @@ export default function DayNoteDialog({
                         placeholder="Deliveries go to the back door this week"
                     />
                 </ModalSection>
+                )}
 
                 {problem && (
                     <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>

@@ -463,7 +463,7 @@ export default function RosterPage() {
                         </span>
                         <button
                             type="button"
-                            onClick={() => setEditingDay(date)}
+                            onClick={() => setEditingDay({ date })}
                             className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors text-xs"
                         >
                             Options
@@ -583,7 +583,7 @@ export default function RosterPage() {
                         setDayIndex(dates.indexOf(d))
                         setEditingShift({ shift: { employee_id: employeeId } })
                     }}
-                    onOpenDay={d => setEditingDay(d)}
+                    onOpenDay={d => setEditingDay({ date: d, only: 'extras' })}
                 />
             ) : (
                 <RosterDay
@@ -658,8 +658,9 @@ export default function RosterPage() {
 
             {editingDay && (
                 <DayNoteDialog
-                    date={editingDay}
-                    note={noteFor(editingDay)}
+                    date={editingDay.date}
+                    note={noteFor(editingDay.date)}
+                    only={editingDay.only}
                     restaurantId={restaurantId}
                     userId={user?.id}
                     usualHours={activeRestaurant?.opening_hours}
