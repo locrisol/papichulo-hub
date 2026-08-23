@@ -6,6 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, fullDate } from '../../lib/dates'
 import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow } from '../../lib/controlStyles'
+import { availabilitySummary } from '../../lib/availability'
 import {
     sortEmployees,
     nextSortOrder,
@@ -18,6 +19,7 @@ import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
 import PositionsModal from '../../components/PositionsModal'
 import CalendarLinkDialog from '../../components/CalendarLinkDialog'
+import AvailabilityDialog from '../../components/AvailabilityDialog'
 
 // Who works here.
 //
@@ -52,6 +54,7 @@ export default function EmployeesPage() {
     const [showPositions, setShowPositions] = useState(false)
     const [showPast, setShowPast] = useState(false)
     const [calendarFor, setCalendarFor] = useState(null)
+    const [availabilityFor, setAvailabilityFor] = useState(null)
     const [form, setForm] = useState(EMPTY)
 
     const today = todayISO()
@@ -309,6 +312,16 @@ export default function EmployeesPage() {
                                                 {employee.notes && (
                                                     <span className="block text-xs text-gray-400">{employee.notes}</span>
                                                 )}
+                                                {/* Only ever there when
+                                                    something has been typed in,
+                                                    so a list where nobody has
+                                                    availability set looks
+                                                    exactly as it did before. */}
+                                                {availabilitySummary(employee.availability) && (
+                                                    <span className="block text-xs text-gray-500">
+                                                        Works {availabilitySummary(employee.availability)}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2">
                                                 {position ? (
@@ -340,6 +353,13 @@ export default function EmployeesPage() {
                                                     className="text-blue-600 hover:text-blue-800 font-medium"
                                                 >
                                                     Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => setAvailabilityFor(employee)}
+                                                    className={`ml-3 ${employee.availability ? 'text-gray-500' : 'text-gray-400'} hover:text-gray-800`}
+                                                    title="The days and hours they can normally work"
+                                                >
+                                                    Availability
                                                 </button>
                                                 <button
                                                     onClick={() => setCalendarFor(employee)}
@@ -397,6 +417,14 @@ export default function EmployeesPage() {
                         editingId={editing?.id}
                     />
                 </Modal>
+            )}
+
+            {availabilityFor && (
+                <AvailabilityDialog
+                    employee={availabilityFor}
+                    onClose={() => setAvailabilityFor(null)}
+                    onChanged={() => load({ quiet: true })}
+                />
             )}
 
             {calendarFor && (
