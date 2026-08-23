@@ -48,6 +48,15 @@ export default function RosterDay({
     const [drag, setDrag] = useState(null)
     const [resize, setResize] = useState(null)
     const resizeRef = useRef(null)
+    // Set the moment a resize actually changes something, and read by the click
+    // that follows it.
+    //
+    // A click is dispatched on the nearest common ancestor of where the pointer
+    // went down and where it came up. The handle is inside the block, so
+    // finishing a drag anywhere over that row fires a click on the block itself
+    // and opens the dialog. Stopping the click on the handle does nothing about
+    // it, because the click was never on the handle.
+    const justResized = useRef(false)
 
     const { from, to } = timelineRange(dayHours, shifts, gridHours)
     const slots = Math.max(1, Math.round((to - from) / SLOT))
@@ -162,7 +171,14 @@ export default function RosterDay({
 
             const startsAt = toTime(live.from)
             const endsAt = toTime(live.to)
-            if (startsAt !== shortTime(live.shift.starts_at) || endsAt !== shortTime(live.shift.ends_at)) {
+            const moved = startsAt !== shortTime(live.shift.starts_at)
+                || endsAt !== shortTime(live.shift.ends_at)
+
+            if (moved) {
+                // Only when something changed. Pressing a handle and letting go
+                // without moving is a click, and should still open the shift.
+                justResized.current = true
+                setTimeout(() => { justResized.current = false }, 0)
                 onResizeShift?.(live.shift, startsAt, endsAt)
             }
         }
@@ -417,7 +433,10 @@ export default function RosterDay({
                                             <button
                                                 key={shift.id}
                                                 type="button"
-                                                onClick={() => onOpenShift(shift)}
+                                                onClick={() => {
+                                                    if (justResized.current) return
+                                                    onOpenShift(shift)
+                                                }}
                                                 // Solid, not the colour at
                                                 // fifteen percent. Transparent
                                                 // let the grid lines, the
