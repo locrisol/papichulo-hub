@@ -311,8 +311,8 @@ export default function RosterDay({
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
                                                 width: `${Math.max(0, 100 - pct(start))}%`,
-                                                backgroundColor: 'rgba(212,114,74,0.18)',
-                                                borderLeft: '2px solid #D4724A',
+                                                backgroundColor: 'rgba(188,85,43,0.18)',
+                                                borderLeft: '2px solid var(--color-accent)',
                                             }}
                                         >
                                             <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />

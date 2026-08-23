@@ -3,7 +3,10 @@
 @theme {
   --color-sidebar: #182F24;
   --color-sidebar-active: #224036;
-  --color-accent: #D4724A;
+  /* Darkened from #D4724A, which was 3.33 to 1 behind white lettering and
+     failed for text at the size the buttons use it. This is the lightest
+     shade that clears 4.5, so it is the closest to the orange it replaces. */
+  --color-accent: #BC552B;
   --color-accent-light: #F0E8E0;
   /* The orange as a text colour. The brand orange is 3.3 to 1 on white,
      which is fine behind white lettering on a button and not fine as
