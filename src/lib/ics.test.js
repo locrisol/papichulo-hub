@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
     hoursForDate as feedHours, closesStore,
-} from '../../supabase/functions/_shared/ics'
+} from '../../supabase/functions/roster-calendar/ics'
 import { hoursForDate as appHours } from './roster'
 
 const shift = (extra = {}) => ({

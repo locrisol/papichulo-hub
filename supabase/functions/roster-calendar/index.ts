@@ -11,9 +11,14 @@
 // Deploy with: supabase functions deploy roster-calendar --no-verify-jwt
 // The flag matters. Without it Supabase demands a bearer token and Google
 // cannot send one.
+//
+// ics.js sits in this folder rather than in a shared one because only what is
+// inside a function's own folder gets deployed with it. Putting it a level up
+// works locally and then fails on the server with a missing import, which is a
+// poor way to find out.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { buildIcs, hoursForDate, closesStore } from '../_shared/ics.js'
+import { buildIcs, hoursForDate, closesStore } from './ics.js'
 
 // How much of the roster to hand over. Far enough back that last month is still
 // in their diary, and far enough forward for anything published.
