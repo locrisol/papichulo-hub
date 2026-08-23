@@ -1,7 +1,8 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { sectionHeading } from '../lib/controlStyles'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 
 // The add and edit form for a person.
 //
@@ -27,9 +28,8 @@ export default function EmployeeForm({
     const available = linkableUsers(users, employees, editingId)
 
     return (
-        <form onSubmit={onSubmit} className="p-5">
-            <p className={sectionHeading}>Who they are</p>
-
+        <form onSubmit={onSubmit}>
+            <ModalSection title="Who they are">
             <div className="mb-3">
                 <label className={labelCls}>Name</label>
                 <input
@@ -126,8 +126,9 @@ export default function EmployeeForm({
 
                 The date of birth is here for one reason: under 18s have their
                 own limits and the roster cannot apply them without it. */}
-            <div className="mt-5 mb-3">
-                <p className={sectionHeading}>Right to work</p>
+            </ModalSection>
+
+            <ModalSection title="Right to work">
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
@@ -176,7 +177,6 @@ export default function EmployeeForm({
                         it has passed.
                     </p>
                 </div>
-            </div>
 
             {/* Food safety.
 
@@ -187,8 +187,9 @@ export default function EmployeeForm({
                 Two years is offered when a date is sat, and it can be changed,
                 because a certificate that says something different should be
                 able to say something different here. */}
-            <div className="mt-5 mb-3">
-                <p className={sectionHeading}>Food safety</p>
+            </ModalSection>
+
+            <ModalSection title="Food safety">
 
                 <div className="mb-3">
                     <label className={labelCls}>Training held</label>
@@ -238,10 +239,10 @@ export default function EmployeeForm({
                     Two years from the date it was sat, filled in whenever that date changes and free
                     to change afterwards. The roster says so two months before it runs out.
                 </p>
-            </div>
 
-            <div className="mb-4">
-                <label className={labelCls}>Notes</label>
+            </ModalSection>
+
+            <ModalSection title="Notes">
                 <input
                     type="text"
                     value={formData.notes}
@@ -249,13 +250,13 @@ export default function EmployeeForm({
                     className={fieldCls}
                     placeholder="Anything worth remembering"
                 />
-            </div>
+            </ModalSection>
 
             {problem && (
-                <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
             )}
 
-            <div className="flex justify-end gap-3">
+            <div className={modalFooter}>
                 <button
                     type="button"
                     onClick={onCancel}

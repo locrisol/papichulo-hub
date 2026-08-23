@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
-import { sectionHeading } from '../lib/controlStyles'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 import { DEFAULT_RULES } from '../lib/workRules'
 
 // What the roster checks a week against.
@@ -88,15 +89,15 @@ export default function RosterRulesModal({ onClose }) {
 
     return (
         <Modal title="Roster rules" onClose={onClose} width="max-w-xl">
-            <div className="p-5">
-                {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
+            <div>
+                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
-                <p className={sectionHeading}>Warnings</p>
+                <ModalSection title="Warnings">
                 <p className="text-xs text-gray-500 mb-2">
                     These say something is worth a second look. None of them stop a week going out.
                 </p>
 
-                <div className="mb-6">
+                <div>
                     {[
                         {
                             key: 'dailyRest',
@@ -125,15 +126,16 @@ export default function RosterRulesModal({ onClose }) {
                         },
                     ].map(row)}
                 </div>
+                </ModalSection>
 
-                <p className={sectionHeading}>Stops a week going out</p>
+                <ModalSection title="Stops a week going out">
                 <p className="text-xs text-gray-500 mb-2">
                     These two are the law about the employer rather than guidance about the employee.
                     Going over them is the company's problem and not the person's, so they hold the week
                     until something is changed.
                 </p>
 
-                <div className="mb-5">
+                <div>
                     <div className="py-3 border-b border-border">
                         <label className="flex items-start gap-3 cursor-pointer">
                             <input
@@ -199,9 +201,10 @@ export default function RosterRulesModal({ onClose }) {
                         </label>
                     </div>
                 </div>
+                </ModalSection>
 
-                <p className={sectionHeading}>Certificates</p>
-                <div className="mb-6">
+                <ModalSection title="Certificates">
+                <div>
                     <div className="py-3">
                         <label className="flex items-start gap-3 cursor-pointer">
                             <input
@@ -237,14 +240,15 @@ export default function RosterRulesModal({ onClose }) {
                         )}
                     </div>
                 </div>
+                </ModalSection>
 
-                <p className={sectionHeading}>The grid</p>
+                <ModalSection title="The grid">
                 <p className="text-xs text-gray-500 mb-2">
                     How much of the day the roster draws either side of the opening hours. Enough to
                     see a delivery at six in the morning and a clean down at midnight, without the
                     grid being mostly empty. The hours the store is shut are shaded.
                 </p>
-                <div className="flex flex-wrap items-center gap-2 mb-6">
+                <div className="flex flex-wrap items-center gap-2">
                     <input
                         {...numberField({
                             value: String(rules.gridHours?.before ?? 3),
@@ -265,13 +269,17 @@ export default function RosterRulesModal({ onClose }) {
                     <span className="text-sm text-gray-500">after closing</span>
                 </div>
 
-                <p className="text-xs text-gray-400 border-t border-border pt-4 mb-4">
-                    The holiday periods a student may work full time in are June to September and
-                    15 December to 15 January. Immigration rules change, so these are worth checking
-                    against current guidance rather than taken as final.
-                </p>
+                </ModalSection>
 
-                <div className="flex justify-end gap-3">
+                <ModalSection>
+                    <p className="text-xs text-gray-400">
+                        The holiday periods a student may work full time in are June to September and
+                        15 December to 15 January. Immigration rules change, so these are worth checking
+                        against current guidance rather than taken as final.
+                    </p>
+                </ModalSection>
+
+                <div className={modalFooter}>
                     <button
                         type="button"
                         onClick={onClose}

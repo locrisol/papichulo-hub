@@ -6,6 +6,7 @@ import { dayName } from '../lib/events'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
 } from '../lib/roster'
+import { modalFooter } from '../lib/controlStyles'
 
 // One shift: making it, changing it, removing it.
 //
@@ -93,7 +94,8 @@ export default function ShiftDialog({
             title={`${dayName(date)} ${shortDate(date)}`}
             onClose={onClose}
         >
-            <form onSubmit={submit} className="p-5">
+            <form onSubmit={submit}>
+                <div className="px-6 py-4">
                 <div className="mb-3">
                     <label className={labelCls}>Who</label>
                     <select
@@ -162,10 +164,11 @@ export default function ShiftDialog({
                 </div>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
                 )}
+                </div>
 
-                <div className="flex items-center justify-between gap-3">
+                <div className={`${modalFooter} justify-between`}>
                     {editing ? (
                         <button
                             type="button"

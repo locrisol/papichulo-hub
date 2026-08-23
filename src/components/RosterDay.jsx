@@ -165,18 +165,25 @@ export default function RosterDay({
                         <div className="flex-1 relative h-11">
                             {dayHours && !closed && (
                                 <span
-                                    className="absolute top-0 h-full bg-white/70 border-x border-gray-300 pointer-events-none"
+                                    className="absolute top-0 h-full bg-white/70 pointer-events-none"
                                     style={{
                                         left: `${pct(toMinutes(dayHours.open))}%`,
                                         width: `${pct(toMinutes(dayHours.close)) - pct(toMinutes(dayHours.open))}%`,
                                     }}
                                 />
                             )}
-                            {/* Each hour gets its label and a short tick under
-                                it, dropping to where that hour actually starts.
-                                A label centred over a wide grid is guesswork
-                                otherwise: the tick is what lets somebody line a
-                                block up with a time by eye. */}
+                            {/* Three weights, and each one means something.
+                                Opening and closing are the heaviest because they
+                                are the two moments everything else is measured
+                                against. A whole hour is a middle weight. The
+                                half hours are the faint cell edges further down.
+
+                                They were all one width before, and looked like
+                                three widths anyway: a hairline landing between
+                                two pixels gets shared across both and reads
+                                thicker than one that lands on a boundary. Making
+                                the difference real is what stops it looking like
+                                an accident. */}
                             {hourMarks.map(m => (
                                 <span key={m}>
                                     <span
@@ -186,10 +193,18 @@ export default function RosterDay({
                                         {toTime(m)}
                                     </span>
                                     <span
-                                        className="absolute bottom-0 w-px h-2.5 bg-gray-400"
+                                        className="absolute bottom-0 w-px h-2 bg-gray-300"
                                         style={{ left: `${pct(m)}%` }}
                                     />
                                 </span>
+                            ))}
+
+                            {dayHours && !closed && [dayHours.open, dayHours.close].map(t => (
+                                <span
+                                    key={t}
+                                    className="absolute bottom-0 h-3.5 bg-gray-500"
+                                    style={{ left: `${pct(toMinutes(t))}%`, width: '2px', marginLeft: '-1px' }}
+                                />
                             ))}
 
                             {(events || []).map(event => {
@@ -268,7 +283,14 @@ export default function RosterDay({
                                                 onPointerEnter={() => extendDrag(employee.id, i)}
                                                 onPointerUp={() => endPress(employee.id, i)}
                                                 aria-label={`${employee.full_name} at ${toTime(slotAt(i))}`}
-                                                className={`flex-1 border-r border-gray-100 last:border-r-0 transition-colors ${
+                                                className={`flex-1 border-r last:border-r-0 transition-colors ${
+                                                    // The hour boundaries are a
+                                                    // shade darker than the half
+                                                    // hours between them, so the
+                                                    // eye has something to count
+                                                    // along a wide grid.
+                                                    slotAt(i + 1) % 60 === 0 ? 'border-gray-300' : 'border-gray-100'
+                                                } ${
                                                     dragging && i >= dragFrom && i < dragTo
                                                         ? 'bg-accent/25'
                                                         : 'hover:bg-accent/10'
@@ -292,13 +314,16 @@ export default function RosterDay({
                                             className="absolute top-0 bottom-0 right-0 bg-gray-200/50 pointer-events-none"
                                             style={{ width: `${100 - pct(toMinutes(dayHours.close))}%` }}
                                         />
+                                        {/* Two pixels, not one, so opening and
+                                            closing are unmistakably the heaviest
+                                            lines on the grid. */}
                                         <span
-                                            className="absolute top-0 bottom-0 w-px bg-gray-400 pointer-events-none"
-                                            style={{ left: `${pct(toMinutes(dayHours.open))}%` }}
+                                            className="absolute top-0 bottom-0 bg-gray-500 pointer-events-none"
+                                            style={{ left: `${pct(toMinutes(dayHours.open))}%`, width: '2px', marginLeft: '-1px' }}
                                         />
                                         <span
-                                            className="absolute top-0 bottom-0 w-px bg-gray-400 pointer-events-none"
-                                            style={{ left: `${pct(toMinutes(dayHours.close))}%` }}
+                                            className="absolute top-0 bottom-0 bg-gray-500 pointer-events-none"
+                                            style={{ left: `${pct(toMinutes(dayHours.close))}%`, width: '2px', marginLeft: '-1px' }}
                                         />
                                     </>}
 

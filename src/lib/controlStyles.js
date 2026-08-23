@@ -105,7 +105,15 @@ export const tableCard = `${card} overflow-x-auto overflow-y-hidden`
 // heading across the top, and a second one inside it would compete with it and
 // make the whole thing read as two dialogs stacked up.
 export const sectionHeading =
-    'text-xs font-bold text-sidebar uppercase tracking-wider pb-1.5 mb-3 border-b border-border'
+    'text-xs font-bold text-sidebar uppercase tracking-wider mb-3'
+
+// The row of buttons at the bottom of a dialog.
+//
+// Same shape as the older screens already use: full width, its own rule above
+// it, and a grey ground so it reads as the floor of the dialog rather than as
+// one more thing in the list of fields.
+export const modalFooter =
+    'px-6 py-4 border-t border-border bg-gray-50 flex flex-wrap justify-end gap-3'
 
 // The small coloured pills in a table cell: a role, a section, a status.
 //

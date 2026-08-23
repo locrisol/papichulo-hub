@@ -5,7 +5,8 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { DAY_NAMES } from '../lib/events'
 import { BANK_HOLIDAY } from '../lib/roster'
-import { sectionHeading } from '../lib/controlStyles'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 
 // When the store is usually open.
 //
@@ -97,7 +98,8 @@ export default function OpeningHoursModal({ onClose }) {
 
     return (
         <Modal title="Opening hours" onClose={onClose}>
-            <div className="p-5">
+            <div>
+                <ModalSection title="The usual week">
                 <p className="text-sm text-muted mb-4">
                     The usual week. The roster uses this to mark opening and closing shifts, and to print
                     Closing instead of a time on anything that runs past the end of the day.
@@ -148,8 +150,9 @@ export default function OpeningHoursModal({ onClose }) {
                     Fill the empty days with the first one
                 </button>
 
-                <div className="mt-5 mb-4">
-                    <p className={sectionHeading}>Bank holidays</p>
+                </ModalSection>
+
+                <ModalSection title="Bank holidays">
                     <p className="text-xs text-gray-500 mb-2">
                         One setting for all of them, since they open the same here. Tick a day as a bank
                         holiday on the roster and it uses these instead of its usual hours. Leave empty to
@@ -180,13 +183,13 @@ export default function OpeningHoursModal({ onClose }) {
                             ×
                         </button>
                     </div>
-                </div>
+                </ModalSection>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
                 )}
 
-                <div className="flex justify-end gap-3 border-t border-border pt-4">
+                <div className={modalFooter}>
                     <button
                         type="button"
                         onClick={onClose}

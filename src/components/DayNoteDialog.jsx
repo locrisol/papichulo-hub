@@ -5,7 +5,8 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { sectionHeading } from '../lib/controlStyles'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 
 // When one day is not like the others.
 //
@@ -80,10 +81,10 @@ export default function DayNoteDialog({
 
     return (
         <Modal title={`${dayName(date)} ${shortDate(date)} · options`} onClose={onClose}>
-            <div className="p-5">
-                {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
+            <div>
+                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
 
-                <p className={sectionHeading}>Hours</p>
+                <ModalSection title="Hours">
 
                 {!form.isClosed && (
                     <div className="mb-4">
@@ -120,8 +121,10 @@ export default function DayNoteDialog({
 
                 {/* The two switches under the times, because the times are the
                     thing you came here to change nine times out of ten. */}
-                <p className={sectionHeading}>What kind of day it is</p>
-                <div className="mb-4 space-y-3">
+                </ModalSection>
+
+                <ModalSection title="What kind of day it is">
+                <div className="space-y-3">
                     <label className="flex items-start gap-3 cursor-pointer">
                         <input
                             type="checkbox"
@@ -155,8 +158,9 @@ export default function DayNoteDialog({
                     </label>
                 </div>
 
-                <div className="mb-4">
-                    <label className={labelCls}>Label across the day</label>
+                </ModalSection>
+
+                <ModalSection title="Label across the day">
                     <input
                         type="text"
                         value={form.note}
@@ -164,13 +168,13 @@ export default function DayNoteDialog({
                         className={fieldCls}
                         placeholder="Deep Cleaning Day"
                     />
-                </div>
+                </ModalSection>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
                 )}
 
-                <div className="flex justify-end gap-3 border-t border-border pt-4">
+                <div className={modalFooter}>
                     <button
                         type="button"
                         onClick={onClose}

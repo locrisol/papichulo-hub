@@ -5,7 +5,8 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { sectionHeading } from '../lib/controlStyles'
+import { modalFooter } from '../lib/controlStyles'
+import ModalSection from './ModalSection'
 
 // The break ladder.
 //
@@ -86,7 +87,8 @@ export default function BreakRulesModal({ onClose }) {
 
     return (
         <Modal title="Break rules" onClose={onClose} width="max-w-xl">
-            <div className="p-5">
+            <div>
+                <ModalSection title="The ladder">
                 <p className="text-sm text-muted mb-1">
                     Read top down. The first rung a shift is long enough for is the one it gets.
                 </p>
@@ -144,9 +146,10 @@ export default function BreakRulesModal({ onClose }) {
                     Add a rung
                 </button>
 
+                </ModalSection>
+
                 {/* What it does, before it is saved. */}
-                <div className="mt-5 mb-4">
-                    <p className={sectionHeading}>What that gives</p>
+                <ModalSection title="What that gives">
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                         {examples.map(h => {
                             const minutes = problem ? null : breakFor(h, clean)
@@ -161,13 +164,13 @@ export default function BreakRulesModal({ onClose }) {
                             )
                         })}
                     </div>
-                </div>
+                </ModalSection>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{problem}</p>
+                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
                 )}
 
-                <div className="flex justify-end gap-3 border-t border-border pt-4">
+                <div className={modalFooter}>
                     <button
                         type="button"
                         onClick={onClose}
