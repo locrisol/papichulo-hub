@@ -29,7 +29,20 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
     const [copied, setCopied] = useState('')
 
     const base = import.meta.env.VITE_SUPABASE_URL || ''
-    const url = token ? `${base}/functions/v1/roster-calendar?token=${token}` : ''
+
+    // The person's name is put on the end of the address, which does nothing
+    // technically: anything after the function's own name is ignored by it.
+    //
+    // It is there because Google names a subscribed calendar after the URL it
+    // came from and ignores the name inside the file. Without this it appears in
+    // their calendar list as the whole address ending in a random token. With
+    // it, at least the readable part is the last thing before the token.
+    const slug = String(employee.full_name || 'shifts')
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+    const url = token
+        ? `${base}/functions/v1/roster-calendar/${slug}.ics?token=${token}`
+        : ''
 
     async function save(next) {
         setBusy(true)
@@ -120,6 +133,12 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                                 <b className="text-gray-900">On Android.</b> Google Calendar on a computer,
                                 Other calendars, then From URL, and paste the plain address. Phones cannot
                                 add one, only the website can.
+                            </li>
+                            <li>
+                                <b className="text-gray-900">Google will call it by its address.</b> It
+                                ignores the name the calendar gives itself, so it turns up in the list as a
+                                long link. Click the three dots beside it, Settings, and rename it. Once,
+                                and it stays. Apple picks the name up on its own.
                             </li>
                             <li>
                                 <b className="text-gray-900">It is not instant.</b> Their calendar re-reads it

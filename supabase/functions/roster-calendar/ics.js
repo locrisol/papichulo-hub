@@ -68,7 +68,15 @@ export function eventTimes(shift) {
 // notice of them and Google largely does not, so a new week arrives on its own
 // but not within the minute, and the staff should be told that once rather than
 // left to wonder.
-export function buildIcs({ calendarName, shifts, now }) {
+export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
+    // The name is given three times, which is not belt and braces so much as
+    // three clients wanting three different things.
+    //
+    // X-WR-CALNAME is the old Apple and Microsoft way and still the most widely
+    // honoured. NAME is the standardised version of the same thing. Google
+    // ignores both and names a subscription after the URL it came from, which is
+    // why the link has a readable ending on it and why the instructions say to
+    // rename it once.
     const lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -76,9 +84,15 @@ export function buildIcs({ calendarName, shifts, now }) {
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
         `X-WR-CALNAME:${escapeIcs(calendarName)}`,
+        `NAME:${escapeIcs(calendarName)}`,
         'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
         'X-PUBLISHED-TTL:PT1H',
     ]
+
+    if (calendarDescription) {
+        lines.push(`X-WR-CALDESC:${escapeIcs(calendarDescription)}`)
+        lines.push(`DESCRIPTION:${escapeIcs(calendarDescription)}`)
+    }
 
     for (const shift of shifts || []) {
         const { start, end } = eventTimes(shift)

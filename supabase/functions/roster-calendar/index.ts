@@ -121,11 +121,17 @@ Deno.serve(async (request) => {
         }
     })
 
+    const calendarName = `${employee.full_name}, ${restaurant?.name || 'shifts'}`
     const body = buildIcs({
-        calendarName: `Shifts, ${restaurant?.name || 'work'}`,
+        calendarName,
+        calendarDescription: `Published shifts for ${employee.full_name}.`,
         shifts: events,
         now: new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z',
     })
+
+    // Some clients name the calendar after the file rather than after anything
+    // inside it, so the file is named too.
+    const filename = calendarName.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')
 
     return new Response(body, {
         headers: {
@@ -134,7 +140,7 @@ Deno.serve(async (request) => {
             // one checking rarely is not held back by us. Google decides for
             // itself either way.
             'Cache-Control': 'public, max-age=1800',
-            'Content-Disposition': 'inline; filename="shifts.ics"',
+            'Content-Disposition': `inline; filename="${filename}.ics"`,
         },
     })
 })
