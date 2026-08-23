@@ -1,6 +1,7 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
+import { sectionHeading } from '../lib/controlStyles'
 
 // The add and edit form for a person.
 //
@@ -27,6 +28,8 @@ export default function EmployeeForm({
 
     return (
         <form onSubmit={onSubmit} className="p-5">
+            <p className={sectionHeading}>Who they are</p>
+
             <div className="mb-3">
                 <label className={labelCls}>Name</label>
                 <input
@@ -123,10 +126,8 @@ export default function EmployeeForm({
 
                 The date of birth is here for one reason: under 18s have their
                 own limits and the roster cannot apply them without it. */}
-            <div className="border-t border-border pt-4 mb-3">
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
-                    Right to work
-                </p>
+            <div className="mt-5 mb-3">
+                <p className={sectionHeading}>Right to work</p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
@@ -186,10 +187,8 @@ export default function EmployeeForm({
                 Two years is offered when a date is sat, and it can be changed,
                 because a certificate that says something different should be
                 able to say something different here. */}
-            <div className="border-t border-border pt-4 mb-3">
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
-                    Food safety
-                </p>
+            <div className="mt-5 mb-3">
+                <p className={sectionHeading}>Food safety</p>
 
                 <div className="mb-3">
                     <label className={labelCls}>Training held</label>
@@ -212,12 +211,15 @@ export default function EmployeeForm({
                             value={formData.foodSafetyIssued}
                             onChange={e => {
                                 onChange('foodSafetyIssued', e.target.value)
-                                // Two years is offered, not imposed. It only
-                                // fills an empty box, so a date already typed is
-                                // never quietly rewritten.
-                                if (e.target.value && !formData.foodSafetyExpires) {
-                                    onChange('foodSafetyExpires', expiryFrom(e.target.value))
-                                }
+                                // The expiry follows the date it was sat, every
+                                // time that date changes. Two years is the term,
+                                // and the box underneath is still free, so a
+                                // certificate saying eighteen months can say so.
+                                // Filling only an empty box was too timid: it
+                                // meant correcting a wrong sat date left the old
+                                // expiry sitting there being wrong.
+                                onChange('foodSafetyExpires',
+                                    e.target.value ? expiryFrom(e.target.value) : '')
                             }}
                             className={fieldCls}
                         />
@@ -233,8 +235,8 @@ export default function EmployeeForm({
                     </div>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                    Two years from the date it was sat is filled in for you and can be changed.
-                    The roster says so two months before it runs out.
+                    Two years from the date it was sat, filled in whenever that date changes and free
+                    to change afterwards. The roster says so two months before it runs out.
                 </p>
             </div>
 

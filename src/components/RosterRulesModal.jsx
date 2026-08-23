@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
+import { sectionHeading } from '../lib/controlStyles'
 import { DEFAULT_RULES } from '../lib/workRules'
 
 // What the roster checks a week against.
@@ -90,9 +91,7 @@ export default function RosterRulesModal({ onClose }) {
             <div className="p-5">
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                    Warnings
-                </p>
+                <p className={sectionHeading}>Warnings</p>
                 <p className="text-xs text-gray-500 mb-2">
                     These say something is worth a second look. None of them stop a week going out.
                 </p>
@@ -127,9 +126,7 @@ export default function RosterRulesModal({ onClose }) {
                     ].map(row)}
                 </div>
 
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                    Stops a week going out
-                </p>
+                <p className={sectionHeading}>Stops a week going out</p>
                 <p className="text-xs text-gray-500 mb-2">
                     These two are the law about the employer rather than guidance about the employee.
                     Going over them is the company's problem and not the person's, so they hold the week
@@ -203,9 +200,7 @@ export default function RosterRulesModal({ onClose }) {
                     </div>
                 </div>
 
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                    Certificates
-                </p>
+                <p className={sectionHeading}>Certificates</p>
                 <div className="mb-6">
                     <div className="py-3">
                         <label className="flex items-start gap-3 cursor-pointer">
@@ -243,9 +238,7 @@ export default function RosterRulesModal({ onClose }) {
                     </div>
                 </div>
 
-                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                    The grid
-                </p>
+                <p className={sectionHeading}>The grid</p>
                 <p className="text-xs text-gray-500 mb-2">
                     How much of the day the roster draws either side of the opening hours. Enough to
                     see a delivery at six in the morning and a clean down at midnight, without the

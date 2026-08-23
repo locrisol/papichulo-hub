@@ -5,6 +5,7 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
+import { sectionHeading } from '../lib/controlStyles'
 
 // When one day is not like the others.
 //
@@ -82,6 +83,8 @@ export default function DayNoteDialog({
             <div className="p-5">
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
+                <p className={sectionHeading}>Hours</p>
+
                 {!form.isClosed && (
                     <div className="mb-4">
                         <p className={labelCls}>
@@ -117,7 +120,8 @@ export default function DayNoteDialog({
 
                 {/* The two switches under the times, because the times are the
                     thing you came here to change nine times out of ten. */}
-                <div className="border-t border-border pt-4 mb-4 space-y-3">
+                <p className={sectionHeading}>What kind of day it is</p>
+                <div className="mb-4 space-y-3">
                     <label className="flex items-start gap-3 cursor-pointer">
                         <input
                             type="checkbox"

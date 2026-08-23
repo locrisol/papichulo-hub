@@ -172,13 +172,23 @@ export default function RosterDay({
                                     }}
                                 />
                             )}
+                            {/* Each hour gets its label and a short tick under
+                                it, dropping to where that hour actually starts.
+                                A label centred over a wide grid is guesswork
+                                otherwise: the tick is what lets somebody line a
+                                block up with a time by eye. */}
                             {hourMarks.map(m => (
-                                <span
-                                    key={m}
-                                    className="absolute top-1 text-[10px] text-gray-500 -translate-x-1/2 whitespace-nowrap"
-                                    style={{ left: `${pct(m)}%` }}
-                                >
-                                    {toTime(m)}
+                                <span key={m}>
+                                    <span
+                                        className="absolute top-1 text-[10px] text-gray-500 -translate-x-1/2 whitespace-nowrap"
+                                        style={{ left: `${pct(m)}%` }}
+                                    >
+                                        {toTime(m)}
+                                    </span>
+                                    <span
+                                        className="absolute bottom-0 w-px h-2.5 bg-gray-400"
+                                        style={{ left: `${pct(m)}%` }}
+                                    />
                                 </span>
                             ))}
 

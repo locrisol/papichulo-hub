@@ -5,6 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
+import { sectionHeading } from '../lib/controlStyles'
 
 // The break ladder.
 //
@@ -144,10 +145,8 @@ export default function BreakRulesModal({ onClose }) {
                 </button>
 
                 {/* What it does, before it is saved. */}
-                <div className="border-t border-border pt-4 mb-4">
-                    <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
-                        What that gives
-                    </p>
+                <div className="mt-5 mb-4">
+                    <p className={sectionHeading}>What that gives</p>
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                         {examples.map(h => {
                             const minutes = problem ? null : breakFor(h, clean)

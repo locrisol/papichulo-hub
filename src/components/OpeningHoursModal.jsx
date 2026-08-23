@@ -5,6 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { DAY_NAMES } from '../lib/events'
 import { BANK_HOLIDAY } from '../lib/roster'
+import { sectionHeading } from '../lib/controlStyles'
 
 // When the store is usually open.
 //
@@ -147,8 +148,8 @@ export default function OpeningHoursModal({ onClose }) {
                     Fill the empty days with the first one
                 </button>
 
-                <div className="border-t border-border pt-4 mb-4">
-                    <p className="text-sm font-medium text-gray-900 mb-1">Bank holidays</p>
+                <div className="mt-5 mb-4">
+                    <p className={sectionHeading}>Bank holidays</p>
                     <p className="text-xs text-gray-500 mb-2">
                         One setting for all of them, since they open the same here. Tick a day as a bank
                         holiday on the roster and it uses these instead of its usual hours. Leave empty to
