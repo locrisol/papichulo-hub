@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
-    fmtHours, DEFAULT_BREAK_RULES,
+    fmtHours, hoursForDate, timelineRange, DEFAULT_BREAK_RULES,
 } from './roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -315,5 +315,76 @@ describe('fmtHours', () => {
 
     it('does not print a floating point tail', () => {
         expect(fmtHours(0.1 + 0.2)).toBe('0.3')
+    })
+})
+
+describe('hoursForDate', () => {
+    const week = { 1: { open: '09:00', close: '21:00' } }
+
+    it('uses the usual week when the day is ordinary', () => {
+        expect(hoursForDate(week, null, '2026-08-24')).toEqual({ open: '09:00', close: '21:00' })
+    })
+
+    it('lets a one off day win outright', () => {
+        const note = { opens_at: '12:00:00', closes_at: '23:00:00' }
+        expect(hoursForDate(week, note, '2026-08-24')).toEqual({ open: '12:00', close: '23:00' })
+    })
+
+    it('ignores a half filled override rather than inventing the other half', () => {
+        expect(hoursForDate(week, { opens_at: '12:00' }, '2026-08-24').open).toBe('09:00')
+    })
+
+    it('is nothing at all on a closed day', () => {
+        expect(hoursForDate(week, { is_closed: true }, '2026-08-24')).toBe(null)
+    })
+
+    it('uses the bank holiday hours when the day is ticked as one', () => {
+        const withBh = { ...week, bh: { open: '12:00', close: '18:00' } }
+        expect(hoursForDate(withBh, { is_bank_holiday: true }, '2026-08-24'))
+            .toEqual({ open: '12:00', close: '18:00' })
+    })
+
+    it('lets a one off day beat the bank holiday hours', () => {
+        // A bank holiday with something unusual on it is still something
+        // unusual, so what was typed for the day wins.
+        const withBh = { ...week, bh: { open: '12:00', close: '18:00' } }
+        const note = { is_bank_holiday: true, opens_at: '14:00', closes_at: '23:00' }
+        expect(hoursForDate(withBh, note, '2026-08-24')).toEqual({ open: '14:00', close: '23:00' })
+    })
+
+    it('falls back to the usual day when a bank holiday has no hours of its own', () => {
+        expect(hoursForDate(week, { is_bank_holiday: true }, '2026-08-24'))
+            .toEqual({ open: '09:00', close: '21:00' })
+    })
+
+    it('closed beats everything, bank holiday included', () => {
+        const withBh = { ...week, bh: { open: '12:00', close: '18:00' } }
+        expect(hoursForDate(withBh, { is_bank_holiday: true, is_closed: true }, '2026-08-24')).toBe(null)
+    })
+})
+
+describe('timelineRange', () => {
+    it('gives an hour either side of the store hours', () => {
+        expect(timelineRange({ open: '09:00', close: '21:00' }, [])).toEqual({ from: 480, to: 1320 })
+    })
+
+    it('falls back to a sensible day when there are no hours', () => {
+        expect(timelineRange(null, [])).toEqual({ from: 420, to: 1380 })
+    })
+
+    it('widens for a shift that starts before the window', () => {
+        const early = [{ starts_at: '06:30', ends_at: '12:00' }]
+        expect(timelineRange({ open: '09:00', close: '21:00' }, early).from).toBe(360)
+    })
+
+    it('widens for a shift that runs past the window', () => {
+        const late = [{ starts_at: '18:00', ends_at: '23:30' }]
+        expect(timelineRange({ open: '09:00', close: '21:00' }, late).to).toBe(1440)
+    })
+
+    it('never runs off either end of the day', () => {
+        const r = timelineRange({ open: '00:00', close: '23:59' }, [])
+        expect(r.from).toBe(0)
+        expect(r.to).toBe(1440)
     })
 })

@@ -291,7 +291,7 @@ export default function RestaurantPage() {
                         the two things the roster cannot work out for itself:
                         what counts as an opening or closing shift, and what
                         break somebody has earned. */}
-                    <div className={`${card} p-6`}>
+                    <div className={`${card} p-6 mb-4`}>
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Opening hours</h3>
@@ -309,7 +309,7 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
-                    <div className={`${card} p-6`}>
+                    <div className={`${card} p-6 mb-4`}>
                         <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Break rules</h3>

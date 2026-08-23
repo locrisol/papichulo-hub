@@ -191,3 +191,60 @@ export function fmtHours(hours) {
     if (!hours) return '0'
     return String(Math.round(hours * 100) / 100)
 }
+
+// The key the bank holiday hours are stored under, alongside the seven days.
+//
+// Every bank holiday at these restaurants opens the same, so it is one setting
+// rather than a date somebody has to remember to fill in every August. A day
+// only has to be ticked as a bank holiday and it picks these up.
+export const BANK_HOLIDAY = 'bh'
+
+// The hours a particular day actually runs.
+//
+// Three things can decide it, and they are tried in this order:
+//
+//   1. hours typed for this one day, which win outright
+//   2. the bank holiday hours, if the day is ticked as one
+//   3. the usual hours for that weekday
+//
+// The one off wins outright rather than merging, so a day opening late for a
+// concert carries its own times and nothing borrowed from the usual. And the
+// one off beats the bank holiday too, because a bank holiday with something
+// unusual on it is still something unusual.
+export function hoursForDate(openingHours, dayNote, date) {
+    if (dayNote?.is_closed) return null
+
+    if (dayNote?.opens_at && dayNote?.closes_at) {
+        return { open: shortTime(dayNote.opens_at), close: shortTime(dayNote.closes_at) }
+    }
+
+    if (dayNote?.is_bank_holiday) {
+        const bh = openingHours?.[BANK_HOLIDAY]
+        if (bh?.open && bh?.close) return { open: bh.open, close: bh.close }
+        // Ticked as a bank holiday with no bank holiday hours set. The usual
+        // day is a better guess than nothing, and the settings screen says so.
+    }
+
+    return hoursForDay(openingHours, date)
+}
+
+// The stretch of the day the timeline draws.
+//
+// Wide enough for the store's hours with an hour either side, and then widened
+// again for anything already rostered outside that, because a shift you cannot
+// see is worse than a wide grid. Rounded out to whole hours so the axis reads
+// in round numbers.
+export function timelineRange(dayHours, shifts) {
+    let from = dayHours ? toMinutes(dayHours.open) - 60 : 7 * 60
+    let to = dayHours ? toMinutes(dayHours.close) + 60 : 23 * 60
+
+    for (const shift of shifts || []) {
+        from = Math.min(from, toMinutes(shift.starts_at))
+        to = Math.max(to, toMinutes(shift.starts_at) + shiftMinutes(shift.starts_at, shift.ends_at))
+    }
+
+    from = Math.max(0, Math.floor(from / 60) * 60)
+    to = Math.min(1440, Math.ceil(to / 60) * 60)
+    if (to <= from) to = Math.min(1440, from + 60)
+    return { from, to }
+}

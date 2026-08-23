@@ -47,6 +47,7 @@ import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
 import EmployeesPage from './pages/team/EmployeesPage'
+import RosterPage from './pages/roster/RosterPage'
 
 export default function App() {
   return (
@@ -105,6 +106,7 @@ export default function App() {
                     below that: the row carries what somebody costs per hour, and
                     the database refuses the whole table to anyone else. */}
                 <Route path="/team" element={<RequireRole allowed={MANAGERS}><EmployeesPage /></RequireRole>} />
+                <Route path="/roster" element={<RequireRole allowed={MANAGERS}><RosterPage /></RequireRole>} />
 
                 {/* Settings. Restaurant configuration excludes owners. */}
                 <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
