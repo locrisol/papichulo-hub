@@ -7,6 +7,7 @@ import { friendlyError } from '../../lib/errors'
 import { todayISO, fullDate } from '../../lib/dates'
 import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow } from '../../lib/controlStyles'
 import { availabilitySummary } from '../../lib/availability'
+import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
 import {
     sortEmployees,
     nextSortOrder,
@@ -20,6 +21,7 @@ import EmployeeForm from '../../components/EmployeeForm'
 import PositionsModal from '../../components/PositionsModal'
 import CalendarLinkDialog from '../../components/CalendarLinkDialog'
 import AvailabilityDialog from '../../components/AvailabilityDialog'
+import TimeOffDialog from '../../components/TimeOffDialog'
 
 // Who works here.
 //
@@ -45,6 +47,7 @@ export default function EmployeesPage() {
     const [employees, setEmployees] = useState([])
     const [positions, setPositions] = useState([])
     const [users, setUsers] = useState([])
+    const [absences, setAbsences] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
@@ -55,6 +58,7 @@ export default function EmployeesPage() {
     const [showPast, setShowPast] = useState(false)
     const [calendarFor, setCalendarFor] = useState(null)
     const [availabilityFor, setAvailabilityFor] = useState(null)
+    const [timeOffFor, setTimeOffFor] = useState(null)
     const [form, setForm] = useState(EMPTY)
 
     const today = todayISO()
@@ -76,10 +80,15 @@ export default function EmployeesPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, userRes] = await Promise.all([
+        const [empRes, posRes, userRes, offRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('users').select('id, full_name, role').eq('is_active', true).order('full_name'),
+            // Only what is current or coming. This list is read down to see
+            // who is about, and every holiday anybody ever took would make it
+            // slower every year for nothing.
+            supabase.from('absences').select('*')
+                .eq('restaurant_id', restaurantId).gte('ends_on', todayISO()),
         ])
 
         if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
@@ -87,6 +96,7 @@ export default function EmployeesPage() {
         setEmployees(empRes.data || [])
         setPositions(posRes.data || [])
         setUsers(userRes.data || [])
+        setAbsences(offRes.data || [])
         setLoading(false)
     }
 
@@ -322,6 +332,17 @@ export default function EmployeesPage() {
                                                         Works {availabilitySummary(employee.availability)}
                                                     </span>
                                                 )}
+                                                {/* What is coming rather than
+                                                    everything they ever took.
+                                                    The list is for reading down
+                                                    to see who is about. */}
+                                                {nextAbsence(absences, employee.id, today) && (
+                                                    <span className="block text-xs text-gray-500">
+                                                        {kindLabel(nextAbsence(absences, employee.id, today).kind)}
+                                                        {' '}
+                                                        {absenceRange(nextAbsence(absences, employee.id, today), fullDate)}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2">
                                                 {position ? (
@@ -353,6 +374,13 @@ export default function EmployeesPage() {
                                                     className="text-blue-600 hover:text-blue-800 font-medium"
                                                 >
                                                     Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => setTimeOffFor(employee)}
+                                                    className="ml-3 text-gray-500 hover:text-gray-800"
+                                                    title="Holidays, days off and anything else they are away for"
+                                                >
+                                                    Time off
                                                 </button>
                                                 <button
                                                     onClick={() => setAvailabilityFor(employee)}
@@ -417,6 +445,17 @@ export default function EmployeesPage() {
                         editingId={editing?.id}
                     />
                 </Modal>
+            )}
+
+            {timeOffFor && (
+                <TimeOffDialog
+                    employees={sorted}
+                    initialEmployeeId={timeOffFor.id}
+                    restaurantId={restaurantId}
+                    userId={user?.id}
+                    onClose={() => setTimeOffFor(null)}
+                    onChanged={() => load({ quiet: true })}
+                />
             )}
 
             {availabilityFor && (

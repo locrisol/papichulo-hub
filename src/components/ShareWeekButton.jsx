@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { secondaryButton } from '../lib/controlStyles'
-import { weekTable, weekCsv, shareName } from '../lib/rosterShare'
+import { weekTable, weekCsv, shareName, CSV_BOM } from '../lib/rosterShare'
 import { weekImageBlob } from '../lib/rosterImage'
 import { weekPdf } from '../lib/rosterPdf'
 
@@ -16,13 +16,15 @@ import { weekPdf } from '../lib/rosterPdf'
 // browser, it falls back to saving the file, which is what a laptop was going
 // to do anyway.
 export default function ShareWeekButton({
-    dates, employees, shifts, dayNotes, events, openingHours, restaurantName, weekStart, disabled,
+    dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+    restaurantName, weekStart, disabled,
 }) {
     const [busy, setBusy] = useState('')
     const [note, setNote] = useState('')
 
     const build = () => weekTable({
-        dates, employees, shifts, dayNotes, events, openingHours, restaurantName,
+        dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+        restaurantName,
     })
 
     function save(blob, filename) {
@@ -61,7 +63,9 @@ export default function ShareWeekButton({
     }
 
     function downloadCsv() {
-        const blob = new Blob([weekCsv(build())], { type: 'text/csv;charset=utf-8' })
+        // The mark goes on the file rather than into the text, so the string
+        // itself stays something plain that can be read and tested.
+        const blob = new Blob([CSV_BOM, weekCsv(build())], { type: 'text/csv;charset=utf-8' })
         save(blob, shareName(restaurantName, weekStart, 'csv'))
     }
 

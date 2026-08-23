@@ -20,6 +20,8 @@ import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
 import ShiftDialog from '../../components/ShiftDialog'
+import TimeOffDialog from '../../components/TimeOffDialog'
+import WeeklyExtrasModal from '../../components/WeeklyExtrasModal'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
@@ -47,6 +49,7 @@ export default function RosterPage() {
     const [positions, setPositions] = useState([])
     const [shifts, setShifts] = useState([])
     const [dayNotes, setDayNotes] = useState([])
+    const [absences, setAbsences] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -94,7 +97,7 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -109,6 +112,12 @@ export default function RosterPage() {
             supabase.from('events').select('*')
                 .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
                 .order('event_time'),
+            // Anything overlapping the week, which is not the same as anything
+            // starting in it. A fortnight off that began last Thursday still
+            // covers Monday and would be missed by a date range on starts_on.
+            supabase.from('absences').select('*')
+                .eq('restaurant_id', restaurantId)
+                .lte('starts_on', addDays(weekStart, 6)).gte('ends_on', weekStart),
         ])
 
         if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
@@ -119,6 +128,7 @@ export default function RosterPage() {
         setShifts(shiftRes.data || [])
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
+        setAbsences(offRes.data || [])
         setLoading(false)
 
         // The weeks behind this one, for the forty eight hour average. It is an
@@ -169,6 +179,7 @@ export default function RosterPage() {
         weekDates: dates,
         rules: activeRestaurant?.roster_rules,
         priorHoursByEmployee: priorHours,
+        absences,
     })
     const blocks = findings.filter(f => f.level === 'block')
     const warnings = findings.filter(f => f.level === 'warn')
@@ -361,11 +372,11 @@ export default function RosterPage() {
                 <div className="flex items-center gap-4 ml-auto">
                     <div className="text-right">
                         <p className="font-serif text-xl font-bold text-gray-900 leading-none">{fmtHours(week.hours)}</p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider mt-0.5">Hours</p>
+                        <p className="text-[0.625rem] text-muted uppercase tracking-wider mt-0.5">Hours</p>
                     </div>
                     <div className="text-right">
                         <p className="font-serif text-xl font-bold text-gray-900 leading-none">{fmtMoney(week.cost)}</p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider mt-0.5">Cost</p>
+                        <p className="text-[0.625rem] text-muted uppercase tracking-wider mt-0.5">Cost</p>
                     </div>
                     <span className={`${badge} ${stateBadge.cls}`}>{stateBadge.text}</span>
                     <button
@@ -424,13 +435,13 @@ export default function RosterPage() {
                                     : 'bg-white border-border text-gray-700 hover:border-gray-400'
                             }`}
                         >
-                            <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
+                            <span className="block text-[0.625rem] font-bold uppercase tracking-wider opacity-80">
                                 {DAY_NAMES[i]}
                             </span>
                             <span className={`block text-sm font-semibold ${d === today && i !== dayIndex ? 'text-accent' : ''}`}>
                                 {new Date(d + 'T00:00:00').getDate()}
                             </span>
-                            <span className="block text-[10px] opacity-70">
+                            <span className="block text-[0.625rem] opacity-70">
                                 {note?.is_closed ? 'Closed' : count ? `${count}` : '—'}
                             </span>
                         </button>
@@ -452,7 +463,7 @@ export default function RosterPage() {
                         </span>
                         <button
                             type="button"
-                            onClick={() => setEditingDay(date)}
+                            onClick={() => setEditingDay({ date })}
                             className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors text-xs"
                         >
                             Options
@@ -499,6 +510,13 @@ export default function RosterPage() {
                     <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
                         Add staff
                     </button>
+                    {/* Reached from here as well as from the team list, because
+                        finding out somebody is off sick happens while you are
+                        looking at the week rather than while you are on the
+                        team screen. */}
+                    <button type="button" onClick={() => setSettingsOpen('timeOff')} className={secondaryButton}>
+                        Time off
+                    </button>
                     <button type="button" onClick={() => setSettingsOpen('hours')} className={secondaryButton}>
                         Opening hours
                     </button>
@@ -507,6 +525,9 @@ export default function RosterPage() {
                     </button>
                     <button type="button" onClick={() => setSettingsOpen('rules')} className={secondaryButton}>
                         Roster rules
+                    </button>
+                    <button type="button" onClick={() => setSettingsOpen('weekly')} className={secondaryButton}>
+                        Every week
                     </button>
                 </div>
             </div>
@@ -530,6 +551,8 @@ export default function RosterPage() {
                         dayNotes={dayNotes}
                         events={events}
                         openingHours={activeRestaurant?.opening_hours}
+                        absences={absences}
+                        standingNote={activeRestaurant?.roster_note}
                         restaurantName={activeRestaurant?.name}
                         weekStart={weekStart}
                         disabled={shifts.length === 0}
@@ -548,8 +571,10 @@ export default function RosterPage() {
                     dayNotes={dayNotes}
                     events={events}
                     openingHours={activeRestaurant?.opening_hours}
+                    standingNote={activeRestaurant?.roster_note}
                     today={today}
                     alerts={alerts}
+                    absences={absences}
                     onOpenShift={shift => {
                         setDayIndex(dates.indexOf(shift.shift_date))
                         setEditingShift({ shift })
@@ -558,6 +583,7 @@ export default function RosterPage() {
                         setDayIndex(dates.indexOf(d))
                         setEditingShift({ shift: { employee_id: employeeId } })
                     }}
+                    onOpenDay={d => setEditingDay({ date: d, only: 'extras' })}
                 />
             ) : (
                 <RosterDay
@@ -566,6 +592,7 @@ export default function RosterPage() {
                     positions={positions}
                     date={date}
                     alerts={alerts}
+                    absences={absences}
                     dayHours={dayHours}
                     dayNote={noteFor(date)}
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
@@ -613,17 +640,31 @@ export default function RosterPage() {
                 </Modal>
             )}
 
+            {settingsOpen === 'timeOff' && (
+                <TimeOffDialog
+                    employees={roster}
+                    initialEmployeeId={roster[0]?.id}
+                    restaurantId={restaurantId}
+                    userId={user?.id}
+                    onClose={() => setSettingsOpen(null)}
+                    onChanged={() => load({ quiet: true })}
+                />
+            )}
+
+            {settingsOpen === 'weekly' && <WeeklyExtrasModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
 
             {editingDay && (
                 <DayNoteDialog
-                    date={editingDay}
-                    note={noteFor(editingDay)}
+                    date={editingDay.date}
+                    note={noteFor(editingDay.date)}
+                    only={editingDay.only}
                     restaurantId={restaurantId}
                     userId={user?.id}
                     usualHours={activeRestaurant?.opening_hours}
+                    usualExtras={activeRestaurant?.usual_extras}
                     onClose={() => setEditingDay(null)}
                     onSaved={() => { setEditingDay(null); load({ quiet: true }) }}
                 />

@@ -154,6 +154,29 @@ export default function RosterRulesModal({ onClose }) {
                             </span>
                         </label>
                     </div>
+
+                    <div className="py-3 border-t border-border">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!rules.timeOff?.on}
+                                onChange={e => set('timeOff', { on: e.target.checked })}
+                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Days somebody is down as away
+                                </span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    Holidays, days off, sick, anything on their time off. Like the one above
+                                    it, it starts on and can only ever say something about a day somebody has
+                                    actually been marked away for. Somebody back early from a holiday or
+                                    coming in for one shift is a real thing, so it says it and lets you get
+                                    on with it.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
                 </ModalSection>
 

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import { sheetLayout, shareName, wrapLines } from './rosterShare'
+import { sheetLayout, shareName, wrapLines, AWAY } from './rosterShare'
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -12,6 +12,8 @@ const GREEN = [24, 47, 36]
 const SLATE = [232, 236, 239]
 const WARM = [240, 232, 224]
 const RED = [185, 28, 28]
+// The week's own total, which is not one of the seven days beside it.
+const ACCENT = [194, 65, 12]
 const YELLOW = [253, 230, 138]
 
 export function weekPdf(table, restaurantName, weekStart) {
@@ -26,10 +28,19 @@ export function weekPdf(table, restaurantName, weekStart) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
     )
+    // Each thing on its own line, the same as the picture.
+    const deliveryLines = table.deliveries.map(
+        list => list.flatMap(v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t))),
+    )
+    const noteLines = table.notes.map(
+        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+    )
     const l = sheetLayout(table, {
         width: pageWidth,
         pad: 24,
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
     // The picture can be as tall as it likes. A page cannot, so the rows are
@@ -91,6 +102,7 @@ export function weekPdf(table, restaurantName, weekStart) {
     y += h(l.titleH)
 
     // ---- days
+    const headTop = y
     box(l.pad, y, pageWidth - l.pad * 2, h(l.headH), GREEN)
     at('STAFF', l.pad + 8, y + h(l.headH) / 2 + 3, { size: 8, style: 'bold', rgb: [255, 255, 255] })
     table.head.forEach((head, i) => {
@@ -98,9 +110,15 @@ export function weekPdf(table, restaurantName, weekStart) {
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
         at(head.label, x, y + h(30), { align: 'center', size: 7, rgb: [225, 230, 226] })
     })
+    if (l.holidayCol) {
+        at('HOLIDAY', l.holidayCentreX, y + h(l.headH) / 2 + 3, {
+            align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255],
+        })
+    }
     at('HOURS', l.hoursCentreX, y + h(l.headH) / 2 + 3, {
         align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255],
     })
+    const gridTop = y + h(l.headH)
     y += h(l.headH)
 
     // ---- the rows about the day
@@ -115,7 +133,7 @@ export function weekPdf(table, restaurantName, weekStart) {
 
     // Written out in full over as many lines as it needs, rather than cut short.
     box(l.pad, y, pageWidth - l.pad * 2, h(l.eventsH), WARM)
-    at('WHAT IS ON', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
+    at('EVENTS', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
     eventLines.forEach((lines, i) => {
         const x = l.columnX(i) + l.dayCol / 2
         const top = y + h(l.eventsH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
@@ -124,6 +142,22 @@ export function weekPdf(table, restaurantName, weekStart) {
         })
     })
     y += h(l.eventsH)
+
+    // ---- everything else the day has on
+    if (l.deliveriesH) {
+        box(l.pad, y, pageWidth - l.pad * 2, h(l.deliveriesH), [241, 245, 249])
+        at('ALSO ON', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
+            size: 7, style: 'bold', rgb: [71, 85, 105],
+        })
+        deliveryLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + h(l.deliveriesH) / 2 + 3 - ((lines.length - 1) * h(11)) / 2
+            lines.forEach((line, n) => {
+                at(line, x, top + n * h(11), { align: 'center', size: 7, rgb: [71, 85, 105] })
+            })
+        })
+        y += h(l.deliveriesH)
+    }
 
     // ---- the people
     pdf.setDrawColor(216, 211, 202)
@@ -140,9 +174,23 @@ export function weekPdf(table, restaurantName, weekStart) {
 
         at(person.name, l.pad + 8, middle, { size: 9, style: 'bold', max: l.nameCol - 16 })
         at(person.hours, l.hoursCentreX, middle, { align: 'center', size: 9, style: 'bold' })
+        if (l.holidayCol && person.holiday) {
+            at(person.holiday, l.holidayCentreX, middle, {
+                align: 'center', size: 9, style: 'bold', rgb: [74, 127, 181],
+            })
+        }
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+
+            // Same as the picture: filled, one word, and no reason on it.
+            if (day.away) {
+                box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
+                at(AWAY.label, x, top + rowH / 2 + 3, {
+                    align: 'center', size: 7, style: 'bold', rgb: AWAY.inkRgb, max: l.dayCol - 6,
+                })
+            }
+
             day.shifts.forEach((s, n) => {
                 marked(s, x, y + h(l.shiftH) / 2 + 3 + n * h(11))
             })
@@ -153,18 +201,32 @@ export function weekPdf(table, restaurantName, weekStart) {
             })
         })
 
+        // Same two weights as the picture and the screen. A hairline between
+        // somebody's times and their breaks, a heavier one under the pair.
+        pdf.setDrawColor(236, 232, 226)
+        pdf.line(
+            l.pad + l.nameCol, top + h(l.shiftH),
+            pageWidth - l.pad - l.hoursCol - l.holidayCol, top + h(l.shiftH),
+        )
+
         y += rowH
+        pdf.setDrawColor(216, 211, 202)
+        pdf.setLineWidth(1)
         pdf.line(l.pad, y, pageWidth - l.pad, y)
-        for (let i = 0; i <= 7; i++) pdf.line(l.columnX(i), top, l.columnX(i), y)
+        pdf.setLineWidth(0.5)
     })
 
     // ---- notes
     if (table.notes.some(Boolean)) {
         box(l.pad, y, pageWidth - l.pad * 2, h(l.notesH), [254, 242, 242])
         at('NOTES', l.pad + 8, y + h(l.notesH) / 2 + 3, { size: 7, style: 'bold', rgb: RED })
-        table.notes.forEach((n, i) => {
-            if (n) at(n, l.columnX(i) + l.dayCol / 2, y + h(l.notesH) / 2 + 3, {
-                align: 'center', size: 7, style: 'bold', rgb: RED, max: l.dayCol - 8,
+        noteLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + h(l.notesH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
+            lines.forEach((line, n) => {
+                at(line, x, top + n * h(9), {
+                    align: 'center', size: 7, style: 'bold', rgb: RED,
+                })
             })
         })
     }
@@ -180,15 +242,48 @@ export function weekPdf(table, restaurantName, weekStart) {
             align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
         })
     })
+    // The week's total in its own colour. It is the one number anybody is asked
+    // about, and in the same green as the seven days beside it, it read as an
+    // eighth day.
+    box(l.hoursX, y, l.hoursCol, h(l.totalH), ACCENT)
     at(table.totalHours, l.hoursCentreX, y + h(l.totalH) / 2 + 3, {
         align: 'center', size: 9, style: 'bold', rgb: [255, 255, 255],
     })
+    const gridBottom = y + h(l.totalH)
     y += h(l.totalH)
+
+    // ---- the lines between the days, drawn last and in one pass
+    //
+    // From the day names down to the total, so every band between them is
+    // divided the same way. Per row they only covered the people, which left
+    // the store hours, the events and what each day came to floating in seven
+    // unmarked spaces.
+    const edges = []
+    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    if (l.holidayCol) edges.push(l.holidayX)
+    edges.push(l.hoursX)
+    pdf.setLineWidth(0.5)
+    for (const x of edges) {
+        // White over the two dark bands, since a cream rule on dark green is no
+        // rule at all.
+        pdf.setDrawColor(255, 255, 255)
+        pdf.line(x, headTop, x, gridTop)
+        pdf.line(x, gridBottom - h(l.totalH), x, gridBottom)
+        pdf.setDrawColor(216, 211, 202)
+        pdf.line(x, gridTop, x, gridBottom - h(l.totalH))
+    }
 
     // ---- messages
     table.messages.forEach((m, i) => {
         at(m, l.pad, y + h(16) + i * h(14), { size: 8, rgb: [107, 114, 128] })
     })
+    // Last and lighter, the same as the picture. It is on every roster, so it
+    // is the one nobody needs to read twice.
+    if (table.standing) {
+        at(table.standing, l.pad, y + h(16) + table.messages.length * h(14), {
+            size: 7, rgb: [156, 163, 175],
+        })
+    }
 
     pdf.save(shareName(restaurantName, weekStart, 'pdf'))
 }

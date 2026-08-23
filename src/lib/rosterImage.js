@@ -8,11 +8,15 @@
 // Everything comes off weekTable, the same shape the screen reads, so the
 // picture cannot say something the roster did not.
 
-import { sheetLayout, wrapLines } from './rosterShare'
+import { sheetLayout, wrapLines, AWAY } from './rosterShare'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
 const RULE = '#d8d3ca'
+// The week's own total, which is not one of the seven days beside it.
+const ACCENT = '#c2410c'
+// A shade lighter, for the line inside a person's own row.
+const FAINT = '#ece8e2'
 const GREEN = '#182F24'
 const CREAM = '#f7f5f0'
 const WARM = '#f0e8e0'
@@ -46,8 +50,19 @@ export function drawWeek(canvas, table) {
     const eventLines = table.whatIsOn.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
+    // Each thing wrapped on its own rather than the day wrapped as one string.
+    // Joined, Feedr and Clockmeal broke wherever the column ran out, which had
+    // nothing to do with where one of them ended and the next began.
+    const deliveryLines = table.deliveries.map(
+        list => list.flatMap(v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width)),
+    )
+    const noteLines = table.notes.map(
+        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
+    )
     const l = sheetLayout(table, {
         eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
+        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
     canvas.width = l.width * SCALE
@@ -57,9 +72,9 @@ export function drawWeek(canvas, table) {
 
     const font = (size, weight = '400') => { c.font = FONT(size, weight) }
     const box = (x, y, w, h, fill) => { c.fillStyle = fill; c.fillRect(x, y, w, h) }
-    const rule = (x1, y1, x2, y2, colour = RULE) => {
+    const rule = (x1, y1, x2, y2, colour = RULE, width = 1) => {
         c.strokeStyle = colour
-        c.lineWidth = 1
+        c.lineWidth = width
         c.beginPath()
         c.moveTo(x1, y1)
         c.lineTo(x2, y2)
@@ -87,7 +102,7 @@ export function drawWeek(canvas, table) {
     const marked = (shift, centreX, y) => {
         const parts = [
             { text: shift.start, mark: shift.opens },
-            { text: ' – ', mark: false },
+            { text: ' - ', mark: false },
             { text: shift.end, mark: shift.closes },
         ]
         const widths = parts.map(p => c.measureText(p.text).width)
@@ -124,6 +139,7 @@ export function drawWeek(canvas, table) {
     text('opens or closes the store', l.width - l.pad - 146, l.pad + 15, { colour: MUTED })
 
     // ---- the days
+    const headTop = y
     box(l.pad, y, l.width - l.pad * 2, l.headH, GREEN)
     font(13, '700')
     text('STAFF', l.pad + 12, y + l.headH / 2, { colour: '#ffffff' })
@@ -135,7 +151,11 @@ export function drawWeek(canvas, table) {
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
     })
     font(13, '700')
+    if (l.holidayCol) {
+        text('HOLIDAY', l.holidayCentreX, y + l.headH / 2, { align: 'center', colour: '#ffffff' })
+    }
     text('HOURS', l.hoursCentreX, y + l.headH / 2, { align: 'center', colour: '#ffffff' })
+    const gridTop = y + l.headH
     y += l.headH
 
     // ---- the store's own hours
@@ -154,7 +174,7 @@ export function drawWeek(canvas, table) {
     // ---- what is on, written out in full rather than cut short
     box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
     font(11, '700')
-    text('WHAT IS ON', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
+    text('EVENTS', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
     font(12)
     eventLines.forEach((lines, i) => {
         const x = l.columnX(i) + l.dayCol / 2
@@ -166,6 +186,23 @@ export function drawWeek(canvas, table) {
     rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH)
     y += l.eventsH
 
+    // ---- everything else the day has on, when any of it does
+    if (l.deliveriesH) {
+        box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
+        font(11, '700')
+        text('ALSO ON', l.pad + 12, y + l.deliveriesH / 2, { colour: '#475569' })
+        font(12)
+        deliveryLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + l.deliveriesH / 2 - ((lines.length - 1) * 15) / 2
+            lines.forEach((line, n) => {
+                text(line, x, top + n * 15, { align: 'center', colour: '#475569' })
+            })
+        })
+        rule(l.pad, y + l.deliveriesH, l.width - l.pad, y + l.deliveriesH)
+        y += l.deliveriesH
+    }
+
     // ---- the people
     table.people.forEach((person, row) => {
         const top = y
@@ -176,12 +213,27 @@ export function drawWeek(canvas, table) {
         // row looked top heavy.
         const middle = y + (l.shiftH + l.breakH) / 2
 
-        font(14, '700')
+            font(14, '700')
         text(person.name, l.pad + 12, middle, { max: l.nameCol - 20 })
         text(person.hours, l.hoursCentreX, middle, { align: 'center' })
+        if (l.holidayCol && person.holiday) {
+            text(person.holiday, l.holidayCentreX, middle, { align: 'center', colour: '#4a7fb5' })
+        }
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+
+            // A day they are not about, filled and said in one word. Which kind
+            // of not about is deliberately not here: the manager sees that on
+            // screen, and a roster on a wall does not need to say who was sick.
+            if (day.away) {
+                box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, AWAY.fill)
+                font(11, '700')
+                text(AWAY.label, x, top + (l.shiftH + l.breakH) / 2, {
+                    align: 'center', colour: AWAY.ink, max: l.dayCol - 8,
+                })
+            }
+
             font(13, '600')
             day.shifts.forEach((s, n) => {
                 marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
@@ -194,9 +246,16 @@ export function drawWeek(canvas, table) {
             })
         })
 
+        // A hairline between somebody's times and their breaks, and a heavier
+        // one under the pair. A person is one row made of two, and drawn with
+        // one weight the sheet reads as twice as many rows as it has people.
+        rule(
+            l.pad + l.nameCol, top + l.shiftH,
+            l.width - l.pad - l.hoursCol - l.holidayCol, top + l.shiftH, FAINT,
+        )
+
         y += l.shiftH + l.breakH
-        rule(l.pad, y, l.width - l.pad, y)
-        for (let i = 0; i <= 7; i++) rule(l.columnX(i), top, l.columnX(i), y)
+        rule(l.pad, y, l.width - l.pad, y, RULE, 2)
     })
 
     // ---- anything the manager wants read
@@ -205,9 +264,11 @@ export function drawWeek(canvas, table) {
         font(11, '700')
         text('NOTES', l.pad + 12, y + l.notesH / 2, { colour: RED })
         font(12, '600')
-        table.notes.forEach((n, i) => {
-            if (n) text(n, l.columnX(i) + l.dayCol / 2, y + l.notesH / 2, {
-                align: 'center', colour: RED, max: l.dayCol - 10,
+        noteLines.forEach((lines, i) => {
+            const x = l.columnX(i) + l.dayCol / 2
+            const top = y + l.notesH / 2 - ((lines.length - 1) * 15) / 2
+            lines.forEach((line, n) => {
+                text(line, x, top + n * 15, { align: 'center', colour: RED })
             })
         })
     }
@@ -221,16 +282,47 @@ export function drawWeek(canvas, table) {
     table.dayHours.forEach((h, i) => {
         text(h, l.columnX(i) + l.dayCol / 2, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
     })
+    // The week's total in its own cell. It is the one number on the sheet
+    // anybody is asked about, and sitting in the same green as the seven days
+    // beside it, it read as an eighth day.
+    box(l.hoursX, y, l.hoursCol, l.totalH, ACCENT)
     text(table.totalHours, l.hoursCentreX, y + l.totalH / 2, { align: 'center', colour: '#ffffff' })
+    const gridBottom = y + l.totalH
     y += l.totalH
 
+    // ---- the lines between the days, drawn last and in one pass
+    //
+    // They run from the day names all the way to the total at the bottom, so
+    // every band between them is divided the same way. Per row they only ever
+    // covered the people, which left the store hours, the events and what each
+    // day came to floating in seven unmarked spaces.
+    const edges = []
+    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    if (l.holidayCol) edges.push(l.holidayX)
+    edges.push(l.hoursX)
+    for (const x of edges) {
+        // White over the two green bands, because a cream rule on dark green is
+        // no rule at all.
+        rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
+        rule(x, gridTop, x, gridBottom - l.totalH, RULE)
+        rule(x, gridBottom - l.totalH, x, gridBottom, 'rgba(255,255,255,0.3)')
+    }
+
     // ---- messages
-    if (table.messages.length) {
+    if (table.messages.length || table.standing) {
         y += 8
         font(12)
         table.messages.forEach((m, i) => {
             text(m, l.pad, y + 8 + i * 22, { colour: MUTED, max: l.width - l.pad * 2 })
         })
+        // The standing line last and lighter. It is on every roster, so it is
+        // the one nobody needs to read twice.
+        if (table.standing) {
+            font(11)
+            text(table.standing, l.pad, y + 8 + table.messages.length * 22, {
+                colour: '#9ca3af', max: l.width - l.pad * 2,
+            })
+        }
     }
 
     return canvas

@@ -154,7 +154,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                     any time. */}
                                 {row.state !== 'any' && (
                                     <span className="flex items-center gap-1 ml-auto">
-                                        <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+                                        <span className="text-[0.625rem] text-gray-400 uppercase tracking-wider">
                                             Copy to
                                         </span>
                                         {DAY_GROUPS.map(group => (
@@ -162,7 +162,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                                 key={group.label}
                                                 type="button"
                                                 onClick={() => copyRow(row.key, group.keys)}
-                                                className="px-2 py-1 text-[11px] font-semibold text-blue-600 rounded-md hover:bg-blue-50"
+                                                className="px-2 py-1 text-[0.6875rem] font-semibold text-blue-600 rounded-md hover:bg-blue-50"
                                             >
                                                 {group.label}
                                             </button>

@@ -12,3 +12,20 @@
   --font-sans: 'DM Sans', sans-serif;
   --font-serif: 'Fraunces', serif;
 }
+
+/* How big the whole app is.
+ *
+ * Everything in here is sized in rem, so this one number moves all of it
+ * together: every text size, every bit of padding, every gap, and the minimum
+ * widths the roster grid scrolls inside. Nothing about the layout changes, it
+ * is the same page with a bigger foot rule.
+ *
+ * A percentage rather than a pixel size on purpose. 118.75% makes 1rem 19px on
+ * a normal browser, and on a browser where somebody has already set a larger
+ * default font it makes it that much larger again rather than replacing their
+ * choice, which is the one thing a person who went and changed that setting
+ * does not want.
+ */
+:root {
+  font-size: 118.75%;
+}

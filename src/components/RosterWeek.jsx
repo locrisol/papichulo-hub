@@ -4,6 +4,8 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { absenceOn, kindOf, holidayHoursInWeek } from '../lib/absences'
+import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -20,8 +22,8 @@ import {
 // reading 21:30 off this will leave at 21:30 with the floor unswept, and then
 // argue about it, and they will be right to because it is what it said.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, events, openingHours, today,
-    alerts, onOpenShift, onNewShift,
+    dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -29,7 +31,26 @@ export default function RosterWeek({
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const positionOf = id => (positions || []).find(p => p.id === id)
 
-    const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-top'
+    // Down the middle, not up at the top.
+    //
+    // A row is as tall as its tallest cell, so a day with two shifts in it or a
+    // long event name made every other cell on that row sit high with a gap
+    // under it. The week reads as rows and the rows were not lining up.
+    // What of anybody's holiday falls in this week, and whether the column is
+    // worth having at all. An ordinary week is laid out exactly as it was.
+    const holidayFor = employee => holidayHoursInWeek(absences, employee.id, dates) || 0
+    const anyHoliday = (employees || []).some(e => holidayFor(e) > 0)
+
+    // The blank cells at the end of every row that is not about a person, so
+    // all of them agree about how many columns there are.
+    const tail = (
+        <>
+            {anyHoliday && <td className="border-l border-border" />}
+            <td className="border-l border-border" />
+        </>
+    )
+
+    const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-middle'
     // The same hatch the day timeline uses for the hours somebody cannot work.
     // Here it can only say the whole day, since this view has no hours in it.
     const awayHatch =
@@ -48,6 +69,7 @@ export default function RosterWeek({
                 <colgroup>
                     <col className="w-40" />
                     {dates.map(d => <col key={d} />)}
+                    {anyHoliday && <col className="w-20" />}
                     <col className="w-20" />
                 </colgroup>
                 <thead>
@@ -61,6 +83,11 @@ export default function RosterWeek({
                                 <span className="block font-normal opacity-75">{fullDate(d)}</span>
                             </th>
                         ))}
+                        {anyHoliday && (
+                            <th className="px-2 py-2 text-center text-xs w-20 border-r border-white/20">
+                                Holiday
+                            </th>
+                        )}
                         <th className="px-2 py-2 text-center text-xs w-20">Hours</th>
                     </tr>
                 </thead>
@@ -91,17 +118,17 @@ export default function RosterWeek({
                                             ? `${hours.open} to ${hours.close}`
                                             : '—'}
                                     {note?.is_bank_holiday && !note?.is_closed && (
-                                        <span className="block text-[10px]">Bank holiday</span>
+                                        <span className="block text-[0.625rem]">Bank holiday</span>
                                     )}
                                 </td>
                             )
                         })}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
 
                     <tr className="bg-accent-light/60 border-b border-border">
                         <td className="px-3 py-1.5 text-xs font-semibold text-accent border-r border-border sticky left-0 bg-accent-light">
-                            What is on
+                            Events
                         </td>
                         {dates.map(d => {
                             const on = (events || []).filter(e => e.event_date === d)
@@ -110,7 +137,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[11px] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
+                                        <span key={e.id} className="block text-[0.6875rem] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -122,8 +149,46 @@ export default function RosterWeek({
                                 </td>
                             )
                         })}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
+
+                    {/* Always here, empty or not, because it is also the way
+                        in. A row that only appears once something is in it is a
+                        row you cannot use to put the first thing in. */}
+                    <tr className="bg-slate-50 border-b border-border">
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
+                                Also on
+                            </td>
+                            {dates.map(d => {
+                                const extras = extrasFor(noteFor(d))
+                                return (
+                                    <td key={d} className={`${cell} text-center p-0`}>
+                                        {/* The same way in as an empty cell on
+                                            somebody's row: press it and the
+                                            day opens, which is where all of
+                                            this is typed anyway. */}
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenDay?.(d)}
+                                            aria-label={`Add something to ${fullDate(d)}`}
+                                            className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors"
+                                        >
+                                            {extras.length === 0 ? (
+                                                <span className="text-gray-300 text-xs">+</span>
+                                            ) : extras.map(extra => (
+                                                <span
+                                                    key={extra.name}
+                                                    className="block text-[0.6875rem] text-slate-700 leading-snug break-words"
+                                                >
+                                                    {extraLabel(extra)}
+                                                </span>
+                                            ))}
+                                        </button>
+                                    </td>
+                                )
+                            })}
+                            {tail}
+                        </tr>
 
                     {/* Two rows per person: the shifts, and the breaks under
                         them. The breaks are printed and never taken off the
@@ -136,8 +201,15 @@ export default function RosterWeek({
                         // true, and gone the moment it is not.
                         const hasAlerts = mineAlerts.length > 0
                         return [
-                            <tr key={row.employee.id} className="border-b border-border">
-                                <td className="px-3 py-1.5 border-r border-border sticky left-0 bg-white">
+                            // Two weights, because a person is one row made of
+                            // two. A hairline between somebody's times and
+                            // their breaks says they belong together; the
+                            // heavier line under the breaks is where one person
+                            // ends and the next begins. They were the same line
+                            // before, so the week read as fourteen rows rather
+                            // than seven.
+                            <tr key={row.employee.id} className="border-b border-gray-100">
+                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 bg-white">
                                     <span className="flex items-center gap-2">
                                         <span
                                             className="w-1 h-6 rounded-full flex-shrink-0"
@@ -147,7 +219,7 @@ export default function RosterWeek({
                                             <span className="block font-medium text-gray-900 truncate">
                                                 {row.employee.full_name}
                                             </span>
-                                            <span className="block text-[10px] text-muted truncate">
+                                            <span className="block text-[0.625rem] text-muted truncate">
                                                 {positionOf(row.employee.position_id)?.name || ''}
                                             </span>
                                         </span>
@@ -163,28 +235,53 @@ export default function RosterWeek({
                                     // as any other and the day timeline is
                                     // where that gets drawn.
                                     const away = dayState(row.employee.availability, day.date)
+                                    // Time off beats everything else the cell
+                                    // could be saying. Somebody on holiday is
+                                    // away whatever their usual Tuesday is.
+                                    const off = absenceOn(absences, row.employee.id, day.date)
+                                    const offKind = off ? kindOf(off.kind) : null
                                     return (
                                         <td
                                             key={day.date}
-                                            title={away === 'none'
-                                                ? `${row.employee.full_name} is not available this day`
-                                                : away === 'windows'
-                                                    ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
-                                                    : undefined}
-                                            style={away === 'none' ? { backgroundImage: awayHatch } : undefined}
+                                            title={offKind
+                                                ? `${row.employee.full_name} is down as ${offKind.label.toLowerCase()}`
+                                                : away === 'none'
+                                                    ? `${row.employee.full_name} is not available this day`
+                                                    : away === 'windows'
+                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
+                                                        : undefined}
+                                            style={offKind
+                                                ? { backgroundColor: tint(offKind.colour, 0.22) }
+                                                : away === 'none' ? { backgroundImage: awayHatch } : undefined}
                                             className={`${cell} text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                             }`}
                                         >
                                             {day.shifts.length === 0 ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onNewShift?.(row.employee.id, day.date)}
-                                                    className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
-                                                    aria-label={`Add a shift for ${row.employee.full_name}`}
-                                                >
-                                                    +
-                                                </button>
+                                                offKind ? (
+                                                    // The label rather than a
+                                                    // plus. There is no sense
+                                                    // offering to add a shift
+                                                    // on a day somebody is not
+                                                    // here, and the label is
+                                                    // what the week is being
+                                                    // read for.
+                                                    <span
+                                                        className="block text-[0.625rem] font-semibold uppercase tracking-wider py-0.5"
+                                                        style={{ color: offKind.colour }}
+                                                    >
+                                                        {offKind.label}
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onNewShift?.(row.employee.id, day.date)}
+                                                        className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
+                                                        aria-label={`Add a shift for ${row.employee.full_name}`}
+                                                    >
+                                                        +
+                                                    </button>
+                                                )
                                             ) : day.shifts.map(s => {
                                                 // The opening or the closing
                                                 // time is picked out rather than
@@ -205,7 +302,7 @@ export default function RosterWeek({
                                                         <span className={edges.opening ? mark : ''}>
                                                             {shortTime(s.starts_at)}
                                                         </span>
-                                                        {' – '}
+                                                        {' - '}
                                                         <span className={edges.closing ? mark : ''}>
                                                             {endLabel(s, hours)}
                                                         </span>
@@ -215,17 +312,30 @@ export default function RosterWeek({
                                         </td>
                                     )
                                 })}
-                                <td className="px-2 py-1.5 text-center font-semibold text-gray-900 border-l border-border whitespace-nowrap">
+                                {anyHoliday && (
+                                    <td className="px-2 py-1.5 text-center align-middle font-semibold border-l border-border whitespace-nowrap">
+                                        {holidayFor(row.employee) > 0
+                                            ? <span className="text-blue-700">{fmtHours(holidayFor(row.employee))}</span>
+                                            : <span className="text-gray-300">-</span>}
+                                    </td>
+                                )}
+                                <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">
                                     {fmtHours(row.hours)}
                                 </td>
                             </tr>,
 
-                            <tr key={`${row.employee.id}-breaks`} className="border-b border-border">
-                                <td className="px-3 py-0 pl-6 text-[10px] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
+                            <tr
+                                key={`${row.employee.id}-breaks`}
+                                // The alert strip belongs to the person above
+                                // it, so when there is one the heavy line waits
+                                // and closes under that instead.
+                                className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
+                            >
+                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
-                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 text-center text-[10px] text-red-600 leading-tight">
+                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight">
                                         {day.shifts.length === 0 ? '' : day.shifts.map(s => (
                                             <span key={s.id} className="block">
                                                 {breakLabel(s.break_minutes)}
@@ -233,12 +343,12 @@ export default function RosterWeek({
                                         ))}
                                     </td>
                                 ))}
-                                <td className="border-l border-border" />
+                                {tail}
                             </tr>,
 
                             hasAlerts ? (
-                                <tr key={`${row.employee.id}-alerts`} className="border-b border-border">
-                                    <td colSpan={dates.length + 2} className="p-0">
+                                <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
+                                    <td colSpan={dates.length + (anyHoliday ? 3 : 2)} className="p-0">
                                         <AlertStrip findings={mineAlerts} />
                                     </td>
                                 </tr>
@@ -253,11 +363,11 @@ export default function RosterWeek({
                             Notes
                         </td>
                         {dates.map(d => (
-                            <td key={d} className="px-2 py-1.5 border-r border-red-100 last:border-r-0 text-center text-[11px] font-semibold text-red-700">
+                            <td key={d} className="px-2 py-1.5 border-r border-red-100 last:border-r-0 text-center text-[0.6875rem] font-semibold text-red-700">
                                 {noteFor(d)?.note || ''}
                             </td>
                         ))}
-                        <td className="border-l border-border" />
+                        {tail}
                     </tr>
 
                     <tr className="bg-sidebar font-semibold text-white">
@@ -269,20 +379,30 @@ export default function RosterWeek({
                                 {d.hours ? fmtHours(d.hours) : '—'}
                             </td>
                         ))}
-                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap">
+                        {anyHoliday && <td className="border-l border-white/20" />}
+                        {/* The week's own total, picked out from the seven days
+                            beside it. It is the one number anybody is asked
+                            about, and in the same green as the days it read as
+                            an eighth one. */}
+                        <td className="px-2 py-2 text-center border-l border-white/20 whitespace-nowrap bg-accent">
                             {fmtHours(perDay.reduce((t, d) => t + d.hours, 0))}
                         </td>
                     </tr>
                 </tbody>
             </table>
 
-            {(dayNotes || []).some(n => n.message) && (
+            {((dayNotes || []).some(n => n.message) || standingNote) && (
                 <div className="border-t border-border">
                     {(dayNotes || []).filter(n => n.message).map(n => (
                         <p key={n.id} className="px-4 py-2 text-sm text-gray-700">
                             <span className="font-semibold">{fullDate(n.note_date)}:</span> {n.message}
                         </p>
                     ))}
+                    {standingNote && (
+                        <p className="px-4 py-2 text-sm text-gray-500 border-t border-border">
+                            {standingNote}
+                        </p>
+                    )}
                 </div>
             )}
         </div>

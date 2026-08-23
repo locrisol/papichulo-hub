@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { shareName, weekTable, weekCsv, sheetLayout, wrapLines } from './rosterShare'
+import {
+    shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY, CSV_BOM,
+} from './rosterShare'
+import { ABSENCE_KINDS } from './absences'
 
 const DATES = [
     '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',
@@ -56,7 +59,7 @@ describe('weekTable', () => {
 
     it('resolves the times rather than leaving that to whoever draws it', () => {
         const t = build()
-        expect(t.people[0].days[1].shifts[0].text).toBe('09:00 – 17:00')
+        expect(t.people[0].days[1].shifts[0].text).toBe('09:00 - 17:00')
     })
 
     it('says Closing on a shift that runs past it, the same as the screen does', () => {
@@ -188,7 +191,7 @@ describe('weekCsv', () => {
                 { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
             ],
         })
-        const line = weekCsv(table).split('\n').find(l => l.startsWith('What is on'))
+        const line = weekCsv(table).split('\r\n').find(l => l.startsWith('Events'))
         expect(line).toContain('"One (13:00), Two (19:00)"')
     })
 
@@ -206,7 +209,7 @@ describe('weekCsv', () => {
             ],
         })
         const line = weekCsv(table).split('\n').find(l => l.startsWith('Ana'))
-        expect(line).toContain('09:00 – 17:00 / 18:00 – 21:00')
+        expect(line).toContain('09:00 - 17:00 / 18:00 - 21:00')
     })
 
     it('ends with the totals', () => {
@@ -292,5 +295,210 @@ describe('wrapLines', () => {
     it('loses no words on the way through', () => {
         const text = 'Diljit Dosanjh Aura World Tour (18:30), KATSEYE (18:00)'
         expect(wrapLines(text, 14, chars).join(' ')).toBe(text)
+    })
+})
+
+// What goes out and what does not.
+//
+// The manager building the week sees whether somebody is on holiday, off sick
+// or at the other restaurant. Nothing that leaves the building says which, and
+// this is the one place that boundary is drawn, so it is the one place worth
+// holding down with tests.
+describe('time off on a shared week', () => {
+    const away = [{
+        id: 'a1', employee_id: 'e1', kind: 'sick',
+        starts_on: DATES[2], ends_on: DATES[3], status: 'approved',
+    }]
+
+    it('marks the days somebody is not about', () => {
+        const table = build({ absences: away })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.map(d => d.away)).toEqual([false, false, true, true, false, false, false])
+    })
+
+    it('leaves everybody else alone', () => {
+        const table = build({ absences: away })
+        const bea = table.people.find(p => p.name === 'Bea')
+        expect(bea.days.some(d => d.away)).toBe(false)
+    })
+
+    it('says nothing when there is no time off', () => {
+        const table = build({ absences: [] })
+        expect(table.people.every(p => p.days.every(d => d.away === false))).toBe(true)
+    })
+
+    it('ignores time off that was turned down', () => {
+        const declined = [{ ...away[0], status: 'declined' }]
+        const table = build({ absences: declined })
+        expect(table.people.flatMap(p => p.days).filter(d => d.away)).toEqual([])
+    })
+
+    // The one that matters. Every kind has to be unreachable from the shape the
+    // picture, the PDF and the spreadsheet are all drawn from, whatever any of
+    // them decides to print.
+    it('never carries the reason, whatever the kind is', () => {
+        for (const kind of ABSENCE_KINDS) {
+            const table = build({ absences: [{ ...away[0], kind: kind.value }] })
+            // The days are where a reason could hide, and they are all it is
+            // ever handed. Checked here rather than over the whole table,
+            // because the table also carries a holiday hours column that is
+            // asked for and is a number rather than a reason.
+            const printed = JSON.stringify(table.people.flatMap(p => p.days))
+            expect(printed).not.toContain(kind.label)
+            expect(printed).not.toContain(kind.value)
+        }
+    })
+
+    // Whatever a day carries, it is these and nothing else. A new field with a
+    // reason in it would have to get past this line first.
+    it('gives a day nothing but the date, the shifts and away', () => {
+        const table = build({ absences: away })
+        for (const day of table.people.flatMap(p => p.days)) {
+            expect(Object.keys(day).sort()).toEqual(['away', 'date', 'shifts'])
+        }
+    })
+
+    it('says it in the spreadsheet without saying why', () => {
+        const csv = weekCsv(build({ absences: away }))
+        expect(csv).toContain(AWAY.label)
+        expect(csv).not.toContain('sick')
+    })
+
+    // A shift on a day somebody is down as away is still a shift, and the
+    // printed copy has to show it or the roster and the wall disagree.
+    it('keeps a shift rostered on a day they are away', () => {
+        const clash = [{ ...away[0], starts_on: DATES[1], ends_on: DATES[1] }]
+        const csv = weekCsv(build({ absences: clash }))
+        expect(csv).toContain('09:00')
+        expect(csv).toContain(AWAY.label)
+    })
+})
+
+// What Excel does with the file, which is not the same question as what is in
+// it. A week came back with a name mangled and every shift reading a stray
+// symbol where the dash should be, and none of that was in the string.
+describe('a spreadsheet Excel can actually read', () => {
+    it('carries the mark that says which alphabet it is', () => {
+        expect(CSV_BOM).toBe('\uFEFF')
+    })
+
+    it('ends its lines the way the standard says', () => {
+        const csv = weekCsv(build())
+        expect(csv).toContain('\r\n')
+        expect(csv.split('\r\n').length).toBeGreaterThan(5)
+    })
+
+    // A plain hyphen and nothing cleverer. The dash between two times is the
+    // one character on the sheet that has to survive being read as the wrong
+    // alphabet, and the pretty one does not.
+    it('separates the times with a plain hyphen', () => {
+        const csv = weekCsv(build())
+        expect(csv).toContain('09:00 - 17:00')
+        expect(csv).not.toMatch(/[\u2010-\u2015]/)
+    })
+})
+
+// The other things a day has on, and the line at the bottom of every roster.
+describe('deliveries and the standing note', () => {
+    const notes = [{
+        id: 'n1', note_date: DATES[1],
+        extras: [{ name: 'Clockmeal', time: '15:00' }, { name: 'Feedr', time: '12:00' }],
+    }]
+
+    // One entry each rather than one string. Joined, Feedr and Clockmeal came
+    // out on the same line of the picture and only broke where the column ran
+    // out, which had nothing to do with where one ended and the next began.
+    it('puts them on the day in the order they land, one each', () => {
+        const table = build({ dayNotes: notes })
+        expect(table.deliveries[1]).toEqual(['12:00 Feedr', '15:00 Clockmeal'])
+    })
+
+    it('leaves the other days empty', () => {
+        const table = build({ dayNotes: notes })
+        expect(table.deliveries[0]).toEqual([])
+    })
+
+    it('keeps one with no time, at the end', () => {
+        const loose = [{
+            id: 'n1', note_date: DATES[1],
+            extras: [{ name: 'Office delivery' }, { name: 'Feedr', time: '12:00' }],
+        }]
+        expect(build({ dayNotes: loose }).deliveries[1]).toEqual(['12:00 Feedr', 'Office delivery'])
+    })
+
+    it('gives the spreadsheet a row only when there is something in it', () => {
+        expect(weekCsv(build({ dayNotes: notes }))).toContain('Also on')
+        expect(weekCsv(build())).not.toContain('Also on')
+    })
+
+    // The sheet is a fixed height worked out before anything is drawn, so a
+    // week with no deliveries has to come out shorter rather than carrying an
+    // empty band.
+    it('takes no room on the sheet when no day has one', () => {
+        expect(sheetLayout(build()).deliveriesH).toBe(0)
+        expect(sheetLayout(build({ dayNotes: notes })).deliveriesH).toBeGreaterThan(0)
+    })
+
+    // Apart from the day messages rather than in with them. They are about this
+    // week and it is not, and one list would make it read as one more thing
+    // that happened.
+    it('keeps the standing note apart from the day messages', () => {
+        const table = build({
+            dayNotes: [{ id: 'n1', note_date: DATES[1], message: 'Back door this week' }],
+            standingNote: 'Swaps have to be agreed with a manager.',
+        })
+        expect(table.messages).toHaveLength(1)
+        expect(table.standing).toBe('Swaps have to be agreed with a manager.')
+    })
+
+    it('is empty rather than missing when there is none', () => {
+        expect(build().standing).toBe('')
+        expect(build({ standingNote: '   ' }).standing).toBe('')
+    })
+
+    it('prints it at the bottom of the spreadsheet', () => {
+        const csv = weekCsv(build({ standingNote: 'Swaps need a manager.' }))
+        expect(csv.trimEnd().endsWith('Swaps need a manager.')).toBe(true)
+    })
+})
+
+// The holiday column, which is only there in a week that needs one.
+describe('holiday hours on a shared week', () => {
+    const holiday = employeeId => ([{
+        id: 'a1', employee_id: employeeId, kind: 'holiday', hours: 20,
+        starts_on: DATES[1], ends_on: DATES[5], status: 'approved',
+    }])
+
+    it('is not there at all in an ordinary week', () => {
+        const table = build()
+        expect(table.anyHoliday).toBe(false)
+        expect(table.people.every(p => p.holiday === '')).toBe(true)
+        expect(sheetLayout(table).holidayCol).toBe(0)
+    })
+
+    it('appears when somebody has some', () => {
+        const table = build({ absences: holiday('e1') })
+        expect(table.anyHoliday).toBe(true)
+        expect(sheetLayout(table).holidayCol).toBeGreaterThan(0)
+    })
+
+    it('puts the hours against the right person and nobody else', () => {
+        const table = build({ absences: holiday('e1') })
+        expect(table.people.find(p => p.name === 'Ana').holiday).toBe('20.00')
+        expect(table.people.find(p => p.name === 'Bea').holiday).toBe('')
+    })
+
+    // The column comes out of the seven days rather than off the edge of the
+    // sheet, or a week with holiday in it would be wider than one without.
+    it('takes its width out of the days', () => {
+        const plain = sheetLayout(build())
+        const withHoliday = sheetLayout(build({ absences: holiday('e1') }))
+        expect(withHoliday.width).toBe(plain.width)
+        expect(withHoliday.dayCol).toBeLessThan(plain.dayCol)
+    })
+
+    it('gives the spreadsheet a column only when there is one', () => {
+        expect(weekCsv(build({ absences: holiday('e1') }))).toContain('Holiday')
+        expect(weekCsv(build())).not.toContain('Holiday')
     })
 })

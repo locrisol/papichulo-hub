@@ -4,6 +4,8 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { absenceOn, kindOf } from '../lib/absences'
+import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
@@ -51,6 +53,7 @@ export default function RosterDay({
     positions,
     date,
     alerts,
+    absences,
     dayHours,
     dayNote,
     events,
@@ -98,6 +101,17 @@ export default function RosterDay({
     // the day. On a day where nobody has any recorded there is nothing hatched
     // and a note about hatching is one more line to read past.
     const anyAway = employees.some(e => unavailableSpans(e.availability, date, from, to).length > 0)
+
+    // What else the day has on. Feedr at twelve and a delivery at three are the
+    // reason the middle of the day needs another pair of hands, and neither of
+    // them is in the ticketing API that fills What is on.
+    //
+    // Split by whether it has a time. One can be put on the grid where it
+    // happens and the other cannot, and pretending otherwise would mean drawing
+    // an office delivery at midnight because that is where nothing sorts to.
+    const extras = extrasFor(dayNote)
+    const extraRows = extraLanes(extras)
+    const looseExtras = extras.filter(e => !e.time)
 
     const closed = dayNote?.is_closed
     const bankHoliday = dayNote?.is_bank_holiday
@@ -252,14 +266,14 @@ export default function RosterDay({
                         the question a roster is really answering, and a column
                         of names does not answer it. */}
                     <div className="flex border-b border-border">
-                        <div className="w-40 flex-shrink-0 px-3 py-1 text-[10px] font-bold text-muted uppercase tracking-wider flex items-end">
+                        <div className="w-40 flex-shrink-0 px-3 py-1 text-[0.625rem] font-bold text-muted uppercase tracking-wider flex items-end">
                             On at once
                         </div>
                         <div className="flex-1 flex h-10 items-end">
                             {counts.map((count, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
                                     {count > 0 && (
-                                        <span className="text-[9px] font-bold text-accent leading-none mb-0.5">
+                                        <span className="text-[0.5625rem] font-bold text-accent leading-none mb-0.5">
                                             {count}
                                         </span>
                                     )}
@@ -273,12 +287,91 @@ export default function RosterDay({
                         <div className="w-20 flex-shrink-0" />
                     </div>
 
+                    {/* What is on at the Arena.
+                        Its own strip rather than sharing the band with the
+                        hours. Down there it was drawn over the tick marks and
+                        over the lines showing when the store opens and closes,
+                        and two concerts on one night were drawn over each
+                        other, since every one of them runs from its own time to
+                        the end of the day. Here each gets a line. */}
+                    {(events || []).length > 0 && (
+                        <div className="flex border-b border-border bg-accent-light/40">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent uppercase tracking-wider">
+                                Events
+                            </div>
+                            <div className="flex-1 relative py-1">
+                                {(events || []).map(event => {
+                                    const at = toMinutes(event.event_time)
+                                    const start = at < 0 ? from : Math.max(from, at)
+                                    return (
+                                        <span
+                                            key={event.id}
+                                            title={`${event.name} · doors ${shortTime(event.event_time)}`}
+                                            className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
+                                            style={{
+                                                marginLeft: `${pct(start)}%`,
+                                                width: `${Math.max(0, 100 - pct(start))}%`,
+                                                backgroundColor: 'rgba(212,114,74,0.18)',
+                                                borderLeft: '2px solid #D4724A',
+                                            }}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
+                                            <span className="text-[0.5625rem] font-semibold text-gray-700 truncate">
+                                                {shortTime(event.event_time)} {event.name}
+                                            </span>
+                                        </span>
+                                    )
+                                })}
+                            </div>
+                            <div className="w-20 flex-shrink-0" />
+                        </div>
+                    )}
+
+                    {/* Everything else the day has on, at the time it lands.
+                        Its own strip rather than crowded in with the Arena
+                        events above, because a concert is a run of hours and a
+                        delivery is a moment, and drawing them the same way
+                        would say they are the same kind of thing. */}
+                    {extras.length > 0 && (
+                        <div className="flex border-b border-border bg-slate-50">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5">
+                                <span className="block text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
+                                    Also on
+                                </span>
+                                {looseExtras.map(extra => (
+                                    <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
+                                        {extra.name}
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="flex-1 py-1">
+                                {extraRows.map((row, i) => (
+                                    <div key={i} className="relative h-4 mb-0.5 last:mb-0">
+                                        {row.map(extra => (
+                                            <span
+                                                key={extra.name}
+                                                className="absolute top-0 bottom-0 flex items-center"
+                                                style={{ left: `${pct(toMinutes(extra.time))}%` }}
+                                            >
+                                                <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
+                                                <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                                    {extraLabel(extra)}
+                                                </span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="w-20 flex-shrink-0" />
+                        </div>
+                    )}
+
                     {/* The hours across the top, with anything on at the Arena
                         drawn underneath them. A concert at half six is the
                         reason half the week is rostered the way it is, so it
                         belongs on the grid rather than in a note above it. */}
                     <div className="flex border-b border-border bg-gray-50">
-                        <div className="w-40 flex-shrink-0 px-3 py-2 text-[10px] font-bold text-muted uppercase tracking-wider">
+                        <div className="w-40 flex-shrink-0 px-3 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider">
                             Staff
                         </div>
                         <div className="flex-1 relative h-11">
@@ -306,7 +399,7 @@ export default function RosterDay({
                             {hourMarks.map(m => (
                                 <span key={m}>
                                     <span
-                                        className="absolute top-1 text-[10px] text-gray-500 -translate-x-1/2 whitespace-nowrap"
+                                        className="absolute top-1 text-[0.625rem] text-gray-500 -translate-x-1/2 whitespace-nowrap"
                                         style={{ left: `${pct(m)}%` }}
                                     >
                                         {toTime(m)}
@@ -326,31 +419,8 @@ export default function RosterDay({
                                 />
                             ))}
 
-                            {(events || []).map(event => {
-                                const at = toMinutes(event.event_time)
-                                if (at < 0) return null
-                                const start = Math.max(from, at)
-                                return (
-                                    <span
-                                        key={event.id}
-                                        title={`${event.name} · doors ${shortTime(event.event_time)}`}
-                                        className="absolute bottom-1 h-4 rounded-sm flex items-center px-1 overflow-hidden"
-                                        style={{
-                                            left: `${pct(start)}%`,
-                                            width: `${Math.max(0, 100 - pct(start))}%`,
-                                            backgroundColor: 'rgba(212,114,74,0.18)',
-                                            borderLeft: '2px solid #D4724A',
-                                        }}
-                                    >
-                                        <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
-                                        <span className="text-[9px] font-semibold text-gray-700 truncate">
-                                            {shortTime(event.event_time)} {event.name}
-                                        </span>
-                                    </span>
-                                )
-                            })}
                         </div>
-                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[10px] font-bold text-muted uppercase tracking-wider text-center">
+                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
                             Hours
                         </div>
                     </div>
@@ -369,6 +439,8 @@ export default function RosterDay({
                         const away = dayState(employee.availability, date)
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
+                        const off = absenceOn(absences, employee.id, date)
+                        const offKind = off ? kindOf(off.kind) : null
                         const mineAlerts = alerts?.[employee.id] || []
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
@@ -391,10 +463,12 @@ export default function RosterDay({
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
-                                        <span className="block text-[10px] text-muted truncate">
-                                            {away === 'none'
-                                                ? 'Not available today'
-                                                : positionOf(employee.position_id)?.name || 'No position'}
+                                        <span className="block text-[0.625rem] text-muted truncate">
+                                            {offKind
+                                                ? offKind.label
+                                                : away === 'none'
+                                                    ? 'Not available today'
+                                                    : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                     {/* Beside the name, where the eye already
@@ -461,6 +535,26 @@ export default function RosterDay({
                                             style={{ left: `${pct(toMinutes(dayHours.close))}%`, width: '2px', marginLeft: '-1px' }}
                                         />
                                     </>}
+
+                                    {/* A whole day off, drawn across the row.
+                                        Flat and in the kind's own colour, not
+                                        the hatch: hatching says they can work
+                                        but not then, and this says they are not
+                                        here at all. It goes under the shifts so
+                                        one rostered anyway still reads. */}
+                                    {offKind && (
+                                        <span
+                                            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+                                            style={{ backgroundColor: tint(offKind.colour, 0.22) }}
+                                        >
+                                            <span
+                                                className="text-[0.6875rem] font-bold uppercase tracking-wider"
+                                                style={{ color: offKind.colour }}
+                                            >
+                                                {offKind.label}
+                                            </span>
+                                        </span>
+                                    )}
 
                                     {/* The hours this person said they cannot
                                         work. Over the slots so it is visible
@@ -550,9 +644,9 @@ export default function RosterDay({
                                                 }`}
                                             >
                                                 <span className="block text-xs font-bold text-gray-900 whitespace-nowrap">
-                                                    {shortTime(preview.starts_at)} – {endLabel(preview, dayHours)}
+                                                    {shortTime(preview.starts_at)} - {endLabel(preview, dayHours)}
                                                 </span>
-                                                <span className="block text-[10px] text-gray-600 whitespace-nowrap">
+                                                <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap">
                                                     {fmtHours(shiftHours(preview))}h · {breakLabel(
                                                         live ? breakFor(shiftHours(preview), breakRules) : shift.break_minutes,
                                                     )}
