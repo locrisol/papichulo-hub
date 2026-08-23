@@ -5,9 +5,15 @@
   --color-sidebar-active: #224036;
   --color-accent: #D4724A;
   --color-accent-light: #F0E8E0;
+  /* The orange as a text colour. The brand orange is 3.3 to 1 on white,
+     which is fine behind white lettering on a button and not fine as
+     lettering itself. This is the same hue taken down until it reads. */
+  --color-accent-ink: #9A4A26;
   --color-app-bg: #F7F5F0;
   --color-border: #E8E3DB;
-  --color-muted: #7A7265;
+  /* Down from #7A7265, which passed against white and failed against the
+     cream the whole app actually sits on. */
+  --color-muted: #6B6459;
   --color-green-brand: #2E7D52;
   --font-sans: 'DM Sans', sans-serif;
   --font-serif: 'Fraunces', serif;

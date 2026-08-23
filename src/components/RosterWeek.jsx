@@ -127,7 +127,7 @@ export default function RosterWeek({
                     </tr>
 
                     <tr className="bg-accent-light/60 border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-accent border-r border-border sticky left-0 bg-accent-light">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 bg-accent-light">
                             Events
                         </td>
                         {dates.map(d => {
@@ -137,7 +137,7 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[0.6875rem] text-accent font-medium leading-snug break-words mb-1 last:mb-0">
+                                        <span key={e.id} className="block text-[0.6875rem] text-accent-ink font-medium leading-snug break-words mb-1 last:mb-0">
                                             {e.name}
                                             {e.event_time && (
                                                 <span className="block font-normal text-gray-500">
@@ -276,7 +276,7 @@ export default function RosterWeek({
                                                     <button
                                                         type="button"
                                                         onClick={() => onNewShift?.(row.employee.id, day.date)}
-                                                        className="w-full text-gray-300 hover:text-accent hover:bg-accent-light/50 rounded py-0.5 transition-colors"
+                                                        className="w-full text-gray-300 hover:text-accent-ink hover:bg-accent-light/50 rounded py-0.5 transition-colors"
                                                         aria-label={`Add a shift for ${row.employee.full_name}`}
                                                     >
                                                         +

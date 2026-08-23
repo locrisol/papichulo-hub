@@ -438,7 +438,7 @@ export default function RosterPage() {
                             <span className="block text-[0.625rem] font-bold uppercase tracking-wider opacity-80">
                                 {DAY_NAMES[i]}
                             </span>
-                            <span className={`block text-sm font-semibold ${d === today && i !== dayIndex ? 'text-accent' : ''}`}>
+                            <span className={`block text-sm font-semibold ${d === today && i !== dayIndex ? 'text-accent-ink' : ''}`}>
                                 {new Date(d + 'T00:00:00').getDate()}
                             </span>
                             <span className="block text-[0.625rem] opacity-70">
