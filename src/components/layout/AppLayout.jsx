@@ -190,7 +190,12 @@ export default function AppLayout({ children }) {
             </aside>
 
             {/* Main area */}
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            {/* On a phone this column is the thing that scrolls, so the header
+                goes up and out of the way with the page and stops costing a
+                hundred and thirty pixels of a small screen. On anything wider
+                the header stays put and the body scrolls under it, which is
+                what a mouse expects. */}
+            <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
                 {/* Two lines on a phone, one on anything wider.
                     Side by side, the title and the restaurant switcher were
                     fighting over about three hundred pixels: Cost Dashboard and
@@ -264,7 +269,7 @@ export default function AppLayout({ children }) {
                         </div>
                     )}
                 </header>
-                <main className="flex-1 overflow-y-auto p-4 md:p-7">
+                <main className="flex-1 md:overflow-y-auto p-4 md:p-7">
                     {children}
                 </main>
             </div>
