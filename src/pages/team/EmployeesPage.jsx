@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, fullDate } from '../../lib/dates'
-import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '../../lib/controlStyles'
 import { availabilitySummary } from '../../lib/availability'
 import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
 import {
@@ -368,42 +368,44 @@ export default function EmployeesPage() {
                                                     ? <span className="text-gray-300">—</span>
                                                     : `€${Number(employee.hourly_rate).toFixed(2)}`}
                                             </td>
-                                            <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                <button
-                                                    onClick={() => openEdit(employee)}
-                                                    className="text-blue-600 hover:text-blue-800 font-medium"
-                                                >
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    onClick={() => setTimeOffFor(employee)}
-                                                    className="ml-3 text-gray-500 hover:text-gray-800"
-                                                    title="Holidays, days off and anything else they are away for"
-                                                >
-                                                    Time off
-                                                </button>
-                                                <button
-                                                    onClick={() => setAvailabilityFor(employee)}
-                                                    className={`ml-3 ${employee.availability ? 'text-gray-500' : 'text-gray-400'} hover:text-gray-800`}
-                                                    title="The days and hours they can normally work"
-                                                >
-                                                    Availability
-                                                </button>
-                                                <button
-                                                    onClick={() => setCalendarFor(employee)}
-                                                    className={`ml-3 ${employee.calendar_token ? 'text-gray-500' : 'text-gray-400'} hover:text-gray-800`}
-                                                    title="A link they can subscribe their phone's calendar to"
-                                                >
-                                                    Calendar
-                                                </button>
-                                                {!employee.ended_on && (
+                                            <td className="px-3 py-2">
+                                                <div className="flex flex-wrap gap-2 justify-end">
                                                     <button
-                                                        onClick={() => recordLastDay(employee)}
-                                                        className="ml-3 text-gray-500 hover:text-gray-800"
+                                                        onClick={() => openEdit(employee)}
+                                                        className={rowButton('edit')}
                                                     >
-                                                        Leaving
+                                                        Edit
                                                     </button>
-                                                )}
+                                                    <button
+                                                        onClick={() => setTimeOffFor(employee)}
+                                                        className={rowButton()}
+                                                        title="Holidays, days off and anything else they are away for"
+                                                    >
+                                                        Time off
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAvailabilityFor(employee)}
+                                                        className={rowButton()}
+                                                        title="The days and hours they can normally work"
+                                                    >
+                                                        Availability
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCalendarFor(employee)}
+                                                        className={rowButton()}
+                                                        title="A link they can subscribe their phone's calendar to"
+                                                    >
+                                                        Calendar
+                                                    </button>
+                                                    {!employee.ended_on && (
+                                                        <button
+                                                            onClick={() => recordLastDay(employee)}
+                                                            className={rowButton()}
+                                                        >
+                                                            Leaving
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     )

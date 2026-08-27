@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
-import { tableHeadRow } from '../lib/controlStyles'
+import { tableHeadRow, rowButton } from '../lib/controlStyles'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
 import { modalFooter } from '../lib/controlStyles'
@@ -156,13 +156,13 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                         <div className="flex gap-2">
                           <button
                             onClick={() => saveEdit(c)}
-                            className="text-xs font-medium text-green-700 hover:text-green-800"
+                            className={rowButton('good')}
                           >
                             Save
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                            className={rowButton()}
                           >
                             Cancel
                           </button>
@@ -184,15 +184,13 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                         <div className="flex gap-3">
                           <button
                             onClick={() => startEdit(c)}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                            className={rowButton('edit')}
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => toggleActive(c)}
-                            className={`text-xs font-medium ${
-                              c.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                            }`}
+                            className={rowButton(c.is_active ? 'danger' : 'good')}
                           >
                             {c.is_active ? 'Deactivate' : 'Reactivate'}
                           </button>

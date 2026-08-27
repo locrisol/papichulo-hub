@@ -15,7 +15,7 @@ import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
 import PageContainer from '../../components/layout/PageContainer'
 import { numberField } from '../../lib/numberInput'
-import { card } from '../../lib/controlStyles'
+import { card, rowButton } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -207,7 +207,7 @@ export default function RestaurantPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setEditingTarget(type.key)}
-                                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                                                    className={rowButton('edit')}
                                                 >
                                                     Change
                                                 </button>
