@@ -8,7 +8,7 @@ import { absenceOn, kindOf } from '../lib/absences'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
-    breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor,
+    breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor, hourLabelStep,
 } from '../lib/roster'
 
 // One day, drawn as a timeline.
@@ -237,6 +237,12 @@ export default function RosterDay({
     const hourMarks = []
     for (let m = Math.ceil(from / 60) * 60; m <= to; m += 60) hourMarks.push(m)
 
+    // Every hour gets a tick, and on a wide screen every hour gets its time.
+    // Narrow, the grid is at its smallest width and eighteen hours ran together
+    // as 06:0007:0008:00, so the ones in between are hidden until there is room
+    // for them rather than dropped.
+    const labelEvery = hourLabelStep(from, to)
+
     // The tone the whole day carries. Closed beats bank holiday: a bank holiday
     // you are shut for is just shut.
     const dayTone = closed
@@ -396,10 +402,12 @@ export default function RosterDay({
                                 thicker than one that lands on a boundary. Making
                                 the difference real is what stops it looking like
                                 an accident. */}
-                            {hourMarks.map(m => (
+                            {hourMarks.map((m, i) => (
                                 <span key={m}>
                                     <span
-                                        className="absolute top-1 text-[0.625rem] text-gray-500 -translate-x-1/2 whitespace-nowrap"
+                                        className={`absolute top-1 text-[0.625rem] text-gray-500 -translate-x-1/2 whitespace-nowrap ${
+                                            i % labelEvery === 0 ? '' : 'hidden xl:block'
+                                        }`}
                                         style={{ left: `${pct(m)}%` }}
                                     >
                                         {toTime(m)}
