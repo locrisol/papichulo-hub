@@ -375,7 +375,11 @@ export default function RosterPage() {
                     </span>
                 </DateStepper>
 
-                <div className="flex items-center gap-4 ml-auto">
+                {/* Wraps on a phone, and only pushed to the far right once
+                    there is a far right to push it to. ml-auto on a row that
+                    could not wrap sent Publish clean off the edge of the
+                    screen. */}
+                <div className="flex flex-wrap items-center justify-between gap-4 w-full sm:w-auto sm:ml-auto">
                     <div className="text-right">
                         <p className="font-serif text-xl font-bold text-gray-900 leading-none">{fmtHours(week.hours)}</p>
                         <p className="text-[0.625rem] text-muted uppercase tracking-wider mt-0.5">Hours</p>

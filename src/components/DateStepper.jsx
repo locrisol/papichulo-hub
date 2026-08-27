@@ -30,7 +30,11 @@ export default function DateStepper({
         + 'focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50'
 
     return (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row sm:items-center gap-2">
+            {/* The full width of whatever it sits in. Shrunk to fit its own
+                contents it stopped short of the card edge, so the arrows were
+                not on the edges and the date between them was not in the
+                middle, which is exactly what it looked like. */}
             <div className="flex items-center gap-2">
                 <button type="button" onClick={onBack} aria-label={backLabel} className={arrow}>
                     &lsaquo;
