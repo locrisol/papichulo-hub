@@ -7,7 +7,8 @@ import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
 import { DAY_NAMES } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
-import { secondaryButton, iconButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
+import { secondaryButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
@@ -358,16 +359,21 @@ export default function RosterPage() {
 
             {/* Week picker and what the week comes to. */}
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
-                <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className={iconButton} aria-label="Previous week">‹</button>
+                <DateStepper
+                    onBack={() => setWeekStart(addDays(weekStart, -7))}
+                    onNext={() => setWeekStart(addDays(weekStart, 7))}
+                    backLabel="Previous week"
+                    nextLabel="Next week"
+                    jump={(
+                        <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
+                            This week
+                        </button>
+                    )}
+                >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
                         {shortDate(weekStart)} to {shortDate(weekEnd)}
                     </span>
-                    <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className={iconButton} aria-label="Next week">›</button>
-                    <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
-                        This week
-                    </button>
-                </div>
+                </DateStepper>
 
                 <div className="flex items-center gap-4 ml-auto">
                     <div className="text-right">

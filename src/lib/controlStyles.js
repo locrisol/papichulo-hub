@@ -19,10 +19,9 @@
 export const secondaryButton =
     'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 whitespace-nowrap'
 
-// The small square arrows that step through weeks and days. Same look, less
-// padding, because they hold a single character.
-export const iconButton =
-    'px-2.5 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50'
+// The arrows that step through weeks and days used to live here. They belong to
+// DateStepper now, which is the only thing that drew them and the only thing
+// that knows how big a thumb is.
 
 // Date pickers sitting next to those arrows.
 export const dateField =

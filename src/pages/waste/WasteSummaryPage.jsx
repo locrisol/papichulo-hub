@@ -6,7 +6,8 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow, card } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, jumpButton } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 
 // Waste for a week, grouped by product.
@@ -154,12 +155,25 @@ export default function WasteSummaryPage() {
             {/* Week and filter */}
             <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => shiftWeek(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous week">‹</button>
-                    <span className="text-sm font-medium text-gray-900 px-2">
-                        {shortDate(dates[0])} - {shortDate(dates[1])}
-                    </span>
-                    <button type="button" onClick={() => shiftWeek(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next week">›</button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">This week</button>
+                    <DateStepper
+                        onBack={() => shiftWeek(-1)}
+                        onNext={() => shiftWeek(1)}
+                        backLabel="Previous week"
+                        nextLabel="Next week"
+                        jump={(
+                            <button
+                                type="button"
+                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
+                            >
+                                This week
+                            </button>
+                        )}
+                    >
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
+                            {shortDate(dates[0])} - {shortDate(dates[1])}
+                        </span>
+                    </DateStepper>
 
                     {/* The reason filter is pushed to the far right on a wide
                         screen, which is where you expect a filter to be. On a

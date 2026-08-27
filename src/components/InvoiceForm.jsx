@@ -65,10 +65,13 @@ export default function InvoiceForm({
                 </div>
             </div>
 
-            {/* Two across on a phone, not three. A date box needs about 140px to
-                show a whole date, and a third of a phone screen is nowhere near
-                that, so it was showing 04/0 with the rest cut off. */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+            {/* One across on a phone, not two, not three.
+                A date box needs about 140 pixels to show a whole date and the
+                picker arrow beside it. Two across was already the second attempt
+                at this and it still came out as 24/08/2C, because half a phone
+                screen is not 140 pixels once the padding is off it. Three short
+                rows read fine; a date nobody can read does not. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                 <div>
                     <label className={labelCls}>Week starting</label>
                     {/* Worked out from the date, not typed, so it always matches
