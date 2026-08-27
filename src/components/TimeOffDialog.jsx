@@ -6,7 +6,7 @@ import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { fullDate } from '../lib/dates'
 import { numberField } from '../lib/numberInput'
-import { modalFooter, secondaryButton, badge } from '../lib/controlStyles'
+import { modalFooter, secondaryButton, badge, rowButton } from '../lib/controlStyles'
 import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
@@ -302,14 +302,14 @@ export default function TimeOffDialog({
                                         <button
                                             type="button"
                                             onClick={() => openEdit(absence)}
-                                            className="text-blue-600 hover:text-blue-800 font-medium"
+                                            className={rowButton('edit')}
                                         >
                                             Edit
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => remove(absence)}
-                                            className="text-gray-500 hover:text-red-700"
+                                            className={rowButton('danger')}
                                         >
                                             Remove
                                         </button>

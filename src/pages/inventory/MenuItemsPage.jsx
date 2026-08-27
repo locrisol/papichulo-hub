@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
@@ -27,6 +28,7 @@ const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
 
 export default function MenuItemsPage() {
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
 
@@ -155,6 +157,18 @@ export default function MenuItemsPage() {
   }
 
   async function toggleActive(item) {
+    // Same as the products list: taking something off the menu is worth one
+    // question, putting it back is not.
+    if (item.is_active) {
+      const ok = await confirm({
+        title: `Deactivate ${item.name}?`,
+        message: 'It comes off the menu and off the allergen sheet. Everything already recorded against it stays as it is.',
+        confirmLabel: 'Deactivate it',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error } = await supabase
       .from('menu_items')
       .update({ is_active: !item.is_active })
@@ -214,15 +228,13 @@ export default function MenuItemsPage() {
       <>
         <button
           onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
-          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+          className={rowButton('edit')}
         >
           Edit
         </button>
         <button
           onClick={() => toggleActive(item)}
-          className={`text-xs font-medium ${
-            item.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-          }`}
+          className={rowButton(item.is_active ? 'danger' : 'good')}
         >
           {item.is_active ? 'Deactivate' : 'Reactivate'}
         </button>
@@ -502,7 +514,7 @@ export default function MenuItemsPage() {
                           </div>
                         </dl>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-black/10">
+                        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                           {rowActions(item)}
                         </div>
                       </div>
@@ -583,7 +595,7 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex gap-3">{rowActions(item)}</div>
+                              <div className="flex flex-wrap gap-2">{rowActions(item)}</div>
                             </td>
                           </tr>
                         )

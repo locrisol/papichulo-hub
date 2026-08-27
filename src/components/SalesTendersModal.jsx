@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, card, modalFooter } from '../lib/controlStyles'
+import { tableHeadRow, card, modalFooter, rowButton } from '../lib/controlStyles'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
@@ -202,10 +202,10 @@ export default function SalesTendersModal({ onClose, onChange }) {
           <td className="px-3 py-2 w-24"></td>
           <td className="px-3 py-2 w-40">
             <div className="flex gap-2">
-              <button onClick={() => saveEdit(t)} className="text-xs font-medium text-green-700 hover:text-green-800">
+              <button onClick={() => saveEdit(t)} className={rowButton('good')}>
                 Save
               </button>
-              <button onClick={cancelEdit} className="text-xs font-medium text-gray-500 hover:text-gray-700">
+              <button onClick={cancelEdit} className={rowButton()}>
                 Cancel
               </button>
             </div>
@@ -255,14 +255,12 @@ export default function SalesTendersModal({ onClose, onChange }) {
         </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
-            <button onClick={() => startEdit(t)} className="text-xs font-medium text-blue-600 hover:text-blue-800">
+            <button onClick={() => startEdit(t)} className={rowButton('edit')}>
               Rename
             </button>
             <button
               onClick={() => toggleActive(t)}
-              className={`text-xs font-medium ${
-                t.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-              }`}
+              className={rowButton(t.is_active ? 'danger' : 'good')}
             >
               {t.is_active ? 'Retire' : 'Bring back'}
             </button>

@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import { numberField } from '../../lib/numberInput'
@@ -497,13 +497,13 @@ export default function MenuItemPage() {
                         <div className="flex gap-3">
                           <button
                             onClick={() => editingComponent?.id === c.id ? resetComponentForm() : startEditComponent(c)}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                            className={rowButton('edit')}
                           >
                             {editingComponent?.id === c.id ? 'Cancel' : 'Edit'}
                           </button>
                           <button
                             onClick={() => removeComponent(c)}
-                            className="text-xs font-medium text-red-500 hover:text-red-700"
+                            className={rowButton('danger')}
                           >
                             Remove
                           </button>

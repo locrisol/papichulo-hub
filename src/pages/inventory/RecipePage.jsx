@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
 
@@ -419,13 +419,13 @@ export default function RecipePage() {
                           <div className="flex gap-3">
                             <button
                               onClick={() => editingLine?.id === line.id ? resetForm() : startEdit(line)}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                              className={rowButton('edit')}
                             >
                               {editingLine?.id === line.id ? 'Cancel' : 'Edit'}
                             </button>
                             <button
                               onClick={() => removeLine(line)}
-                              className="text-xs font-medium text-red-500 hover:text-red-700"
+                              className={rowButton('danger')}
                             >
                               Remove
                             </button>

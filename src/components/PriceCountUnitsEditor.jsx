@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { rowButton } from '../lib/controlStyles'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
 //
@@ -115,7 +116,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-gray-900">Count formats</h4>
                 {onClose && (
-                    <button onClick={onClose} className="text-xs font-medium text-gray-500 hover:text-gray-700">
+                    <button onClick={onClose} className={rowButton()}>
                         Close
                     </button>
                 )}
@@ -145,7 +146,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                             </span>
                             <button
                                 onClick={() => handleDelete(f.id)}
-                                className="text-xs font-medium text-red-500 hover:text-red-700"
+                                className={rowButton('danger')}
                             >
                                 Delete
                             </button>

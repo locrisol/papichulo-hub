@@ -7,7 +7,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
 import PageContainer from '../../components/layout/PageContainer'
-import { dateField, jumpButton, card } from '../../lib/controlStyles'
+import { dateField, jumpButton, card, rowButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
@@ -72,7 +72,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
             <div className="flex items-start justify-between mb-2">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
                 {onEdit && (
-                    <button onClick={onEdit} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                    <button onClick={onEdit} className={rowButton('edit')}>
                         Edit target
                     </button>
                 )}

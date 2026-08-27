@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, rowButton } from '../../lib/controlStyles'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -126,9 +126,7 @@ export default function UsersPage() {
                     {canManageUser(user, u) && (
                       <button
                         onClick={() => toggleUserActive(u.id, u.is_active)}
-                        className={`text-xs font-medium ${
-                          u.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                        }`}
+                        className={rowButton(u.is_active ? 'danger' : 'good')}
                       >
                         {u.is_active ? 'Deactivate' : 'Reactivate'}
                       </button>

@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton } from '../../lib/controlStyles'
 import SupplierForm from '../../components/SupplierForm'
 import Modal from '../../components/Modal'
 
@@ -146,7 +146,7 @@ export default function SuppliersPage() {
                         {isManager ? 'Manage your supplier directory' : 'Who we buy from, and how to reach them'}
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-2">
                     {/* Show Inactive is a filter rather than a change, so anyone
                         can use it. There is nothing to hide in a deactivated
                         supplier that is not already on screen. */}
@@ -234,17 +234,16 @@ export default function SuppliersPage() {
                                         </td>
                                         {isManager && (
                                             <td className="px-4 py-3">
-                                                <div className="flex gap-3">
+                                                <div className="flex flex-wrap gap-2">
                                                     <button
                                                         onClick={() => editingSupplier?.id === s.id ? resetForm() : startEdit(s)}
-                                                        className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                                        className={rowButton('edit')}
                                                     >
                                                         {editingSupplier?.id === s.id ? 'Cancel' : 'Edit'}
                                                     </button>
                                                     <button
                                                         onClick={() => toggleActive(s)}
-                                                        className={`text-xs font-medium ${s.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                                                            }`}
+                                                        className={rowButton(s.is_active ? 'danger' : 'good')}
                                                     >
                                                         {s.is_active ? 'Deactivate' : 'Reactivate'}
                                                     </button>

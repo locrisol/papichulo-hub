@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, modalFooter } from '../lib/controlStyles'
+import { tableHeadRow, modalFooter, rowButton } from '../lib/controlStyles'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
@@ -207,13 +207,13 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
             <div className="flex gap-2">
               <button
                 onClick={() => saveEdit(p)}
-                className="text-xs font-medium text-green-700 hover:text-green-800"
+                className={rowButton('good')}
               >
                 Save
               </button>
               <button
                 onClick={cancelEdit}
-                className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                className={rowButton()}
               >
                 Cancel
               </button>
@@ -260,15 +260,13 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           <div className="flex gap-3">
             <button
               onClick={() => startEdit(p)}
-              className="text-xs font-medium text-blue-600 hover:text-blue-800"
+              className={rowButton('edit')}
             >
               Edit
             </button>
             <button
               onClick={() => toggleActive(p)}
-              className={`text-xs font-medium ${
-                p.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-              }`}
+              className={rowButton(p.is_active ? 'danger' : 'good')}
             >
               {p.is_active ? 'Deactivate' : 'Reactivate'}
             </button>

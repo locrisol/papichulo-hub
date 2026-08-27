@@ -6,7 +6,7 @@ import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, card } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 
 // Every price we can buy one product at, for the restaurant you are working in.
@@ -398,7 +398,7 @@ export default function ProductPricesPage() {
                                             ) : (
                                                 <button
                                                     onClick={() => setAsPreferred(p)}
-                                                    className="text-xs font-medium text-gray-500 hover:text-green-700"
+                                                    className={rowButton('good')}
                                                 >
                                                     Set as preferred
                                                 </button>
@@ -408,19 +408,19 @@ export default function ProductPricesPage() {
                                             <div className="flex gap-3">
                                                 <button
                                                     onClick={() => editingPrice?.id === p.id ? resetForm() : startEdit(p)}
-                                                    className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                                    className={rowButton('edit')}
                                                 >
                                                     {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
                                                 </button>
                                                 <button
                                                     onClick={() => setFormatsForPriceId(p.id)}
-                                                    className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                                                    className={rowButton()}
                                                 >
                                                     Formats
                                                 </button>
                                                 <button
                                                     onClick={() => removePrice(p)}
-                                                    className="text-xs font-medium text-red-500 hover:text-red-700"
+                                                    className={rowButton('danger')}
                                                 >
                                                     Remove
                                                 </button>

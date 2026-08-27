@@ -6,7 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
@@ -153,7 +153,7 @@ export default function InvoiceHistoryPage() {
                     <button type="button" onClick={() => setRange(7)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 7 days</button>
                     <button type="button" onClick={() => setRange(30)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 30 days</button>
                     <button type="button" onClick={() => setRange(90)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 90 days</button>
-                    <button type="button" onClick={clearFilters} className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium">Clear</button>
+                    <button type="button" onClick={clearFilters} className={rowButton('edit')}>Clear</button>
                 </div>
             </div>
 

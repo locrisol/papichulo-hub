@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { POSITION_COLOURS, nextColour } from '../lib/team'
-import { badge } from '../lib/controlStyles'
+import { badge, rowButton } from '../lib/controlStyles'
 import { ModalSectionBar } from './ModalSection'
 
 // The positions a restaurant uses: Kitchen, Counter, Delivery, whatever they
@@ -155,14 +155,14 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                                         <button
                                             type="button"
                                             onClick={() => setEditing({ id: p.id, name: p.name, colour: p.colour })}
-                                            className="text-sm text-blue-600 hover:text-blue-800"
+                                            className={rowButton('edit')}
                                         >
                                             Edit
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => toggleActive(p)}
-                                            className="text-sm text-gray-500 hover:text-gray-800"
+                                            className={rowButton()}
                                         >
                                             {p.is_active ? 'Retire' : 'Bring back'}
                                         </button>

@@ -7,7 +7,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, card, cardEdge, cardHeader } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
 import InvoiceForm from '../../components/InvoiceForm'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
@@ -374,15 +374,15 @@ export default function InvoicesPage() {
                                                         {fmtMoney(inv.total_amount)}
                                                     </td>
                                                     <td className="px-3 py-2 w-28">
-                                                        <div className="flex gap-3">
+                                                        <div className="flex flex-wrap gap-2">
                                                             <button
                                                                 onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
-                                                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                                                className={rowButton('edit')}
                                                             >
                                                                 {isEditing ? 'Cancel' : 'Edit'}
                                                             </button>
                                                             <button onClick={() => handleDelete(inv)}
-                                                                className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
+                                                                className={rowButton('danger')}>Delete</button>
                                                         </div>
                                                     </td>
                                                 </tr>
