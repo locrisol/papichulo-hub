@@ -359,18 +359,23 @@ export default function StockTakeCountPage() {
 
     const isClosed = session.status !== 'in_progress'
 
+    // No fixed height on a phone.
+    //
+    // This page used to be exactly one screen tall with its own scroller
+    // inside, which meant the app header could never scroll away and the list
+    // was left with about half the screen. On a phone it is an ordinary tall
+    // page now, its own bar sticks to the top as you go, and the header lifts
+    // off with everything else. On a laptop it is still one screen with the
+    // list scrolling inside it.
     return (
-        <div
-            className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col"
-            style={{ height: 'calc(100vh - 4rem)' }}
-        >
+        <div className="-mx-4 md:-mx-7 -my-4 md:-my-7 flex flex-col md:h-[calc(100vh-4rem)]">
             {/* Fixed top bar (non-scrolling flex child).
 
                 z-20 keeps it above the section headings below, which are z-10,
                 while staying under the sidebar and its overlay. See the note in
                 AppLayout: this bar used to be level with the sidebar and so it
                 sat on top of the open menu instead of being blurred behind it. */}
-            <div className="flex-shrink-0 z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
+            <div className="flex-shrink-0 sticky top-0 md:static z-20 bg-white border-b border-border shadow-sm px-4 md:px-7">
                 <div className="py-3 flex items-center gap-3">
                     <button
                         type="button"
@@ -434,7 +439,7 @@ export default function StockTakeCountPage() {
             </div>
 
             {/* Scrolling body */}
-            <div className="flex-1 overflow-y-auto px-4 md:px-7 pb-20">
+            <div className="flex-1 md:overflow-y-auto px-4 md:px-7 pb-20">
                 {isManager && totalValue > 0 && (
                     <div className="pt-4">
                         <div className={`${card} p-4`}>
