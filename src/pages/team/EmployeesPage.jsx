@@ -364,7 +364,7 @@ export default function EmployeesPage() {
                                             aria-label={`Move ${employee.full_name} up`}
                                             className={`${rowButton()} disabled:opacity-30`}
                                         >
-                                            Move up
+                                            &uarr; Move up
                                         </button>
                                         <button
                                             type="button"
@@ -373,7 +373,7 @@ export default function EmployeesPage() {
                                             aria-label={`Move ${employee.full_name} down`}
                                             className={`${rowButton()} disabled:opacity-30`}
                                         >
-                                            Move down
+                                            &darr; Move down
                                         </button>
                                     </div>
                                 </div>
