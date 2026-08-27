@@ -2,11 +2,12 @@ import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -29,6 +30,7 @@ const COLUMNS = [
 ]
 
 export default function ProductsPage() {
+  const confirm = useConfirm()
   const { activeRestaurant } = useRestaurant()
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
@@ -206,6 +208,19 @@ export default function ProductsPage() {
   }
 
   async function toggleActive(product) {
+    // Deactivating is the one action on the row that changes what everybody
+    // else sees, and it was one tap away with nothing in between. Turning it
+    // back on is not, so that goes straight through.
+    if (product.is_active) {
+      const ok = await confirm({
+        title: `Deactivate ${product.name}?`,
+        message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new.',
+        confirmLabel: 'Deactivate it',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error } = await supabase
       .from('products')
       .update({ is_active: !product.is_active })
@@ -226,35 +241,33 @@ export default function ProductsPage() {
       <>
         <button
           onClick={() => editingProduct?.id === p.id ? resetForm() : startEdit(p)}
-          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+          className={rowButton('edit')}
         >
           {editingProduct?.id === p.id ? 'Cancel' : 'Edit'}
         </button>
         <button
           onClick={() => navigate(`/catalogue/products/${p.id}/allergens`)}
-          className="text-xs font-medium text-gray-500 hover:text-gray-700"
+          className={rowButton()}
         >
           Allergens
         </button>
         {p.is_mix && (
           <button
             onClick={() => navigate(`/catalogue/products/${p.id}/recipe`)}
-            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+            className={rowButton()}
           >
             Recipe
           </button>
         )}
         <button
           onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
-          className="text-xs font-medium text-gray-500 hover:text-gray-700"
+          className={rowButton()}
         >
           Prices
         </button>
         <button
           onClick={() => toggleActive(p)}
-          className={`text-xs font-medium ${
-            p.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-          }`}
+          className={rowButton(p.is_active ? 'danger' : 'good')}
         >
           {p.is_active ? 'Deactivate' : 'Reactivate'}
         </button>
@@ -493,7 +506,7 @@ export default function ProductsPage() {
                   </div>
                 </dl>
 
-                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-black/10">
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                   {rowActions(p)}
                 </div>
 
@@ -596,7 +609,7 @@ export default function ProductsPage() {
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-3">{rowActions(p)}</div>
+                        <div className="flex flex-wrap gap-2">{rowActions(p)}</div>
                       </td>
                     </tr>
                   </Fragment>

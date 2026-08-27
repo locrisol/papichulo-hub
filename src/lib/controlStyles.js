@@ -119,6 +119,29 @@ export const tableCard = `${card} overflow-x-auto overflow-y-hidden`
 export const modalFooter =
     'px-6 py-4 border-t border-border bg-gray-50 flex flex-wrap justify-end gap-3'
 
+// The actions on a row: Edit, Allergens, Recipe, Prices, Deactivate.
+//
+// These were coloured words with nothing around them. On a laptop that reads as
+// a link and is easy enough to hit. On a phone it is a nine pixel tall target
+// sitting in a line of other nine pixel targets, and Deactivate is one of them.
+//
+// A function rather than a set of classes to add on, because a tone has to
+// replace the plain border and text colours rather than sit beside them. Two
+// plain classes of equal weight and the winner is whichever Tailwind happens to
+// emit last, which has caught this project three times already.
+export function rowButton(tone = 'plain') {
+    const base =
+        'px-3 py-1.5 rounded-lg border bg-white text-xs font-semibold shadow-sm '
+        + 'whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-accent '
+
+    return base + ({
+        plain: 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400',
+        edit: 'border-blue-300 text-blue-700 hover:bg-blue-50',
+        danger: 'border-red-300 text-red-700 hover:bg-red-50',
+        good: 'border-green-300 text-green-700 hover:bg-green-50',
+    }[tone] || '')
+}
+
 // The small coloured pills in a table cell: a role, a section, a status.
 //
 // This started life on the products screen and the rest of the app was still
