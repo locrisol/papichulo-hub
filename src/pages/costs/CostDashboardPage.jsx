@@ -447,9 +447,14 @@ export default function CostDashboardPage() {
                 <div className={`${card} p-6`}>
                     <h2 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h2>
                     <div className="flex flex-col">
-                        <div className="flex justify-between text-sm py-2 border-b border-border">
+                        {/* gap-3 on every row, not just space-between.
+                            Between them the label and the figure sit on the two
+                            edges, and when the pair happens to fill the card
+                            they touch: Packaging and cleaning ran straight into
+                            its own number, and Gross profit into its total. */}
+                        <div className="flex justify-between gap-3 text-sm py-2 border-b border-border">
                             <span className="text-muted">Net sales</span>
-                            <span className="font-semibold text-gray-900">{fmtMoney(netSales)}</span>
+                            <span className="font-semibold text-gray-900 whitespace-nowrap">{fmtMoney(netSales)}</span>
                         </div>
                         {[
                             { label: 'Food purchases', value: foodCost },
@@ -457,14 +462,14 @@ export default function CostDashboardPage() {
                             { label: 'Labour', value: labourCost },
                             { label: 'Waste', value: wasteCost },
                         ].map(r => (
-                            <div key={r.label} className="flex justify-between text-sm py-2 border-b border-border">
+                            <div key={r.label} className="flex justify-between gap-3 text-sm py-2 border-b border-border">
                                 <span className="text-muted">{r.label}</span>
-                                <span className="font-semibold text-red-600">− {fmtMoney(r.value)}</span>
+                                <span className="font-semibold text-red-600 whitespace-nowrap">− {fmtMoney(r.value)}</span>
                             </div>
                         ))}
-                        <div className="flex justify-between text-base py-3 font-bold">
+                        <div className="flex justify-between gap-3 text-base py-3 font-bold">
                             <span className="text-gray-900">Gross profit</span>
-                            <span className={grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}>
+                            <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                                 {fmtMoney(grossProfit)}
                                 {pct(grossProfit) != null && (
                                     <span className="font-normal text-sm ml-2">({pct(grossProfit).toFixed(0)}%)</span>
@@ -479,17 +484,25 @@ export default function CostDashboardPage() {
                     {dates.map((d, i) => {
                         const row = salesByDate[d]
                         return (
-                            <div key={d} className="flex justify-between items-center py-1.5 border-b border-border text-sm last:border-0">
-                                <span className="text-muted w-24">{DAY_NAMES[i]} {shortDate(d)}</span>
+                            <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
+                                <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
                                 {!row ? (
                                     <span className="text-gray-300 italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (
                                     <span className="text-gray-400 text-xs">closed</span>
                                 ) : (
-                                    <>
-                                        <span className="text-gray-900 font-medium">{fmtMoney(row.net_sales)}</span>
-                                        <span className="text-muted text-xs">gross {fmtMoney(row.gross_sales)}</span>
-                                    </>
+                                    /* Net over gross on a phone, side by side once
+                                       there is room. Three things on one line put
+                                       the word gross on top of the figure beside
+                                       it and neither could be read. */
+                                    <span className="flex flex-col items-end sm:flex-row sm:items-baseline sm:gap-3 leading-tight">
+                                        <span className="text-gray-900 font-medium whitespace-nowrap">
+                                            {fmtMoney(row.net_sales)}
+                                        </span>
+                                        <span className="text-muted text-xs whitespace-nowrap">
+                                            gross {fmtMoney(row.gross_sales)}
+                                        </span>
+                                    </span>
                                 )}
                             </div>
                         )
