@@ -196,7 +196,84 @@ export default function SuppliersPage() {
             {loading ? (
                 <div className="text-sm text-gray-500">Loading suppliers...</div>
             ) : (
-                <div className={tableCard}>
+                <>
+                {/* Cards on a phone, the table on anything wider.
+                    A table that scrolls sideways puts its last columns out of
+                    reach, and on this one that was the status and the buttons.
+                    Products and menu items already do this; suppliers now
+                    matches them. */}
+                <div className="md:hidden space-y-3">
+                    {filteredSuppliers.map(s => (
+                        <div
+                            key={s.id}
+                            className={`rounded-xl border p-4 ${
+                                s.is_active ? 'bg-white border-border' : 'bg-red-100 border-red-200'
+                            }`}
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <p className={`font-semibold ${s.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                                    {s.name}
+                                </p>
+                                <span className={`${badge} flex-shrink-0 ${
+                                    s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                                }`}>
+                                    {s.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+
+                            {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className={`${badge} capitalize ${
+                                    s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                    {s.category}
+                                </span>
+                            </div>
+
+                            {/* The address and the number are the reason
+                                anybody opens this list on a phone, so they are
+                                links rather than text to copy out by hand. */}
+                            <dl className="mt-3 space-y-1.5 text-sm">
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <dt className="text-gray-500">Email</dt>
+                                    <dd className="text-right min-w-0 truncate">
+                                        {s.contact_email
+                                            ? <a href={`mailto:${s.contact_email}`} className="text-blue-700 underline">{s.contact_email}</a>
+                                            : <span className="text-gray-400">-</span>}
+                                    </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <dt className="text-gray-500">Phone</dt>
+                                    <dd className="text-right">
+                                        {s.contact_phone
+                                            ? <a href={`tel:${s.contact_phone}`} className="text-blue-700 underline">{s.contact_phone}</a>
+                                            : <span className="text-gray-400">-</span>}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            {isManager && (
+                                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+                                    <button
+                                        onClick={() => editingSupplier?.id === s.id ? resetForm() : startEdit(s)}
+                                        className={rowButton('edit')}
+                                    >
+                                        {editingSupplier?.id === s.id ? 'Cancel' : 'Edit'}
+                                    </button>
+                                    <button
+                                        onClick={() => toggleActive(s)}
+                                        className={rowButton(s.is_active ? 'danger' : 'good')}
+                                    >
+                                        {s.is_active ? 'Deactivate' : 'Reactivate'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`${tableCard} hidden md:block`}>
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -256,6 +333,7 @@ export default function SuppliersPage() {
                         </tbody>
                     </table>
                 </div>
+                </>
             )}
             {/* Editing opens in a dialog rather than pushing a form into the
                 middle of the table, where the row being changed was hard to

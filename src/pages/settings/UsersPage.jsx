@@ -88,7 +88,46 @@ export default function UsersPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading users...</div>
       ) : (
-        <div className={tableCard}>
+        <>
+        {/* Cards on a phone, the table on anything wider. Sideways scrolling
+            put the status and the one button on this screen out of reach. */}
+        <div className="md:hidden space-y-3">
+          {users.map(u => (
+            <div key={u.id} className="rounded-xl border border-border bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold text-gray-900">
+                  {u.full_name}
+                  {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                </p>
+                <span className={`${badge} flex-shrink-0 ${
+                  u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                }`}>
+                  {u.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
+                  {u.role.replace('_', ' ')}
+                </span>
+                <span className="text-xs text-gray-500">{getRestaurantName(u.restaurant_id)}</span>
+              </div>
+
+              {canManageUser(user, u) && (
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+                  <button
+                    onClick={() => toggleUserActive(u.id, u.is_active)}
+                    className={rowButton(u.is_active ? 'danger' : 'good')}
+                  >
+                    {u.is_active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className={`${tableCard} hidden md:block`}>
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
@@ -137,6 +176,7 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   )
