@@ -266,7 +266,122 @@ export default function EmployeesPage() {
                 </div>
             ) : (
                 <>
-                    <div className={tableCard}>
+                    {/* Cards on a phone, the table on anything wider. Sideways
+                        scrolling put the rate and every button on this screen
+                        out of reach, and this is the list most likely to be
+                        opened standing in the shop. */}
+                    <div className="md:hidden space-y-3">
+                        {shown.map((employee, i) => {
+                            const position = positionOf(employee.position_id)
+                            const account = userOf(employee.user_id)
+                            const gone = employeeStatus(employee, today).state === 'left'
+                            const coming = nextAbsence(absences, employee.id, today)
+                            return (
+                                <div
+                                    key={employee.id}
+                                    className={`rounded-xl border p-4 ${
+                                        gone ? 'bg-gray-50 border-border' : 'bg-white border-border'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <p className={`font-semibold ${gone ? 'text-gray-500' : 'text-gray-900'}`}>
+                                            {employee.full_name}
+                                        </p>
+                                        {statusPill(employee)}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        {position ? (
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <span
+                                                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                                    style={{ backgroundColor: position.colour || NO_COLOUR }}
+                                                />
+                                                <span className="text-sm text-gray-700">{position.name}</span>
+                                            </span>
+                                        ) : (
+                                            <span className="text-sm text-gray-400">No position</span>
+                                        )}
+                                        <span className="text-xs text-gray-500">
+                                            {account ? account.role.replace('_', ' ') : 'No account'}
+                                        </span>
+                                    </div>
+
+                                    {employee.notes && (
+                                        <p className="text-xs text-gray-400 mt-1">{employee.notes}</p>
+                                    )}
+                                    {availabilitySummary(employee.availability) && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Works {availabilitySummary(employee.availability)}
+                                        </p>
+                                    )}
+                                    {coming && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {kindLabel(coming.kind)} {absenceRange(coming, fullDate)}
+                                        </p>
+                                    )}
+
+                                    <dl className="mt-3 text-sm">
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <dt className="text-gray-500">Per hour</dt>
+                                            <dd className="text-right text-gray-900 font-medium">
+                                                {employee.hourly_rate == null
+                                                    ? <span className="text-gray-400">-</span>
+                                                    : `€${Number(employee.hourly_rate).toFixed(2)}`}
+                                            </dd>
+                                        </div>
+                                    </dl>
+
+                                    <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+                                        <button onClick={() => openEdit(employee)} className={rowButton('edit')}>
+                                            Edit
+                                        </button>
+                                        <button onClick={() => setTimeOffFor(employee)} className={rowButton()}>
+                                            Time off
+                                        </button>
+                                        <button onClick={() => setAvailabilityFor(employee)} className={rowButton()}>
+                                            Availability
+                                        </button>
+                                        <button onClick={() => setCalendarFor(employee)} className={rowButton()}>
+                                            Calendar
+                                        </button>
+                                        {!employee.ended_on && (
+                                            <button onClick={() => recordLastDay(employee)} className={rowButton()}>
+                                                Leaving
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* The order they appear in on the roster is
+                                        a real preference, so it has to be
+                                        changeable here too rather than only on a
+                                        computer. */}
+                                    <div className="flex gap-2 mt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => move(employee.id, 'up')}
+                                            disabled={i === 0}
+                                            aria-label={`Move ${employee.full_name} up`}
+                                            className={`${rowButton()} disabled:opacity-30`}
+                                        >
+                                            &uarr; Move up
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => move(employee.id, 'down')}
+                                            disabled={i === shown.length - 1}
+                                            aria-label={`Move ${employee.full_name} down`}
+                                            className={`${rowButton()} disabled:opacity-30`}
+                                        >
+                                            &darr; Move down
+                                        </button>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <div className={`${tableCard} hidden md:block`}>
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className={tableHeadRow}>
