@@ -3,6 +3,7 @@ import {
     toMinutes, toTime, shiftMinutes, shiftHours, breakFor, breakForShift, breakLabel,
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
     fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
+    hourLabelStep,
 } from './roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -500,5 +501,22 @@ describe('tint', () => {
         expect(tint(null)).toBe('#ffffff')
         expect(tint('nonsense')).toBe('#ffffff')
         expect(tint('#fff')).toBe('#ffffff')
+    })
+})
+
+// A day from six in the morning to midnight is eighteen hour labels, and
+// eighteen do not fit across the grid, so they ran together as 06:0007:0008:00.
+describe('hourLabelStep', () => {
+    it('prints every hour on a short stretch', () => {
+        expect(hourLabelStep(9 * 60, 17 * 60)).toBe(1)
+        expect(hourLabelStep(6 * 60, 18 * 60)).toBe(1)
+    })
+
+    it('prints every second one on a long day', () => {
+        expect(hourLabelStep(6 * 60, 24 * 60)).toBe(2)
+    })
+
+    it('never asks for less than one hour', () => {
+        expect(hourLabelStep(600, 600)).toBe(1)
     })
 })

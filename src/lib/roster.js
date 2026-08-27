@@ -280,6 +280,23 @@ export function timelineRange(dayHours, shifts, padding) {
     return { from, to }
 }
 
+// How often to print an hour along the top of the timeline.
+//
+// The grid draws a tick every hour whatever happens. The label is a different
+// question: a day from six in the morning to midnight is eighteen of them, and
+// eighteen do not fit, so they ran into each other and read as 06:0007:0008:00.
+//
+// This is the narrow answer only. The grid has a smallest width and scrolls
+// sideways inside it, so on a phone it is always at that smallest width and the
+// hours are always tight. On a wide screen it is far wider than its minimum and
+// every hour fits easily, so the ones this drops are drawn there anyway.
+export function hourLabelStep(from, to) {
+    const hours = Math.max(1, Math.round((to - from) / 60))
+    if (hours <= 12) return 1
+    if (hours <= 24) return 2
+    return 3
+}
+
 // The week as a grid: one row per person, one cell per day.
 //
 // Shaped here rather than in the markup because the same shape feeds four

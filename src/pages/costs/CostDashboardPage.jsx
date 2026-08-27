@@ -7,7 +7,8 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
 import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton, card } from '../../lib/controlStyles'
+import { dateField, jumpButton, card } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
 import WeekTakenChart from '../../components/WeekTakenChart'
@@ -340,20 +341,17 @@ export default function CostDashboardPage() {
                     easy to hit with a thumb. On anything wider it goes back to
                     being one row. */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => shiftWeek(-1)}
-                            className={`${iconButton} text-sm font-semibold`}>
-                            ‹ Previous
-                        </button>
+                    <DateStepper
+                        onBack={() => shiftWeek(-1)}
+                        onNext={() => shiftWeek(1)}
+                        backLabel="Previous week"
+                        nextLabel="Next week"
+                    >
                         <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className={jumpButton(isThisWeek)}>
+                            className={`${jumpButton(isThisWeek)} w-full sm:w-auto`}>
                             This week
                         </button>
-                        <button type="button" onClick={() => shiftWeek(1)}
-                            className={`${iconButton} text-sm font-semibold`}>
-                            Next ›
-                        </button>
-                    </div>
+                    </DateStepper>
                     <input type="date" value={pickerDate}
                         onChange={e => {
                             const v = e.target.value

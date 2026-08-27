@@ -10,7 +10,8 @@ import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, card } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
@@ -427,19 +428,35 @@ export default function SalesPage() {
                 <div>
                     {/* Date selector */}
                     <div className={`${card} p-4 mb-3`}>
-                        {/* Allowed to break onto a second line. It was one row
-                            that could not wrap, so on a phone the date controls
-                            took the whole width and pushed "Existing record"
-                            outside the card it belongs to. */}
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <button type="button" onClick={() => shiftDate(-1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
-                                <input type="date" value={saleDate} onChange={e => setSaleDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-                                <button type="button" onClick={() => shiftDate(1)} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
-                                <button type="button" onClick={() => setSaleDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
-                            </div>
-                            {recordId && <span className="text-xs text-amber-600 font-medium">Existing record</span>}
-                        </div>
+                        <DateStepper
+                            onBack={() => shiftDate(-1)}
+                            onNext={() => shiftDate(1)}
+                            backLabel="Previous day"
+                            nextLabel="Next day"
+                            jump={(
+                                <button
+                                    type="button"
+                                    onClick={() => setSaleDate(todayISO())}
+                                    className={jumpButton(saleDate === todayISO())}
+                                >
+                                    Today
+                                </button>
+                            )}
+                        >
+                            <input
+                                type="date"
+                                value={saleDate}
+                                onChange={e => setSaleDate(e.target.value)}
+                                aria-label="Day"
+                                className={`${dateField} w-full`}
+                            />
+                        </DateStepper>
+                        {/* Under the row rather than off the end of it. On a
+                            phone it was being pushed onto a line of its own and
+                            reading like a stray label. */}
+                        {recordId && (
+                            <p className="text-xs text-amber-600 font-medium mt-2">Existing record</p>
+                        )}
                     </div>
 
                     {/* Non-trading day */}

@@ -8,7 +8,8 @@ import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, card } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
@@ -274,12 +275,29 @@ export default function WasteLogPage() {
                         move between, but a manager can look back. */}
                     {isManager ? (
                         <div className={`${card} p-4 mb-3`}>
-                            <div className="flex items-center gap-2">
-                                <button type="button" onClick={() => setLogDate(addDays(logDate, -1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Previous day">‹</button>
-                                <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-                                <button type="button" onClick={() => setLogDate(addDays(logDate, 1))} className="px-2 py-1.5 border border-border rounded-lg text-gray-600 hover:bg-gray-50" aria-label="Next day">›</button>
-                                <button type="button" onClick={() => setLogDate(todayISO())} className="ml-1 px-3 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium">Today</button>
-                            </div>
+                            <DateStepper
+                                onBack={() => setLogDate(addDays(logDate, -1))}
+                                onNext={() => setLogDate(addDays(logDate, 1))}
+                                backLabel="Previous day"
+                                nextLabel="Next day"
+                                jump={(
+                                    <button
+                                        type="button"
+                                        onClick={() => setLogDate(todayISO())}
+                                        className={jumpButton(logDate === todayISO())}
+                                    >
+                                        Today
+                                    </button>
+                                )}
+                            >
+                                <input
+                                    type="date"
+                                    value={logDate}
+                                    onChange={e => setLogDate(e.target.value)}
+                                    aria-label="Day"
+                                    className={`${dateField} w-full`}
+                                />
+                            </DateStepper>
                         </div>
                     ) : (
                         <p className="text-sm text-gray-500 mb-3">{shortDate(logDate)}</p>

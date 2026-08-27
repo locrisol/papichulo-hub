@@ -9,7 +9,8 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, iconButton, dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -824,17 +825,32 @@ export default function WeeklySalesPage() {
             {/* Week navigation */}
             <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
-                    {/* Fixed width, or the arrows shift sideways every time the
-                        text changes length. "3 Aug - 9 Aug" is a lot narrower
-                        than "31 Aug - 6 Sept", and clicking back through weeks
-                        moved the button out from under the mouse. The width is
-                        set for the longest case, a range crossing a month. */}
-                    <span className="text-sm font-medium text-gray-900 text-center w-44 flex-shrink-0">
-                        {shortDate(dates[0])} - {shortDate(dates[6])}
-                    </span>
-                    <button type="button" onClick={() => shiftWeek(1)} className={iconButton} aria-label="Next week">›</button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className={`ml-1 ${jumpButton(weekStart === weekStartOf(todayISO()))}`}>This week</button>
+                    <DateStepper
+                        onBack={() => shiftWeek(-1)}
+                        onNext={() => shiftWeek(1)}
+                        backLabel="Previous week"
+                        nextLabel="Next week"
+                        jump={(
+                            <button
+                                type="button"
+                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
+                            >
+                                This week
+                            </button>
+                        )}
+                    >
+                        {/* A set width on a wide screen, so the arrows do not
+                            shift sideways when the text changes length: 3 Aug -
+                            9 Aug is a lot narrower than 31 Aug - 6 Sept, and
+                            clicking back through weeks moved the button out from
+                            under the mouse. On a phone the arrows are pinned to
+                            the edges instead, so they cannot move whatever the
+                            date says, and the text takes the room between. */}
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap sm:w-44">
+                            {shortDate(dates[0])} - {shortDate(dates[6])}
+                        </span>
+                    </DateStepper>
 
                     {dirty && <span className="text-xs text-amber-600 font-medium ml-2">Unsaved changes</span>}
 
