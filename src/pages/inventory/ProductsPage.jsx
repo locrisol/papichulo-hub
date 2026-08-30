@@ -21,9 +21,20 @@ import { tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '
 // The widths are there because sorting let the Name column take as much room as
 // it wanted, which squeezed the others until a badge like "Cold Room" broke onto
 // two lines.
+// The other places a product is kept, beside the section it belongs to.
+//
+// Outlined rather than filled, so the section it actually is stays the solid
+// badge and the rest read as "you will also find it here". Two solid blue
+// badges side by side would leave nobody able to say which was which.
+function extraPlaceBadge(isActive) {
+  return isActive
+    ? 'bg-white text-blue-700 border border-blue-300'
+    : 'bg-white text-gray-400 border border-gray-200'
+}
+
 const COLUMNS = [
   { key: 'name', label: 'Name', sortable: true },
-  { key: 'section', label: 'Section', width: 'w-36' },
+  { key: 'section', label: 'Section', width: 'w-48' },
   { key: 'unit', label: 'Unit', width: 'w-20' },
   { key: 'type', label: 'Type', width: 'w-32' },
   { key: 'supplier', label: 'Preferred Supplier', sortable: true },
@@ -445,7 +456,12 @@ export default function ProductsPage() {
 
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
-    .filter(p => activeSection === 'All' || p.section === activeSection)
+    // Somewhere it is also kept counts. Picking Freezer is asking what is in
+    // the freezer, and the two boxes of tacos defrosting in the cold room are
+    // still freezer stock as far as anybody walking up to it is concerned.
+    .filter(p => activeSection === 'All'
+      || p.section === activeSection
+      || (p.also_in || []).includes(activeSection))
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     .slice()
     .sort((a, b) => {
@@ -597,6 +613,11 @@ export default function ProductsPage() {
                   <span className={`${badge} ${p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'}`}>
                     {p.section}
                   </span>
+                  {(p.also_in || []).map(place => (
+                    <span key={place} className={`${badge} ${extraPlaceBadge(p.is_active)}`}>
+                      {place}
+                    </span>
+                  ))}
                   <span className="text-xs text-gray-500">{p.unit}</span>
                   {/* The table says this with a red row, which a single card
                       cannot do on its own, so it says it in words instead. */}
@@ -701,10 +722,17 @@ export default function ProductsPage() {
                         : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
-                        <span className={`${badge} ${
-                          p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'
-                        }`}>
-                          {p.section}
+                        <span className="flex flex-wrap gap-1">
+                          <span className={`${badge} ${
+                            p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {p.section}
+                          </span>
+                          {(p.also_in || []).map(place => (
+                            <span key={place} className={`${badge} ${extraPlaceBadge(p.is_active)}`}>
+                              {place}
+                            </span>
+                          ))}
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
