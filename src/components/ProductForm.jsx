@@ -10,13 +10,17 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
+import { PriceFields } from './PriceForm'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
 // products.also_in, so anything added here has to go in a migration first.
 const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
-export default function ProductForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors }) {
+export default function ProductForm({
+  formData, onChange, onSubmit, onCancel, submitLabel, errors,
+  priceForm, onPriceChange, priceErrors, suppliers, showPrice,
+}) {
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -136,6 +140,33 @@ export default function ProductForm({ formData, onChange, onSubmit, onCancel, su
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
       </div>
+
+      {/* Who you buy it from, while you are already here.
+          Setting a price used to mean saving the product, finding it again in
+          a list of a few hundred, opening Prices and starting a second form.
+          Three screens for one thing you already knew when you typed the name.
+
+          Optional, and it stays optional: leave the supplier empty and nothing
+          is written. A price given here becomes the preferred one, because it
+          is the only one. */}
+      {showPrice && !formData.is_mix && (
+        <div className="border-t border-border pt-4 mb-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            Who you buy it from
+          </p>
+          <p className="text-xs text-gray-400 mb-3">
+            Optional. Leave the supplier empty and you can add prices later from the
+            product's own Prices screen.
+          </p>
+          <PriceFields
+            formData={priceForm}
+            onChange={onPriceChange}
+            errors={priceErrors}
+            suppliers={suppliers}
+            unit={formData.unit}
+          />
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button

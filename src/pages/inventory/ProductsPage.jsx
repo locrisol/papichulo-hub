@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
+import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -37,6 +38,11 @@ export default function ProductsPage() {
   const [prices, setPrices] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  // The supplier price typed alongside a new product. Only ever used when
+  // adding one: editing a product leaves prices where they live, because by
+  // then there can be several and one form cannot speak for all of them.
+  const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
+  const [priceErrors, setPriceErrors] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
@@ -137,6 +143,10 @@ export default function ProductsPage() {
     setFormData({ ...formData, [field]: value })
   }
 
+  function handlePriceChange(field, value) {
+    setPriceForm({ ...priceForm, [field]: value })
+  }
+
   function validate() {
     const newErrors = {}
 
@@ -157,11 +167,18 @@ export default function ProductsPage() {
     setError('')
 
     const newErrors = validate()
-    if (Object.keys(newErrors).length > 0) {
+    // The price block is only checked if somebody started filling it in. Left
+    // alone it is not an error, it is the normal case.
+    const wantsPrice = !editingProduct && !formData.is_mix && hasPrice(priceForm)
+    const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
+
+    if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0) {
       setErrors(newErrors)
+      setPriceErrors(newPriceErrors)
       return
     }
     setErrors({})
+    setPriceErrors({})
 
     const payload = {
       ...formData,
@@ -181,12 +198,38 @@ export default function ProductsPage() {
       if (error) setError(friendlyError(error))
       else { fetchProducts(); resetForm() }
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('products')
         .insert(payload)
+        .select()
+        .single()
 
-      if (error) setError(friendlyError(error))
-      else { fetchProducts(); resetForm() }
+      if (error) { setError(friendlyError(error)); return }
+
+      // The first price on a product is the preferred one, since it is the
+      // only one. The same rule the prices screen uses.
+      if (wantsPrice && data) {
+        const { error: priceErr } = await supabase
+          .from('product_supplier_prices')
+          .insert({
+            ...pricePayload(priceForm),
+            product_id: data.id,
+            restaurant_id: activeRestaurant.id,
+            is_preferred: true,
+          })
+
+        // The product is saved either way. Saying so and leaving the form open
+        // would be worse than saying the price did not take: the product would
+        // be entered twice.
+        if (priceErr) {
+          setError(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          fetchProducts()
+          return
+        }
+      }
+
+      fetchProducts()
+      resetForm()
     }
   }
 
@@ -195,9 +238,11 @@ export default function ProductsPage() {
       name: '', section: 'Freezer', also_in: [], unit: 'KG', is_mix: false,
       weight_loss_pct: 0, notes: '', is_active: true,
     })
+    setPriceForm(EMPTY_PRICE)
     setEditingProduct(null)
     setShowForm(false)
     setErrors({})
+    setPriceErrors({})
   }
 
   function startEdit(product) {
@@ -408,6 +453,11 @@ export default function ProductsPage() {
             onCancel={resetForm}
             submitLabel="Add Product"
             errors={errors}
+            showPrice
+            priceForm={priceForm}
+            onPriceChange={handlePriceChange}
+            priceErrors={priceErrors}
+            suppliers={suppliers}
           />
         </div>
       )}
