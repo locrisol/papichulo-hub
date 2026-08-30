@@ -33,6 +33,16 @@ function extraPlaceBadge(isActive) {
     : 'bg-white text-gray-400 border border-gray-200'
 }
 
+// One of the filter chips above the table. Written once because there are two
+// rows of them now and they have to look identical, or the second row reads as
+// a different kind of control rather than as another question.
+function chipButton(isOn) {
+  return 'px-3 py-1.5 rounded-full text-xs font-medium transition-colors '
+    + (isOn
+      ? 'bg-accent text-white'
+      : 'bg-white border border-border text-gray-600 hover:bg-gray-50')
+}
+
 // What kind of thing a product is, as one badge. Written once because the table
 // and the cards both say it, and a label that reads Drink in one place and
 // Purchased in the other is worse than not saying it at all.
@@ -64,6 +74,10 @@ export default function ProductsPage() {
   // The supplier price typed alongside a new product. Only ever used when
   // adding one: editing a product leaves prices where they live, because by
   // then there can be several and one form cannot speak for all of them.
+  // What kind of thing to show: everything, only what goes into food, or only
+  // the drinks. Separate from the section buttons because it is a different
+  // question: one is where a thing is kept, the other is what it is.
+  const [activeKind, setActiveKind] = useState('All')
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
   const [allergens, setAllergens] = useState(emptyAllergens())
@@ -99,6 +113,7 @@ export default function ProductsPage() {
   // more: the sort runs across the whole list, so nothing needs to know which
   // section comes before which.
   const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+  const kinds = ['All', 'Ingredients', 'Drinks']
 
   // Which column the table is sorted by, and which way.
   const [sortBy, setSortBy] = useState('name')
@@ -543,6 +558,8 @@ export default function ProductsPage() {
     .filter(p => activeSection === 'All'
       || p.section === activeSection
       || (p.also_in || []).includes(activeSection))
+    .filter(p => activeKind === 'All'
+      || (activeKind === 'Drinks' ? p.category === 'drink' : p.category !== 'drink'))
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     .slice()
     .sort((a, b) => {
@@ -555,6 +572,14 @@ export default function ProductsPage() {
       // differently, since their cost comes from a recipe rather than a
       // supplier, and the yellow row goes with that.
       if (a.is_mix !== b.is_mix) return a.is_mix ? -1 : 1
+
+      // Drinks sink to the bottom, so they sit together rather than scattered
+      // through the food a name at a time. They are counted and ordered as
+      // their own job and nobody looking for chicken wants a row of cans in
+      // the middle of it.
+      const aDrink = a.category === 'drink'
+      const bDrink = b.category === 'drink'
+      if (aDrink !== bDrink) return aDrink ? 1 : -1
 
       const result = compareValues(sortValue(a, sortBy), sortValue(b, sortBy))
       const directed = sortDir === 'desc' ? -result : result
@@ -637,18 +662,29 @@ export default function ProductsPage() {
         />
       </div>
 
-      <div className="flex gap-2 mb-4 flex-wrap">
+      {/* Two rows because they are two questions. Where a thing is kept, and
+          what kind of thing it is. Mixing them into one row of chips would
+          leave somebody wondering why picking Drinks turned off Freezer. */}
+      <div className="flex gap-2 mb-2 flex-wrap">
         {sections.map(section => (
           <button
             key={section}
             onClick={() => setActiveSection(section)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              activeSection === section
-                ? 'bg-accent text-white'
-                : 'bg-white border border-border text-gray-600 hover:bg-gray-50'
-            }`}
+            className={chipButton(activeSection === section)}
           >
             {section}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {kinds.map(kind => (
+          <button
+            key={kind}
+            onClick={() => setActiveKind(kind)}
+            className={chipButton(activeKind === kind)}
+          >
+            {kind}
           </button>
         ))}
       </div>
