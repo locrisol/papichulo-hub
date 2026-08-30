@@ -103,6 +103,51 @@ export default function ProductForm({
         )}
       </div>
 
+      {/* Where else it turns up.
+          Not a second section. The section above is what the product is, and
+          the costing and the reports read that and only that. This is about
+          where somebody with a clipboard will find it: tacos live in the
+          freezer and there are two boxes in the cold room defrosting, and on a
+          count they were being missed because the screen only ever showed them
+          under one heading. */}
+      <div className="mb-4">
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Also kept in
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {SECTIONS.filter(section => section !== formData.section).map(section => {
+            const on = (formData.also_in || []).includes(section)
+            return (
+              <label
+                key={section}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                  on
+                    ? 'bg-accent-light border-accent text-accent-ink font-semibold'
+                    : 'bg-white border-border text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={e => onChange(
+                    'also_in',
+                    e.target.checked
+                      ? [...(formData.also_in || []), section]
+                      : (formData.also_in || []).filter(x => x !== section),
+                  )}
+                  className="w-4 h-4 accent-accent"
+                />
+                {section}
+              </label>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Only changes where it shows up on a stock take. Leave these alone for
+          nearly everything.
+        </p>
+      </div>
+
       <div className="mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
