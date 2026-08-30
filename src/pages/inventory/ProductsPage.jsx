@@ -260,6 +260,15 @@ export default function ProductsPage() {
 
       if (error) { setError(friendlyError(error)); return }
 
+      // The supplier and the cost on this screen are read out of prices,
+      // which is its own fetch. Refetching the products alone left a product
+      // that had just been given a price showing as having none until the page
+      // was reloaded, which read as the price not having saved.
+      const refresh = () => {
+        fetchProducts()
+        if (wantsPrice) fetchPrices()
+      }
+
       // The first price on a product is the preferred one, since it is the
       // only one. The same rule the prices screen uses.
       if (wantsPrice && data) {
@@ -292,12 +301,12 @@ export default function ProductsPage() {
 
         if (allergenErr) {
           setError(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
-          fetchProducts()
+          refresh()
           return
         }
       }
 
-      fetchProducts()
+      refresh()
       resetForm()
     }
   }
