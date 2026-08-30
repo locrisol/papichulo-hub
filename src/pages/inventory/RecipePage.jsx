@@ -8,6 +8,7 @@ import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
+import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
@@ -135,13 +136,12 @@ export default function RecipePage() {
   // Ingredients available in the dropdown: all active products except those
   // already added to this recipe (unless we're editing that specific line).
   //
-  // Drinks are left out. Every can in the fridge used to sit in this list, and
-  // they are never the answer, only noise between the things that are. A drink
-  // that somehow ended up on a recipe already still shows, because hiding a
-  // line that is really there would leave a cost nobody could account for.
+  // Drinks and cleaning are left out, which is canBeIngredient's business. A
+  // line already on the recipe still shows whatever it is, because hiding one
+  // that is really there would leave a cost nobody could account for.
   const availableProducts = products.filter(p => {
     if (editingLine && editingLine.ingredient_product_id === p.id) return true
-    if (p.category === 'drink') return false
+    if (!canBeIngredient(p)) return false
     return !recipeLines.some(l => l.ingredient_product_id === p.id && l.mix_product_id === id)
   })
 

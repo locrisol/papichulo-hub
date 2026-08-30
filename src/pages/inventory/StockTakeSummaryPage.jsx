@@ -99,21 +99,31 @@ export default function StockTakeSummaryPage() {
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
-  function getProductLines(productId) {
-    return lines.filter(l => l.product_id === productId).sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
-  }
-  function getProductTotal(productId) {
-    return lines.filter(l => l.product_id === productId).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
-  }
-
-  function getProductValue(productId) {
-    return lines
-      .filter(l => l.product_id === productId)
-      .reduce((s, l) => s + Number(l.line_total || 0), 0)
+  // All of these take the place as well as the product, because a product kept
+  // in two of them has lines in both and each heading is only about its own.
+  // Pass no section and you get the product's whole count, which is what the
+  // total at the top is.
+  function linesFor(productId, section) {
+    return lines.filter(l =>
+      l.product_id === productId
+      && (!section || (l.section || 'Other') === section))
   }
 
-  function getSectionValue(items) {
-    return items.reduce((s, p) => s + getProductValue(p.id), 0)
+  function getProductLines(productId, section) {
+    return linesFor(productId, section)
+      .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
+  }
+
+  function getProductTotal(productId, section) {
+    return linesFor(productId, section).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
+  }
+
+  function getProductValue(productId, section) {
+    return linesFor(productId, section).reduce((s, l) => s + Number(l.line_total || 0), 0)
+  }
+
+  function getSectionValue(items, section) {
+    return items.reduce((s, p) => s + getProductValue(p.id, section), 0)
   }
 
   // Return a line's unit_breakdown as sorted parts (biggest format left,
@@ -141,19 +151,30 @@ export default function StockTakeSummaryPage() {
     return parts
   }
 
-  // Sections containing only counted products, grouped and ordered
+  // Sections containing only counted products, grouped and ordered.
+  //
+  // Grouped by where each line was actually counted rather than by the product's
+  // own section, because a product can be kept in two places and this is a
+  // valuation of what is sitting in each of them. Counting six in the cold room
+  // and four in dry and then reading ten against dry would be a number that
+  // matches nothing anybody saw on a shelf.
+  //
+  // A product kept in two places therefore appears under both headings, with
+  // only that place's lines behind each. Nothing is counted twice: a line
+  // belongs to one place and no more.
   const sections = useMemo(() => {
-    const countedProducts = products.filter(p => countedProductIds.has(p.id))
     const grouped = {}
-    for (const p of countedProducts) {
-      const s = p.section || 'Other'
+    for (const line of lines) {
+      const s = line.section || 'Other'
+      const product = products.find(p => p.id === line.product_id)
+      if (!product) continue
       if (!grouped[s]) grouped[s] = []
-      grouped[s].push(p)
+      if (!grouped[s].some(p => p.id === product.id)) grouped[s].push(product)
     }
     return Object.entries(grouped)
       .map(([section, items]) => ({ section, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-  }, [products, countedProductIds])
+  }, [products, lines])
 
   const uncountedProducts = useMemo(() => {
     return products.filter(p => !countedProductIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
@@ -294,7 +315,7 @@ export default function StockTakeSummaryPage() {
       <div className="space-y-5 mb-6">
         {sections.map(({ section, items }) => {
           const colour = sectionColour(section)
-          const sectionValue = getSectionValue(items)
+          const sectionValue = getSectionValue(items, section)
           return (
             <div key={section}>
               <div className={`${colour.solid} rounded-lg px-3 py-2 mb-2 flex items-center justify-between`}>
@@ -305,11 +326,11 @@ export default function StockTakeSummaryPage() {
               </div>
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
                 {items.map((product, i) => {
-                  const productLines = getProductLines(product.id)
-                  const total = getProductTotal(product.id)
-                  const value = getProductValue(product.id)
+                  const productLines = getProductLines(product.id, section)
+                  const total = getProductTotal(product.id, section)
+                  const value = getProductValue(product.id, section)
                   return (
-                    <div key={product.id} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
+                    <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium text-gray-900 flex-1 min-w-0">
                           {product.name}

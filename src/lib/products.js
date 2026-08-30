@@ -42,3 +42,26 @@ export function nameClashMessage(clash) {
         ? `There is a deactivated product called ${clash.name}. Turn that one back on rather than adding a second.`
         : `There is already a product called ${clash.name}${clash.section ? ` in ${clash.section}` : ''}. Names have to be different.`
 }
+
+// Can this product go into something we make?
+//
+// The ingredient list for a MIX is picked out of every product there is, and
+// most of them are never the answer. What is left out:
+//
+//   drinks     every can in the fridge, which is what the kind is for
+//   cleaning   nothing in that section has ever gone into food and nothing
+//              ever should
+//
+// Packaging is deliberately still in. A tub is not an ingredient in a sauce,
+// but this is also the list a house-made item is costed from and packaging is
+// a real cost on some of them.
+//
+// A product already sitting on a recipe is a separate question and this does
+// not answer it: hiding a line that is really there would leave a cost nobody
+// could account for. This only decides what is offered.
+export function canBeIngredient(product) {
+    if (!product) return false
+    if (product.category === 'drink') return false
+    if (product.section === 'Cleaning') return false
+    return true
+}

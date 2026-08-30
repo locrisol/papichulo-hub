@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sameName, sameSupplierCode, nameClashMessage } from './products'
+import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient } from './products'
 
 const PRODUCTS = [
     { id: 'p1', name: 'Pineapple' },
@@ -83,5 +83,29 @@ describe('nameClashMessage', () => {
         const message = nameClashMessage({ name: 'Pineapple', is_active: false })
         expect(message).toContain('deactivated')
         expect(message).toMatch(/turn that one back on/i)
+    })
+})
+
+describe('canBeIngredient', () => {
+    it('lets an ordinary product in', () => {
+        expect(canBeIngredient({ name: 'Chicken', section: 'Cold Room' })).toBe(true)
+    })
+
+    it('keeps drinks out', () => {
+        expect(canBeIngredient({ name: 'Coke', section: 'Dry', category: 'drink' })).toBe(false)
+    })
+
+    it('keeps cleaning out', () => {
+        expect(canBeIngredient({ name: 'Bleach', section: 'Cleaning' })).toBe(false)
+    })
+
+    it('leaves packaging in', () => {
+        // A tub is not an ingredient in a sauce, but it is a real cost on some
+        // house-made items, so it stays on the list.
+        expect(canBeIngredient({ name: 'Sauce tub', section: 'Packaging' })).toBe(true)
+    })
+
+    it('says no to nothing at all', () => {
+        expect(canBeIngredient(null)).toBe(false)
     })
 })
