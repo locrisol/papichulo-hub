@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { forDropdown } from '../lib/sections'
+import { matches } from '../lib/search'
 
 // Picking a product out of a few hundred.
 //
@@ -32,11 +33,9 @@ export default function ProductSelect({
     // Every match, flat, in the order they are drawn. The keyboard walks this
     // one; the groups below are only how it is laid out.
     const groups = useMemo(() => {
-        const wanted = term.trim().toLowerCase()
-        const matching = wanted
-            ? (products || []).filter(p => (p.name || '').toLowerCase().includes(wanted))
-            : (products || [])
-        return forDropdown(matching)
+        // matches does the folding, so an accent typed or left out finds the
+        // same product either way.
+        return forDropdown((products || []).filter(p => matches(p.name, term)))
     }, [products, term])
 
     const flat = useMemo(() => groups.flatMap(g => g.items.map(item => ({ item, ink: g.ink }))), [groups])

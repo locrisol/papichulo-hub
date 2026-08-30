@@ -11,6 +11,7 @@ import SearchBox from '../../components/SearchBox'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
+import { matches } from '../../lib/search'
 import { tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
@@ -624,7 +625,7 @@ export default function ProductsPage() {
       || (p.also_in || []).includes(activeSection))
     .filter(p => activeKind === 'All'
       || (activeKind === 'Drinks' ? p.category === 'drink' : p.category !== 'drink'))
-    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => matches(p.name, search))
     .slice()
     .sort((a, b) => {
       // Sorting runs across the whole list, not inside each section. Sorting by

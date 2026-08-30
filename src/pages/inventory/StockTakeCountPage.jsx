@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { matches } from '../../lib/search'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
@@ -323,12 +324,12 @@ export default function StockTakeCountPage() {
     // count it. The search is live and does the opposite job: you are holding a
     // box and you want that one product, not the hundred either side of it.
     const sections = useMemo(() => {
-        const term = search.trim().toLowerCase()
+        const term = search.trim()
         return group(products)
             .map(({ section, items }) => ({
                 section,
                 items: items.filter(p =>
-                    (!term || (p.name || '').toLowerCase().includes(term))
+                    matches(p.name, term)
                     && (!showUncountedOnly || !filterSnapshot
                         || filterSnapshot.has(placeKey(p.id, section)))),
             }))
