@@ -827,7 +827,7 @@ export default function ProductsPage() {
                 // A line down the left in the colour of what it is. The card
                 // keeps its own background, so a deactivated one still reads
                 // as deactivated first and as a freezer product second.
-                style={{ borderLeftWidth: '4px', borderLeftColor: productInk(p) }}
+                style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
                 className={`rounded-xl border p-4 ${!p.is_active
                   ? 'bg-red-100 border-red-200'
                   : p.is_mix
@@ -922,7 +922,14 @@ export default function ProductsPage() {
                 other striped row, so it did not read as a heading at all. It is
                 the dark sidebar green now, which there is no mistaking. */}
             <thead>
-              <tr className={tableHeadRow}>
+              {/* The same left edge the rows below carry, in the heading's own
+                  green. Without it the body rows sit six pixels further in than
+                  the heading and the card shows through beside it as a white
+                  strip. */}
+              <tr
+                className={tableHeadRow}
+                style={{ borderLeftWidth: '6px', borderLeftColor: '#182F24' }}
+              >
                 {COLUMNS.map(col => (
                   <th key={col.key} className={`text-left px-4 py-3 whitespace-nowrap ${col.width || ''}`}>
                     {col.sortable ? (
@@ -955,7 +962,7 @@ export default function ProductsPage() {
                         which ones they are. Inactive still wins, because a
                         deactivated product matters more than how it is costed. */}
                     <tr
-                      style={{ borderLeftWidth: '4px', borderLeftColor: productInk(p) }}
+                      style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
                       className={`border-b border-border ${!p.is_active
                         ? 'bg-red-100'
                         : p.is_mix
