@@ -42,7 +42,7 @@ const TONES = {
 }
 
 export function ModalSectionBar({
-    title, summary, tone, collapsible = false, open = true, onToggle, className = '',
+    title, summary, tone, collapsible = false, open = true, onToggle, action, className = '',
 }) {
     const edge = TONES[tone] || ''
 
@@ -50,31 +50,42 @@ export function ModalSectionBar({
         return <div className={`${modalSectionHeader} ${edge} -mx-6 mb-4 ${className}`}>{title}</div>
     }
 
+    // A div holding a button rather than one big button, because a section can
+    // carry an action of its own and a button inside a button is not a thing.
+    // The negative vertical margin on the toggle is so the tappable part is the
+    // whole height of the bar and not just the line of text in the middle of it.
     return (
-        <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            // The negative margin reaches both edges from inside the padding,
-            // which is the whole point of this bar. A button has to be told its
-            // width to do the same, and px-6 either side is the 3rem.
-            className={`${modalSectionHeader} ${edge} -mx-6 mb-4 w-[calc(100%+3rem)] flex items-center gap-3 text-left hover:bg-sidebar/15 transition-colors ${className}`}
-        >
-            <span>{title}</span>
-            {summary && (
-                <span className="ml-auto normal-case tracking-normal font-semibold text-sidebar/70">
-                    {summary}
-                </span>
-            )}
-            <svg
-                className={`w-4 h-4 flex-shrink-0 transition-transform ${summary ? '' : 'ml-auto'} ${open ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
+        <div className={`${modalSectionHeader} ${edge} -mx-6 mb-4 flex items-center gap-3 ${className}`}>
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                className="flex-1 min-w-0 flex items-center gap-3 text-left py-2.5 -my-2.5"
             >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-        </button>
+                <span>{title}</span>
+                {summary && (
+                    <span className="ml-auto normal-case tracking-normal font-semibold text-sidebar/70 truncate">
+                        {summary}
+                    </span>
+                )}
+                <svg
+                    className={`w-4 h-4 flex-shrink-0 transition-transform ${summary ? '' : 'ml-auto'} ${open ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+            {action}
+        </div>
     )
 }
+
+// A small control living on a section bar, for the one answer that can be
+// given without opening the section at all.
+export const sectionBarAction =
+    'flex-shrink-0 px-3 py-1.5 rounded-full bg-white border border-sidebar/30 text-sidebar '
+    + 'text-xs font-bold normal-case tracking-normal whitespace-nowrap '
+    + 'transition-colors hover:bg-sidebar hover:text-white'
 
 export default function ModalSection({ title, description, children, className = '' }) {
     return (

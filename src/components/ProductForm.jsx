@@ -11,7 +11,7 @@
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
 import { PriceFields } from './PriceForm'
-import { ModalSectionBar } from './ModalSection'
+import { ModalSectionBar, sectionBarAction } from './ModalSection'
 import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
 
@@ -23,7 +23,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors,
   priceForm, onPriceChange, priceErrors, suppliers,
-  allergens, onAllergenChange,
+  allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
@@ -189,14 +189,25 @@ export default function ProductForm({
             </div>
           )}
 
+          {/* Nothing to declare is an answer, and for most of the shelf it is
+              the right one. It used to be the one answer you could not give
+              without opening the section and setting something, so a bag of
+              rice with genuinely no allergens read the same as one nobody had
+              looked at. The button says it in one tap from the bar. */}
           <ModalSectionBar
             collapsible
             tone="allergens"
             title="Allergens"
             summary={(() => {
               const set = declaredCount(allergens)
-              return set === 0 ? 'None declared' : `${set} of 14 declared`
+              if (set > 0) return `${set} of 14`
+              return allergensAnswered ? 'None of the 14' : 'Not answered'
             })()}
+            action={!allergensAnswered && declaredCount(allergens) === 0 && (
+              <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
+                No allergens
+              </button>
+            )}
             open={openExtra === 'allergens'}
             onToggle={() => onOpenExtra(openExtra === 'allergens' ? null : 'allergens')}
           />

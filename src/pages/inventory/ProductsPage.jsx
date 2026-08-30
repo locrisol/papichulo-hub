@@ -171,6 +171,15 @@ export default function ProductsPage() {
     setAllergensTouched(true)
   }
 
+  // Nothing to declare, said in one tap from the bar. The values are already
+  // all Not Present, so this only records that somebody looked and that is the
+  // answer, which is what the save asks about.
+  function handleNoAllergens() {
+    setAllergens(emptyAllergens())
+    setAllergensTouched(true)
+    setOpenExtra(null)
+  }
+
   function validate() {
     const newErrors = {}
 
@@ -546,6 +555,8 @@ export default function ProductsPage() {
             suppliers={suppliers}
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
+            allergensAnswered={allergensTouched}
+            onNoAllergens={handleNoAllergens}
             openExtra={openExtra}
             onOpenExtra={setOpenExtra}
           />
