@@ -6,7 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import { emptyAllergens } from '../../lib/allergens'
-import { sameName, sameSupplierCode, nameClashMessage } from '../../lib/products'
+import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient } from '../../lib/products'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -31,6 +31,14 @@ function extraPlaceBadge(isActive) {
   return isActive
     ? 'bg-white text-blue-700 border border-blue-300'
     : 'bg-white text-gray-400 border border-gray-200'
+}
+
+// What goes into a MIX, held on the form until the product exists to hang it
+// on. lines are what has been added, draft is the row being typed.
+const EMPTY_RECIPE = {
+  batchYield: '',
+  lines: [],
+  draft: { ingredient_product_id: '', quantity: '' },
 }
 
 // One of the filter chips above the table. Written once because there are two
@@ -80,6 +88,7 @@ export default function ProductsPage() {
   const [activeKind, setActiveKind] = useState('All')
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
+  const [recipe, setRecipe] = useState(EMPTY_RECIPE)
   const [allergens, setAllergens] = useState(emptyAllergens())
   // Whether anybody opened the allergens and answered, as opposed to leaving
   // them at the default. All fourteen at Not Present is a real answer for a bag
@@ -323,6 +332,12 @@ export default function ProductsPage() {
       also_in: (formData.also_in || []).filter(place => place !== formData.section),
     }
 
+    // batch_yield lives on the product rather than on the recipe, so it goes in
+    // with everything else rather than waiting for the lines.
+    if (!editingProduct && formData.is_mix && parseFloat(recipe.batchYield) > 0) {
+      payload.batch_yield = parseFloat(recipe.batchYield)
+    }
+
     if (editingProduct) {
       const { error } = await supabase
         .from('products')
@@ -371,6 +386,25 @@ export default function ProductsPage() {
         }
       }
 
+      // What goes into it, if it is something we make and anything was typed.
+      // A recipe line needs the product to exist, which is why it waits until
+      // here rather than being written alongside.
+      if (formData.is_mix && recipe.lines.length > 0 && data) {
+        const { error: recipeErr } = await supabase
+          .from('mix_recipes')
+          .insert(recipe.lines.map(line => ({
+            mix_product_id: data.id,
+            ingredient_product_id: line.ingredient_product_id,
+            quantity: parseFloat(line.quantity),
+          })))
+
+        if (recipeErr) {
+          setError(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
+          refresh()
+          return
+        }
+      }
+
       // The allergens, if anybody answered them. One row per product, and this
       // is always the first one, so an insert rather than the upsert the
       // allergen page has to do.
@@ -397,6 +431,7 @@ export default function ProductsPage() {
       is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
+    setRecipe(EMPTY_RECIPE)
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
     setOpenExtra(null)
@@ -551,6 +586,10 @@ export default function ProductsPage() {
     ? sameName(products, formData.name, editingProduct?.id)
     : null
 
+  // What a MIX can be built out of, which is the same rule the recipe screen
+  // uses. Only active ones: a product nobody can buy is not an ingredient.
+  const ingredientOptions = products.filter(p => p.is_active && canBeIngredient(p))
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
@@ -647,6 +686,9 @@ export default function ProductsPage() {
             onAllergenChange={handleAllergenChange}
             allergensAnswered={allergensTouched}
             onNoAllergens={handleNoAllergens}
+            recipe={recipe}
+            onRecipeChange={setRecipe}
+            ingredientOptions={ingredientOptions}
             openExtra={openExtra}
             onOpenExtra={setOpenExtra}
           />

@@ -39,6 +39,10 @@ import { modalSectionHeader } from '../lib/controlStyles'
 const TONES = {
     supplier: 'border-l-4 border-l-blue-500',
     allergens: 'border-l-4 border-l-amber-500',
+    // The same amber as a MIX badge everywhere else in the app. It shares the
+    // colour with allergens, which is harmless: a product is either bought or
+    // made, so the two sections never appear together.
+    recipe: 'border-l-4 border-l-amber-500',
 }
 
 export function ModalSectionBar({
