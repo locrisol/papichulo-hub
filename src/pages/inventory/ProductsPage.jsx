@@ -6,6 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import { emptyAllergens } from '../../lib/allergens'
+import { sameName, sameSupplierCode } from '../../lib/products'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -215,6 +216,47 @@ export default function ProductsPage() {
     }
     setErrors({})
     setPriceErrors({})
+
+    // Anything that looks like the same thing twice, asked about first.
+    //
+    // A duplicate is a worse mistake than a missing price: two rows called
+    // Pineapple get counted separately on a stock take and neither total is
+    // right. It still asks rather than refuses, because two things really can
+    // share a name and it is not the app's place to say otherwise.
+    const clashes = []
+    if (nameClash) {
+      clashes.push(`a product called ${nameClash.name}`)
+    }
+
+    // The codes this screen holds are only the preferred ones, so the real
+    // check is a question to the database. One query, and only when a code was
+    // actually typed.
+    if (wantsPrice && priceForm.supplier_code?.trim()) {
+      const { data: codeRows } = await supabase
+        .from('product_supplier_prices')
+        .select('product_id')
+        .eq('supplier_id', priceForm.supplier_id)
+        .eq('supplier_code', priceForm.supplier_code.trim())
+        .limit(1)
+
+      if (codeRows?.length > 0) {
+        const owner = products.find(p => p.id === codeRows[0].product_id)
+        clashes.push(`the code ${priceForm.supplier_code.trim()} on ${owner?.name || 'another product'}`)
+      }
+    }
+
+    if (clashes.length > 0) {
+      const ok = await confirm({
+        title: 'This may already be here',
+        message: `There is already ${clashes.join(', and ')}. `
+          + 'Adding it again means two rows for one thing, which get counted separately '
+          + 'on a stock take and priced separately on a dish.',
+        confirmLabel: 'Add it anyway',
+        cancelLabel: 'Go back',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
 
     // Asked once, and only when adding. A product with no supplier and no
     // allergens is a product somebody has to come back to twice, and the two
@@ -475,6 +517,24 @@ export default function ProductsPage() {
     return String(a).localeCompare(String(b))
   }
 
+  // Said while it is being typed. The products are all loaded, so the name is
+  // free to check; the codes are only the preferred ones this screen holds, so
+  // this catches most of them and the save catches the rest.
+  const nameClash = showForm
+    ? sameName(products, formData.name, editingProduct?.id)
+    : null
+
+  const codeClash = showForm && !editingProduct
+    ? sameSupplierCode(prices, priceForm.supplier_id, priceForm.supplier_code)
+    : null
+
+  const priceWarnings = codeClash
+    ? {
+      supplier_code: `${products.find(p => p.id === codeClash.product_id)?.name || 'Another product'} `
+        + 'already has this code with this supplier.',
+    }
+    : {}
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
@@ -555,6 +615,8 @@ export default function ProductsPage() {
             priceForm={priceForm}
             onPriceChange={handlePriceChange}
             priceErrors={priceErrors}
+            priceWarnings={priceWarnings}
+            nameClash={nameClash}
             suppliers={suppliers}
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
@@ -687,6 +749,7 @@ export default function ProductsPage() {
                       onCancel={resetForm}
                       submitLabel="Save Changes"
                       errors={errors}
+                      nameClash={nameClash}
                     />
                   </div>
                 )}
@@ -811,6 +874,7 @@ export default function ProductsPage() {
               onCancel={resetForm}
               submitLabel="Save changes"
               errors={errors}
+              nameClash={nameClash}
             />
           </div>
         </Modal>

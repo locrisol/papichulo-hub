@@ -23,7 +23,11 @@ import { perUnitPreview } from '../lib/productPrice'
 // product and saying who you buy it from used to be three trips, and one of
 // them was hunting the product back down in a list. Two copies of these boxes
 // would have drifted the first time either was touched.
-export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }) {
+// warnings read the same keys as errors and say the same kind of thing, only
+// in amber and without stopping the save. A supplier code somebody has used
+// before is usually the same product typed twice and occasionally two things
+// that really do share a code, so it is said rather than refused.
+export function PriceFields({ formData, onChange, errors = {}, warnings = {}, suppliers, unit }) {
   const isCase = formData.purchase_type === 'case'
   const previewPerUnit = perUnitPreview(formData)
 
@@ -79,6 +83,9 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
           placeholder="e.g. CHKN-BRS-5KG"
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
+        {warnings.supplier_code && (
+          <p className="text-xs text-amber-700 mt-1">{warnings.supplier_code}</p>
+        )}
       </div>
 
       {isCase ? (

@@ -22,7 +22,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors,
-  priceForm, onPriceChange, priceErrors, suppliers,
+  priceForm, onPriceChange, priceErrors, priceWarnings, suppliers, nameClash,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
 }) {
@@ -43,6 +43,17 @@ export default function ProductForm({
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
           {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
+          {/* Said while it is being typed rather than after it is saved. Two
+              products with the same name is nearly always one added twice, and
+              the cost of finding out later is a stock take counted against two
+              rows. It warns and does not refuse: it is not the app's place to
+              say two things cannot share a name. */}
+          {!errors.name && nameClash && (
+            <p className="text-xs text-amber-700 mt-1">
+              There is already a product called {nameClash.name}
+              {nameClash.section ? ` in ${nameClash.section}` : ''}.
+            </p>
+          )}
         </div>
 
         <div>
@@ -183,6 +194,7 @@ export default function ProductForm({
                 formData={priceForm}
                 onChange={onPriceChange}
                 errors={priceErrors}
+                warnings={priceWarnings}
                 suppliers={suppliers}
                 unit={formData.unit}
               />
