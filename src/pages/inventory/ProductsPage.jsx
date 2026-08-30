@@ -33,6 +33,16 @@ function extraPlaceBadge(isActive) {
     : 'bg-white text-gray-400 border border-gray-200'
 }
 
+// What kind of thing a product is, as one badge. Written once because the table
+// and the cards both say it, and a label that reads Drink in one place and
+// Purchased in the other is worse than not saying it at all.
+function typeBadge(p) {
+  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: 'bg-gray-100 text-gray-400' }
+  if (p.is_mix) return { label: 'MIX', cls: 'bg-amber-500 text-white' }
+  if (p.category === 'drink') return { label: 'Drink', cls: 'bg-sky-100 text-sky-800' }
+  return { label: 'Purchased', cls: 'bg-green-100 text-green-800' }
+}
+
 const COLUMNS = [
   { key: 'name', label: 'Name', sortable: true },
   { key: 'section', label: 'Section', width: 'w-48' },
@@ -77,6 +87,7 @@ export default function ProductsPage() {
     name: '',
     section: 'Freezer',
     also_in: [],
+    category: 'ingredient',
     unit: 'KG',
     is_mix: false,
     weight_loss_pct: 0,
@@ -367,8 +378,8 @@ export default function ProductsPage() {
 
   function resetForm() {
     setFormData({
-      name: '', section: 'Freezer', also_in: [], unit: 'KG', is_mix: false,
-      weight_loss_pct: 0, notes: '', is_active: true,
+      name: '', section: 'Freezer', also_in: [], category: 'ingredient', unit: 'KG',
+      is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
     setAllergens(emptyAllergens())
@@ -385,6 +396,7 @@ export default function ProductsPage() {
       name: product.name,
       section: product.section,
       also_in: product.also_in || [],
+      category: product.category || 'ingredient',
       unit: product.unit,
       is_mix: product.is_mix,
       weight_loss_pct: product.weight_loss_pct || 0,
@@ -672,12 +684,8 @@ export default function ProductsPage() {
                   <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                     {p.name}
                   </p>
-                  <span className={`${badge} flex-shrink-0 ${!p.is_active
-                    ? 'bg-gray-100 text-gray-400'
-                    : p.is_mix
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-green-100 text-green-800'}`}>
-                    {p.is_mix ? 'MIX' : 'Purchased'}
+                  <span className={`${badge} flex-shrink-0 ${typeBadge(p).cls}`}>
+                    {typeBadge(p).label}
                   </span>
                 </div>
 
@@ -810,14 +818,8 @@ export default function ProductsPage() {
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
-                        <span className={`${badge} ${
-                          !p.is_active
-                            ? 'bg-gray-100 text-gray-400'
-                            : p.is_mix
-                              ? 'bg-amber-500 text-white'
-                              : 'bg-green-100 text-green-800'
-                        }`}>
-                          {p.is_mix ? 'MIX' : 'Purchased'}
+                        <span className={`${badge} ${typeBadge(p).cls}`}>
+                          {typeBadge(p).label}
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>

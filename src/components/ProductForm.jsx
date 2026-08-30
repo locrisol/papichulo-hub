@@ -21,6 +21,15 @@ import { nameClashMessage } from '../lib/products'
 // products.also_in, so anything added here has to go in a migration first.
 const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
+// What kind of thing it is, as opposed to where it is kept.
+//
+// The only thing it changes is whether the product can be an ingredient in
+// something we make. A drink is counted on a stock take like anything else.
+const CATEGORIES = [
+  { value: 'ingredient', label: 'Ingredient' },
+  { value: 'drink', label: 'Drink' },
+]
+
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors,
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
@@ -63,6 +72,21 @@ export default function ProductForm({
           >
             {SECTIONS.map(section => <option key={section}>{section}</option>)}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Kind</label>
+          <select
+            value={formData.category || 'ingredient'}
+            onChange={e => onChange('category', e.target.value)}
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+          >
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <p className="text-xs text-gray-400 mt-1">
+            A drink is counted on a stock take the same as anything else, but is never
+            offered as an ingredient in a MIX.
+          </p>
         </div>
 
         <div>
