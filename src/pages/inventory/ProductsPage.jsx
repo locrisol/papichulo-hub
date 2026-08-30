@@ -177,7 +177,10 @@ export default function ProductsPage() {
   function handleNoAllergens() {
     setAllergens(emptyAllergens())
     setAllergensTouched(true)
-    setOpenExtra(null)
+    // Only its own section, and only if that was the one open. It used to shut
+    // whatever was open, so answering the allergens from the bar closed the
+    // supplier section you were halfway through filling in.
+    setOpenExtra(current => (current === 'allergens' ? null : current))
   }
 
   function validate() {
