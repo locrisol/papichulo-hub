@@ -151,6 +151,24 @@ export default function ProductForm({
         </label>
       </div>
 
+      {/* The other thing a product can be. It changes one thing only, which is
+          that a drink is never offered as an ingredient in a MIX: every can in
+          the fridge used to sit in that list and they are never the answer.
+          It is counted on a stock take like everything else. */}
+      <div className="mb-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={(formData.category || 'ingredient') === 'drink'}
+            onChange={e => onChange('category', e.target.checked ? 'drink' : 'ingredient')}
+            className="w-4 h-4 accent-accent"
+          />
+          <span className="text-sm text-gray-700">
+            This is a drink (counted as normal, never an ingredient in a MIX)
+          </span>
+        </label>
+      </div>
+
       <div className="mb-4">
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
         <textarea
@@ -171,24 +189,6 @@ export default function ProductForm({
           a section and nothing else, and a form that opens with the fourteen
           allergens showing is a wall. Both stay optional: leave them alone and
           nothing is written, and the save asks once before letting you. */}
-      {/* The other thing a product can be. It changes one thing only, which is
-          that a drink is never offered as an ingredient in a MIX: every can in
-          the fridge used to sit in that list and they are never the answer.
-          It is counted on a stock take like everything else. */}
-      <div className="mb-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={(formData.category || 'ingredient') === 'drink'}
-            onChange={e => onChange('category', e.target.checked ? 'drink' : 'ingredient')}
-            className="w-4 h-4 accent-accent"
-          />
-          <span className="text-sm text-gray-700">
-            This is a drink (counted as normal, never an ingredient in a MIX)
-          </span>
-        </label>
-      </div>
-
       {showExtras && (
         <div className="mb-4">
           <ModalSectionBar
