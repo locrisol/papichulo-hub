@@ -22,24 +22,86 @@
 // The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
 // why the list is here rather than in a settings screen.
 //
+// also is the other names the same allergen goes by on a supplier's spec
+// sheet. It is not decoration: a sheet says SOY where the law says Soybeans,
+// and Wheat where the law says Gluten, and somebody reading one at the back
+// door should not have to know that the two are the same thing. Peanuts and
+// Nuts are the pair that catches people, so both of them say so.
+//
 // The labelled version and the three states used to live inside the allergen
 // page. Two screens ask these questions now, the page and the product form, so
 // they moved here rather than being written out twice.
 export const ALLERGENS = [
-  { key: 'gluten', label: 'Gluten' },
-  { key: 'crustaceans', label: 'Crustaceans' },
-  { key: 'eggs', label: 'Eggs' },
-  { key: 'fish', label: 'Fish' },
-  { key: 'peanuts', label: 'Peanuts' },
-  { key: 'soybeans', label: 'Soybeans' },
-  { key: 'milk', label: 'Milk' },
-  { key: 'nuts', label: 'Nuts' },
-  { key: 'celery', label: 'Celery' },
-  { key: 'mustard', label: 'Mustard' },
-  { key: 'sesame', label: 'Sesame' },
-  { key: 'sulphites', label: 'Sulphites' },
-  { key: 'lupin', label: 'Lupin' },
-  { key: 'molluscs', label: 'Molluscs' },
+  {
+    key: 'gluten',
+    label: 'Gluten',
+    also: 'Wheat, rye, barley, oats, spelt, kamut, semolina, couscous',
+  },
+  {
+    key: 'crustaceans',
+    label: 'Crustaceans',
+    also: 'Prawn, shrimp, crab, lobster, langoustine, crayfish',
+  },
+  {
+    key: 'eggs',
+    label: 'Eggs',
+    also: 'Albumen, mayonnaise, meringue',
+  },
+  {
+    key: 'fish',
+    label: 'Fish',
+    also: 'Anchovy, fish sauce, Worcestershire sauce',
+  },
+  {
+    key: 'peanuts',
+    label: 'Peanuts',
+    also: 'Groundnut, monkey nut, arachis oil. A legume, so it is not covered by Nuts',
+  },
+  {
+    key: 'soybeans',
+    label: 'Soybeans',
+    also: 'Soy, soya, soja, edamame, tofu, miso, soy lecithin (E322)',
+  },
+  {
+    key: 'milk',
+    label: 'Milk',
+    also: 'Dairy, lactose, casein, whey, butter, cheese, cream',
+  },
+  {
+    key: 'nuts',
+    label: 'Nuts',
+    also: 'Tree nuts only: almond, hazelnut, walnut, cashew, pecan, pistachio, macadamia, Brazil',
+  },
+  {
+    key: 'celery',
+    label: 'Celery',
+    also: 'Celeriac, celery salt, celery seed',
+  },
+  {
+    key: 'mustard',
+    label: 'Mustard',
+    also: 'Mustard seed, mustard powder, mustard oil',
+  },
+  {
+    key: 'sesame',
+    label: 'Sesame',
+    also: 'Sesame seed, tahini, benne, gomasio',
+  },
+  {
+    key: 'sulphites',
+    label: 'Sulphites',
+    also: 'Sulphur dioxide, E220 to E228. Only counts above 10mg per kg or litre',
+  },
+  {
+    key: 'lupin',
+    label: 'Lupin',
+    also: 'Lupin flour, lupin seed, lupini beans',
+  },
+  {
+    key: 'molluscs',
+    label: 'Molluscs',
+    also: 'Mussel, oyster, clam, scallop, squid, octopus, snail',
+  },
 ]
 
 export const ALLERGEN_STATES = [

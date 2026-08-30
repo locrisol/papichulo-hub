@@ -20,8 +20,16 @@ export default function AllergenPicker({ values, onChange, className = '' }) {
                         i < ALLERGENS.length - 1 ? 'border-b border-border' : ''
                     } ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                 >
-                    <p className="text-sm font-medium text-gray-900">{allergen.label}</p>
-                    <div className="flex gap-2">
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{allergen.label}</p>
+                        {/* What the same allergen is called on a supplier's
+                            sheet. The law's name and the label on the box are
+                            rarely the same word. */}
+                        {allergen.also && (
+                            <p className="text-xs text-muted leading-snug mt-0.5">{allergen.also}</p>
+                        )}
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
                         {ALLERGEN_STATES.map(state => {
                             const isActive = values[allergen.key] === state.value
                             return (
