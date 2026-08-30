@@ -10,6 +10,7 @@ import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
 } from '../../lib/products'
 import SearchBox from '../../components/SearchBox'
+import { sectionColour, productInk, DRINK_COLOUR } from '../../lib/sections'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -31,10 +32,22 @@ import { tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '
 // Outlined rather than filled, so the section it actually is stays the solid
 // badge and the rest read as "you will also find it here". Two solid blue
 // badges side by side would leave nobody able to say which was which.
-function extraPlaceBadge(isActive) {
-  return isActive
-    ? 'bg-white text-blue-700 border border-blue-300'
-    : 'bg-white text-gray-400 border border-gray-200'
+// The section a product belongs to, and the other places it is kept, each in
+// its own colour rather than all of them in one blue. A deactivated product
+// goes grey whatever section it is in, because that is the thing worth reading
+// about it first.
+function sectionBadge(section, isActive) {
+  if (!isActive) return { className: 'bg-gray-100 text-gray-400 border border-gray-200' }
+  const colour = sectionColour(section)
+  return { className: `${colour.bg} ${colour.text} border ${colour.border}` }
+}
+
+function extraPlaceBadge(section, isActive) {
+  if (!isActive) return { className: 'bg-white text-gray-400 border border-gray-200' }
+  return {
+    className: 'bg-white border',
+    style: { color: sectionColour(section).ink, borderColor: sectionColour(section).ink },
+  }
 }
 
 // What goes into a MIX, held on the form until the product exists to hang it
@@ -45,14 +58,44 @@ const EMPTY_RECIPE = {
   draft: { ingredient_product_id: '', quantity: '' },
 }
 
-// One of the filter chips above the table. Written once because there are two
-// rows of them now and they have to look identical, or the second row reads as
-// a different kind of control rather than as another question.
-function chipButton(isOn) {
-  return 'px-3 py-1.5 rounded-full text-xs font-medium transition-colors '
-    + (isOn
-      ? 'bg-accent text-white'
-      : 'bg-white border border-border text-gray-600 hover:bg-gray-50')
+// One of the filter chips above the table.
+//
+// Each one wears the colour of what it filters to, the same colour that section
+// has on the stock take, in the dropdowns and down the side of its rows below.
+// Picking Freezer and then looking for blue rows is one thought instead of two.
+//
+// All has no colour of its own, so it keeps the app's accent. Written once
+// because there are two rows of them and they have to be the same control asked
+// twice, not two kinds of control.
+function FilterChip({ label, isOn, ink, onClick }) {
+  const base = 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors '
+
+  if (!ink) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={base + (isOn
+          ? 'bg-accent border-accent text-white'
+          : 'bg-white border-border text-gray-600 hover:bg-gray-50')}
+      >
+        {label}
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={base + (isOn ? 'text-white' : 'bg-white hover:bg-gray-50')}
+      style={isOn
+        ? { backgroundColor: ink, borderColor: ink }
+        : { color: ink, borderColor: ink }}
+    >
+      {label}
+    </button>
+  )
 }
 
 // What kind of thing a product is, as one badge. Written once because the table
@@ -738,25 +781,25 @@ export default function ProductsPage() {
           leave somebody wondering why picking Drinks turned off Freezer. */}
       <div className="flex gap-2 mb-2 flex-wrap">
         {sections.map(section => (
-          <button
+          <FilterChip
             key={section}
+            label={section}
+            isOn={activeSection === section}
+            ink={section === 'All' ? null : sectionColour(section).ink}
             onClick={() => setActiveSection(section)}
-            className={chipButton(activeSection === section)}
-          >
-            {section}
-          </button>
+          />
         ))}
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {kinds.map(kind => (
-          <button
+          <FilterChip
             key={kind}
+            label={kind}
+            isOn={activeKind === kind}
+            ink={kind === 'Drinks' ? DRINK_COLOUR.ink : null}
             onClick={() => setActiveKind(kind)}
-            className={chipButton(activeKind === kind)}
-          >
-            {kind}
-          </button>
+          />
         ))}
       </div>
 
@@ -781,6 +824,10 @@ export default function ProductsPage() {
             return (
               <div
                 key={p.id}
+                // A line down the left in the colour of what it is. The card
+                // keeps its own background, so a deactivated one still reads
+                // as deactivated first and as a freezer product second.
+                style={{ borderLeftWidth: '4px', borderLeftColor: productInk(p) }}
                 className={`rounded-xl border p-4 ${!p.is_active
                   ? 'bg-red-100 border-red-200'
                   : p.is_mix
@@ -797,11 +844,15 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className={`${badge} ${p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'}`}>
+                  <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
                     {p.section}
                   </span>
                   {(p.also_in || []).map(place => (
-                    <span key={place} className={`${badge} ${extraPlaceBadge(p.is_active)}`}>
+                    <span
+                      key={place}
+                      className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
+                      style={extraPlaceBadge(place, p.is_active).style}
+                    >
                       {place}
                     </span>
                   ))}
@@ -903,21 +954,26 @@ export default function ProductsPage() {
                         from a recipe instead of a supplier price, so it matters
                         which ones they are. Inactive still wins, because a
                         deactivated product matters more than how it is costed. */}
-                    <tr className={`border-b border-border ${!p.is_active
-                      ? 'bg-red-100'
-                      : p.is_mix
-                        ? 'bg-amber-50'
-                        : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    <tr
+                      style={{ borderLeftWidth: '4px', borderLeftColor: productInk(p) }}
+                      className={`border-b border-border ${!p.is_active
+                        ? 'bg-red-100'
+                        : p.is_mix
+                          ? 'bg-amber-50'
+                          : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                    >
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
                       <td className="px-4 py-3">
                         <span className="flex flex-wrap gap-1">
-                          <span className={`${badge} ${
-                            p.is_active ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-400'
-                          }`}>
+                          <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
                             {p.section}
                           </span>
                           {(p.also_in || []).map(place => (
-                            <span key={place} className={`${badge} ${extraPlaceBadge(p.is_active)}`}>
+                            <span
+                              key={place}
+                              className={`${badge} ${extraPlaceBadge(place, p.is_active).className}`}
+                              style={extraPlaceBadge(place, p.is_active).style}
+                            >
                               {place}
                             </span>
                           ))}
