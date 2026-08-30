@@ -104,3 +104,36 @@ export function resolveUnitCost(product, allProducts, allRecipeLines, preferredP
   const perUnit = Number(price.price_per_unit)
   return isNaN(perUnit) ? null : perUnit
 }
+
+// What one portion of a menu item costs to make.
+//
+// The sum of its components, and null the moment any one of them cannot be
+// priced, because a partial total looks exactly like a real one and would be
+// read as a margin.
+//
+// A component marked no_quantity is skipped rather than treated as a gap. It is
+// the oil everything is fried in: used, not measured, no honest number for how
+// much is in one portion. Its allergens still count, which is handled where
+// allergens are worked out, but it adds nothing here and it must not blank the
+// total, or every fried dish on the menu would lose its cost.
+//
+// Written once because two screens ask, the menu item and the list of them, and
+// the first time this was in two places one of them broke on the very first
+// component that had no quantity.
+export function menuItemCost(components, allProducts, allRecipeLines, prices) {
+  if (!components || components.length === 0) return null
+
+  let total = 0
+  for (const line of components) {
+    if (line.no_quantity) continue
+
+    const product = (allProducts || []).find(p => p.id === line.product_id)
+    if (!product) return null
+
+    const result = calculateMixCost(product, allProducts, allRecipeLines, prices)
+    if (result.cost === null) return null
+
+    total += parseFloat(line.quantity) * result.cost
+  }
+  return total
+}

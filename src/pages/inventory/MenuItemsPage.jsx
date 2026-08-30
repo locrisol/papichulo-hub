@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { useConfirm } from '../../context/ConfirmContext'
-import { calculateMixCost } from '../../lib/mixCost'
+import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { friendlyError } from '../../lib/errors'
@@ -183,17 +183,7 @@ export default function MenuItemsPage() {
   }
 
   function getItemCost(item) {
-    const lines = getItemComponents(item.id)
-    if (lines.length === 0) return null
-    let total = 0
-    for (const line of lines) {
-      const ingredient = products.find(p => p.id === line.product_id)
-      if (!ingredient) return null
-      const result = calculateMixCost(ingredient, products, recipeLines, prices)
-      if (result.cost === null) return null
-      total += parseFloat(line.quantity) * result.cost
-    }
-    return total
+    return menuItemCost(getItemComponents(item.id), products, recipeLines, prices)
   }
 
   function getItemAllergens(item) {

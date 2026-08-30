@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost } from './mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost } from './mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 
@@ -125,5 +125,44 @@ describe('resolveUnitCost', () => {
   it('returns null for a MIX that cannot be fully costed', () => {
     const pricesNoLime = preferredPrices.filter(p => p.product_id !== 'p-lime')
     expect(resolveUnitCost(limeCrema, allProducts, allRecipeLines, pricesNoLime)).toBeNull()
+  })
+})
+
+describe('menuItemCost', () => {
+  const products = [
+    { id: 'chips', name: 'Chips', unit: 'KG' },
+    { id: 'oil', name: 'Fryer oil', unit: 'Litre' },
+  ]
+  const prices = [
+    { product_id: 'chips', price_per_unit: 2 },
+    { product_id: 'oil', price_per_unit: 3 },
+  ]
+
+  it('adds up what is measured', () => {
+    const components = [{ product_id: 'chips', quantity: '0.2' }]
+    expect(menuItemCost(components, products, [], prices)).toBeCloseTo(0.4)
+  })
+
+  it('skips something used but not measured', () => {
+    // The oil everything is fried in. Its allergens count elsewhere; here it
+    // adds nothing, and it must not blank the total.
+    const components = [
+      { product_id: 'chips', quantity: '0.2' },
+      { product_id: 'oil', quantity: null, no_quantity: true },
+    ]
+    expect(menuItemCost(components, products, [], prices)).toBeCloseTo(0.4)
+  })
+
+  it('still gives up when something real cannot be priced', () => {
+    const components = [
+      { product_id: 'chips', quantity: '0.2' },
+      { product_id: 'ghost', quantity: '1' },
+    ]
+    expect(menuItemCost(components, products, [], prices)).toBe(null)
+  })
+
+  it('has nothing to add up on an empty item', () => {
+    expect(menuItemCost([], products, [], prices)).toBe(null)
+    expect(menuItemCost(null, products, [], prices)).toBe(null)
   })
 })

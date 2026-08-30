@@ -14,7 +14,7 @@ import { numberField } from '../lib/numberInput'
 // It lives on its own because two screens ask for a recipe quantity now, the
 // recipe page and the product form, and a gram on one that is a kilo on the
 // other is the kind of difference nobody notices until a dish is costed wrong.
-export default function QuantityInUnit({ value, onChange, unit, className = '' }) {
+export default function QuantityInUnit({ value, onChange, unit, disabled = false, className = '' }) {
     const canSplit = unit === 'KG' || unit === 'Litre'
     const [displayUnit, setDisplayUnit] = useState(unit || 'unit')
 
@@ -46,14 +46,16 @@ export default function QuantityInUnit({ value, onChange, unit, className = '' }
         <div className={`flex gap-2 ${className}`}>
             <input
                 {...numberField({ value: shown(), onChange: typed })}
-                className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                disabled={disabled}
+                className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400"
             />
             {canSplit ? (
                 <select
                     value={displayUnit}
                     onChange={e => setDisplayUnit(e.target.value)}
                     aria-label="Unit"
-                    className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+                    disabled={disabled}
+                    className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white disabled:bg-gray-100 disabled:text-gray-400"
                 >
                     {unit === 'KG' ? (
                         <>
