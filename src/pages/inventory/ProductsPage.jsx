@@ -195,6 +195,16 @@ export default function ProductsPage() {
   }
 
   function handleFieldChange(field, value) {
+    // Ticking drink puts the unit on Units, because a can is a can and almost
+    // nothing behind the bar is weighed. It is a default and not a rule: the
+    // unit is still a box you can change, and the few that are poured stay
+    // Litre by changing it back. Unticking leaves whatever is there, since by
+    // then it may have been set on purpose.
+    if (field === 'category' && value === 'drink') {
+      setFormData({ ...formData, category: value, unit: 'Units' })
+      return
+    }
+
     setFormData({ ...formData, [field]: value })
   }
 
