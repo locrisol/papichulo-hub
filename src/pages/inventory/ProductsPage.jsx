@@ -50,6 +50,7 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState({
     name: '',
     section: 'Freezer',
+    also_in: [],
     unit: 'KG',
     is_mix: false,
     weight_loss_pct: 0,
@@ -165,6 +166,10 @@ export default function ProductsPage() {
     const payload = {
       ...formData,
       weight_loss_pct: parseFloat(formData.weight_loss_pct),
+      // Somewhere it is already kept is not somewhere it is also kept. The
+      // section can be changed after the boxes are ticked, so this is cleared
+      // on the way out rather than trusted on the way in.
+      also_in: (formData.also_in || []).filter(place => place !== formData.section),
     }
 
     if (editingProduct) {
@@ -186,7 +191,10 @@ export default function ProductsPage() {
   }
 
   function resetForm() {
-    setFormData({ name: '', section: 'Freezer', unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true })
+    setFormData({
+      name: '', section: 'Freezer', also_in: [], unit: 'KG', is_mix: false,
+      weight_loss_pct: 0, notes: '', is_active: true,
+    })
     setEditingProduct(null)
     setShowForm(false)
     setErrors({})
@@ -196,6 +204,7 @@ export default function ProductsPage() {
     setFormData({
       name: product.name,
       section: product.section,
+      also_in: product.also_in || [],
       unit: product.unit,
       is_mix: product.is_mix,
       weight_loss_pct: product.weight_loss_pct || 0,
