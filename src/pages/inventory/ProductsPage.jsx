@@ -169,6 +169,7 @@ export default function ProductsPage() {
   }
 
   async function fetchPrices() {
+    if (!activeRestaurant) return
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
@@ -370,9 +371,21 @@ export default function ProductsPage() {
       // which is its own fetch. Refetching the products alone left a product
       // that had just been given a price showing as having none until the page
       // was reloaded, which read as the price not having saved.
+      // Everything the catalogue reads, not only the products.
+      //
+      // The cost and the supplier on a row come out of prices, and whether a
+      // MIX is complete comes out of its recipe lines, and both are their own
+      // fetch. Refetching the products alone left a product that had just been
+      // given a price showing as having none, and then a MIX that had just been
+      // given a recipe showing as incomplete, until the page was reloaded.
+      //
+      // The same bug twice, so it stops picking and refetches the three. They
+      // are small queries and this runs once, on a save that already did more
+      // work than this.
       const refresh = () => {
         fetchProducts()
-        if (wantsPrice) fetchPrices()
+        fetchPrices()
+        fetchRecipeLines()
       }
 
       // The first price on a product is the preferred one, since it is the
