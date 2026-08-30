@@ -29,6 +29,24 @@ function sectionRank(section) {
     return i === -1 ? SECTION_ORDER.length : i
 }
 
+// Products filed under their section headings, in the order the store is
+// walked. A heading with nothing under it is dropped rather than left as an
+// empty bar, which matters once the list can be searched.
+function group(list) {
+    const grouped = {}
+    for (const product of list) {
+        const section = product.section || 'Other'
+        if (!grouped[section]) grouped[section] = []
+        grouped[section].push(product)
+    }
+    return Object.entries(grouped)
+        .map(([section, items]) => ({
+            section,
+            items: items.sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
+}
+
 export default function StockTakeCountPage() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -46,6 +64,7 @@ export default function StockTakeCountPage() {
     const [draftCounts, setDraftCounts] = useState({})
     const [draftLocation, setDraftLocation] = useState('')
     const [savingLine, setSavingLine] = useState(false)
+    const [search, setSearch] = useState('')
     const [showUncountedOnly, setShowUncountedOnly] = useState(false)
     const [filterSnapshot, setFilterSnapshot] = useState(null)
     const [formatsByProductId, setFormatsByProductId] = useState({})
@@ -298,26 +317,25 @@ export default function StockTakeCountPage() {
         return { total, breakdown, hasAny }
     }
 
+    // Two things narrow the list. The uncounted filter takes a snapshot when
+    // it goes on, so a product does not vanish from under you the moment you
+    // count it. The search is live and does the opposite job: you are holding a
+    // box and you want that one product, not the hundred either side of it.
     const sections = useMemo(() => {
-        // When the uncounted filter is on, show only products that were
-        // uncounted at the moment the filter was switched on (sticky snapshot).
-        const visibleProducts = showUncountedOnly && filterSnapshot
+        const term = search.trim().toLowerCase()
+        let visible = showUncountedOnly && filterSnapshot
             ? products.filter(p => filterSnapshot.has(p.id))
             : products
-
-        const grouped = {}
-        for (const product of visibleProducts) {
-            const section = product.section || 'Other'
-            if (!grouped[section]) grouped[section] = []
-            grouped[section].push(product)
+        if (term) {
+            visible = visible.filter(p => (p.name || '').toLowerCase().includes(term))
         }
-        return Object.entries(grouped)
-            .map(([section, items]) => ({
-                section,
-                items: items.sort((a, b) => a.name.localeCompare(b.name)),
-            }))
-            .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-    }, [products, showUncountedOnly, filterSnapshot])
+        return group(visible)
+    }, [products, search, showUncountedOnly, filterSnapshot])
+
+    // The value card at the top is about the whole count and not about what is
+    // on screen. Searching for one product should not make it look as though
+    // the freezer is worth nothing.
+    const allSections = useMemo(() => group(products), [products])
 
     const countedProductIds = useMemo(() => {
         return new Set(lines.map(l => l.product_id))
@@ -409,7 +427,39 @@ export default function StockTakeCountPage() {
                     )}
                 </div>
                 {!isClosed && (
-                    <div className="pb-2 flex items-center gap-2">
+                    <div className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                        {/* Its own line on a phone and beside the filter on
+                            anything wider. You are holding a box in one hand
+                            and the phone in the other, so it is a full width
+                            target rather than something tucked in a corner. */}
+                        <div className="relative flex-1 min-w-0">
+                            <svg
+                                className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+                            </svg>
+                            <input
+                                type="search"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Find a product"
+                                aria-label="Find a product"
+                                className="w-full h-11 border border-border rounded-lg pl-9 pr-9 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearch('')}
+                                    aria-label="Clear the search"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
                         <button
                             type="button"
                             onClick={toggleUncountedFilter}
@@ -424,7 +474,7 @@ export default function StockTakeCountPage() {
                             {showUncountedOnly ? 'Showing uncounted' : 'Show uncounted only'}
                         </button>
                         {showUncountedOnly && filterSnapshot && (
-                            <span className="text-xs text-muted">
+                            <span className="text-xs text-muted whitespace-nowrap">
                                 {filterSnapshot.size} to count
                             </span>
                         )}
@@ -448,7 +498,7 @@ export default function StockTakeCountPage() {
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>
                             <div className="space-y-1.5">
-                                {sections.map(({ section, items }) => {
+                                {allSections.map(({ section, items }) => {
                                     const sectionValue = items.reduce((s, p) => s + getProductValue(p.id), 0)
                                     if (sectionValue === 0) return null
                                     const colour = sectionColour(section)
@@ -470,6 +520,14 @@ export default function StockTakeCountPage() {
                     <div className="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
                         This stock take is closed. Counts are read-only.
                     </div>
+                )}
+
+                {sections.length === 0 && (
+                    <p className="text-sm text-muted pt-6">
+                        {search.trim()
+                            ? `Nothing matching "${search.trim()}".`
+                            : 'Nothing to count.'}
+                    </p>
                 )}
 
                 {sections.map(({ section, items }) => {
