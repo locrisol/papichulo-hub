@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { sectionColour, sectionRank } from '../../lib/sections'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -24,18 +25,6 @@ import { card } from '../../lib/controlStyles'
 // This is also where the PDF comes from, which is the format the owner is used
 // to seeing.
 
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-const SECTION_COLOURS = {
-  'Freezer': { text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600' },
-  'Cold Room': { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600' },
-  'Dry': { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600' },
-  'Packaging': { text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600' },
-  'Cleaning': { text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600' },
-  'Other': { text: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600' },
-}
-function sectionColour(s) { return SECTION_COLOURS[s] || SECTION_COLOURS['Other'] }
-function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
 function fmtDateTime(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })

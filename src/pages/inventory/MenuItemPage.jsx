@@ -5,9 +5,11 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
+import { canBeMenuComponent } from '../../lib/products'
 import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
+import ProductSelect from '../../components/ProductSelect'
 import { numberField } from '../../lib/numberInput'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -282,8 +284,14 @@ export default function MenuItemPage() {
 
   // Available products in the dropdown: all active products except those
   // already added (unless we're editing that specific component).
+  //
+  // Cleaning is left out. Nothing in that cupboard has ever been part of a
+  // dish. Drinks and packaging stay: a can of Coke is a real line on a menu and
+  // a container is a real cost on one, which is where this differs from a
+  // recipe, where the question is only what goes into something we make.
   const availableProducts = products.filter(p => {
     if (editingComponent && editingComponent.product_id === p.id) return true
+    if (!canBeMenuComponent(p)) return false
     return !components.some(c => c.product_id === p.id)
   })
 
@@ -655,19 +663,12 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Component</label>
-          <select
-            ref={productSelectRef}
+          <ProductSelect
+            inputRef={productSelectRef}
             value={formData.product_id}
-            onChange={e => onChange('product_id', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-          >
-            <option value="">Select a product...</option>
-            {availableProducts.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.unit}){p.is_mix ? ' (MIX)' : ''}
-              </option>
-            ))}
-          </select>
+            onChange={v => onChange('product_id', v)}
+            products={availableProducts}
+          />
           {errors.product_id && <p className="text-xs text-red-600 mt-1">{errors.product_id}</p>}
         </div>
 

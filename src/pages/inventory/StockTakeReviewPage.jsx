@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { sectionRank } from '../../lib/sections'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 
@@ -23,13 +24,6 @@ import { card } from '../../lib/controlStyles'
 // A product nobody counted is left with no line at all. It is not written as
 // zero, because zero means somebody looked and there was none, and those two
 // things lead to completely different decisions about ordering.
-
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-function sectionRank(section) {
-  const i = SECTION_ORDER.indexOf(section)
-  return i === -1 ? SECTION_ORDER.length : i
-}
 
 export default function StockTakeReviewPage() {
   const { id } = useParams()

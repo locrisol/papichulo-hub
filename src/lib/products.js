@@ -65,3 +65,16 @@ export function canBeIngredient(product) {
     if (product.section === 'Cleaning') return false
     return true
 }
+
+// Can this product be part of a menu item?
+//
+// A looser question than the recipe one, and deliberately so. A recipe asks
+// what goes into something we make; a menu item asks what a customer is being
+// charged for, and that includes the can of Coke beside the burrito and the
+// container it goes in.
+//
+// Only cleaning is out. Nothing in that cupboard has ever been part of a dish.
+export function canBeMenuComponent(product) {
+    if (!product) return false
+    return product.section !== 'Cleaning'
+}

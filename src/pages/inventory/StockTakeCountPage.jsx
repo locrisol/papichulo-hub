@@ -6,28 +6,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
-
-// Section display order. Products whose section isn't in this list sort last.
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-// Section colour theming.
-const SECTION_COLOURS = {
-    'Freezer': { text: 'text-blue-700', bar: 'bg-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600', ring: 'ring-blue-600' },
-    'Cold Room': { text: 'text-green-700', bar: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600', ring: 'ring-green-600' },
-    'Dry': { text: 'text-amber-700', bar: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600', ring: 'ring-amber-600' },
-    'Packaging': { text: 'text-red-700', bar: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600', ring: 'ring-red-600' },
-    'Cleaning': { text: 'text-purple-700', bar: 'bg-purple-500', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600', ring: 'ring-purple-600' },
-    'Other': { text: 'text-gray-700', bar: 'bg-gray-400', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600', ring: 'ring-gray-600' },
-}
-
-function sectionColour(section) {
-    return SECTION_COLOURS[section] || SECTION_COLOURS['Other']
-}
-
-function sectionRank(section) {
-    const i = SECTION_ORDER.indexOf(section)
-    return i === -1 ? SECTION_ORDER.length : i
-}
+import { sectionColour, sectionRank } from '../../lib/sections'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
