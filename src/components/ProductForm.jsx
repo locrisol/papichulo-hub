@@ -205,7 +205,7 @@ export default function ProductForm({
             })()}
             action={!allergensAnswered && declaredCount(allergens) === 0 && (
               <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
-                No allergens
+                Declare the product has no allergens
               </button>
             )}
             open={openExtra === 'allergens'}
