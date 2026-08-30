@@ -6,6 +6,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
+import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
 
 // One row is one product in one place, and a product can be kept in more than
@@ -440,34 +441,12 @@ export default function StockTakeCountPage() {
                             anything wider. You are holding a box in one hand
                             and the phone in the other, so it is a full width
                             target rather than something tucked in a corner. */}
-                        <div className="relative flex-1 min-w-0">
-                            <svg
-                                className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
-                            </svg>
-                            <input
-                                type="search"
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder="Find a product"
-                                aria-label="Find a product"
-                                className="w-full h-11 border border-border rounded-lg pl-9 pr-9 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
-                            {search && (
-                                <button
-                                    type="button"
-                                    onClick={() => setSearch('')}
-                                    aria-label="Clear the search"
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            )}
-                        </div>
+                        <SearchBox
+                            value={search}
+                            onChange={setSearch}
+                            placeholder="Find a product"
+                            className="flex-1 min-w-0"
+                        />
                         <button
                             type="button"
                             onClick={toggleUncountedFilter}

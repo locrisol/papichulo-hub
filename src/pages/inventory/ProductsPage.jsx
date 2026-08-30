@@ -7,6 +7,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import { emptyAllergens } from '../../lib/allergens'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient } from '../../lib/products'
+import SearchBox from '../../components/SearchBox'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -706,12 +707,10 @@ export default function ProductsPage() {
       )}
 
       <div className="flex gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="Search products..."
+        <SearchBox
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent w-64"
+          onChange={setSearch}
+          placeholder="Search products"
         />
       </div>
 
