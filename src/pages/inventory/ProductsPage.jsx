@@ -916,12 +916,15 @@ export default function ProductsPage() {
           )}
         </div>
 
-        {/* The table scrolls inside itself rather than with the page, which is
-            what lets the heading stay put. It also keeps the search and the
-            filters on screen the whole way down, which is most of the reason
-            anybody scrolls back up. Only on a computer: a phone gets cards, and
-            a card list has no heading to pin. */}
-        <div className={`${card} overflow-auto max-h-[calc(100vh-20rem)] hidden md:block`}>
+        {/* No overflow of its own, on purpose. The heading sticks to whatever
+            is scrolling above it, and any box in between with an overflow set
+            becomes that thing instead, which is how a sticky heading ends up
+            pinned to the top of a table nobody is scrolling.
+
+            So the list stays one long list down the page and the heading rides
+            along with it. Only on a computer: a phone gets cards and a card
+            list has no heading to pin. */}
+        <div className={`${card} hidden md:block`}>
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
                 other striped row, so it did not read as a heading at all. It is
