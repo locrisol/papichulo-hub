@@ -16,7 +16,7 @@ import QuantityInUnit from './QuantityInUnit'
 import { ModalSectionBar, sectionBarAction } from './ModalSection'
 import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
-import { nameClashMessage } from '../lib/products'
+import { nameClashMessage, declaresAllergens } from '../lib/products'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -36,6 +36,9 @@ export default function ProductForm({
   // somebody ticking them, so tagging one here would be a second answer that
   // could disagree with the first.
   const showExtras = extras && !formData.is_mix
+  // Cleaning and packaging still have a supplier, they just have nothing to
+  // declare. So only the allergens go, not the whole block.
+  const showAllergens = showExtras && declaresAllergens(formData)
   const showRecipe = extras && formData.is_mix
   return (
     <form onSubmit={onSubmit}>
@@ -346,7 +349,7 @@ export default function ProductForm({
               without opening the section and setting something, so a bag of
               rice with genuinely no allergens read the same as one nobody had
               looked at. The button says it in one tap from the bar. */}
-          <ModalSectionBar
+          {showAllergens && <ModalSectionBar
             collapsible
             tone="allergens"
             title="Allergens"
@@ -362,8 +365,8 @@ export default function ProductForm({
             )}
             open={openExtra === 'allergens'}
             onToggle={() => onOpenExtra(openExtra === 'allergens' ? null : 'allergens')}
-          />
-          {openExtra === 'allergens' && (
+          />}
+          {showAllergens && openExtra === 'allergens' && (
             <div className="mb-4">
               <p className="text-xs text-gray-400 mb-3">
                 The fourteen the law names. Not Present is the answer for most of them, so

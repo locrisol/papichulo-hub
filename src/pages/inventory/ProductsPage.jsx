@@ -6,7 +6,9 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import { emptyAllergens } from '../../lib/allergens'
-import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient } from '../../lib/products'
+import {
+  sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
+} from '../../lib/products'
 import SearchBox from '../../components/SearchBox'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
@@ -314,7 +316,8 @@ export default function ProductsPage() {
     if (!editingProduct && !formData.is_mix) {
       const missing = []
       if (!wantsPrice) missing.push('a supplier price')
-      if (!allergensTouched) missing.push('allergens')
+      // Nothing to ask about a bottle of bleach or a paper container.
+      if (!allergensTouched && declaresAllergens(formData)) missing.push('allergens')
 
       if (missing.length > 0) {
         const ok = await confirm({
@@ -433,7 +436,9 @@ export default function ProductsPage() {
       // The allergens, if anybody answered them. One row per product, and this
       // is always the first one, so an insert rather than the upsert the
       // allergen page has to do.
-      if (allergensTouched && data) {
+      // Not written for anything that has none to declare, even if the boxes
+      // were ticked before the section was changed to Cleaning.
+      if (allergensTouched && declaresAllergens(formData) && data) {
         const { error: allergenErr } = await supabase
           .from('product_allergens')
           .insert({ product_id: data.id, ...allergens })

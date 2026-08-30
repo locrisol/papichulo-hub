@@ -78,3 +78,21 @@ export function canBeMenuComponent(product) {
     if (!product) return false
     return product.section !== 'Cleaning'
 }
+
+// Sections that hold nothing anybody eats.
+const NOT_FOOD = ['Cleaning', 'Packaging']
+
+// Does this product have allergens worth declaring?
+//
+// A bottle of bleach and a paper container do not. The fourteen are about food
+// and the public page is read by somebody deciding what they can eat, so asking
+// the question about a bin liner is noise, and leaving it unanswered would have
+// the save nagging about it forever.
+//
+// Nothing has to be written for these. A product with no allergen record
+// already derives as Not Present for all fourteen, everywhere it is read, so
+// not asking and answering none come to exactly the same thing.
+export function declaresAllergens(product) {
+    if (!product) return false
+    return !NOT_FOOD.includes(product.section)
+}

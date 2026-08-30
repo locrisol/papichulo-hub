@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient } from './products'
+import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens } from './products'
 
 const PRODUCTS = [
     { id: 'p1', name: 'Pineapple' },
@@ -107,5 +107,24 @@ describe('canBeIngredient', () => {
 
     it('says no to nothing at all', () => {
         expect(canBeIngredient(null)).toBe(false)
+    })
+})
+
+describe('declaresAllergens', () => {
+    it('asks about food', () => {
+        expect(declaresAllergens({ section: 'Cold Room' })).toBe(true)
+        expect(declaresAllergens({ section: 'Freezer' })).toBe(true)
+        expect(declaresAllergens({ section: 'Dry' })).toBe(true)
+    })
+
+    it('does not ask about cleaning or packaging', () => {
+        // Nobody eats a bin liner, and an unanswered question would have the
+        // save nagging about it forever.
+        expect(declaresAllergens({ section: 'Cleaning' })).toBe(false)
+        expect(declaresAllergens({ section: 'Packaging' })).toBe(false)
+    })
+
+    it('says no to nothing at all', () => {
+        expect(declaresAllergens(null)).toBe(false)
     })
 })
