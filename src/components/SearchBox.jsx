@@ -30,7 +30,11 @@ export default function SearchBox({
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
                 aria-label={label || placeholder}
-                className="w-full h-11 bg-white border border-gray-300 rounded-lg shadow-sm pl-9 pr-9 text-sm text-gray-800 transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                // The browser puts its own cross on a search input, so there
+                // were two of them, and the native one only appears on hover
+                // and cannot be styled to match anything. Ours stays, because
+                // it is always visible and is the same size as a thumb.
+                className="w-full h-11 bg-white border border-gray-300 rounded-lg shadow-sm pl-9 pr-9 text-sm text-gray-800 transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
             />
 
             {value && (
