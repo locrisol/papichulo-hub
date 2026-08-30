@@ -165,6 +165,7 @@ export default function MenuItemsPage() {
         message: 'It comes off the menu and off the allergen sheet. Everything already recorded against it stays as it is.',
         confirmLabel: 'Deactivate it',
         tone: 'danger',
+        dangerNote: 'You can put it back at any time.',
       })
       if (!ok) return
     }

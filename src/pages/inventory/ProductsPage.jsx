@@ -433,6 +433,7 @@ export default function ProductsPage() {
         message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new.',
         confirmLabel: 'Deactivate it',
         tone: 'danger',
+        dangerNote: 'You can turn it back on at any time.',
       })
       if (!ok) return
     }
