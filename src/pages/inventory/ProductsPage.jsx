@@ -957,7 +957,11 @@ export default function ProductsPage() {
                     style={i === 0
                       ? { borderLeftWidth: '6px', borderLeftColor: '#182F24' }
                       : undefined}
-                    className={`text-left px-4 py-3 whitespace-nowrap sticky ${STICK_TOP} z-10 bg-sidebar ${col.width || ''}`}
+                    // The corners are rounded on the cells rather than clipped
+                    // by the card. Clipping means an overflow on the card, and
+                    // an overflow on the card is what the heading would stick
+                    // to instead of the page.
+                    className={`text-left px-4 py-3 whitespace-nowrap sticky ${STICK_TOP} z-10 bg-sidebar ${i === 0 ? 'rounded-tl-xl' : ''} ${col.width || ''}`}
                   >
                     {col.sortable ? (
                       <button
@@ -975,13 +979,14 @@ export default function ProductsPage() {
                     )}
                   </th>
                 ))}
-                <th className={`text-left px-4 py-3 sticky ${STICK_TOP} z-10 bg-sidebar ${tableHeadCell}`}>Actions</th>
+                <th className={`text-left px-4 py-3 sticky ${STICK_TOP} z-10 bg-sidebar rounded-tr-xl ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.map((p, i) => {
                 const price = getPreferredPrice(p.id)
                 const mixResult = p.is_mix ? calculateMixCost(p, products, recipeLines, prices) : null
+                const last = i === filteredProducts.length - 1
                 return (
                   <Fragment key={p.id}>
                     {/* MIX rows are yellow the whole way across. They are costed
@@ -989,14 +994,22 @@ export default function ProductsPage() {
                         which ones they are. Inactive still wins, because a
                         deactivated product matters more than how it is costed. */}
                     <tr
-                      style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
-                      className={`border-b border-border ${!p.is_active
+                      className={`${last ? '' : 'border-b border-border'} ${!p.is_active
                         ? 'bg-red-100'
                         : p.is_mix
                           ? 'bg-amber-50'
                           : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                     >
-                      <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>{p.name}</td>
+                      <td
+                        // The line is on the first cell rather than on the row,
+                        // because a row cannot be given a rounded corner and a
+                        // cell can, and on the last row it has to follow the
+                        // card's edge round.
+                        style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
+                        className={`px-4 py-3 font-medium ${last ? 'rounded-bl-xl' : ''} ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}
+                      >
+                        {p.name}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="flex flex-wrap gap-1">
                           <span className={`${badge} ${sectionBadge(p.section, p.is_active).className}`}>
@@ -1032,7 +1045,7 @@ export default function ProductsPage() {
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className={`px-4 py-3 ${last ? 'rounded-br-xl' : ''}`}>
                         <div className="flex flex-wrap gap-2">{rowActions(p)}</div>
                       </td>
                     </tr>
@@ -1042,7 +1055,7 @@ export default function ProductsPage() {
             </tbody>
           </table>
           {filteredProducts.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">
+            <div className="px-4 py-8 text-center text-sm text-gray-500 rounded-b-xl">
               No products found.
             </div>
           )}
