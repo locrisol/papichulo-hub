@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import BackToTop from './BackToTop'
 import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 
 // Sidebar navigation.
@@ -87,6 +88,10 @@ export default function AppLayout({ children }) {
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    // On a computer this is what scrolls, since the sidebar and the header
+    // stay put. On a phone it has no overflow of its own and the window
+    // scrolls instead, so the button watches both.
+    const mainRef = useRef(null)
 
     async function handleSignOut() {
         await supabase.auth.signOut()
@@ -269,9 +274,10 @@ export default function AppLayout({ children }) {
                         </div>
                     )}
                 </header>
-                <main className="flex-1 md:overflow-y-auto p-4 md:p-7">
+                <main ref={mainRef} className="flex-1 md:overflow-y-auto p-4 md:p-7">
                     {children}
                 </main>
+                <BackToTop scroller={mainRef} />
             </div>
         </div>
     )

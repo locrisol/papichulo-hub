@@ -15,7 +15,7 @@ import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, badge, card, rowButton } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -916,7 +916,12 @@ export default function ProductsPage() {
           )}
         </div>
 
-        <div className={`${tableCard} hidden md:block`}>
+        {/* The table scrolls inside itself rather than with the page, which is
+            what lets the heading stay put. It also keeps the search and the
+            filters on screen the whole way down, which is most of the reason
+            anybody scrolls back up. Only on a computer: a phone gets cards, and
+            a card list has no heading to pin. */}
+        <div className={`${card} overflow-auto max-h-[calc(100vh-20rem)] hidden md:block`}>
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
                 other striped row, so it did not read as a heading at all. It is
@@ -926,12 +931,19 @@ export default function ProductsPage() {
                   green. Without it the body rows sit six pixels further in than
                   the heading and the card shows through beside it as a white
                   strip. */}
-              <tr
-                className={tableHeadRow}
-                style={{ borderLeftWidth: '6px', borderLeftColor: '#182F24' }}
-              >
-                {COLUMNS.map(col => (
-                  <th key={col.key} className={`text-left px-4 py-3 whitespace-nowrap ${col.width || ''}`}>
+              <tr className={tableHeadRow}>
+                {COLUMNS.map((col, i) => (
+                  <th
+                    key={col.key}
+                    // The colour goes on the cell rather than the row. A sticky
+                    // cell leaves the row's own background and border behind
+                    // as it moves, so the heading would go transparent the
+                    // moment anybody scrolled.
+                    style={i === 0
+                      ? { borderLeftWidth: '6px', borderLeftColor: '#182F24' }
+                      : undefined}
+                    className={`text-left px-4 py-3 whitespace-nowrap sticky top-0 z-10 bg-sidebar ${col.width || ''}`}
+                  >
                     {col.sortable ? (
                       <button
                         type="button"
@@ -948,7 +960,7 @@ export default function ProductsPage() {
                     )}
                   </th>
                 ))}
-                <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Actions</th>
+                <th className={`text-left px-4 py-3 sticky top-0 z-10 bg-sidebar ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
