@@ -58,16 +58,18 @@ export const MIX_COLOUR = { ink: '#a16207', label: 'House-made (MIX)' }
 // A drink, which is kept somewhere but is read as its own thing.
 export const DRINK_COLOUR = { ink: '#0369a1', label: 'Drink' }
 
-// The one colour a product is drawn in, wherever it is drawn.
+// The colour of the line down the side of a product's row.
 //
-// What it is beats where it is kept: a house-made salsa is amber even though it
-// lives in the cold room, because that is what the app has said about a MIX
-// since the catalogue was built, and a drink is its own blue for the same
-// reason. Everything else takes the colour of the shelf it sits on.
+// It says one thing and one thing only: where the product is kept. A
+// house-made salsa lives in the cold room, so its line is green, even though
+// the row itself is amber and the badge says MIX.
+//
+// That split is the point. The row colour and the badges already say what a
+// thing is, so a line saying it again would be the third time, and the one
+// question nothing was answering was where to walk to find it. A colour that
+// means two things at once means neither.
 export function productInk(product) {
     if (!product) return SECTION_COLOURS['Other'].ink
-    if (product.is_mix) return MIX_COLOUR.ink
-    if (product.category === 'drink') return DRINK_COLOUR.ink
     return sectionColour(product.section).ink
 }
 

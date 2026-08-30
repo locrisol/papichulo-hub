@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     sectionRank, sectionColour, forDropdown, productInk,
-    SECTION_ORDER, MIX_COLOUR, DRINK_COLOUR,
+    SECTION_ORDER,
 } from './sections'
 
 const product = (name, section, extra = {}) => ({ id: name, name, section, unit: 'KG', ...extra })
@@ -80,11 +80,12 @@ describe('productInk', () => {
         expect(productInk({ section: 'Freezer' })).toBe(sectionColour('Freezer').ink)
     })
 
-    it('lets what it is beat where it is kept', () => {
-        // A house-made salsa lives in the cold room and is still amber,
-        // because that is what MIX has meant since the catalogue was built.
-        expect(productInk({ section: 'Cold Room', is_mix: true })).toBe(MIX_COLOUR.ink)
-        expect(productInk({ section: 'Dry', category: 'drink' })).toBe(DRINK_COLOUR.ink)
+    it('says where it is kept and nothing else', () => {
+        // A house-made salsa lives in the cold room, so the line is green. The
+        // row is already amber and the badge already says MIX, so a line saying
+        // it a third time would leave nothing saying where to walk.
+        expect(productInk({ section: 'Cold Room', is_mix: true })).toBe(sectionColour('Cold Room').ink)
+        expect(productInk({ section: 'Dry', category: 'drink' })).toBe(sectionColour('Dry').ink)
     })
 
     it('falls back rather than coming back empty', () => {
