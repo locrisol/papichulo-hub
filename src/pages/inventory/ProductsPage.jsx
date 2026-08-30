@@ -98,6 +98,18 @@ function FilterChip({ label, isOn, ink, onClick }) {
   )
 }
 
+// Where the heading comes to rest when it sticks.
+//
+// Zero would be the obvious answer and it leaves a gap. A sticky element sits
+// against the padding edge of whatever is scrolling, and the main area of the
+// app has md:p-7 on it, so the heading stopped 1.75rem down with rows sliding
+// through the strip above it. Pulling it up by exactly that padding puts it
+// flush under the page header.
+//
+// It is tied to AppLayout's md:p-7. If that padding changes, this changes with
+// it, which is why it is one named thing rather than a number typed twice.
+const STICK_TOP = 'top-[-1.75rem]'
+
 // What kind of thing a product is, as one badge. Written once because the table
 // and the cards both say it, and a label that reads Drink in one place and
 // Purchased in the other is worse than not saying it at all.
@@ -945,7 +957,7 @@ export default function ProductsPage() {
                     style={i === 0
                       ? { borderLeftWidth: '6px', borderLeftColor: '#182F24' }
                       : undefined}
-                    className={`text-left px-4 py-3 whitespace-nowrap sticky top-0 z-10 bg-sidebar ${col.width || ''}`}
+                    className={`text-left px-4 py-3 whitespace-nowrap sticky ${STICK_TOP} z-10 bg-sidebar ${col.width || ''}`}
                   >
                     {col.sortable ? (
                       <button
@@ -963,7 +975,7 @@ export default function ProductsPage() {
                     )}
                   </th>
                 ))}
-                <th className={`text-left px-4 py-3 sticky top-0 z-10 bg-sidebar ${tableHeadCell}`}>Actions</th>
+                <th className={`text-left px-4 py-3 sticky ${STICK_TOP} z-10 bg-sidebar ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
