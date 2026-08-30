@@ -11,6 +11,9 @@
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
 import { PriceFields } from './PriceForm'
+import { ModalSectionBar } from './ModalSection'
+import AllergenPicker from './AllergenPicker'
+import { declaredCount } from '../lib/allergens'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -19,8 +22,15 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors,
-  priceForm, onPriceChange, priceErrors, suppliers, showPrice,
+  priceForm, onPriceChange, priceErrors, suppliers,
+  allergens, onAllergenChange,
+  extras, openExtra, onOpenExtra,
 }) {
+  // Both of these only make sense for something you buy. A mix has no supplier
+  // by definition, and its allergens come from its recipe rather than from
+  // somebody ticking them, so tagging one here would be a second answer that
+  // could disagree with the first.
+  const showExtras = extras && !formData.is_mix
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -141,30 +151,65 @@ export default function ProductForm({
         />
       </div>
 
-      {/* Who you buy it from, while you are already here.
-          Setting a price used to mean saving the product, finding it again in
-          a list of a few hundred, opening Prices and starting a second form.
-          Three screens for one thing you already knew when you typed the name.
+      {/* The two things that used to be somewhere else.
+          Setting a price meant saving the product, finding it again in a list
+          of a few hundred, opening Prices and starting a second form. The
+          allergens were a third screen after that. All of it for things you
+          already knew when you typed the name.
 
-          Optional, and it stays optional: leave the supplier empty and nothing
-          is written. A price given here becomes the preferred one, because it
-          is the only one. */}
-      {showPrice && !formData.is_mix && (
-        <div className="border-t border-border pt-4 mb-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-            Who you buy it from
-          </p>
-          <p className="text-xs text-gray-400 mb-3">
-            Optional. Leave the supplier empty and you can add prices later from the
-            product's own Prices screen.
-          </p>
-          <PriceFields
-            formData={priceForm}
-            onChange={onPriceChange}
-            errors={priceErrors}
-            suppliers={suppliers}
-            unit={formData.unit}
+          Both closed to start with. Most of the time you are typing a name and
+          a section and nothing else, and a form that opens with the fourteen
+          allergens showing is a wall. Both stay optional: leave them alone and
+          nothing is written, and the save asks once before letting you. */}
+      {showExtras && (
+        <div className="mb-4">
+          <ModalSectionBar
+            collapsible
+            tone="supplier"
+            title="Who you buy it from"
+            summary={priceForm?.supplier_id
+              ? suppliers.find(s => s.id === priceForm.supplier_id)?.name || 'Set'
+              : 'Not set'}
+            open={openExtra === 'supplier'}
+            onToggle={() => onOpenExtra(openExtra === 'supplier' ? null : 'supplier')}
           />
+          {openExtra === 'supplier' && (
+            <div className="mb-4">
+              <p className="text-xs text-gray-400 mb-3">
+                Optional. Leave the supplier empty and you can add prices later from the
+                product's own Prices screen.
+              </p>
+              <PriceFields
+                formData={priceForm}
+                onChange={onPriceChange}
+                errors={priceErrors}
+                suppliers={suppliers}
+                unit={formData.unit}
+              />
+            </div>
+          )}
+
+          <ModalSectionBar
+            collapsible
+            tone="allergens"
+            title="Allergens"
+            summary={(() => {
+              const set = declaredCount(allergens)
+              return set === 0 ? 'None declared' : `${set} of 14 declared`
+            })()}
+            open={openExtra === 'allergens'}
+            onToggle={() => onOpenExtra(openExtra === 'allergens' ? null : 'allergens')}
+          />
+          {openExtra === 'allergens' && (
+            <div className="mb-4">
+              <p className="text-xs text-gray-400 mb-3">
+                The fourteen the law names. Not Present is the answer for most of them, so
+                only change the ones that apply. This is what the public allergen page shows
+                customers, and every dish the product goes into inherits it.
+              </p>
+              <AllergenPicker values={allergens} onChange={onAllergenChange} />
+            </div>
+          )}
         </div>
       )}
 

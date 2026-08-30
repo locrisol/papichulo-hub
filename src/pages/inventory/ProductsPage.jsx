@@ -5,6 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
+import { emptyAllergens } from '../../lib/allergens'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -43,6 +44,13 @@ export default function ProductsPage() {
   // then there can be several and one form cannot speak for all of them.
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
+  const [allergens, setAllergens] = useState(emptyAllergens())
+  // Whether anybody opened the allergens and answered, as opposed to leaving
+  // them at the default. All fourteen at Not Present is a real answer for a bag
+  // of rice, so it cannot be told apart from never looking by the values alone.
+  const [allergensTouched, setAllergensTouched] = useState(false)
+  // One section open at a time, and both shut to start with.
+  const [openExtra, setOpenExtra] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
@@ -147,6 +155,11 @@ export default function ProductsPage() {
     setPriceForm({ ...priceForm, [field]: value })
   }
 
+  function handleAllergenChange(key, value) {
+    setAllergens({ ...allergens, [key]: value })
+    setAllergensTouched(true)
+  }
+
   function validate() {
     const newErrors = {}
 
@@ -179,6 +192,36 @@ export default function ProductsPage() {
     }
     setErrors({})
     setPriceErrors({})
+
+    // Asked once, and only when adding. A product with no supplier and no
+    // allergens is a product somebody has to come back to twice, and the two
+    // screens it sends you to are the two you have just walked past. It is a
+    // question rather than a refusal: a product typed in a hurry mid stock take
+    // is a real thing and stopping it would be worse.
+    if (!editingProduct && !formData.is_mix) {
+      const missing = []
+      if (!wantsPrice) missing.push('a supplier price')
+      if (!allergensTouched) missing.push('allergens')
+
+      if (missing.length > 0) {
+        const ok = await confirm({
+          title: 'Save without ' + missing.join(' or ') + '?',
+          message: missing.length === 2
+            ? 'Nothing is set for either. You can add both later from the product\'s own screens, but the allergens are what customers are shown, so a product with none declared reads as having none.'
+            : missing[0] === 'a supplier price'
+              ? 'It will have no cost until a price is set, so it counts as nothing on a stock take and adds nothing to a dish.'
+              : 'Allergens are what customers are shown, so a product with none declared reads as having none of the fourteen.',
+          confirmLabel: 'Save anyway',
+          cancelLabel: 'Go back',
+        })
+        if (!ok) {
+          // Open whichever one is missing, so Go back lands somewhere useful
+          // rather than on the form they were already looking at.
+          setOpenExtra(!wantsPrice ? 'supplier' : 'allergens')
+          return
+        }
+      }
+    }
 
     const payload = {
       ...formData,
@@ -228,6 +271,21 @@ export default function ProductsPage() {
         }
       }
 
+      // The allergens, if anybody answered them. One row per product, and this
+      // is always the first one, so an insert rather than the upsert the
+      // allergen page has to do.
+      if (allergensTouched && data) {
+        const { error: allergenErr } = await supabase
+          .from('product_allergens')
+          .insert({ product_id: data.id, ...allergens })
+
+        if (allergenErr) {
+          setError(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          fetchProducts()
+          return
+        }
+      }
+
       fetchProducts()
       resetForm()
     }
@@ -239,6 +297,9 @@ export default function ProductsPage() {
       weight_loss_pct: 0, notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
+    setAllergens(emptyAllergens())
+    setAllergensTouched(false)
+    setOpenExtra(null)
     setEditingProduct(null)
     setShowForm(false)
     setErrors({})
@@ -453,11 +514,15 @@ export default function ProductsPage() {
             onCancel={resetForm}
             submitLabel="Add Product"
             errors={errors}
-            showPrice
+            extras
             priceForm={priceForm}
             onPriceChange={handlePriceChange}
             priceErrors={priceErrors}
             suppliers={suppliers}
+            allergens={allergens}
+            onAllergenChange={handleAllergenChange}
+            openExtra={openExtra}
+            onOpenExtra={setOpenExtra}
           />
         </div>
       )}

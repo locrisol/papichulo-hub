@@ -19,14 +19,42 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
-const ALLERGEN_KEYS = [
-  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soybeans',
-  'milk', 'nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs'
+// The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
+// why the list is here rather than in a settings screen.
+//
+// The labelled version and the three states used to live inside the allergen
+// page. Two screens ask these questions now, the page and the product form, so
+// they moved here rather than being written out twice.
+export const ALLERGENS = [
+  { key: 'gluten', label: 'Gluten' },
+  { key: 'crustaceans', label: 'Crustaceans' },
+  { key: 'eggs', label: 'Eggs' },
+  { key: 'fish', label: 'Fish' },
+  { key: 'peanuts', label: 'Peanuts' },
+  { key: 'soybeans', label: 'Soybeans' },
+  { key: 'milk', label: 'Milk' },
+  { key: 'nuts', label: 'Nuts' },
+  { key: 'celery', label: 'Celery' },
+  { key: 'mustard', label: 'Mustard' },
+  { key: 'sesame', label: 'Sesame' },
+  { key: 'sulphites', label: 'Sulphites' },
+  { key: 'lupin', label: 'Lupin' },
+  { key: 'molluscs', label: 'Molluscs' },
 ]
+
+export const ALLERGEN_STATES = [
+  { value: 'none', label: 'Not Present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
+  { value: 'may_contain', label: 'May Contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'contains', label: 'Contains', activeClass: 'bg-red-100 text-red-800 border-red-300' },
+]
+
+const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-function emptyAllergens() {
+// A product with no record yet is Not Present for all fourteen, which is why
+// the form opens filled in rather than empty.
+export function emptyAllergens() {
   const obj = {}
   for (const key of ALLERGEN_KEYS) obj[key] = 'none'
   return obj
@@ -127,3 +155,10 @@ export function summariseAllergens(allergens) {
 }
 
 export { ALLERGEN_KEYS }
+
+// How many of the fourteen are set to anything other than Not Present. It is
+// what a collapsed section says about itself, and what tells a save whether
+// somebody has answered the question or skipped it.
+export function declaredCount(values) {
+  return ALLERGEN_KEYS.filter(key => values?.[key] && values[key] !== 'none').length
+}
