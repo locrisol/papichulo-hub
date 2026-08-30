@@ -14,6 +14,7 @@ import { PriceFields } from './PriceForm'
 import { ModalSectionBar, sectionBarAction } from './ModalSection'
 import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
+import { nameClashMessage } from '../lib/products'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -22,7 +23,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors,
-  priceForm, onPriceChange, priceErrors, priceWarnings, suppliers, nameClash,
+  priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
 }) {
@@ -43,16 +44,13 @@ export default function ProductForm({
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
           {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
-          {/* Said while it is being typed rather than after it is saved. Two
-              products with the same name is nearly always one added twice, and
-              the cost of finding out later is a stock take counted against two
-              rows. It warns and does not refuse: it is not the app's place to
-              say two things cannot share a name. */}
+          {/* Said while it is being typed rather than after it is saved, and it
+              stops the save. Two products with the same name is one added
+              twice, and on a stock take they are counted separately and neither
+              total is right. Nobody standing at a shelf with two identical rows
+              in front of them can tell which one they are meant to be in. */}
           {!errors.name && nameClash && (
-            <p className="text-xs text-amber-700 mt-1">
-              There is already a product called {nameClash.name}
-              {nameClash.section ? ` in ${nameClash.section}` : ''}.
-            </p>
+            <p className="text-xs text-red-600 mt-1">{nameClashMessage(nameClash)}</p>
           )}
         </div>
 
@@ -194,7 +192,6 @@ export default function ProductForm({
                 formData={priceForm}
                 onChange={onPriceChange}
                 errors={priceErrors}
-                warnings={priceWarnings}
                 suppliers={suppliers}
                 unit={formData.unit}
               />

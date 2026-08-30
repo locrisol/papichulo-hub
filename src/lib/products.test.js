@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sameName, sameSupplierCode } from './products'
+import { sameName, sameSupplierCode, nameClashMessage } from './products'
 
 const PRODUCTS = [
     { id: 'p1', name: 'Pineapple' },
@@ -63,5 +63,25 @@ describe('sameSupplierCode', () => {
     it('has nothing to say without a code or a supplier', () => {
         expect(sameSupplierCode(PRICES, 's1', '')).toBe(null)
         expect(sameSupplierCode(PRICES, '', 'PIN-5KG')).toBe(null)
+    })
+})
+
+describe('nameClashMessage', () => {
+    it('says nothing when there is no clash', () => {
+        expect(nameClashMessage(null)).toBe('')
+    })
+
+    it('names the product and where it is', () => {
+        const message = nameClashMessage({ name: 'Pineapple', section: 'Dry', is_active: true })
+        expect(message).toContain('Pineapple')
+        expect(message).toContain('Dry')
+    })
+
+    it('points at the deactivated one rather than leaving somebody stuck', () => {
+        // A deactivated product still holds its name, so refusing without
+        // saying why would leave a field that accepts nothing.
+        const message = nameClashMessage({ name: 'Pineapple', is_active: false })
+        expect(message).toContain('deactivated')
+        expect(message).toMatch(/turn that one back on/i)
     })
 })

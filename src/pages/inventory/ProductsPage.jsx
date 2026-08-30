@@ -6,7 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { calculateMixCost } from '../../lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
 import { emptyAllergens } from '../../lib/allergens'
-import { sameName, sameSupplierCode } from '../../lib/products'
+import { sameName, sameSupplierCode, nameClashMessage } from '../../lib/products'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
@@ -189,6 +189,12 @@ export default function ProductsPage() {
 
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required'
+    } else if (sameName(products, formData.name, editingProduct?.id)) {
+      // Refused rather than warned about. Two rows with the same name on a
+      // stock take is somebody guessing which one to count, and a guess is
+      // worse than not having the product at all. A deactivated one still
+      // holds its name, and the message says to turn that one back on.
+      newErrors.name = nameClashMessage(sameName(products, formData.name, editingProduct?.id))
     }
 
     const weightLoss = parseFloat(formData.weight_loss_pct)
@@ -209,24 +215,27 @@ export default function ProductsPage() {
     const wantsPrice = !editingProduct && !formData.is_mix && hasPrice(priceForm)
     const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
 
+    // The same code from the same supplier, against what this screen already
+    // holds. Only that supplier: two of them using one code for two different
+    // things is a coincidence rather than a mistake.
+    if (wantsPrice && !newPriceErrors.supplier_code) {
+      const clash = sameSupplierCode(prices, priceForm.supplier_id, priceForm.supplier_code)
+      if (clash) {
+        const owner = products.find(p => p.id === clash.product_id)
+        newPriceErrors.supplier_code =
+          `${owner?.name || 'Another product'} already has this code with this supplier.`
+      }
+    }
+
     if (Object.keys(newErrors).length > 0 || Object.keys(newPriceErrors).length > 0) {
       setErrors(newErrors)
       setPriceErrors(newPriceErrors)
+      // A message inside a section that is shut is a message nobody reads.
+      if (Object.keys(newPriceErrors).length > 0) setOpenExtra('supplier')
       return
     }
     setErrors({})
     setPriceErrors({})
-
-    // Anything that looks like the same thing twice, asked about first.
-    //
-    // A duplicate is a worse mistake than a missing price: two rows called
-    // Pineapple get counted separately on a stock take and neither total is
-    // right. It still asks rather than refuses, because two things really can
-    // share a name and it is not the app's place to say otherwise.
-    const clashes = []
-    if (nameClash) {
-      clashes.push(`a product called ${nameClash.name}`)
-    }
 
     // The codes this screen holds are only the preferred ones, so the real
     // check is a question to the database. One query, and only when a code was
@@ -241,21 +250,12 @@ export default function ProductsPage() {
 
       if (codeRows?.length > 0) {
         const owner = products.find(p => p.id === codeRows[0].product_id)
-        clashes.push(`the code ${priceForm.supplier_code.trim()} on ${owner?.name || 'another product'}`)
+        setPriceErrors({
+          supplier_code: `${owner?.name || 'Another product'} already has this code with this supplier.`,
+        })
+        setOpenExtra('supplier')
+        return
       }
-    }
-
-    if (clashes.length > 0) {
-      const ok = await confirm({
-        title: 'This may already be here',
-        message: `There is already ${clashes.join(', and ')}. `
-          + 'Adding it again means two rows for one thing, which get counted separately '
-          + 'on a stock take and priced separately on a dish.',
-        confirmLabel: 'Add it anyway',
-        cancelLabel: 'Go back',
-        tone: 'danger',
-      })
-      if (!ok) return
     }
 
     // Asked once, and only when adding. A product with no supplier and no
@@ -517,23 +517,11 @@ export default function ProductsPage() {
     return String(a).localeCompare(String(b))
   }
 
-  // Said while it is being typed. The products are all loaded, so the name is
-  // free to check; the codes are only the preferred ones this screen holds, so
-  // this catches most of them and the save catches the rest.
+  // Said while it is being typed and again when saving. The products are all
+  // loaded, so the name costs nothing to check on every keystroke.
   const nameClash = showForm
     ? sameName(products, formData.name, editingProduct?.id)
     : null
-
-  const codeClash = showForm && !editingProduct
-    ? sameSupplierCode(prices, priceForm.supplier_id, priceForm.supplier_code)
-    : null
-
-  const priceWarnings = codeClash
-    ? {
-      supplier_code: `${products.find(p => p.id === codeClash.product_id)?.name || 'Another product'} `
-        + 'already has this code with this supplier.',
-    }
-    : {}
 
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
@@ -615,7 +603,6 @@ export default function ProductsPage() {
             priceForm={priceForm}
             onPriceChange={handlePriceChange}
             priceErrors={priceErrors}
-            priceWarnings={priceWarnings}
             nameClash={nameClash}
             suppliers={suppliers}
             allergens={allergens}

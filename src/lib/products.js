@@ -30,3 +30,15 @@ export function sameSupplierCode(prices, supplierId, code, exceptProductId = nul
         && p.product_id !== exceptProductId
         && String(p.supplier_code || '').trim().toLowerCase() === wanted) || null
 }
+
+// How a name clash reads, which depends on whether the other one is still in
+// use. A deactivated product still occupies its name, and the way out of that
+// is to turn the old one back on rather than to make a second one, so it says
+// so instead of leaving somebody stuck at a field that will not accept
+// anything.
+export function nameClashMessage(clash) {
+    if (!clash) return ''
+    return clash.is_active === false
+        ? `There is a deactivated product called ${clash.name}. Turn that one back on rather than adding a second.`
+        : `There is already a product called ${clash.name}${clash.section ? ` in ${clash.section}` : ''}. Names have to be different.`
+}
