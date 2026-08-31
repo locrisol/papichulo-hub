@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef } from 'react'
 
 // Which element is doing the scrolling, and remembering where a page was.
 //
@@ -45,7 +45,16 @@ export function useKeepScroll(key, ready) {
     const { mainRef, shellRef } = useScrollers()
     const restored = useRef(false)
 
-    useEffect(() => {
+    // Both of these are layout effects rather than ordinary ones, and that is
+    // the whole difference between this working and not.
+    //
+    // An ordinary effect cleans up after the browser has painted. By then the
+    // page has already been swapped for the next one, the scrolling box is
+    // suddenly a few hundred pixels shorter, the browser has clamped it to the
+    // top, and a scroll event has fired saying so. Everything that listens has
+    // dutifully recorded a position of zero. A layout effect cleans up before
+    // any of that, while the old page is still there and still where it was.
+    useLayoutEffect(() => {
         const boxes = [mainRef?.current, shellRef?.current].filter(Boolean)
         if (boxes.length === 0) return
 
@@ -54,29 +63,35 @@ export function useKeepScroll(key, ready) {
         function remember() {
             const at = Math.max(...boxes.map(box => box.scrollTop))
             if (at > 0) sessionStorage.setItem(store, String(at))
-            else sessionStorage.removeItem(store)
         }
 
         for (const box of boxes) box.addEventListener('scroll', remember, { passive: true })
         return () => {
-            remember()
             for (const box of boxes) box.removeEventListener('scroll', remember)
+            remember()
         }
     }, [key, mainRef, shellRef])
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!ready || restored.current) return
         const saved = Number(sessionStorage.getItem(`scroll:${key}`) || 0)
         if (!saved) { restored.current = true; return }
 
-        // After the browser has laid the rows out, or there is nothing tall
-        // enough to scroll yet and the position is thrown away.
-        const frame = requestAnimationFrame(() => {
-            for (const box of [mainRef?.current, shellRef?.current]) {
-                if (box && box.scrollHeight > box.clientHeight) box.scrollTop = saved
+        const boxes = [mainRef?.current, shellRef?.current].filter(Boolean)
+        const put = () => {
+            let landed = false
+            for (const box of boxes) {
+                if (box.scrollHeight > box.clientHeight) { box.scrollTop = saved; landed = true }
             }
-            restored.current = true
-        })
+            return landed
+        }
+
+        // Before the paint if the rows are already there, which is the usual
+        // case and means no jump. If nothing is tall enough to scroll yet, one
+        // frame later, by which time it will be.
+        if (put()) { restored.current = true; return }
+
+        const frame = requestAnimationFrame(() => { put(); restored.current = true })
         return () => cancelAnimationFrame(frame)
     }, [ready, key, mainRef, shellRef])
 }
