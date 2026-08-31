@@ -255,7 +255,7 @@ export default function StockTakeSummaryPage() {
       )}
 
       <header className="mb-5">
-        <h1 className="font-serif text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
+        <h1 className="font-serif text-xl sm:text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
         <p className="text-sm text-muted mt-1">
           Started by {starter?.full_name || 'Unknown'} on {fmtDateTime(session.started_at)}
           {session.completed_at && ` · Closed ${fmtDateTime(session.completed_at)}`}
@@ -281,19 +281,27 @@ export default function StockTakeSummaryPage() {
         </button>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className={`${card} p-4`}>
+      {/* The three numbers.
+          One card the width of the screen on a phone, split in two lines with
+          the label beside the figure. Three across a phone gave each of them
+          about a hundred points, which "Total value" cannot fit a heading in
+          let alone a number, so the money ran off the edge of its own card. */}
+      <div className={`${card} divide-y divide-border sm:divide-y-0 sm:grid sm:grid-cols-3 sm:divide-x mb-6`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{countedProductIds.size}<span className="text-base text-muted">/{products.length}</span></p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">
+            {countedProductIds.size}<span className="text-base text-muted">/{products.length}</span>
+          </p>
         </div>
-        <div className={`${card} p-4`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Lines</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{lines.length}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">{lines.length}</p>
         </div>
-        <div className={`${card} p-4`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(session.total_value)}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1 whitespace-nowrap">
+            {fmtMoney(session.total_value)}
+          </p>
         </div>
       </div>
 
@@ -341,14 +349,20 @@ export default function StockTakeSummaryPage() {
                   const value = getProductValue(product.id, section)
                   return (
                     <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-gray-900 flex-1 min-w-0">
+                      {/* The name above the numbers on a phone, side by side
+                          on anything wider. Squeezed side by side on a small
+                          screen the name wrapped onto three lines and the
+                          quantity onto two, and neither read as a row. */}
+                      <div className="sm:flex sm:items-center sm:justify-between sm:gap-3">
+                        <p className="font-medium text-gray-900 sm:flex-1 sm:min-w-0">
                           {product.name}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                          <p className="text-xs text-muted">{fmtMoney(value)}</p>
+                        <div className="flex items-baseline gap-2 mt-0.5 sm:mt-0 sm:block sm:text-right sm:flex-shrink-0">
+                          <p className="font-semibold text-gray-900 whitespace-nowrap">
+                            {fmtQty(total)} {product.unit}
+                          </p>
+                          <p className="text-xs text-muted whitespace-nowrap">{fmtMoney(value)}</p>
                         </div>
                       </div>
                       {(productLines.length > 1 || productLines.some(l => breakdownParts(l, product))) && (
