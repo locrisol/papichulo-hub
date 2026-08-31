@@ -96,3 +96,27 @@ export function declaresAllergens(product) {
     if (!product) return false
     return !NOT_FOOD.includes(product.section)
 }
+
+// Who a product is held for, or nothing if it is ours.
+//
+// Trimmed, because a name typed with a trailing space is the same
+// arrangement and must not become a second column on the report.
+export function heldFor(product) {
+    return String(product?.held_for || '').trim() || null
+}
+
+// Every party a list of products is held for, ours first.
+//
+// Ours is null and comes first on purpose: a report that leads with
+// somebody else's stock is a report about the wrong business.
+export function partiesIn(products) {
+    const names = new Set()
+    let anyOurs = false
+    for (const product of products || []) {
+        const owner = heldFor(product)
+        if (owner) names.add(owner)
+        else anyOurs = true
+    }
+    const out = [...names].sort((a, b) => a.localeCompare(b))
+    return anyOurs ? [null, ...out] : out
+}

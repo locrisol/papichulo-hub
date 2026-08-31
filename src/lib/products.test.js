@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens } from './products'
+import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
+    heldFor, partiesIn,
+} from './products'
 
 const PRODUCTS = [
     { id: 'p1', name: 'Pineapple' },
@@ -126,5 +128,48 @@ describe('declaresAllergens', () => {
 
     it('says no to nothing at all', () => {
         expect(declaresAllergens(null)).toBe(false)
+    })
+})
+
+describe('heldFor', () => {
+    it('is nothing for our own stock', () => {
+        expect(heldFor({ name: 'Chips' })).toBe(null)
+        expect(heldFor({ name: 'Chips', held_for: '' })).toBe(null)
+        expect(heldFor({ name: 'Chips', held_for: '   ' })).toBe(null)
+    })
+
+    it('is the name when it belongs to somebody else', () => {
+        expect(heldFor({ held_for: 'Pita Pit' })).toBe('Pita Pit')
+    })
+
+    it('trims, so one arrangement is not two columns on a report', () => {
+        expect(heldFor({ held_for: ' Pita Pit ' })).toBe('Pita Pit')
+    })
+})
+
+describe('partiesIn', () => {
+    it('has only us when nothing is held for anybody', () => {
+        expect(partiesIn([{ name: 'Chips' }, { name: 'Cups' }])).toEqual([null])
+    })
+
+    it('puts us first and the rest after', () => {
+        const products = [
+            { held_for: 'Pita Pit' },
+            { name: 'Cups' },
+            { held_for: 'Someone Else' },
+        ]
+        expect(partiesIn(products)).toEqual([null, 'Pita Pit', 'Someone Else'])
+    })
+
+    it('leaves us out when none of it is ours', () => {
+        expect(partiesIn([{ held_for: 'Pita Pit' }])).toEqual(['Pita Pit'])
+    })
+
+    it('counts one name once', () => {
+        expect(partiesIn([{ held_for: 'Pita Pit' }, { held_for: 'Pita Pit' }])).toEqual(['Pita Pit'])
+    })
+
+    it('has nothing to say about nothing', () => {
+        expect(partiesIn([])).toEqual([])
     })
 })

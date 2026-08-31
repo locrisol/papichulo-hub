@@ -26,7 +26,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 
 export default function ProductForm({
-  formData, onChange, onSubmit, onCancel, submitLabel, errors,
+  formData, onChange, onSubmit, onCancel, submitLabel, errors, heldForNames = [],
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   recipe, onRecipeChange, ingredientOptions,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
@@ -123,6 +123,37 @@ export default function ProductForm({
               : <p className="text-xs text-gray-400 mt-1">Prepped cost = raw cost / (1 - weight loss). Leave at 0 if none.</p>}
           </div>
         )}
+      </div>
+
+      {/* Stock we hold that is not ours.
+          Pita Pit keep their catering boxes and carrier bags in our packaging
+          cupboard. We do not buy them and we do not sell them, we store them
+          and count them, so every packaging total quietly included somebody
+          else's stock. Naming who it is held for is what lets the report say
+          theirs, ours and both.
+
+          Empty is the answer for almost everything, which is why it is a plain
+          box near the bottom rather than a question the form leads with. The
+          list underneath offers names already in use, so the same arrangement
+          is not typed two ways and split into two columns. */}
+      <div className="mb-4">
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Held for someone else
+        </label>
+        <input
+          type="text"
+          list="held-for-names"
+          value={formData.held_for || ''}
+          onChange={e => onChange('held_for', e.target.value)}
+          placeholder="Leave empty if it is ours"
+          className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <datalist id="held-for-names">
+          {heldForNames.map(name => <option key={name} value={name} />)}
+        </datalist>
+        <p className="text-xs text-gray-400 mt-1">
+          Counted with ours on every stock take, reported apart from it.
+        </p>
       </div>
 
       {/* Where else it turns up.

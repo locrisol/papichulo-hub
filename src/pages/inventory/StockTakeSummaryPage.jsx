@@ -6,6 +6,7 @@ import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { sectionColour, sectionRank } from '../../lib/sections'
+import { heldFor, partiesIn } from '../../lib/products'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -305,6 +306,7 @@ export default function StockTakeSummaryPage() {
         {sections.map(({ section, items }) => {
           const colour = sectionColour(section)
           const sectionValue = getSectionValue(items, section)
+          const parties = partiesIn(items)
           return (
             <div key={section}>
               <div className={`${colour.solid} rounded-lg px-3 py-2 mb-2 flex items-center justify-between`}>
@@ -313,6 +315,25 @@ export default function StockTakeSummaryPage() {
                   {fmtMoney(sectionValue)}
                 </span>
               </div>
+
+              {/* Split, but only where a section actually holds somebody
+                  else's stock. Packaging does, because Pita Pit keep their
+                  boxes in our cupboard; nothing else does, and putting a
+                  breakdown under every heading to say one line would be noise
+                  on five of them. The heading keeps the combined figure, since
+                  that is what was counted off the shelf. */}
+              {parties.length > 1 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
+                  {parties.map(party => (
+                    <span key={party || 'ours'} className="text-xs text-gray-600">
+                      {section} ({party || 'ours'}){' '}
+                      <span className="font-semibold text-gray-900">
+                        {fmtMoney(getSectionValue(items.filter(p => heldFor(p) === party), section))}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
                 {items.map((product, i) => {
                   const productLines = getProductLines(product.id, section)

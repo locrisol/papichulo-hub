@@ -8,6 +8,7 @@ import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/pro
 import { emptyAllergens } from '../../lib/allergens'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
+  heldFor, partiesIn,
 } from '../../lib/products'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, productInk, DRINK_COLOUR } from '../../lib/sections'
@@ -202,6 +203,7 @@ export default function ProductsPage() {
     name: '',
     section: 'Freezer',
     also_in: [],
+    held_for: '',
     category: 'ingredient',
     unit: 'KG',
     is_mix: false,
@@ -440,6 +442,7 @@ export default function ProductsPage() {
       // section can be changed after the boxes are ticked, so this is cleared
       // on the way out rather than trusted on the way in.
       also_in: (formData.also_in || []).filter(place => place !== formData.section),
+      held_for: String(formData.held_for || '').trim() || null,
     }
 
     // batch_yield lives on the product rather than on the recipe, so it goes in
@@ -551,8 +554,8 @@ export default function ProductsPage() {
 
   function resetForm() {
     setFormData({
-      name: '', section: 'Freezer', also_in: [], category: 'ingredient', unit: 'KG',
-      is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
+      name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
+      unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
     setRecipe(EMPTY_RECIPE)
@@ -570,6 +573,7 @@ export default function ProductsPage() {
       name: product.name,
       section: product.section,
       also_in: product.also_in || [],
+      held_for: product.held_for || '',
       category: product.category || 'ingredient',
       unit: product.unit,
       is_mix: product.is_mix,
@@ -714,6 +718,9 @@ export default function ProductsPage() {
   // uses. Only active ones: a product nobody can buy is not an ingredient.
   const ingredientOptions = products.filter(p => p.is_active && canBeIngredient(p))
 
+  // The names already used, so the same arrangement is not typed two ways.
+  const heldForNames = partiesIn(products).filter(Boolean)
+
   // Who you can still buy from. A deactivated supplier is one we have stopped
   // using, so offering it on a new product is offering a mistake.
   const activeSuppliers = suppliers.filter(sup => sup.is_active)
@@ -815,6 +822,7 @@ export default function ProductsPage() {
             onPriceChange={handlePriceChange}
             priceErrors={priceErrors}
             nameClash={nameClash}
+            heldForNames={heldForNames}
             suppliers={activeSuppliers}
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
@@ -925,6 +933,11 @@ export default function ProductsPage() {
                       {place}
                     </span>
                   ))}
+                  {heldFor(p) && (
+                    <span className={`${badge} bg-white text-gray-600 border border-gray-400`}>
+                      {heldFor(p)}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-500">{p.unit}</span>
                   {/* The table says this with a red row, which a single card
                       cannot do on its own, so it says it in words instead. */}
@@ -972,6 +985,7 @@ export default function ProductsPage() {
                       submitLabel="Save Changes"
                       errors={errors}
                       nameClash={nameClash}
+                      heldForNames={heldForNames}
                     />
                   </div>
                 )}
@@ -1086,6 +1100,13 @@ export default function ProductsPage() {
                               {place}
                             </span>
                           ))}
+                          {/* Not ours. Grey rather than a section colour,
+                              because it is not about where it is kept. */}
+                          {heldFor(p) && (
+                            <span className={`${badge} bg-white text-gray-600 border border-gray-400`}>
+                              {heldFor(p)}
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
@@ -1136,6 +1157,7 @@ export default function ProductsPage() {
               submitLabel="Save changes"
               errors={errors}
               nameClash={nameClash}
+              heldForNames={heldForNames}
             />
           </div>
         </Modal>
