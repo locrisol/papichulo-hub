@@ -126,3 +126,18 @@ export function partiesIn(products) {
     const out = [...names].sort((a, b) => a.localeCompare(b))
     return anyOurs ? [null, ...out] : out
 }
+
+// The name as it should read on a stock take.
+//
+// Stock held for somebody else says so in front of the name, because on a
+// count the first thing you need to know about a Pita Pit carrier bag is that
+// it is a Pita Pit carrier bag. A grey badge off to the side is fine on the
+// catalogue where you are reading a table; it is not fine on a phone in a
+// cupboard where the name is most of what you can see.
+//
+// The catalogue keeps its badge and does not use this, because those products
+// already sit together at the bottom of that list.
+export function countName(product) {
+    const owner = heldFor(product)
+    return owner ? `(${owner}) ${product.name}` : (product?.name || '')
+}

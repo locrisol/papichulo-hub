@@ -2,10 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
+import { countName } from '../../lib/products'
+import { countedLine } from '../../lib/countedAt'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
@@ -41,10 +44,18 @@ function group(list) {
         .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
 }
 
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+function justLoose(parts) {
+    return parts.length === 1 && parts[0].isLoose
+}
+
 export default function StockTakeCountPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const { user } = useAuth()
+    const confirm = useConfirm()
 
     const [session, setSession] = useState(null)
     const [products, setProducts] = useState([])
@@ -64,12 +75,27 @@ export default function StockTakeCountPage() {
     const [showUncountedOnly, setShowUncountedOnly] = useState(false)
     const [filterSnapshot, setFilterSnapshot] = useState(null)
     const [formatsByProductId, setFormatsByProductId] = useState({})
+    // Who wrote each line, for the stamp under it. Names only, and only
+    // the people who actually counted something on this session.
+    const [counters, setCounters] = useState({})
+    // The none that was just recorded, so it can be taken back without a
+    // dialog. One at a time: two undos on screen at once would be a list of
+    // things to think about rather than one thing to fix.
+    const [justNoned, setJustNoned] = useState(null)
 
     const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
     useEffect(() => {
         fetchEverything()
     }, [id])
+
+    // The undo is offered for ten seconds, which is long enough to notice the
+    // wrong row and short enough that it is gone before the next shelf.
+    useEffect(() => {
+        if (!justNoned) return
+        const timer = setTimeout(() => setJustNoned(null), 10000)
+        return () => clearTimeout(timer)
+    }, [justNoned])
 
     async function fetchEverything() {
         setLoading(true)
@@ -144,6 +170,18 @@ export default function StockTakeCountPage() {
             .select('*')
         setRecipeLines(recipesData || [])
 
+        // The names behind counted_by. Its own query rather than a join,
+        // because a count has to keep working for somebody who cannot read the
+        // users table, and then the line simply says the time and no name.
+        const who = [...new Set((linesData || []).map(l => l.counted_by).filter(Boolean))]
+        if (who.length > 0) {
+            const { data: people } = await supabase
+                .from('users')
+                .select('id, full_name')
+                .in('id', who)
+            setCounters(Object.fromEntries((people || []).map(p => [p.id, p.full_name])))
+        }
+
         setLoading(false)
     }
 
@@ -183,14 +221,44 @@ export default function StockTakeCountPage() {
             .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
     }
 
-    function toggleExpand(key) {
+    // Anything typed and not added, before it is thrown away.
+    //
+    // Opening another product cleared the box, and so did closing the one you
+    // were in, so a number counted off a shelf could disappear because a thumb
+    // landed on the wrong row. It only asks when there is a real quantity in
+    // there, so it is never in the way of somebody just looking around.
+    //
+    // Add it is the main button because it is what you meant nine times out of
+    // ten. Both answers carry on to wherever you were going: the question is
+    // what to do with the number, not whether to move.
+    async function keepOrDropDraft() {
+        if (!expandedKey) return
+        const [productId, section] = expandedKey.split('|')
+        const product = products.find(p => p.id === productId)
+        if (!product) return
+
+        const { total, hasAny } = computeDraft(product)
+        if (!hasAny || total <= 0) return
+
+        const ok = await confirm({
+            title: `Add the ${fmtQty(total)} ${product.unit} first?`,
+            message: `You typed a quantity for ${countName(product)} and have not added it. Leaving now loses it.`,
+            confirmLabel: 'Add it',
+            cancelLabel: 'Discard it',
+        })
+        if (ok) await handleAddLine(product, section)
+    }
+
+    async function toggleExpand(key) {
+        await keepOrDropDraft()
+
         if (expandedKey === key) {
             setExpandedKey(null)
         } else {
             setExpandedKey(key)
-            setDraftCounts({})
-            setDraftLocation('')
         }
+        setDraftCounts({})
+        setDraftLocation('')
     }
 
     async function handleAddLine(product, section) {
@@ -226,21 +294,93 @@ export default function StockTakeCountPage() {
         if (insertErr) { setError(friendlyError(insertErr)); return }
 
         setLines(prev => [...prev, data])
+        if (user?.id && !counters[user.id]) {
+            setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
+        }
         setDraftCounts({})
         setDraftLocation('')
     }
 
-    async function handleDeleteLine(lineId) {
-        const { error: delErr } = await supabase
+    // Asked first, like every other delete in the app.
+    //
+    // This was the one that had nothing in front of it, and it is the one done
+    // on a phone, in a fridge, with cold hands and a box under one arm. It
+    // names the number being removed and what the product drops to, so the
+    // question can be answered without opening anything else.
+    // Nothing on the shelf, said in one tap.
+    //
+    // It writes an ordinary line of zero, which is not the same as leaving the
+    // product uncounted: no line means nobody looked, a zero means somebody
+    // looked and there was none, and those two lead to different orders. The
+    // review screen has always drawn that distinction and there has never been
+    // a way to record the second half of it.
+    //
+    // No confirmation. A dialog in a fridge with cold hands is two taps and a
+    // sentence to read on every empty shelf, and what people do with a dialog
+    // they meet forty times is stop reading it. The undo underneath forgives
+    // the accident instead of trying to prevent it.
+    async function handleNone(product, section) {
+        setSavingLine(true)
+        const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
+
+        const { data, error: noneErr } = await supabase
+            .from('stock_take_lines')
+            .insert({
+                stock_take_id: id,
+                product_id: product.id,
+                section: section || product.section || null,
+                quantity_counted: 0,
+                unit_cost: unitCost,
+                line_total: 0,
+                counted_by: user.id,
+            })
+            .select()
+            .single()
+
+        setSavingLine(false)
+        if (noneErr) { setError(friendlyError(noneErr)); return }
+
+        setLines(prev => [...prev, data])
+        setJustNoned({ key: placeKey(product.id, section), lineId: data.id })
+        if (user?.id && !counters[user.id]) {
+            setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
+        }
+    }
+
+    // Straight back out, no question asked. Asking here would undo the point of
+    // not asking in the first place.
+    async function undoNone(lineId) {
+        setJustNoned(null)
+        const { error: undoErr } = await supabase
             .from('stock_take_lines')
             .delete()
             .eq('id', lineId)
+
+        if (undoErr) { setError(friendlyError(undoErr)); return }
+        setLines(prev => prev.filter(l => l.id !== lineId))
+    }
+
+    async function handleDeleteLine(line, product, section) {
+        const rest = getProductTotal(product.id, section) - Number(line.quantity_counted || 0)
+        const ok = await confirm({
+            title: `Delete this count of ${fmtQty(line.quantity_counted)} ${product.unit}?`,
+            message: `${product.name} drops to ${fmtQty(rest)} ${product.unit} in ${section}.`,
+            confirmLabel: 'Delete it',
+            cancelLabel: 'Keep it',
+            tone: 'danger',
+        })
+        if (!ok) return
+
+        const { error: delErr } = await supabase
+            .from('stock_take_lines')
+            .delete()
+            .eq('id', line.id)
 
         if (delErr) {
             setError(friendlyError(delErr))
             return
         }
-        setLines(prev => prev.filter(l => l.id !== lineId))
+        setLines(prev => prev.filter(l => l.id !== line.id))
     }
 
     function toggleUncountedFilter() {
@@ -329,7 +469,10 @@ export default function StockTakeCountPage() {
             .map(({ section, items }) => ({
                 section,
                 items: items.filter(p =>
-                    matches(p.name, term)
+                    // The whole name as it reads on the count, so searching
+                    // pita finds the Pita Pit bags and searching carrier
+                    // finds them too.
+                    matches(countName(p), term)
                     && (!showUncountedOnly || !filterSnapshot
                         || filterSnapshot.has(placeKey(p.id, section)))),
             }))
@@ -346,14 +489,25 @@ export default function StockTakeCountPage() {
         [lines],
     )
 
-    // Places rather than products. Something kept in two of them is two things
-    // to walk up to, and a count that says done with one of them still standing
-    // is a count that will not add up.
     const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
 
+    // Products, not places.
+    //
+    // A second place is a might be there rather than an always is, so counting
+    // the product once finishes it and the bar can reach the end. Counting
+    // places meant a count could never be finished without walking to a shelf
+    // that may well be empty, which is the opposite of what the second place is
+    // for.
+    //
+    // The section headings still count their own shelf, because 3 of 12 in the
+    // freezer is the useful number while you are standing in the freezer, and a
+    // product waiting there is a prompt rather than an obligation. What was
+    // counted in one place and not the other is said on the review.
+    const countedProducts = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
+
     const progress = {
-        counted: allPlaces.filter(key => countedPlaces.has(key)).length,
-        total: allPlaces.length,
+        counted: products.filter(p => countedProducts.has(p.id)).length,
+        total: products.length,
     }
 
     const totalValue = useMemo(() => {
@@ -557,22 +711,34 @@ export default function StockTakeCountPage() {
                                     // boxes twice thinking they were missed.
                                     const elsewhere = placesOf(product).filter(place => place !== section)
 
+                                    // Nothing counted here and nothing typed, so the
+                                    // whole of this row is the offer to say there is
+                                    // none. Counted rows do not need it.
+                                    const canSayNone = !isClosed && !isCounted
+                                    const noned = isCounted
+                                        && lineCount === 1
+                                        && Number(productLines[0].quantity_counted) === 0
+                                    const undoable = justNoned?.key === key ? justNoned.lineId : null
+
                                     return (
                                         <div
                                             key={key}
                                             className={`${i < items.length - 1 ? 'border-b border-border' : ''} ${isExpanded ? 'bg-white' : ''} ${!isCounted ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
                                         >
-                                            {/* Row header, tap to expand */}
+                                            {/* Row header, tap to expand.
+                                                A row rather than one big button now, because
+                                                None has to be its own control and a button
+                                                inside a button is not a thing. */}
+                                            <div className="flex items-stretch" style={{ minHeight: '56px' }}>
                                             <button
                                                 type="button"
                                                 onClick={() => !isClosed && toggleExpand(key)}
-                                                className="w-full text-left px-4 py-3"
-                                                style={{ minHeight: '56px' }}
+                                                className="flex-1 min-w-0 text-left px-4 py-3"
                                             >
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-medium text-gray-900">
-                                                            {product.name}
+                                                            {countName(product)}
                                                             <span className="text-xs text-muted ml-2">{product.unit}</span>
                                                         </p>
                                                         {elsewhere.length > 0 && (
@@ -586,7 +752,9 @@ export default function StockTakeCountPage() {
                                                             {isCounted ? (
                                                                 <>
                                                                     <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                                                                    {isManager ? (
+                                                                    {noned ? (
+                                                                        <p className="text-xs text-muted">None in stock</p>
+                                                                    ) : isManager ? (
                                                                         <p className="text-xs text-muted">
                                                                             {fmtMoney(getProductValue(product.id, section))}
                                                                             {lineCount > 1 ? ` · ${lineCount} entries` : ''}
@@ -598,7 +766,13 @@ export default function StockTakeCountPage() {
                                                                     )}
                                                                 </>
                                                             ) : (
-                                                                <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                // Nothing here when None is on the row.
+                                                                // The amber edge already says it has not
+                                                                // been counted, and saying it twice is
+                                                                // what pushed the words off the card.
+                                                                !canSayNone && (
+                                                                    <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                )
                                                             )}
                                                         </div>
                                                         {!isClosed && (
@@ -612,6 +786,28 @@ export default function StockTakeCountPage() {
                                                     </div>
                                                 </div>
                                             </button>
+
+                                            {canSayNone && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNone(product, section)}
+                                                    disabled={savingLine}
+                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                                                >
+                                                    None
+                                                </button>
+                                            )}
+
+                                            {undoable && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => undoNone(undoable)}
+                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold shadow-sm hover:brightness-95"
+                                                >
+                                                    Undo
+                                                </button>
+                                            )}
+                                            </div>
 
                                             {/* Expanded section */}
                                             {isExpanded && (
@@ -641,9 +837,11 @@ export default function StockTakeCountPage() {
                                                                                                     {part.text}
                                                                                                 </span>
                                                                                             ))}
-                                                                                            <span className="text-xs text-muted">
-                                                                                                = {fmtQty(line.quantity_counted)} {product.unit}
-                                                                                            </span>
+                                                                                            {!justLoose(parts) && (
+                                                                                                <span className="text-xs text-muted">
+                                                                                                    = {fmtQty(line.quantity_counted)} {product.unit}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </div>
                                                                                     )
                                                                                 }
@@ -656,11 +854,18 @@ export default function StockTakeCountPage() {
                                                                             {line.location_note && (
                                                                                 <span className="text-xs text-muted block mt-1"> · {line.location_note}</span>
                                                                             )}
+                                                                            {/* When, and who. A count can run over
+                                                                                two days and be counted by two people,
+                                                                                and both of those are the first thing
+                                                                                asked when a number looks wrong. */}
+                                                                            <span className="text-[0.6875rem] text-muted block mt-1">
+                                                                                {countedLine(line.counted_at, counters[line.counted_by])}
+                                                                            </span>
                                                                         </div>
                                                                         {canModify && (
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleDeleteLine(line.id)}
+                                                                                onClick={() => handleDeleteLine(line, product, section)}
                                                                                 className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-2.5 py-1.5 rounded-md transition-colors"
                                                                             >
                                                                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

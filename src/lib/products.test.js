@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
-    heldFor, partiesIn, canBeMenuComponent,
+    heldFor, partiesIn, canBeMenuComponent, countName,
 } from './products'
 
 const PRODUCTS = [
@@ -185,5 +185,21 @@ describe('held stock is nobody else at the restaurant\'s to use', () => {
 
     it('leaves our own packaging alone', () => {
         expect(canBeMenuComponent({ section: 'Packaging' })).toBe(true)
+    })
+})
+
+describe('countName', () => {
+    it('is just the name for our own stock', () => {
+        expect(countName({ name: 'Chicken Breast' })).toBe('Chicken Breast')
+    })
+
+    it('says whose it is first when it is not ours', () => {
+        // On a phone in a cupboard the name is most of what you can see, so
+        // this is the first thing that has to reach you.
+        expect(countName({ name: 'Carrier Bags', held_for: 'Pita Pit' })).toBe('(Pita Pit) Carrier Bags')
+    })
+
+    it('has nothing to say about nothing', () => {
+        expect(countName(null)).toBe('')
     })
 })

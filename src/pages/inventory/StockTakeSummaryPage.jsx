@@ -6,7 +6,7 @@ import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { sectionColour, sectionRank } from '../../lib/sections'
-import { heldFor, partiesIn } from '../../lib/products'
+import { heldFor, partiesIn, countName } from '../../lib/products'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -29,6 +29,13 @@ import { card } from '../../lib/controlStyles'
 function fmtDateTime(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+function justLoose(parts) {
+    return parts.length === 1 && parts[0].isLoose
 }
 
 export default function StockTakeSummaryPage() {
@@ -355,7 +362,7 @@ export default function StockTakeSummaryPage() {
                           quantity onto two, and neither read as a row. */}
                       <div className="sm:flex sm:items-center sm:justify-between sm:gap-3">
                         <p className="font-medium text-gray-900 sm:flex-1 sm:min-w-0">
-                          {product.name}
+                          {countName(product)}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>
                         <div className="flex items-baseline gap-2 mt-0.5 sm:mt-0 sm:block sm:text-right sm:flex-shrink-0">
@@ -378,7 +385,9 @@ export default function StockTakeSummaryPage() {
                                         {part.text}
                                       </span>
                                     ))}
-                                    <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    {!justLoose(parts) && (
+                                      <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    )}
                                   </>
                                 ) : (
                                   <span className="bg-white border border-border rounded-full px-2 py-0.5 text-gray-600">
