@@ -15,7 +15,7 @@ import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
-import { tableHeadRow, tableHeadCell, badge, card, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -787,8 +787,11 @@ export default function ProductsPage() {
         <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
       )}
 
+      {/* The whole form takes the lightest shade of whatever section is chosen,
+          so the answer to "which one am I filling in" is the paper rather than
+          a field somebody has to go back and read. */}
       {showForm && !editingProduct && (
-        <div className={`${card} p-6 mb-6`}>
+        <div className={`${cardEdge} ${sectionColour(formData.section).bg} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
           <ProductForm
             formData={formData}
@@ -950,7 +953,7 @@ export default function ProductsPage() {
                 </div>
 
                 {editingProduct?.id === p.id && (
-                  <div className="mt-3 pt-3 border-t border-black/10">
+                  <div className={`mt-3 pt-3 border-t border-black/10 ${sectionColour(formData.section).bg} -mx-4 -mb-4 px-4 pb-4 rounded-b-xl`}>
                     <ProductForm
                       formData={formData}
                       onChange={handleFieldChange}
@@ -1114,7 +1117,7 @@ export default function ProductsPage() {
           from the rows around it, and everything below it jumped down the page. */}
       {editingProduct && (
         <Modal title={`Edit ${editingProduct.name}`} onClose={resetForm} width="max-w-2xl">
-          <div className="px-6 py-4">
+          <div className={`px-6 py-4 ${sectionColour(formData.section).bg}`}>
             <ProductForm
               formData={formData}
               onChange={handleFieldChange}

@@ -17,6 +17,7 @@ import { ModalSectionBar, sectionBarAction } from './ModalSection'
 import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
 import { nameClashMessage, declaresAllergens } from '../lib/products'
+import { sectionColour } from '../lib/sections'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -35,6 +36,12 @@ export default function ProductForm({
   // by definition, and its allergens come from its recipe rather than from
   // somebody ticking them, so tagging one here would be a second answer that
   // could disagree with the first.
+  // The colour of the section being typed into, which the whole form takes a
+  // hint of. It is the same colour that section has on the stock take, in the
+  // dropdowns and down the side of its rows, so by the time somebody is filling
+  // this in they already know what green means.
+  const colour = sectionColour(formData.section)
+
   const showExtras = extras && !formData.is_mix
   // Cleaning and packaging still have a supplier, they just have nothing to
   // declare. So only the allergens go, not the whole block.
@@ -67,7 +74,10 @@ export default function ProductForm({
           <select
             value={formData.section}
             onChange={e => onChange('section', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            // The one field that is coloured rather than hinted, since it is
+            // the field the hint is coming from.
+            style={{ color: colour.ink, borderColor: colour.ink }}
+            className="w-full border-2 rounded-lg px-3 py-2 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {SECTIONS.map(section => <option key={section}>{section}</option>)}
           </select>
