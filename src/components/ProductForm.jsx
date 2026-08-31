@@ -156,6 +156,42 @@ export default function ProductForm({
         <datalist id="held-for-names">
           {heldForNames.map(name => <option key={name} value={name} />)}
         </datalist>
+
+        {/* The names already in use, as buttons.
+            A datalist alone was not enough: it shows nothing until somebody
+            types, and on a phone it barely shows at all, so the one thing that
+            stops Pita Pit becoming two columns was the thing nobody could see.
+            Tapping one fills the box; Ours empties it. */}
+        {heldForNames.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => onChange('held_for', '')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                formData.held_for
+                  ? 'bg-white border-border text-gray-600 hover:bg-gray-50'
+                  : 'bg-accent border-accent text-white'
+              }`}
+            >
+              Ours
+            </button>
+            {heldForNames.map(name => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onChange('held_for', name)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  formData.held_for === name
+                    ? 'bg-accent border-accent text-white'
+                    : 'bg-white border-border text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <p className="text-xs text-gray-400 mt-1">
           Counted with ours on every stock take, reported apart from it.
         </p>
