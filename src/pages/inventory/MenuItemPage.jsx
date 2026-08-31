@@ -308,6 +308,10 @@ export default function MenuItemPage() {
     return !components.some(c => c.product_id === p.id)
   })
 
+  // The category this item is in, if somebody has since turned it off.
+  const retiredCategory = categories.find(c =>
+    c.id === headerForm.category_id && !c.is_active) || null
+
   // Derived numbers
   const totalCost = menuItemCost(components, products, recipeLines, prices)
 
@@ -385,11 +389,25 @@ export default function MenuItemPage() {
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             >
               <option value="">Select a category...</option>
+              {/* The one it is in stays on the list even after that category is
+                  turned off. Leaving it out emptied the box, and an empty box
+                  saves as no category at all, so editing the price of an item
+                  in a retired category quietly took it off the menu. It is
+                  named for what it is and the line underneath says to move it. */}
+              {retiredCategory && (
+                <option value={retiredCategory.id}>{retiredCategory.name} (turned off)</option>
+              )}
               {categories.filter(c => c.is_active).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
             {headerErrors.category_id && <p className="text-xs text-red-600 mt-1">{headerErrors.category_id}</p>}
+            {!headerErrors.category_id && retiredCategory && (
+              <p className="text-xs text-amber-700 mt-1">
+                {retiredCategory.name} is turned off. Pick another one, or this item stays in a
+                category nothing else uses.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
