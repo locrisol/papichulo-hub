@@ -17,6 +17,7 @@ import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
+import { orderFormats } from '../../lib/countUnits'
 import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
@@ -770,7 +771,7 @@ export default function ProductsPage() {
   function packsFor(productId) {
     const price = getPreferredPrice(productId)
     if (!price) return []
-    return countUnits.filter(u => u.price_id === price.id)
+    return orderFormats(countUnits.filter(u => u.price_id === price.id))
   }
 
   // The names already used, so the same arrangement is not typed two ways.
