@@ -8,6 +8,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { countName } from '../../lib/products'
+import { countedLine } from '../../lib/countedAt'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
@@ -74,6 +75,9 @@ export default function StockTakeCountPage() {
     const [showUncountedOnly, setShowUncountedOnly] = useState(false)
     const [filterSnapshot, setFilterSnapshot] = useState(null)
     const [formatsByProductId, setFormatsByProductId] = useState({})
+    // Who wrote each line, for the stamp under it. Names only, and only
+    // the people who actually counted something on this session.
+    const [counters, setCounters] = useState({})
 
     const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
@@ -153,6 +157,18 @@ export default function StockTakeCountPage() {
             .from('mix_recipes')
             .select('*')
         setRecipeLines(recipesData || [])
+
+        // The names behind counted_by. Its own query rather than a join,
+        // because a count has to keep working for somebody who cannot read the
+        // users table, and then the line simply says the time and no name.
+        const who = [...new Set((linesData || []).map(l => l.counted_by).filter(Boolean))]
+        if (who.length > 0) {
+            const { data: people } = await supabase
+                .from('users')
+                .select('id, full_name')
+                .in('id', who)
+            setCounters(Object.fromEntries((people || []).map(p => [p.id, p.full_name])))
+        }
 
         setLoading(false)
     }
@@ -236,6 +252,9 @@ export default function StockTakeCountPage() {
         if (insertErr) { setError(friendlyError(insertErr)); return }
 
         setLines(prev => [...prev, data])
+        if (user?.id && !counters[user.id]) {
+            setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
+        }
         setDraftCounts({})
         setDraftLocation('')
     }
@@ -687,6 +706,13 @@ export default function StockTakeCountPage() {
                                                                             {line.location_note && (
                                                                                 <span className="text-xs text-muted block mt-1"> · {line.location_note}</span>
                                                                             )}
+                                                                            {/* When, and who. A count can run over
+                                                                                two days and be counted by two people,
+                                                                                and both of those are the first thing
+                                                                                asked when a number looks wrong. */}
+                                                                            <span className="text-[0.6875rem] text-muted block mt-1">
+                                                                                {countedLine(line.counted_at, counters[line.counted_by])}
+                                                                            </span>
                                                                         </div>
                                                                         {canModify && (
                                                                             <button
