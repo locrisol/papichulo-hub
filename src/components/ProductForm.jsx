@@ -79,7 +79,16 @@ export default function ProductForm({
             style={{ color: colour.ink, borderColor: colour.ink }}
             className="w-full border-2 rounded-lg px-3 py-2 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-accent"
           >
-            {SECTIONS.map(section => <option key={section}>{section}</option>)}
+            {/* Each one in its own colour. An option takes the colour of the
+                select unless it is told otherwise, so the whole list was
+                turning whatever colour happened to be picked, which is the
+                opposite of the point: the list is where you learn what the
+                colours mean. */}
+            {SECTIONS.map(section => (
+              <option key={section} style={{ color: sectionColour(section).ink }}>
+                {section}
+              </option>
+            ))}
           </select>
         </div>
 
