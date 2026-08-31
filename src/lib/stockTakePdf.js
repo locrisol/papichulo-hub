@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import { fmtMoney, fmtQty } from './format'
+import { heldFor, partiesIn } from './products'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -241,6 +242,33 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         pdf.setTextColor(40)
         pdf.text(fmtMoney(sectionValue), colTotalRight - 2, y, { align: 'right' })
         y += rowHeight
+
+        // Whose stock it is, under any section that holds a mix.
+        //
+        // Pita Pit keep their boxes in the packaging cupboard, so a single
+        // packaging figure is two businesses added together. The line above
+        // stays the total, because the total is what was counted off the
+        // shelf; these say how it divides.
+        //
+        // Only where there is a mix. Five headings each repeating themselves
+        // once would be five lines saying nothing.
+        const parties = partiesIn(items.map(it => it.product))
+        if (parties.length > 1) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(9)
+            for (const party of parties) {
+                ensureSpace(5)
+                const theirs = items.filter(it => heldFor(it.product) === party)
+                const theirValue = theirs.reduce((sum, it) => sum + it.value, 0)
+                pdf.setTextColor(110)
+                pdf.text(`${section} (${party || 'ours'})`, marginX + 12, y)
+                pdf.text(fmtMoney(theirValue), colTotalRight - 2, y, { align: 'right' })
+                y += 5
+            }
+            pdf.setFontSize(10)
+            pdf.setTextColor(60)
+            y += 1
+        }
     }
 
     // Grand total

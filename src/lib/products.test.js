@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
-    heldFor, partiesIn,
+    heldFor, partiesIn, canBeMenuComponent,
 } from './products'
 
 const PRODUCTS = [
@@ -171,5 +171,19 @@ describe('partiesIn', () => {
 
     it('has nothing to say about nothing', () => {
         expect(partiesIn([])).toEqual([])
+    })
+})
+
+describe('held stock is nobody else at the restaurant\'s to use', () => {
+    it('is not an ingredient', () => {
+        expect(canBeIngredient({ section: 'Packaging', held_for: 'Pita Pit' })).toBe(false)
+    })
+
+    it('is not part of a menu item', () => {
+        expect(canBeMenuComponent({ section: 'Packaging', held_for: 'Pita Pit' })).toBe(false)
+    })
+
+    it('leaves our own packaging alone', () => {
+        expect(canBeMenuComponent({ section: 'Packaging' })).toBe(true)
     })
 })

@@ -1,5 +1,13 @@
 // Small questions about the product list that are easy to get quietly wrong.
 
+// Who a product is held for, or nothing if it is ours.
+//
+// Trimmed, because a name typed with a trailing space is the same
+// arrangement and must not become a second column on the report.
+export function heldFor(product) {
+    return String(product?.held_for || '').trim() || null
+}
+
 // Is there already a product called this?
 //
 // Trimmed and case insensitive, because "Pineapple", "pineapple " and
@@ -51,6 +59,9 @@ export function nameClashMessage(clash) {
 //   drinks     every can in the fridge, which is what the kind is for
 //   cleaning   nothing in that section has ever gone into food and nothing
 //              ever should
+//   not ours   stock held for somebody else. We count it and that is all: it
+//              cannot go in a dish and it cannot be costed into one, because
+//              we never bought it
 //
 // Packaging is deliberately still in. A tub is not an ingredient in a sauce,
 // but this is also the list a house-made item is costed from and packaging is
@@ -63,6 +74,7 @@ export function canBeIngredient(product) {
     if (!product) return false
     if (product.category === 'drink') return false
     if (product.section === 'Cleaning') return false
+    if (heldFor(product)) return false
     return true
 }
 
@@ -73,9 +85,11 @@ export function canBeIngredient(product) {
 // charged for, and that includes the can of Coke beside the burrito and the
 // container it goes in.
 //
-// Only cleaning is out. Nothing in that cupboard has ever been part of a dish.
+// Cleaning is out, and so is anything held for somebody else. A Pita Pit
+// carrier bag is on our shelf and is not ours to sell.
 export function canBeMenuComponent(product) {
     if (!product) return false
+    if (heldFor(product)) return false
     return product.section !== 'Cleaning'
 }
 
@@ -95,14 +109,6 @@ const NOT_FOOD = ['Cleaning', 'Packaging']
 export function declaresAllergens(product) {
     if (!product) return false
     return !NOT_FOOD.includes(product.section)
-}
-
-// Who a product is held for, or nothing if it is ours.
-//
-// Trimmed, because a name typed with a trailing space is the same
-// arrangement and must not become a second column on the report.
-export function heldFor(product) {
-    return String(product?.held_for || '').trim() || null
 }
 
 // Every party a list of products is held for, ours first.

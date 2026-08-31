@@ -28,6 +28,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 export default function ProductForm({
   formData, onChange, onSubmit, onCancel, submitLabel, errors, heldForNames = [],
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
+  formats, onFormatsChange,
   recipe, onRecipeChange, ingredientOptions,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
@@ -41,6 +42,10 @@ export default function ProductForm({
   // dropdowns and down the side of its rows, so by the time somebody is filling
   // this in they already know what green means.
   const colour = sectionColour(formData.section)
+
+  const fieldCls =
+    'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
+  const labelCls = 'block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2'
 
   const showExtras = extras && !formData.is_mix
   // Cleaning and packaging still have a supplier, they just have nothing to
@@ -391,6 +396,120 @@ export default function ProductForm({
                 suppliers={suppliers}
                 unit={formData.unit}
               />
+
+              {/* How it is counted, while the price it belongs to is being
+                  typed. A format turns one pack into the product's own unit,
+                  so Box = 6 means one box is 6 KG, and a stock take can be
+                  counted the way the product actually sits on the shelf
+                  rather than making somebody work out that eleven boxes is
+                  sixty six kilos with a phone in their hand.
+
+                  They hang off the price and not off the product, because two
+                  suppliers sell the same thing in different sized boxes. That
+                  is why they only appear once a supplier is chosen. */}
+              {priceForm.supplier_id && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                    How it is counted
+                  </p>
+                  <p className="text-xs text-gray-400 mb-3">
+                    Optional. A pack and what it comes to in {formData.unit}, so a stock take can
+                    be counted in boxes rather than in {formData.unit}.
+                  </p>
+
+                  {formats.packs.length > 0 && (
+                    <div className="border border-border rounded-lg overflow-hidden mb-3 bg-white">
+                      {formats.packs.map((pack, i) => (
+                        <div
+                          key={pack.label}
+                          className={`flex items-center gap-3 px-3 py-2 text-sm ${
+                            i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }`}
+                        >
+                          <span className="font-medium text-gray-900 flex-1 min-w-0 truncate">
+                            {pack.label}
+                          </span>
+                          <span className="text-muted whitespace-nowrap">
+                            = {pack.factor} {formData.unit}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onFormatsChange({
+                              ...formats,
+                              packs: formats.packs.filter(x => x.label !== pack.label),
+                            })}
+                            className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Pack</label>
+                      <input
+                        type="text"
+                        value={formats.draft.label}
+                        onChange={e => onFormatsChange({
+                          ...formats,
+                          draft: { ...formats.draft, label: e.target.value },
+                        })}
+                        placeholder="Box, Bag, Tin"
+                        className={fieldCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>One of them is</label>
+                      <input
+                        {...numberField({
+                          value: formats.draft.factor,
+                          onChange: v => onFormatsChange({
+                            ...formats,
+                            draft: { ...formats.draft, factor: v },
+                          }),
+                        })}
+                        placeholder={formData.unit}
+                        className={fieldCls}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 mt-3">
+                    <button
+                      type="button"
+                      disabled={!formats.draft.label.trim()
+                        || !(parseFloat(formats.draft.factor) > 0)
+                        || formats.packs.some(x => x.label === formats.draft.label.trim())}
+                      onClick={() => onFormatsChange({
+                        ...formats,
+                        packs: [...formats.packs, {
+                          label: formats.draft.label.trim(),
+                          factor: parseFloat(formats.draft.factor),
+                        }],
+                        draft: { label: '', factor: '' },
+                      })}
+                      className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Add pack
+                    </button>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formats.allowLoose}
+                        onChange={e => onFormatsChange({ ...formats, allowLoose: e.target.checked })}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Also count loose {formData.unit}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

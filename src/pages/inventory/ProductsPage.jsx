@@ -53,6 +53,10 @@ function extraPlaceBadge(section, isActive) {
 
 // What goes into a MIX, held on the form until the product exists to hang it
 // on. lines are what has been added, draft is the row being typed.
+// The packs a price can be counted in, held on the form until the price it
+// belongs to exists.
+const EMPTY_FORMATS = { packs: [], allowLoose: true, draft: { label: '', factor: '' } }
+
 const EMPTY_RECIPE = {
   batchYield: '',
   lines: [],
@@ -154,6 +158,7 @@ export default function ProductsPage() {
   }
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
+  const [formats, setFormats] = useState(EMPTY_FORMATS)
   const [recipe, setRecipe] = useState(EMPTY_RECIPE)
   const [allergens, setAllergens] = useState(emptyAllergens())
   // Whether anybody opened the allergens and answered, as opposed to leaving
@@ -492,14 +497,17 @@ export default function ProductsPage() {
       // The first price on a product is the preferred one, since it is the
       // only one. The same rule the prices screen uses.
       if (wantsPrice && data) {
-        const { error: priceErr } = await supabase
+        const { data: newPrice, error: priceErr } = await supabase
           .from('product_supplier_prices')
           .insert({
             ...pricePayload(priceForm),
             product_id: data.id,
             restaurant_id: activeRestaurant.id,
             is_preferred: true,
+            allow_loose_count: formats.allowLoose,
           })
+          .select()
+          .single()
 
         // The product is saved either way. Saying so and leaving the form open
         // would be worse than saying the price did not take: the product would
@@ -508,6 +516,19 @@ export default function ProductsPage() {
           setError(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
           fetchProducts()
           return
+        }
+
+        // The packs, which belong to the price rather than to the product and
+        // so have to wait for it the same way the recipe waits for the product.
+        if (newPrice && formats.packs.length > 0) {
+          await supabase.from('price_count_units').insert(
+            formats.packs.map((pack, order) => ({
+              price_id: newPrice.id,
+              label: pack.label,
+              factor: pack.factor,
+              sort_order: order,
+            })),
+          )
         }
       }
 
@@ -558,6 +579,7 @@ export default function ProductsPage() {
       unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
+    setFormats(EMPTY_FORMATS)
     setRecipe(EMPTY_RECIPE)
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
@@ -824,6 +846,8 @@ export default function ProductsPage() {
             nameClash={nameClash}
             heldForNames={heldForNames}
             suppliers={activeSuppliers}
+            formats={formats}
+            onFormatsChange={setFormats}
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
             allergensAnswered={allergensTouched}
