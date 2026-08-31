@@ -1005,9 +1005,13 @@ export default function ProductsPage() {
                   )}
                   <span className="text-xs text-gray-500">
                     {p.unit}
+                    {/* The unit is right there in front of it, so the packs
+                        do not repeat it. */}
                     {packsFor(p.id).length > 0 && (
                       <span className="text-muted">
-                        {' '}· {packsFor(p.id).map(u => u.label).join(', ')}
+                        {' '}· {packsFor(p.id)
+                          .map(u => `${u.label} (${parseFloat(u.factor)})`)
+                          .join(', ')}
                       </span>
                     )}
                   </span>
@@ -1161,11 +1165,10 @@ export default function ProductsPage() {
                             column of its own. The table is wide enough, and
                             this is a thing you check rather than scan down. */}
                         {packsFor(p.id).length > 0 && (
-                          <span
-                            className="block text-xs font-normal text-muted mt-0.5"
-                            title={packsFor(p.id).map(u => `${u.label} = ${u.factor} ${p.unit}`).join(', ')}
-                          >
-                            Counted in {packsFor(p.id).map(u => u.label).join(', ')}
+                          <span className="block text-xs font-normal text-muted mt-0.5">
+                            Counted in {packsFor(p.id)
+                              .map(u => `${u.label} (${parseFloat(u.factor)} ${p.unit})`)
+                              .join(', ')}
                           </span>
                         )}
                       </td>
