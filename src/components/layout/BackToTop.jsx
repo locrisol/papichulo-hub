@@ -22,15 +22,32 @@ export default function BackToTop({ scrollers = [] }) {
 
     useEffect(() => {
         const boxes = scrollers.map(ref => ref?.current).filter(Boolean)
+        let last = 0
 
         function onScroll() {
-            const furthest = Math.max(window.scrollY, ...boxes.map(box => box.scrollTop))
-            setShow(furthest > 400)
+            const at = Math.max(window.scrollY, ...boxes.map(box => box.scrollTop))
+
+            // Only on the way back up.
+            //
+            // Sitting there the whole time it covered the corner of whatever
+            // card was at the bottom of a phone screen, which is worse than not
+            // having it: reading down a list is most of what anybody does here
+            // and the button was in the way for all of it.
+            //
+            // Going up is the one moment somebody might want the top, so that
+            // is when it appears. A few pixels of slack, or every wobble of a
+            // thumb flickers it on and off.
+            const up = at < last - 8
+            const down = at > last + 8
+            if (down) setShow(false)
+            else if (up && at > 400) setShow(true)
+            if (at <= 400) setShow(false)
+
+            last = at
         }
 
         for (const box of boxes) box.addEventListener('scroll', onScroll, { passive: true })
         window.addEventListener('scroll', onScroll, { passive: true })
-        onScroll()
 
         return () => {
             for (const box of boxes) box.removeEventListener('scroll', onScroll)
@@ -51,9 +68,10 @@ export default function BackToTop({ scrollers = [] }) {
                 window.scrollTo({ top: 0, behavior: 'smooth' })
             }}
             aria-label="Back to the top"
-            // Bottom right, above anything a page puts along the bottom, and
-            // out of the way of a thumb reaching for the bottom left.
-            className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-sidebar text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent"
+            // Bottom right, out of the way of a thumb reaching for the bottom
+            // left. Smaller on a phone, where the screen it is covering is
+            // smaller too.
+            className="fixed bottom-4 right-4 md:bottom-5 md:right-5 z-40 w-11 h-11 md:w-12 md:h-12 rounded-full bg-sidebar/90 text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent"
         >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />

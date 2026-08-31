@@ -275,7 +275,12 @@ export default function AppLayout({ children }) {
                         </div>
                     )}
                 </header>
-                <main ref={mainRef} className="flex-1 md:overflow-y-auto p-4 md:p-7">
+                <main
+                    ref={mainRef}
+                    // Room at the bottom on a phone so the last card clears the
+                    // way back up rather than sitting under it.
+                    className="flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
+                >
                     {children}
                 </main>
                 <BackToTop scrollers={[mainRef, shellRef]} />
