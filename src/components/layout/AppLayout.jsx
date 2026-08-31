@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import BackToTop from './BackToTop'
+import { ScrollProvider } from '../../context/ScrollContext'
 import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 
 // Sidebar navigation.
@@ -281,7 +282,11 @@ export default function AppLayout({ children }) {
                     // way back up rather than sitting under it.
                     className="flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
                 >
-                    {children}
+                    {/* Which of the two is scrolling, handed down rather than
+                        hunted for, so a page can remember where somebody was. */}
+                    <ScrollProvider mainRef={mainRef} shellRef={shellRef}>
+                        {children}
+                    </ScrollProvider>
                 </main>
                 <BackToTop scrollers={[mainRef, shellRef]} />
             </div>

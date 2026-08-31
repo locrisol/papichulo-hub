@@ -11,6 +11,7 @@ import {
   heldFor, partiesIn,
 } from '../../lib/products'
 import SearchBox from '../../components/SearchBox'
+import { useKeepScroll } from '../../context/ScrollContext'
 import { sectionColour, productInk, DRINK_COLOUR } from '../../lib/sections'
 import ProductForm from '../../components/ProductForm'
 import Modal from '../../components/Modal'
@@ -176,6 +177,10 @@ export default function ProductsPage() {
   // It is rounded at the top when it is sitting in the card, because that is
   // the card's corner. Once it is floating it has to be square, or the rows
   // passing underneath show through the two little cut outs at either end.
+  // Opening a product's prices or its recipe leaves this page and comes back
+  // to it, and coming back landed at the top of a few hundred rows every time.
+  useKeepScroll('products', !loading)
+
   const tableTop = useRef(null)
   const [stuck, setStuck] = useState(false)
 
