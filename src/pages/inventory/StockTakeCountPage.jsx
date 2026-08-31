@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
@@ -52,6 +53,7 @@ export default function StockTakeCountPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const { user } = useAuth()
+    const confirm = useConfirm()
 
     const [session, setSession] = useState(null)
     const [products, setProducts] = useState([])
@@ -237,17 +239,33 @@ export default function StockTakeCountPage() {
         setDraftLocation('')
     }
 
-    async function handleDeleteLine(lineId) {
+    // Asked first, like every other delete in the app.
+    //
+    // This was the one that had nothing in front of it, and it is the one done
+    // on a phone, in a fridge, with cold hands and a box under one arm. It
+    // names the number being removed and what the product drops to, so the
+    // question can be answered without opening anything else.
+    async function handleDeleteLine(line, product, section) {
+        const rest = getProductTotal(product.id, section) - Number(line.quantity_counted || 0)
+        const ok = await confirm({
+            title: `Delete this count of ${fmtQty(line.quantity_counted)} ${product.unit}?`,
+            message: `${product.name} drops to ${fmtQty(rest)} ${product.unit} in ${section}.`,
+            confirmLabel: 'Delete it',
+            cancelLabel: 'Keep it',
+            tone: 'danger',
+        })
+        if (!ok) return
+
         const { error: delErr } = await supabase
             .from('stock_take_lines')
             .delete()
-            .eq('id', lineId)
+            .eq('id', line.id)
 
         if (delErr) {
             setError(friendlyError(delErr))
             return
         }
-        setLines(prev => prev.filter(l => l.id !== lineId))
+        setLines(prev => prev.filter(l => l.id !== line.id))
     }
 
     function toggleUncountedFilter() {
@@ -669,7 +687,7 @@ export default function StockTakeCountPage() {
                                                                         {canModify && (
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleDeleteLine(line.id)}
+                                                                                onClick={() => handleDeleteLine(line, product, section)}
                                                                                 className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 px-2.5 py-1.5 rounded-md transition-colors"
                                                                             >
                                                                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
