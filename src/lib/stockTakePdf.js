@@ -4,6 +4,11 @@ import { countName } from './products'
 import { sectionColour } from './sections'
 import { bySection, summarise } from './stockTakeSummary'
 import { slicePoints } from './donut'
+import logo from '../assets/PapiChuloLogoPrint.png?inline'
+
+// The logo, in millimetres. The file is 400 by 249.
+const LOGO_WIDTH = 26
+const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 
 // The stock take as a piece of paper.
 //
@@ -54,6 +59,13 @@ function breakdownString(line, product) {
         })
     }
     if (parts.length === 0) return null
+
+    // One loose entry is its own total, so "12 Units = 12 Units" says the same
+    // number twice. The equals sign is there to show the working when somebody
+    // counted in packs, and with a single loose entry there is no working to
+    // show. The screen has done this for a while and the report never did.
+    if (parts.length === 1 && parts[0].isLoose) return null
+
     parts.sort((a, b) => {
         if (a.isLoose && !b.isLoose) return 1
         if (!a.isLoose && b.isLoose) return -1
@@ -85,32 +97,45 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     let currentSection = null
     let railStart = null
 
+    // The top of every page: the logo, what this is, and when it was done.
+    //
+    // It gave the restaurant and the name of the count and nowhere did it say
+    // the words stock take, so a page of it on its own was a list of food with
+    // prices beside it and no telling what it was for.
     function drawPageTop() {
+        pdf.addImage(logo, 'PNG', marginX, 9, LOGO_WIDTH, LOGO_HEIGHT)
+        const textX = marginX + LOGO_WIDTH + 6
+
         pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(16)
+        pdf.setFontSize(7)
+        pdf.setTextColor(150)
+        pdf.text('STOCK TAKE', textX, 13, { charSpace: 0.7 })
+
+        pdf.setFontSize(15)
         pdf.setTextColor(40)
-        pdf.text(restaurant.name, marginX, 18)
+        pdf.text(restaurant.name, textX, 20.5)
 
         pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(11)
-        pdf.text(title, marginX, 25)
+        pdf.setFontSize(10)
+        pdf.setTextColor(90)
+        pdf.text(title, textX, 26)
 
         pdf.setFontSize(8)
-        pdf.setTextColor(120)
+        pdf.setTextColor(130)
         const rightLines = [
             `Started: ${fmtDate(session.started_at)}`,
             session.completed_at ? `Closed: ${fmtDate(session.completed_at)}` : null,
             `Generated: ${fmtDate(new Date().toISOString())} by ${generatedBy}`,
         ].filter(Boolean)
         rightLines.forEach((line, i) => {
-            pdf.text(line, pageWidth - marginX, 14 + i * 4, { align: 'right' })
+            pdf.text(line, pageWidth - marginX, 13 + i * 4, { align: 'right' })
         })
 
         pdf.setDrawColor(200)
         pdf.setLineWidth(0.2)
-        pdf.line(marginX, 29, pageWidth - marginX, 29)
+        pdf.line(marginX, 31, pageWidth - marginX, 31)
 
-        y = 34
+        y = 37
     }
 
     function drawColumns() {
@@ -121,7 +146,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         pdf.text('QTY', colQtyRight, y, { align: 'right' })
         pdf.text('UNIT COST', colCostRight, y, { align: 'right' })
         pdf.text('VALUE', colTotalRight, y, { align: 'right' })
-        y += 5
+        y += 6
     }
 
     function drawFooter() {
@@ -383,7 +408,23 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
 
         pdf.setDrawColor(200)
         pdf.line(marginX, y - 2, colTotalRight, y - 2)
-        y += 3
+        // The count started straight under the chart and read as part of it.
+        y += 9
+    }
+
+    // A section heading sits on a band of its own colour, so it is found by
+    // flicking rather than by reading. It was coloured lettering with a rule
+    // under it, which at a glance looked like another product.
+    function drawSectionBand(section, value) {
+        pdf.setFillColor(...rgb(inkOf(section)))
+        pdf.rect(marginX, y - 4.8, colTotalRight - marginX, 6.8, 'F')
+        pdf.setTextColor(255, 255, 255)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(10.5)
+        pdf.text(section, marginX + 3.5, y)
+        pdf.text(fmtMoney(value), colTotalRight - 3, y, { align: 'right' })
+        pdf.setTextColor(40)
+        y += 8
     }
 
     // ---- the report ------------------------------------------------------
@@ -400,33 +441,43 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         ensureSpace(12)
 
         currentSection = place.section
-        const ink = rgb(row.ink)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(11)
-        pdf.setTextColor(...ink)
-        pdf.text(place.section, marginX, y)
-        pdf.text(fmtMoney(row.value), colTotalRight, y, { align: 'right' })
-        pdf.setDrawColor(...ink)
-        pdf.setLineWidth(0.6)
-        pdf.line(marginX, y + 1.5, colTotalRight, y + 1.5)
-        pdf.setLineWidth(0.2)
-        pdf.setTextColor(40)
-        y += 6
+        drawSectionBand(place.section, row.value)
         railStart = y
 
         for (const { product, lines: productLines, qty, value, unitCost } of place.items) {
-            ensureSpace(7 + (productLines.length > 1 ? productLines.length * 3.5 : 0))
+            // Only worth listing the counts under a product when they say
+            // something the line above does not: more than one of them, a
+            // format worth showing the working for, or where it was found.
+            const showObs = productLines.length > 1
+                || productLines.some(l => l.location_note)
+                || productLines.some(l => breakdownString(l, product))
 
+            // A name too long for its column wraps, and the row has to grow by
+            // however many lines it took. It did not, so River Rock Vital sat
+            // on top of the count underneath it.
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(10)
+            // Stops short of the quantity column rather than at it, because the
+            // quantity is right aligned and grows leftwards into whatever is
+            // left. Measured against the longest one we have, which is 450ml
+            // bottles of River Rock Vital.
+            const nameLines = pdf.splitTextToSize(countName(product), colQtyRight - marginX - 24)
+            const nameExtra = (nameLines.length - 1) * 4.4
+
+            const height = 5.4 + nameExtra + (showObs ? productLines.length * 3.6 + 0.6 : 0)
+            ensureSpace(height + 3)
+
+            // Set again, because ensureSpace may have started a page and drawn
+            // the column headings in bold since the last time.
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(10)
             pdf.setTextColor(40)
-            pdf.text(countName(product), marginX, y, { maxWidth: colQtyRight - marginX - 5 })
+            pdf.text(nameLines, marginX, y)
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
             pdf.text(unitCost != null ? fmtMoney(unitCost) : '—', colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })
-            y += 5
+            y += 5.4 + nameExtra
 
-            const showObs = productLines.length > 1 || productLines.some(l => l.unit_breakdown && typeof l.unit_breakdown === 'object')
             if (showObs) {
                 pdf.setFont('helvetica', 'normal')
                 pdf.setFontSize(7.5)
@@ -438,10 +489,19 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
                         ? `${bd} = ${fmtQty(line.quantity_counted)} ${product.unit}${loc}`
                         : `${fmtQty(line.quantity_counted)} ${product.unit}${loc}`
                     pdf.text(text, marginX + 4, y)
-                    y += 3.5
+                    y += 3.6
                 }
-                y += 1
+                y += 0.6
             }
+
+            // A hairline between one product and the next. Run together they
+            // were a wall of numbers, and the working under one product read
+            // as though it belonged to the one below it.
+            pdf.setDrawColor(224, 220, 212)
+            pdf.setLineWidth(0.15)
+            pdf.line(marginX, y - 1.6, colTotalRight, y - 1.6)
+            pdf.setLineWidth(0.2)
+            y += 2.4
         }
 
         flushRail()
