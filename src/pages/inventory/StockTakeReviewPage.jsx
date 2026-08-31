@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { countName } from '../../lib/products'
 import { sectionRank } from '../../lib/sections'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -274,7 +275,7 @@ export default function StockTakeReviewPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium text-gray-900">
-                          {product.name}
+                          {countName(product)}
                           <span className="text-xs text-muted ml-2">{product.section} · {product.unit}</span>
                         </p>
                         <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

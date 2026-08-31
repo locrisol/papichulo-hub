@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf'
 import { fmtMoney, fmtQty } from './format'
-import { heldFor, partiesIn } from './products'
+import { heldFor, partiesIn, countName } from './products'
 
 const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
@@ -180,7 +180,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(10)
             pdf.setTextColor(40)
-            pdf.text(product.name, marginX, y, { maxWidth: colQtyRight - marginX - 5 })
+            pdf.text(countName(product), marginX, y, { maxWidth: colQtyRight - marginX - 5 })
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
             pdf.text(unitCost != null ? fmtMoney(unitCost) : '—', colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })

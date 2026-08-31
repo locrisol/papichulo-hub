@@ -7,6 +7,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
+import { countName } from '../../lib/products'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
@@ -354,7 +355,10 @@ export default function StockTakeCountPage() {
             .map(({ section, items }) => ({
                 section,
                 items: items.filter(p =>
-                    matches(p.name, term)
+                    // The whole name as it reads on the count, so searching
+                    // pita finds the Pita Pit bags and searching carrier
+                    // finds them too.
+                    matches(countName(p), term)
                     && (!showUncountedOnly || !filterSnapshot
                         || filterSnapshot.has(placeKey(p.id, section)))),
             }))
@@ -597,7 +601,7 @@ export default function StockTakeCountPage() {
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-medium text-gray-900">
-                                                            {product.name}
+                                                            {countName(product)}
                                                             <span className="text-xs text-muted ml-2">{product.unit}</span>
                                                         </p>
                                                         {elsewhere.length > 0 && (
