@@ -954,9 +954,6 @@ export default function ProductsPage() {
                     // cell leaves the row's own background and border behind
                     // as it moves, so the heading would go transparent the
                     // moment anybody scrolled.
-                    style={i === 0
-                      ? { borderLeftWidth: '6px', borderLeftColor: '#182F24' }
-                      : undefined}
                     // The corners are rounded on the cells rather than clipped
                     // by the card. Clipping means an overflow on the card, and
                     // an overflow on the card is what the heading would stick
@@ -1000,14 +997,21 @@ export default function ProductsPage() {
                           ? 'bg-amber-50'
                           : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                     >
+                      {/* The colour is drawn inside the cell rather than as a
+                          border on it. A border sits outside the cell's
+                          background, so it landed beside the heading instead of
+                          under it and showed as a stripe running past it, and
+                          it squared off through the card's rounded corner. A
+                          block inside the cell is covered by the heading like
+                          everything else and is clipped by the same radius. */}
                       <td
-                        // The line is on the first cell rather than on the row,
-                        // because a row cannot be given a rounded corner and a
-                        // cell can, and on the last row it has to follow the
-                        // card's edge round.
-                        style={{ borderLeftWidth: '6px', borderLeftColor: productInk(p) }}
-                        className={`px-4 py-3 font-medium ${last ? 'rounded-bl-xl' : ''} ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}
+                        className={`relative overflow-hidden px-4 py-3 pl-6 font-medium ${last ? 'rounded-bl-xl' : ''} ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}
                       >
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-0 bottom-0 w-1.5"
+                          style={{ backgroundColor: productInk(p) }}
+                        />
                         {p.name}
                       </td>
                       <td className="px-4 py-3">

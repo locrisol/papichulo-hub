@@ -33,7 +33,10 @@ export const SECTION_COLOURS = {
     'Dry': {
         text: 'text-amber-700', bar: 'bg-amber-500', bg: 'bg-amber-50',
         border: 'border-amber-200', solid: 'bg-amber-600', ring: 'ring-amber-600',
-        ink: '#b45309',
+        // A clear orange rather than a burnt one. The darker amber it had was
+        // close enough to Packaging's red that the two lines were hard to tell
+        // apart down the side of a list.
+        ink: '#d97706',
     },
     'Packaging': {
         text: 'text-red-700', bar: 'bg-red-500', bg: 'bg-red-50',
