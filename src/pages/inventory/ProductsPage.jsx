@@ -142,6 +142,9 @@ export default function ProductsPage() {
   const [products, setProducts] = useState([])
   const [prices, setPrices] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
+  // The packs each preferred price can be counted in. Only for showing on the
+  // row: the stock take reads its own.
+  const [countUnits, setCountUnits] = useState([])
   const [suppliers, setSuppliers] = useState([])
   // The supplier price typed alongside a new product. Only ever used when
   // adding one: editing a product leaves prices where they live, because by
@@ -280,7 +283,20 @@ export default function ProductsPage() {
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
 
-    if (data) setPrices(data)
+    if (!data) return
+    setPrices(data)
+
+    // The packs hanging off those prices. Fetched here rather than in its own
+    // effect because it is meaningless without them: a pack belongs to a price
+    // and there is nothing to look up until we know which prices are preferred.
+    const ids = data.map(p => p.id)
+    if (ids.length === 0) { setCountUnits([]); return }
+    const { data: units } = await supabase
+      .from('price_count_units')
+      .select('*')
+      .in('price_id', ids)
+      .order('sort_order')
+    setCountUnits(units || [])
   }
 
   async function fetchRecipeLines() {
@@ -740,6 +756,13 @@ export default function ProductsPage() {
   // uses. Only active ones: a product nobody can buy is not an ingredient.
   const ingredientOptions = products.filter(p => p.is_active && canBeIngredient(p))
 
+  // How a product is counted, off its preferred price.
+  function packsFor(productId) {
+    const price = getPreferredPrice(productId)
+    if (!price) return []
+    return countUnits.filter(u => u.price_id === price.id)
+  }
+
   // The names already used, so the same arrangement is not typed two ways.
   const heldForNames = partiesIn(products).filter(Boolean)
 
@@ -767,6 +790,14 @@ export default function ProductsPage() {
       // cost should give the dearest product there is, not the dearest in every
       // section. If you only want one section you use the buttons above the
       // table, which is what they are for.
+
+      // Stock held for somebody else goes to the very bottom, under
+      // everything including the drinks. It is on our shelf and it is not our
+      // stock, so it has no business sitting in the middle of a list of things
+      // we buy and sell. Checked first, so it beats every other rule.
+      const aTheirs = !!heldFor(a)
+      const bTheirs = !!heldFor(b)
+      if (aTheirs !== bTheirs) return aTheirs ? 1 : -1
 
       // MIX products still come first. They are the ones that behave
       // differently, since their cost comes from a recipe rather than a
@@ -962,7 +993,14 @@ export default function ProductsPage() {
                       {heldFor(p)}
                     </span>
                   )}
-                  <span className="text-xs text-gray-500">{p.unit}</span>
+                  <span className="text-xs text-gray-500">
+                    {p.unit}
+                    {packsFor(p.id).length > 0 && (
+                      <span className="text-muted">
+                        {' '}· {packsFor(p.id).map(u => u.label).join(', ')}
+                      </span>
+                    )}
+                  </span>
                   {/* The table says this with a red row, which a single card
                       cannot do on its own, so it says it in words instead. */}
                   {!p.is_active && (
@@ -1109,6 +1147,17 @@ export default function ProductsPage() {
                           style={{ backgroundColor: productInk(p) }}
                         />
                         {p.name}
+                        {/* How it is counted, under the name rather than in a
+                            column of its own. The table is wide enough, and
+                            this is a thing you check rather than scan down. */}
+                        {packsFor(p.id).length > 0 && (
+                          <span
+                            className="block text-xs font-normal text-muted mt-0.5"
+                            title={packsFor(p.id).map(u => `${u.label} = ${u.factor} ${p.unit}`).join(', ')}
+                          >
+                            Counted in {packsFor(p.id).map(u => u.label).join(', ')}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex flex-wrap gap-1">
