@@ -145,6 +145,12 @@ export default function ProductsPage() {
   // the drinks. Separate from the section buttons because it is a different
   // question: one is where a thing is kept, the other is what it is.
   const [activeKind, setActiveKind] = useState('All')
+
+  function toggleSection(section) {
+    setActiveSections(current => (current.includes(section)
+      ? current.filter(s => s !== section)
+      : [...current, section]))
+  }
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
   const [recipe, setRecipe] = useState(EMPTY_RECIPE)
@@ -183,7 +189,10 @@ export default function ProductsPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
-  const [activeSection, setActiveSection] = useState('All')
+  // Which sections are showing. Empty means all of them, which is the same
+  // thing and one fewer state to keep straight than a list that has to contain
+  // every section to mean nothing is being filtered.
+  const [activeSections, setActiveSections] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [showInactive, setShowInactive] = useState(() => {
@@ -204,7 +213,7 @@ export default function ProductsPage() {
   // The filter buttons above the table. There is no separate order list any
   // more: the sort runs across the whole list, so nothing needs to know which
   // section comes before which.
-  const sections = ['All', 'Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+  const sections = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
   const kinds = ['All', 'Ingredients', 'Drinks']
 
   // Which column the table is sorted by, and which way.
@@ -704,9 +713,12 @@ export default function ProductsPage() {
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
     // the freezer, and the two boxes of tacos defrosting in the cold room are
     // still freezer stock as far as anybody walking up to it is concerned.
-    .filter(p => activeSection === 'All'
-      || p.section === activeSection
-      || (p.also_in || []).includes(activeSection))
+    //
+    // More than one section is an or rather than an and. Nothing is kept in two
+    // places at once in the sense an and would mean, so picking Freezer and
+    // Cold Room together can only sensibly be asking to see both.
+    .filter(p => activeSections.length === 0
+      || activeSections.some(place => p.section === place || (p.also_in || []).includes(place)))
     .filter(p => activeKind === 'All'
       || (activeKind === 'Drinks' ? p.category === 'drink' : p.category !== 'drink'))
     .filter(p => matches(p.name, search))
@@ -815,14 +827,22 @@ export default function ProductsPage() {
       {/* Two rows because they are two questions. Where a thing is kept, and
           what kind of thing it is. Mixing them into one row of chips would
           leave somebody wondering why picking Drinks turned off Freezer. */}
+      {/* All is not one of the sections, it is the way to clear them, which is
+          why it lights up only when nothing else does. Everything else toggles,
+          so Freezer and Cold Room together shows both. */}
       <div className="flex gap-2 mb-2 flex-wrap">
+        <FilterChip
+          label="All"
+          isOn={activeSections.length === 0}
+          onClick={() => setActiveSections([])}
+        />
         {sections.map(section => (
           <FilterChip
             key={section}
             label={section}
-            isOn={activeSection === section}
-            ink={section === 'All' ? null : sectionColour(section).ink}
-            onClick={() => setActiveSection(section)}
+            isOn={activeSections.includes(section)}
+            ink={sectionColour(section).ink}
+            onClick={() => toggleSection(section)}
           />
         ))}
       </div>
