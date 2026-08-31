@@ -78,12 +78,24 @@ export default function StockTakeCountPage() {
     // Who wrote each line, for the stamp under it. Names only, and only
     // the people who actually counted something on this session.
     const [counters, setCounters] = useState({})
+    // The none that was just recorded, so it can be taken back without a
+    // dialog. One at a time: two undos on screen at once would be a list of
+    // things to think about rather than one thing to fix.
+    const [justNoned, setJustNoned] = useState(null)
 
     const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
 
     useEffect(() => {
         fetchEverything()
     }, [id])
+
+    // The undo is offered for ten seconds, which is long enough to notice the
+    // wrong row and short enough that it is gone before the next shelf.
+    useEffect(() => {
+        if (!justNoned) return
+        const timer = setTimeout(() => setJustNoned(null), 10000)
+        return () => clearTimeout(timer)
+    }, [justNoned])
 
     async function fetchEverything() {
         setLoading(true)
@@ -265,6 +277,59 @@ export default function StockTakeCountPage() {
     // on a phone, in a fridge, with cold hands and a box under one arm. It
     // names the number being removed and what the product drops to, so the
     // question can be answered without opening anything else.
+    // Nothing on the shelf, said in one tap.
+    //
+    // It writes an ordinary line of zero, which is not the same as leaving the
+    // product uncounted: no line means nobody looked, a zero means somebody
+    // looked and there was none, and those two lead to different orders. The
+    // review screen has always drawn that distinction and there has never been
+    // a way to record the second half of it.
+    //
+    // No confirmation. A dialog in a fridge with cold hands is two taps and a
+    // sentence to read on every empty shelf, and what people do with a dialog
+    // they meet forty times is stop reading it. The undo underneath forgives
+    // the accident instead of trying to prevent it.
+    async function handleNone(product, section) {
+        setSavingLine(true)
+        const unitCost = resolveUnitCost(product, products, recipeLines, preferredPrices)
+
+        const { data, error: noneErr } = await supabase
+            .from('stock_take_lines')
+            .insert({
+                stock_take_id: id,
+                product_id: product.id,
+                section: section || product.section || null,
+                quantity_counted: 0,
+                unit_cost: unitCost,
+                line_total: 0,
+                counted_by: user.id,
+            })
+            .select()
+            .single()
+
+        setSavingLine(false)
+        if (noneErr) { setError(friendlyError(noneErr)); return }
+
+        setLines(prev => [...prev, data])
+        setJustNoned({ key: placeKey(product.id, section), lineId: data.id })
+        if (user?.id && !counters[user.id]) {
+            setCounters(prev => ({ ...prev, [user.id]: user.full_name || 'you' }))
+        }
+    }
+
+    // Straight back out, no question asked. Asking here would undo the point of
+    // not asking in the first place.
+    async function undoNone(lineId) {
+        setJustNoned(null)
+        const { error: undoErr } = await supabase
+            .from('stock_take_lines')
+            .delete()
+            .eq('id', lineId)
+
+        if (undoErr) { setError(friendlyError(undoErr)); return }
+        setLines(prev => prev.filter(l => l.id !== lineId))
+    }
+
     async function handleDeleteLine(line, product, section) {
         const rest = getProductTotal(product.id, section) - Number(line.quantity_counted || 0)
         const ok = await confirm({
@@ -605,17 +670,29 @@ export default function StockTakeCountPage() {
                                     // boxes twice thinking they were missed.
                                     const elsewhere = placesOf(product).filter(place => place !== section)
 
+                                    // Nothing counted here and nothing typed, so the
+                                    // whole of this row is the offer to say there is
+                                    // none. Counted rows do not need it.
+                                    const canSayNone = !isClosed && !isCounted
+                                    const noned = isCounted
+                                        && lineCount === 1
+                                        && Number(productLines[0].quantity_counted) === 0
+                                    const undoable = justNoned?.key === key ? justNoned.lineId : null
+
                                     return (
                                         <div
                                             key={key}
                                             className={`${i < items.length - 1 ? 'border-b border-border' : ''} ${isExpanded ? 'bg-white' : ''} ${!isCounted ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
                                         >
-                                            {/* Row header, tap to expand */}
+                                            {/* Row header, tap to expand.
+                                                A row rather than one big button now, because
+                                                None has to be its own control and a button
+                                                inside a button is not a thing. */}
+                                            <div className="flex items-stretch" style={{ minHeight: '56px' }}>
                                             <button
                                                 type="button"
                                                 onClick={() => !isClosed && toggleExpand(key)}
-                                                className="w-full text-left px-4 py-3"
-                                                style={{ minHeight: '56px' }}
+                                                className="flex-1 min-w-0 text-left px-4 py-3"
                                             >
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
@@ -634,7 +711,9 @@ export default function StockTakeCountPage() {
                                                             {isCounted ? (
                                                                 <>
                                                                     <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                                                                    {isManager ? (
+                                                                    {noned ? (
+                                                                        <p className="text-xs text-muted">None in stock</p>
+                                                                    ) : isManager ? (
                                                                         <p className="text-xs text-muted">
                                                                             {fmtMoney(getProductValue(product.id, section))}
                                                                             {lineCount > 1 ? ` · ${lineCount} entries` : ''}
@@ -646,7 +725,13 @@ export default function StockTakeCountPage() {
                                                                     )}
                                                                 </>
                                                             ) : (
-                                                                <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                // Nothing here when None is on the row.
+                                                                // The amber edge already says it has not
+                                                                // been counted, and saying it twice is
+                                                                // what pushed the words off the card.
+                                                                !canSayNone && (
+                                                                    <p className="text-sm font-medium text-amber-600">Not counted</p>
+                                                                )
                                                             )}
                                                         </div>
                                                         {!isClosed && (
@@ -660,6 +745,28 @@ export default function StockTakeCountPage() {
                                                     </div>
                                                 </div>
                                             </button>
+
+                                            {canSayNone && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNone(product, section)}
+                                                    disabled={savingLine}
+                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                                                >
+                                                    None
+                                                </button>
+                                            )}
+
+                                            {undoable && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => undoNone(undoable)}
+                                                    className="flex-shrink-0 self-center mr-3 px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold shadow-sm hover:brightness-95"
+                                                >
+                                                    Undo
+                                                </button>
+                                            )}
+                                            </div>
 
                                             {/* Expanded section */}
                                             {isExpanded && (
