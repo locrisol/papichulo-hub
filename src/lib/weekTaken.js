@@ -105,43 +105,7 @@ export function toSlices(rows) {
     ]
 }
 
-// A slice of a donut, as an SVG path, on a 100 by 100 square.
-//
-// Angles start at the top and go clockwise, which is how a pie is read.
-//
-// One slice covering the whole circle cannot be drawn as an arc: its start and
-// end points are the same, so the browser draws nothing at all and the chart
-// comes out blank. A week where everything came in one way is perfectly
-// ordinary, so that case is drawn as two half circles instead.
-export function slicePath(startAngle, endAngle, outer, inner) {
-    const point = (angle, radius) => {
-        const rad = ((angle - 90) * Math.PI) / 180
-        return [50 + radius * Math.cos(rad), 50 + radius * Math.sin(rad)]
-    }
-
-    if (endAngle - startAngle >= 359.999) {
-        return [
-            `M 50 ${50 - outer}`,
-            `A ${outer} ${outer} 0 1 1 50 ${50 + outer}`,
-            `A ${outer} ${outer} 0 1 1 50 ${50 - outer}`,
-            `M 50 ${50 - inner}`,
-            `A ${inner} ${inner} 0 1 0 50 ${50 + inner}`,
-            `A ${inner} ${inner} 0 1 0 50 ${50 - inner}`,
-            'Z',
-        ].join(' ')
-    }
-
-    const large = endAngle - startAngle > 180 ? 1 : 0
-    const [x1, y1] = point(startAngle, outer)
-    const [x2, y2] = point(endAngle, outer)
-    const [x3, y3] = point(endAngle, inner)
-    const [x4, y4] = point(startAngle, inner)
-
-    return [
-        `M ${x1} ${y1}`,
-        `A ${outer} ${outer} 0 ${large} 1 ${x2} ${y2}`,
-        `L ${x3} ${y3}`,
-        `A ${inner} ${inner} 0 ${large} 0 ${x4} ${y4}`,
-        'Z',
-    ].join(' ')
-}
+// The pie geometry moved out to its own file once the stock take grew a pie of
+// its own. Re-exported here so the dashboard side goes on importing it from
+// where it has always imported it.
+export { slicePath } from './donut'
