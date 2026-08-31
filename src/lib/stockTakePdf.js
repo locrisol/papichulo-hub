@@ -59,6 +59,13 @@ function breakdownString(line, product) {
         })
     }
     if (parts.length === 0) return null
+
+    // One loose entry is its own total, so "12 Units = 12 Units" says the same
+    // number twice. The equals sign is there to show the working when somebody
+    // counted in packs, and with a single loose entry there is no working to
+    // show. The screen has done this for a while and the report never did.
+    if (parts.length === 1 && parts[0].isLoose) return null
+
     parts.sort((a, b) => {
         if (a.isLoose && !b.isLoose) return 1
         if (!a.isLoose && b.isLoose) return -1
@@ -438,18 +445,38 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         railStart = y
 
         for (const { product, lines: productLines, qty, value, unitCost } of place.items) {
-            const showObs = productLines.length > 1 || productLines.some(l => l.unit_breakdown && typeof l.unit_breakdown === 'object')
-            const height = 5.4 + (showObs ? productLines.length * 3.6 + 0.6 : 0)
+            // Only worth listing the counts under a product when they say
+            // something the line above does not: more than one of them, a
+            // format worth showing the working for, or where it was found.
+            const showObs = productLines.length > 1
+                || productLines.some(l => l.location_note)
+                || productLines.some(l => breakdownString(l, product))
+
+            // A name too long for its column wraps, and the row has to grow by
+            // however many lines it took. It did not, so River Rock Vital sat
+            // on top of the count underneath it.
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(10)
+            // Stops short of the quantity column rather than at it, because the
+            // quantity is right aligned and grows leftwards into whatever is
+            // left. Measured against the longest one we have, which is 450ml
+            // bottles of River Rock Vital.
+            const nameLines = pdf.splitTextToSize(countName(product), colQtyRight - marginX - 24)
+            const nameExtra = (nameLines.length - 1) * 4.4
+
+            const height = 5.4 + nameExtra + (showObs ? productLines.length * 3.6 + 0.6 : 0)
             ensureSpace(height + 3)
 
+            // Set again, because ensureSpace may have started a page and drawn
+            // the column headings in bold since the last time.
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(10)
             pdf.setTextColor(40)
-            pdf.text(countName(product), marginX, y, { maxWidth: colQtyRight - marginX - 5 })
+            pdf.text(nameLines, marginX, y)
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
             pdf.text(unitCost != null ? fmtMoney(unitCost) : '—', colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })
-            y += 5.4
+            y += 5.4 + nameExtra
 
             if (showObs) {
                 pdf.setFont('helvetica', 'normal')
