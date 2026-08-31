@@ -250,6 +250,12 @@ export default function ProductsPage() {
     setLoading(false)
   }
 
+  // All of them, active or not.
+  //
+  // The table has to be able to name the supplier on a product that was priced
+  // years ago from somebody we no longer buy from, so this cannot be filtered
+  // here. What must not show a retired supplier is the picker, and that is
+  // narrowed where it is handed over rather than here.
   async function fetchSuppliers() {
     const { data } = await supabase
       .from('suppliers')
@@ -708,6 +714,10 @@ export default function ProductsPage() {
   // uses. Only active ones: a product nobody can buy is not an ingredient.
   const ingredientOptions = products.filter(p => p.is_active && canBeIngredient(p))
 
+  // Who you can still buy from. A deactivated supplier is one we have stopped
+  // using, so offering it on a new product is offering a mistake.
+  const activeSuppliers = suppliers.filter(sup => sup.is_active)
+
   const filteredProducts = products
     .filter(p => showInactive || p.is_active)
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
@@ -805,7 +815,7 @@ export default function ProductsPage() {
             onPriceChange={handlePriceChange}
             priceErrors={priceErrors}
             nameClash={nameClash}
-            suppliers={suppliers}
+            suppliers={activeSuppliers}
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
             allergensAnswered={allergensTouched}
