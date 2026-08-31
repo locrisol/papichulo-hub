@@ -19,7 +19,7 @@
 // belongs to one place and no more.
 
 import { sectionRank, sectionColour } from './sections'
-import { heldFor } from './products'
+import { heldFor, compareForCount } from './products'
 
 // The three the accountant adds together. Packaging and cleaning are stock but
 // they are not food cost, and that split is the first thing anybody does to
@@ -61,7 +61,7 @@ export function bySection(products, lines) {
                     // The cost the line saved on the day, not today's price.
                     unitCost: own.find(l => l.unit_cost != null)?.unit_cost ?? null,
                 }))
-                .sort((a, b) => a.product.name.localeCompare(b.product.name)),
+                .sort((a, b) => compareForCount(a.product, b.product)),
         }))
         .sort((a, b) => {
             const r = sectionRank(a.section) - sectionRank(b.section)
