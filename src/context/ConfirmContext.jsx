@@ -65,6 +65,11 @@ function ConfirmDialog({ request, onClose }) {
         confirmLabel = 'Confirm',
         cancelLabel = 'Cancel',
         tone = 'default',
+        // The red line under a danger dialog. It says a delete cannot be
+        // undone, which is true of most of them and was being said about
+        // deactivating, which can be undone in one tap. A dialog that warns
+        // about something untrue is a dialog people learn to click through.
+        dangerNote = 'This cannot be undone.',
         // A notice has nothing to decide, so it gets one button and no cancel.
         notice = false,
     } = request
@@ -104,8 +109,8 @@ function ConfirmDialog({ request, onClose }) {
                         </dl>
                     )}
 
-                    {tone === 'danger' && !notice && (
-                        <p className="mt-4 text-xs text-red-600">This cannot be undone.</p>
+                    {tone === 'danger' && !notice && dangerNote && (
+                        <p className="mt-4 text-xs text-red-600">{dangerNote}</p>
                     )}
                 </div>
 

@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { sectionColour, sectionRank } from '../../lib/sections'
+import { heldFor, partiesIn } from '../../lib/products'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -24,18 +26,6 @@ import { card } from '../../lib/controlStyles'
 // This is also where the PDF comes from, which is the format the owner is used
 // to seeing.
 
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-const SECTION_COLOURS = {
-  'Freezer': { text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600' },
-  'Cold Room': { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600' },
-  'Dry': { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600' },
-  'Packaging': { text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600' },
-  'Cleaning': { text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600' },
-  'Other': { text: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600' },
-}
-function sectionColour(s) { return SECTION_COLOURS[s] || SECTION_COLOURS['Other'] }
-function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
 function fmtDateTime(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -99,21 +89,31 @@ export default function StockTakeSummaryPage() {
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
-  function getProductLines(productId) {
-    return lines.filter(l => l.product_id === productId).sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
-  }
-  function getProductTotal(productId) {
-    return lines.filter(l => l.product_id === productId).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
-  }
-
-  function getProductValue(productId) {
-    return lines
-      .filter(l => l.product_id === productId)
-      .reduce((s, l) => s + Number(l.line_total || 0), 0)
+  // All of these take the place as well as the product, because a product kept
+  // in two of them has lines in both and each heading is only about its own.
+  // Pass no section and you get the product's whole count, which is what the
+  // total at the top is.
+  function linesFor(productId, section) {
+    return lines.filter(l =>
+      l.product_id === productId
+      && (!section || (l.section || 'Other') === section))
   }
 
-  function getSectionValue(items) {
-    return items.reduce((s, p) => s + getProductValue(p.id), 0)
+  function getProductLines(productId, section) {
+    return linesFor(productId, section)
+      .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
+  }
+
+  function getProductTotal(productId, section) {
+    return linesFor(productId, section).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
+  }
+
+  function getProductValue(productId, section) {
+    return linesFor(productId, section).reduce((s, l) => s + Number(l.line_total || 0), 0)
+  }
+
+  function getSectionValue(items, section) {
+    return items.reduce((s, p) => s + getProductValue(p.id, section), 0)
   }
 
   // Return a line's unit_breakdown as sorted parts (biggest format left,
@@ -141,19 +141,30 @@ export default function StockTakeSummaryPage() {
     return parts
   }
 
-  // Sections containing only counted products, grouped and ordered
+  // Sections containing only counted products, grouped and ordered.
+  //
+  // Grouped by where each line was actually counted rather than by the product's
+  // own section, because a product can be kept in two places and this is a
+  // valuation of what is sitting in each of them. Counting six in the cold room
+  // and four in dry and then reading ten against dry would be a number that
+  // matches nothing anybody saw on a shelf.
+  //
+  // A product kept in two places therefore appears under both headings, with
+  // only that place's lines behind each. Nothing is counted twice: a line
+  // belongs to one place and no more.
   const sections = useMemo(() => {
-    const countedProducts = products.filter(p => countedProductIds.has(p.id))
     const grouped = {}
-    for (const p of countedProducts) {
-      const s = p.section || 'Other'
+    for (const line of lines) {
+      const s = line.section || 'Other'
+      const product = products.find(p => p.id === line.product_id)
+      if (!product) continue
       if (!grouped[s]) grouped[s] = []
-      grouped[s].push(p)
+      if (!grouped[s].some(p => p.id === product.id)) grouped[s].push(product)
     }
     return Object.entries(grouped)
       .map(([section, items]) => ({ section, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-  }, [products, countedProductIds])
+  }, [products, lines])
 
   const uncountedProducts = useMemo(() => {
     return products.filter(p => !countedProductIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
@@ -244,7 +255,7 @@ export default function StockTakeSummaryPage() {
       )}
 
       <header className="mb-5">
-        <h1 className="font-serif text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
+        <h1 className="font-serif text-xl sm:text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
         <p className="text-sm text-muted mt-1">
           Started by {starter?.full_name || 'Unknown'} on {fmtDateTime(session.started_at)}
           {session.completed_at && ` · Closed ${fmtDateTime(session.completed_at)}`}
@@ -270,19 +281,27 @@ export default function StockTakeSummaryPage() {
         </button>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className={`${card} p-4`}>
+      {/* The three numbers.
+          One card the width of the screen on a phone, split in two lines with
+          the label beside the figure. Three across a phone gave each of them
+          about a hundred points, which "Total value" cannot fit a heading in
+          let alone a number, so the money ran off the edge of its own card. */}
+      <div className={`${card} divide-y divide-border sm:divide-y-0 sm:grid sm:grid-cols-3 sm:divide-x mb-6`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{countedProductIds.size}<span className="text-base text-muted">/{products.length}</span></p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">
+            {countedProductIds.size}<span className="text-base text-muted">/{products.length}</span>
+          </p>
         </div>
-        <div className={`${card} p-4`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Lines</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{lines.length}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">{lines.length}</p>
         </div>
-        <div className={`${card} p-4`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(session.total_value)}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1 whitespace-nowrap">
+            {fmtMoney(session.total_value)}
+          </p>
         </div>
       </div>
 
@@ -294,7 +313,8 @@ export default function StockTakeSummaryPage() {
       <div className="space-y-5 mb-6">
         {sections.map(({ section, items }) => {
           const colour = sectionColour(section)
-          const sectionValue = getSectionValue(items)
+          const sectionValue = getSectionValue(items, section)
+          const parties = partiesIn(items)
           return (
             <div key={section}>
               <div className={`${colour.solid} rounded-lg px-3 py-2 mb-2 flex items-center justify-between`}>
@@ -303,21 +323,46 @@ export default function StockTakeSummaryPage() {
                   {fmtMoney(sectionValue)}
                 </span>
               </div>
+
+              {/* Split, but only where a section actually holds somebody
+                  else's stock. Packaging does, because Pita Pit keep their
+                  boxes in our cupboard; nothing else does, and putting a
+                  breakdown under every heading to say one line would be noise
+                  on five of them. The heading keeps the combined figure, since
+                  that is what was counted off the shelf. */}
+              {parties.length > 1 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
+                  {parties.map(party => (
+                    <span key={party || 'ours'} className="text-xs text-gray-600">
+                      {section} ({party || 'ours'}){' '}
+                      <span className="font-semibold text-gray-900">
+                        {fmtMoney(getSectionValue(items.filter(p => heldFor(p) === party), section))}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
                 {items.map((product, i) => {
-                  const productLines = getProductLines(product.id)
-                  const total = getProductTotal(product.id)
-                  const value = getProductValue(product.id)
+                  const productLines = getProductLines(product.id, section)
+                  const total = getProductTotal(product.id, section)
+                  const value = getProductValue(product.id, section)
                   return (
-                    <div key={product.id} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-gray-900 flex-1 min-w-0">
+                    <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
+                      {/* The name above the numbers on a phone, side by side
+                          on anything wider. Squeezed side by side on a small
+                          screen the name wrapped onto three lines and the
+                          quantity onto two, and neither read as a row. */}
+                      <div className="sm:flex sm:items-center sm:justify-between sm:gap-3">
+                        <p className="font-medium text-gray-900 sm:flex-1 sm:min-w-0">
                           {product.name}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                          <p className="text-xs text-muted">{fmtMoney(value)}</p>
+                        <div className="flex items-baseline gap-2 mt-0.5 sm:mt-0 sm:block sm:text-right sm:flex-shrink-0">
+                          <p className="font-semibold text-gray-900 whitespace-nowrap">
+                            {fmtQty(total)} {product.unit}
+                          </p>
+                          <p className="text-xs text-muted whitespace-nowrap">{fmtMoney(value)}</p>
                         </div>
                       </div>
                       {(productLines.length > 1 || productLines.some(l => breakdownParts(l, product))) && (

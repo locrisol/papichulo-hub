@@ -5,28 +5,40 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
+import { matches } from '../../lib/search'
 import { card } from '../../lib/controlStyles'
+import SearchBox from '../../components/SearchBox'
+import { sectionColour, sectionRank } from '../../lib/sections'
 
-// Section display order. Products whose section isn't in this list sort last.
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+// One row is one product in one place, and a product can be kept in more than
+// one. Tacos live in the freezer and there are two boxes in the cold room
+// defrosting, so they appear under both headings and are counted separately
+// under each. Nearly everything appears once.
+const placeKey = (productId, section) => `${productId}|${section}`
 
-// Section colour theming.
-const SECTION_COLOURS = {
-    'Freezer': { text: 'text-blue-700', bar: 'bg-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600', ring: 'ring-blue-600' },
-    'Cold Room': { text: 'text-green-700', bar: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600', ring: 'ring-green-600' },
-    'Dry': { text: 'text-amber-700', bar: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600', ring: 'ring-amber-600' },
-    'Packaging': { text: 'text-red-700', bar: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600', ring: 'ring-red-600' },
-    'Cleaning': { text: 'text-purple-700', bar: 'bg-purple-500', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600', ring: 'ring-purple-600' },
-    'Other': { text: 'text-gray-700', bar: 'bg-gray-400', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600', ring: 'ring-gray-600' },
+function placesOf(product) {
+    const main = product.section || 'Other'
+    const extra = (product.also_in || []).filter(place => place && place !== main)
+    return [main, ...extra]
 }
 
-function sectionColour(section) {
-    return SECTION_COLOURS[section] || SECTION_COLOURS['Other']
-}
-
-function sectionRank(section) {
-    const i = SECTION_ORDER.indexOf(section)
-    return i === -1 ? SECTION_ORDER.length : i
+// Products filed under every heading they belong to, in the order the store is
+// walked. A heading with nothing under it is dropped rather than left as an
+// empty bar, which matters once the list can be searched.
+function group(list) {
+    const grouped = {}
+    for (const product of list) {
+        for (const section of placesOf(product)) {
+            if (!grouped[section]) grouped[section] = []
+            grouped[section].push(product)
+        }
+    }
+    return Object.entries(grouped)
+        .map(([section, items]) => ({
+            section,
+            items: items.sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
 }
 
 export default function StockTakeCountPage() {
@@ -41,11 +53,14 @@ export default function StockTakeCountPage() {
     const [recipeLines, setRecipeLines] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
-    const [expandedProductId, setExpandedProductId] = useState(null)
+    // Which row is open, and a row is a product in a place rather than a
+    // product, so opening the freezer one does not open the cold room one.
+    const [expandedKey, setExpandedKey] = useState(null)
     // draftCounts: { [formatId or 'loose']: stringValue }
     const [draftCounts, setDraftCounts] = useState({})
     const [draftLocation, setDraftLocation] = useState('')
     const [savingLine, setSavingLine] = useState(false)
+    const [search, setSearch] = useState('')
     const [showUncountedOnly, setShowUncountedOnly] = useState(false)
     const [filterSnapshot, setFilterSnapshot] = useState(null)
     const [formatsByProductId, setFormatsByProductId] = useState({})
@@ -132,15 +147,19 @@ export default function StockTakeCountPage() {
         setLoading(false)
     }
 
-    function getProductTotal(productId) {
-        return lines
-            .filter(l => l.product_id === productId)
+    // Every line carries the place it was counted in, so asking by place never
+    // counts the same box twice however many headings a product appears under.
+    function linesIn(productId, section) {
+        return lines.filter(l => l.product_id === productId && (l.section || 'Other') === section)
+    }
+
+    function getProductTotal(productId, section) {
+        return linesIn(productId, section)
             .reduce((sum, l) => sum + Number(l.quantity_counted || 0), 0)
     }
 
-    function getProductValue(productId) {
-        return lines
-            .filter(l => l.product_id === productId)
+    function getProductValue(productId, section) {
+        return linesIn(productId, section)
             .reduce((s, l) => s + Number(l.line_total || 0), 0)
     }
 
@@ -159,23 +178,22 @@ export default function StockTakeCountPage() {
         return `${typeWord} Stock Take (${monthYear})`
     }
 
-    function getProductLines(productId) {
-        return lines
-            .filter(l => l.product_id === productId)
+    function getProductLines(productId, section) {
+        return linesIn(productId, section)
             .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
     }
 
-    function toggleExpand(productId) {
-        if (expandedProductId === productId) {
-            setExpandedProductId(null)
+    function toggleExpand(key) {
+        if (expandedKey === key) {
+            setExpandedKey(null)
         } else {
-            setExpandedProductId(productId)
+            setExpandedKey(key)
             setDraftCounts({})
             setDraftLocation('')
         }
     }
 
-    async function handleAddLine(product) {
+    async function handleAddLine(product, section) {
         const { total, breakdown, hasAny } = computeDraft(product)
         if (!hasAny || total < 0) return
 
@@ -189,7 +207,11 @@ export default function StockTakeCountPage() {
             .insert({
                 stock_take_id: id,
                 product_id: product.id,
-                section: product.section || null,
+                // The heading it was counted under. For nearly everything
+                // that is the product's own section; for one kept in two
+                // places it is the one the counter was standing in front of,
+                // which is the whole point of the extra places.
+                section: section || product.section || null,
                 quantity_counted: total,
                 unit_cost: unitCost,
                 line_total: lineTotal,
@@ -227,10 +249,9 @@ export default function StockTakeCountPage() {
             setShowUncountedOnly(false)
             setFilterSnapshot(null)
         } else {
-            // Turning on: snapshot the currently-uncounted product IDs
-            const uncounted = new Set(
-                products.filter(p => !countedProductIds.has(p.id)).map(p => p.id)
-            )
+            // Turning on: snapshot what was uncounted at that moment, by place,
+            // so a row does not vanish from under you as you count it.
+            const uncounted = new Set(allPlaces.filter(key => !countedPlaces.has(key)))
             setFilterSnapshot(uncounted)
             setShowUncountedOnly(true)
         }
@@ -298,34 +319,41 @@ export default function StockTakeCountPage() {
         return { total, breakdown, hasAny }
     }
 
+    // Two things narrow the list. The uncounted filter takes a snapshot when
+    // it goes on, so a product does not vanish from under you the moment you
+    // count it. The search is live and does the opposite job: you are holding a
+    // box and you want that one product, not the hundred either side of it.
     const sections = useMemo(() => {
-        // When the uncounted filter is on, show only products that were
-        // uncounted at the moment the filter was switched on (sticky snapshot).
-        const visibleProducts = showUncountedOnly && filterSnapshot
-            ? products.filter(p => filterSnapshot.has(p.id))
-            : products
-
-        const grouped = {}
-        for (const product of visibleProducts) {
-            const section = product.section || 'Other'
-            if (!grouped[section]) grouped[section] = []
-            grouped[section].push(product)
-        }
-        return Object.entries(grouped)
-            .map(([section, items]) => ({
+        const term = search.trim()
+        return group(products)
+            .map(({ section, items }) => ({
                 section,
-                items: items.sort((a, b) => a.name.localeCompare(b.name)),
+                items: items.filter(p =>
+                    matches(p.name, term)
+                    && (!showUncountedOnly || !filterSnapshot
+                        || filterSnapshot.has(placeKey(p.id, section)))),
             }))
-            .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-    }, [products, showUncountedOnly, filterSnapshot])
+            .filter(entry => entry.items.length > 0)
+    }, [products, search, showUncountedOnly, filterSnapshot])
 
-    const countedProductIds = useMemo(() => {
-        return new Set(lines.map(l => l.product_id))
-    }, [lines])
+    // The value card at the top is about the whole count and not about what is
+    // on screen. Searching for one product should not make it look as though
+    // the freezer is worth nothing.
+    const allSections = useMemo(() => group(products), [products])
+
+    const countedPlaces = useMemo(
+        () => new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other'))),
+        [lines],
+    )
+
+    // Places rather than products. Something kept in two of them is two things
+    // to walk up to, and a count that says done with one of them still standing
+    // is a count that will not add up.
+    const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
 
     const progress = {
-        counted: products.filter(p => countedProductIds.has(p.id)).length,
-        total: products.length,
+        counted: allPlaces.filter(key => countedPlaces.has(key)).length,
+        total: allPlaces.length,
     }
 
     const totalValue = useMemo(() => {
@@ -409,7 +437,17 @@ export default function StockTakeCountPage() {
                     )}
                 </div>
                 {!isClosed && (
-                    <div className="pb-2 flex items-center gap-2">
+                    <div className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                        {/* Its own line on a phone and beside the filter on
+                            anything wider. You are holding a box in one hand
+                            and the phone in the other, so it is a full width
+                            target rather than something tucked in a corner. */}
+                        <SearchBox
+                            value={search}
+                            onChange={setSearch}
+                            placeholder="Find a product"
+                            className="flex-1 min-w-0"
+                        />
                         <button
                             type="button"
                             onClick={toggleUncountedFilter}
@@ -424,7 +462,7 @@ export default function StockTakeCountPage() {
                             {showUncountedOnly ? 'Showing uncounted' : 'Show uncounted only'}
                         </button>
                         {showUncountedOnly && filterSnapshot && (
-                            <span className="text-xs text-muted">
+                            <span className="text-xs text-muted whitespace-nowrap">
                                 {filterSnapshot.size} to count
                             </span>
                         )}
@@ -448,8 +486,8 @@ export default function StockTakeCountPage() {
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>
                             <div className="space-y-1.5">
-                                {sections.map(({ section, items }) => {
-                                    const sectionValue = items.reduce((s, p) => s + getProductValue(p.id), 0)
+                                {allSections.map(({ section, items }) => {
+                                    const sectionValue = items.reduce((s, p) => s + getProductValue(p.id, section), 0)
                                     if (sectionValue === 0) return null
                                     const colour = sectionColour(section)
                                     return (
@@ -472,8 +510,16 @@ export default function StockTakeCountPage() {
                     </div>
                 )}
 
+                {sections.length === 0 && (
+                    <p className="text-sm text-muted pt-6">
+                        {search.trim()
+                            ? `Nothing matching "${search.trim()}".`
+                            : 'Nothing to count.'}
+                    </p>
+                )}
+
                 {sections.map(({ section, items }) => {
-                    const sectionCounted = items.filter(p => countedProductIds.has(p.id)).length
+                    const sectionCounted = items.filter(p => countedPlaces.has(placeKey(p.id, section))).length
                     const colour = sectionColour(section)
                     return (
                         <div key={section} className="pt-4">
@@ -486,7 +532,7 @@ export default function StockTakeCountPage() {
                                 </div>
                                 <span className="flex items-center gap-2">
                                     {isManager && (() => {
-                                        const sectionValue = items.reduce((s, p) => s + getProductValue(p.id), 0)
+                                        const sectionValue = items.reduce((s, p) => s + getProductValue(p.id, section), 0)
                                         return sectionValue > 0 ? (
                                             <span className="text-xs font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
                                                 {fmtMoney(sectionValue)}
@@ -500,21 +546,26 @@ export default function StockTakeCountPage() {
                             </div>
                             <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
                                 {items.map((product, i) => {
-                                    const total = getProductTotal(product.id)
-                                    const productLines = getProductLines(product.id)
+                                    const key = placeKey(product.id, section)
+                                    const total = getProductTotal(product.id, section)
+                                    const productLines = getProductLines(product.id, section)
                                     const lineCount = productLines.length
                                     const isCounted = lineCount > 0
-                                    const isExpanded = expandedProductId === product.id
+                                    const isExpanded = expandedKey === key
+                                    // The other places this one turns up, said
+                                    // on the row so nobody counts the freezer
+                                    // boxes twice thinking they were missed.
+                                    const elsewhere = placesOf(product).filter(place => place !== section)
 
                                     return (
                                         <div
-                                            key={product.id}
+                                            key={key}
                                             className={`${i < items.length - 1 ? 'border-b border-border' : ''} ${isExpanded ? 'bg-white' : ''} ${!isCounted ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'}`}
                                         >
                                             {/* Row header, tap to expand */}
                                             <button
                                                 type="button"
-                                                onClick={() => !isClosed && toggleExpand(product.id)}
+                                                onClick={() => !isClosed && toggleExpand(key)}
                                                 className="w-full text-left px-4 py-3"
                                                 style={{ minHeight: '56px' }}
                                             >
@@ -524,6 +575,11 @@ export default function StockTakeCountPage() {
                                                             {product.name}
                                                             <span className="text-xs text-muted ml-2">{product.unit}</span>
                                                         </p>
+                                                        {elsewhere.length > 0 && (
+                                                            <p className="text-xs text-muted mt-0.5">
+                                                                also in {elsewhere.join(', ')}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                     <div className="text-right flex-shrink-0 flex items-center gap-2">
                                                         <div>
@@ -532,7 +588,7 @@ export default function StockTakeCountPage() {
                                                                     <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
                                                                     {isManager ? (
                                                                         <p className="text-xs text-muted">
-                                                                            {fmtMoney(getProductValue(product.id))}
+                                                                            {fmtMoney(getProductValue(product.id, section))}
                                                                             {lineCount > 1 ? ` · ${lineCount} entries` : ''}
                                                                         </p>
                                                                     ) : (
@@ -674,7 +730,7 @@ export default function StockTakeCountPage() {
                                                                     </div>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => handleAddLine(product)}
+                                                                        onClick={() => handleAddLine(product, section)}
                                                                         disabled={savingLine || !hasAny}
                                                                         className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
                                                                         style={{ minHeight: '44px' }}

@@ -19,14 +19,104 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
-const ALLERGEN_KEYS = [
-  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soybeans',
-  'milk', 'nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs'
+// The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
+// why the list is here rather than in a settings screen.
+//
+// also is the other names the same allergen goes by on a supplier's spec
+// sheet. It is not decoration: a sheet says SOY where the law says Soybeans,
+// and Wheat where the law says Gluten, and somebody reading one at the back
+// door should not have to know that the two are the same thing. Peanuts and
+// Nuts are the pair that catches people, so both of them say so.
+//
+// The labelled version and the three states used to live inside the allergen
+// page. Two screens ask these questions now, the page and the product form, so
+// they moved here rather than being written out twice.
+export const ALLERGENS = [
+  {
+    key: 'gluten',
+    label: 'Gluten',
+    also: 'Wheat, rye, barley, oats, spelt, kamut, semolina, couscous',
+  },
+  {
+    key: 'crustaceans',
+    label: 'Crustaceans',
+    also: 'Prawn, shrimp, crab, lobster, langoustine, crayfish',
+  },
+  {
+    key: 'eggs',
+    label: 'Eggs',
+    also: 'Albumen, mayonnaise, meringue',
+  },
+  {
+    key: 'fish',
+    label: 'Fish',
+    also: 'Anchovy, fish sauce, Worcestershire sauce',
+  },
+  {
+    key: 'peanuts',
+    label: 'Peanuts',
+    also: 'Groundnut, monkey nut, arachis oil. A legume, so it is not covered by Nuts',
+  },
+  {
+    key: 'soybeans',
+    label: 'Soybeans',
+    also: 'Soy, soya, soja, edamame, tofu, miso, soy lecithin (E322)',
+  },
+  {
+    key: 'milk',
+    label: 'Milk',
+    also: 'Dairy, lactose, casein, whey, butter, cheese, cream',
+  },
+  {
+    key: 'nuts',
+    label: 'Nuts',
+    also: 'Tree nuts only: almond, hazelnut, walnut, cashew, pecan, pistachio, macadamia, Brazil',
+  },
+  {
+    key: 'celery',
+    label: 'Celery',
+    also: 'Celeriac, celery salt, celery seed',
+  },
+  {
+    key: 'mustard',
+    label: 'Mustard',
+    also: 'Mustard seed, mustard powder, mustard oil',
+  },
+  {
+    key: 'sesame',
+    label: 'Sesame',
+    also: 'Sesame seed, tahini, benne, gomasio',
+  },
+  {
+    key: 'sulphites',
+    label: 'Sulphites',
+    also: 'Sulphur dioxide, E220 to E228. Only counts above 10mg per kg or litre',
+  },
+  {
+    key: 'lupin',
+    label: 'Lupin',
+    also: 'Lupin flour, lupin seed, lupini beans',
+  },
+  {
+    key: 'molluscs',
+    label: 'Molluscs',
+    also: 'Mussel, oyster, clam, scallop, squid, octopus, snail',
+  },
 ]
+
+export const ALLERGEN_STATES = [
+  { value: 'none', label: 'Not Present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
+  { value: 'may_contain', label: 'May Contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'contains', label: 'Contains', activeClass: 'bg-red-100 text-red-800 border-red-300' },
+]
+
+const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-function emptyAllergens() {
+// A product with no record yet is Not Present for all fourteen, which is why
+// the form opens filled in rather than empty.
+export function emptyAllergens() {
   const obj = {}
   for (const key of ALLERGEN_KEYS) obj[key] = 'none'
   return obj
@@ -127,3 +217,10 @@ export function summariseAllergens(allergens) {
 }
 
 export { ALLERGEN_KEYS }
+
+// How many of the fourteen are set to anything other than Not Present. It is
+// what a collapsed section says about itself, and what tells a save whether
+// somebody has answered the question or skipped it.
+export function declaredCount(values) {
+  return ALLERGEN_KEYS.filter(key => values?.[key] && values[key] !== 'none').length
+}

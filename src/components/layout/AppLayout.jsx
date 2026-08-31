@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import BackToTop from './BackToTop'
+import { ScrollProvider } from '../../context/ScrollContext'
 import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 
 // Sidebar navigation.
@@ -87,6 +89,11 @@ export default function AppLayout({ children }) {
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    // Two, because which one scrolls depends on the screen. On a computer the
+    // header stays put and main scrolls under it; on a phone the header goes up
+    // with the page, so the column holding both is the one that moves.
+    const mainRef = useRef(null)
+    const shellRef = useRef(null)
 
     async function handleSignOut() {
         await supabase.auth.signOut()
@@ -195,7 +202,7 @@ export default function AppLayout({ children }) {
                 hundred and thirty pixels of a small screen. On anything wider
                 the header stays put and the body scrolls under it, which is
                 what a mouse expects. */}
-            <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
+            <div ref={shellRef} className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
                 {/* Two lines on a phone, one on anything wider.
                     Side by side, the title and the restaurant switcher were
                     fighting over about three hundred pixels: Cost Dashboard and
@@ -269,9 +276,19 @@ export default function AppLayout({ children }) {
                         </div>
                     )}
                 </header>
-                <main className="flex-1 md:overflow-y-auto p-4 md:p-7">
-                    {children}
+                <main
+                    ref={mainRef}
+                    // Room at the bottom on a phone so the last card clears the
+                    // way back up rather than sitting under it.
+                    className="flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
+                >
+                    {/* Which of the two is scrolling, handed down rather than
+                        hunted for, so a page can remember where somebody was. */}
+                    <ScrollProvider mainRef={mainRef} shellRef={shellRef}>
+                        {children}
+                    </ScrollProvider>
                 </main>
+                <BackToTop scrollers={[mainRef, shellRef]} />
             </div>
         </div>
     )

@@ -11,6 +11,8 @@ import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
+import { matches } from '../../lib/search'
+import { heldFor } from '../../lib/products'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
 
@@ -148,7 +150,7 @@ export default function WasteLogPage() {
     const costing = calculateWasteValue(selectedProduct, quantity, products, recipeLines, prices)
 
     const filtered = search.trim()
-        ? products.filter(p => p.name.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8)
+        ? products.filter(p => !heldFor(p) && matches(p.name, search)).slice(0, 8)
         : []
 
     function pickProduct(p) {

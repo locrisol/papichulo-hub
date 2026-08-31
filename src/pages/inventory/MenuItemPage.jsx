@@ -2,12 +2,15 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { calculateMixCost } from '../../lib/mixCost'
+import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
+import { canBeMenuComponent } from '../../lib/products'
 import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
+import ProductSelect from '../../components/ProductSelect'
+import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -37,7 +40,7 @@ const ALLERGEN_LABELS = {
 }
 
 function emptyComponentForm() {
-  return { product_id: '', quantity: '', notes: '' }
+  return { product_id: '', quantity: '', no_quantity: false, notes: '' }
 }
 
 function emptyHeaderForm(item) {
@@ -183,8 +186,13 @@ export default function MenuItemPage() {
   function validateComponent() {
     const e = {}
     if (!componentForm.product_id) e.product_id = 'Product is required'
-    const qty = parseFloat(componentForm.quantity)
-    if (isNaN(qty) || qty <= 0) e.quantity = 'Quantity must be greater than 0'
+    // Nothing to check when nobody can say. That is the whole point of the
+    // tick, and it is a different answer from zero, which would mean somebody
+    // measured and found none.
+    if (!componentForm.no_quantity) {
+      const qty = parseFloat(componentForm.quantity)
+      if (isNaN(qty) || qty <= 0) e.quantity = 'Quantity must be greater than 0'
+    }
     return e
   }
 
@@ -198,7 +206,8 @@ export default function MenuItemPage() {
     const payload = {
       menu_item_id: id,
       product_id: componentForm.product_id,
-      quantity: parseFloat(componentForm.quantity),
+      quantity: componentForm.no_quantity ? null : parseFloat(componentForm.quantity),
+      no_quantity: !!componentForm.no_quantity,
       notes: componentForm.notes || null,
     }
 
@@ -252,6 +261,7 @@ export default function MenuItemPage() {
     setComponentForm({
       product_id: component.product_id,
       quantity: component.quantity ?? '',
+      no_quantity: !!component.no_quantity,
       notes: component.notes || '',
     })
     setEditingComponent(component)
@@ -266,7 +276,12 @@ export default function MenuItemPage() {
       message: 'The dish will be costed without it from now on.',
       details: [
         { label: 'Component', value: ingredient?.name || 'Unknown product' },
-        { label: 'Quantity', value: `${component.quantity} ${ingredient?.unit || ''}`.trim() },
+        {
+          label: 'Quantity',
+          value: component.no_quantity
+            ? 'Used, not measured'
+            : `${component.quantity} ${ingredient?.unit || ''}`.trim(),
+        },
       ],
       confirmLabel: 'Remove component',
       tone: 'danger',
@@ -282,24 +297,23 @@ export default function MenuItemPage() {
 
   // Available products in the dropdown: all active products except those
   // already added (unless we're editing that specific component).
+  //
+  // Cleaning is left out. Nothing in that cupboard has ever been part of a
+  // dish. Drinks and packaging stay: a can of Coke is a real line on a menu and
+  // a container is a real cost on one, which is where this differs from a
+  // recipe, where the question is only what goes into something we make.
   const availableProducts = products.filter(p => {
     if (editingComponent && editingComponent.product_id === p.id) return true
+    if (!canBeMenuComponent(p)) return false
     return !components.some(c => c.product_id === p.id)
   })
 
+  // The category this item is in, if somebody has since turned it off.
+  const retiredCategory = categories.find(c =>
+    c.id === headerForm.category_id && !c.is_active) || null
+
   // Derived numbers
-  const totalCost = (() => {
-    if (components.length === 0) return null
-    let total = 0
-    for (const c of components) {
-      const product = products.find(p => p.id === c.product_id)
-      if (!product) return null
-      const result = calculateMixCost(product, products, recipeLines, prices)
-      if (result.cost === null) return null
-      total += parseFloat(c.quantity) * result.cost
-    }
-    return total
-  })()
+  const totalCost = menuItemCost(components, products, recipeLines, prices)
 
   const grossPrice = item ? parseFloat(item.selling_price) : 0
   const vatRate = item ? parseFloat(item.vat_rate) : 0
@@ -321,6 +335,7 @@ export default function MenuItemPage() {
   }
 
   function getLineCost(component) {
+    if (component.no_quantity) return null
     const product = getProduct(component.product_id)
     if (!product) return null
     const result = calculateMixCost(product, products, recipeLines, prices)
@@ -374,11 +389,25 @@ export default function MenuItemPage() {
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             >
               <option value="">Select a category...</option>
+              {/* The one it is in stays on the list even after that category is
+                  turned off. Leaving it out emptied the box, and an empty box
+                  saves as no category at all, so editing the price of an item
+                  in a retired category quietly took it off the menu. It is
+                  named for what it is and the line underneath says to move it. */}
+              {retiredCategory && (
+                <option value={retiredCategory.id}>{retiredCategory.name} (turned off)</option>
+              )}
               {categories.filter(c => c.is_active).map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
             {headerErrors.category_id && <p className="text-xs text-red-600 mt-1">{headerErrors.category_id}</p>}
+            {!headerErrors.category_id && retiredCategory && (
+              <p className="text-xs text-amber-700 mt-1">
+                {retiredCategory.name} is turned off. Pick another one, or this item stays in a
+                category nothing else uses.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
@@ -485,7 +514,11 @@ export default function MenuItemPage() {
                           </>
                         ) : <span className="text-red-600">Missing product</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{parseFloat(c.quantity)} {product?.unit}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {c.no_quantity
+                          ? <span className="text-muted italic">Used, not measured</span>
+                          : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
+                      </td>
                       <td className="px-4 py-3 text-gray-500">
                         {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
                       </td>
@@ -613,98 +646,49 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
   const product = availableProducts.find(p => p.id === formData.product_id)
   const unit = product?.unit || 'unit'
 
-  const [displayUnit, setDisplayUnit] = useState(unit)
-
-  // When the chosen product changes (and so its canonical unit), reset
-  // the display unit to the canonical one.
-  useEffect(() => {
-    if (unit === 'KG') setDisplayUnit('g')
-    else if (unit === 'Litre') setDisplayUnit('ml')
-    else setDisplayUnit(unit)
-    }, [unit])
-
-  function getDisplayValue() {
-    if (!formData.quantity) return ''
-    const stored = parseFloat(formData.quantity)
-    if (isNaN(stored)) return formData.quantity
-    if (displayUnit === 'g' || displayUnit === 'ml') {
-      return (stored * 1000).toString()
-    }
-    return formData.quantity
-  }
-
-  function handleDisplayChange(value) {
-    if (value === '') {
-      onChange('quantity', '')
-      return
-    }
-    const num = parseFloat(value)
-    if (isNaN(num)) {
-      onChange('quantity', value)
-      return
-    }
-    if (displayUnit === 'g' || displayUnit === 'ml') {
-      onChange('quantity', (num / 1000).toString())
-    } else {
-      onChange('quantity', value)
-    }
-  }
-
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Component</label>
-          <select
-            ref={productSelectRef}
+          <ProductSelect
+            inputRef={productSelectRef}
             value={formData.product_id}
-            onChange={e => onChange('product_id', e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-          >
-            <option value="">Select a product...</option>
-            {availableProducts.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.unit}){p.is_mix ? ' (MIX)' : ''}
-              </option>
-            ))}
-          </select>
+            onChange={v => onChange('product_id', v)}
+            products={availableProducts}
+          />
           {errors.product_id && <p className="text-xs text-red-600 mt-1">{errors.product_id}</p>}
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
-          <div className="flex gap-2">
+          <QuantityInUnit
+            value={formData.quantity}
+            onChange={v => onChange('quantity', v)}
+            unit={unit}
+            disabled={formData.no_quantity}
+          />
+
+          {/* The oil everything is fried in, and anything else of that kind.
+              There is no honest number for how much of it is in one portion,
+              and an invented one would land in the cost of the dish. Its
+              allergens still count, which is the reason this exists: fried
+              food absorbs the oil, so a portion of chips really does contain
+              whatever the oil contains. */}
+          <label className="flex items-start gap-2 mt-2 cursor-pointer">
             <input
-              {...numberField({
-                value: getDisplayValue(),
-                onChange: handleDisplayChange,
-              })}
-              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+              type="checkbox"
+              checked={!!formData.no_quantity}
+              onChange={e => onChange('no_quantity', e.target.checked)}
+              className="w-4 h-4 accent-accent mt-0.5"
             />
-            {(unit === 'KG' || unit === 'Litre') ? (
-              <select
-                value={displayUnit}
-                onChange={e => setDisplayUnit(e.target.value)}
-                className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-              >
-                {unit === 'KG' ? (
-                  <>
-                    <option value="KG">KG</option>
-                    <option value="g">g</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Litre">Litre</option>
-                    <option value="ml">ml</option>
-                  </>
-                )}
-              </select>
-            ) : (
-              <span className="px-3 py-2 text-sm text-gray-500 border border-border rounded-lg bg-gray-50">
-                {unit}
+            <span className="text-sm text-gray-700">
+              No specific quantity
+              <span className="block text-xs text-gray-400">
+                Its allergens still count. It adds nothing to the cost.
               </span>
-            )}
-          </div>
+            </span>
+          </label>
           {errors.quantity && <p className="text-xs text-red-600 mt-1">{errors.quantity}</p>}
         </div>
       </div>

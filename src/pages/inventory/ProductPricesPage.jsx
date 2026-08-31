@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { priceProblem, pricePayload } from '../../lib/productPrice'
 import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
@@ -106,31 +107,7 @@ export default function ProductPricesPage() {
         setFormData({ ...formData, [field]: value })
     }
 
-    function validate() {
-        const newErrors = {}
-
-        if (!formData.supplier_id) {
-            newErrors.supplier_id = 'Supplier is required'
-        }
-
-        if (formData.purchase_type === 'case') {
-            const ppc = parseFloat(formData.price_per_case)
-            const upc = parseFloat(formData.units_per_case)
-            if (isNaN(ppc) || ppc <= 0) {
-                newErrors.price_per_case = 'Price per case must be greater than 0'
-            }
-            if (isNaN(upc) || upc <= 0) {
-                newErrors.units_per_case = 'Units per case must be greater than 0'
-            }
-        } else {
-            const ppu = parseFloat(formData.price_per_unit)
-            if (isNaN(ppu) || ppu <= 0) {
-                newErrors.price_per_unit = 'Price must be greater than 0'
-            }
-        }
-
-        return newErrors
-    }
+    const validate = () => priceProblem(formData)
 
     async function handleSave(e) {
         e.preventDefault()
@@ -144,23 +121,9 @@ export default function ProductPricesPage() {
         setErrors({})
 
         const payload = {
+            ...pricePayload(formData),
             product_id: id,
             restaurant_id: activeRestaurant.id,
-            supplier_id: formData.supplier_id,
-            purchase_type: formData.purchase_type,
-            supplier_code: formData.supplier_code || null,
-        }
-
-        if (formData.purchase_type === 'case') {
-            const ppc = parseFloat(formData.price_per_case)
-            const upc = parseFloat(formData.units_per_case)
-            payload.price_per_case = ppc
-            payload.units_per_case = upc
-            payload.price_per_unit = ppc / upc
-        } else {
-            payload.price_per_case = null
-            payload.units_per_case = null
-            payload.price_per_unit = parseFloat(formData.price_per_unit)
         }
 
         if (editingPrice) {

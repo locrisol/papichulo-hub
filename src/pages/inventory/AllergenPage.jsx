@@ -2,59 +2,21 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
-import { card } from '../../lib/controlStyles'
+import { ALLERGENS, emptyAllergens } from '../../lib/allergens'
+import AllergenPicker from '../../components/AllergenPicker'
 
 // Tagging the 14 allergens on one product.
 //
-// This is where the raw answers are set, and it is the only place they are typed
-// in by a person. Everything else in the app derives from these: a dish works out
-// its own allergens from the products it is made of, so nobody tags a menu item.
+// This is where the raw answers are set for a product that already exists. The
+// same fourteen can now be answered while the product is being added, on the
+// product form, which is where you would rather say it. Both draw the list, the
+// three states and the boxes from the same place.
 //
 // The 14 are fixed by EU 1169 and cannot be added to or renamed. A product with
 // no record yet is treated as Not Present for all of them, which is why the form
 // opens filled in rather than empty.
 //
 // One row per product, so saving is an insert the first time and an update after.
-const ALLERGENS = [
-  { key: 'gluten', label: 'Gluten' },
-  { key: 'crustaceans', label: 'Crustaceans' },
-  { key: 'eggs', label: 'Eggs' },
-  { key: 'fish', label: 'Fish' },
-  { key: 'peanuts', label: 'Peanuts' },
-  { key: 'soybeans', label: 'Soybeans' },
-  { key: 'milk', label: 'Milk' },
-  { key: 'nuts', label: 'Nuts' },
-  { key: 'celery', label: 'Celery' },
-  { key: 'mustard', label: 'Mustard' },
-  { key: 'sesame', label: 'Sesame' },
-  { key: 'sulphites', label: 'Sulphites' },
-  { key: 'lupin', label: 'Lupin' },
-  { key: 'molluscs', label: 'Molluscs' },
-]
-
-const STATES = [
-  {
-    value: 'none',
-    label: 'Not Present',
-    activeClass: 'bg-gray-200 text-gray-700 border-gray-300',
-  },
-  {
-    value: 'may_contain',
-    label: 'May Contain',
-    activeClass: 'bg-amber-100 text-amber-800 border-amber-300',
-  },
-  {
-    value: 'contains',
-    label: 'Contains',
-    activeClass: 'bg-red-100 text-red-800 border-red-300',
-  },
-]
-
-function emptyAllergens() {
-  const obj = {}
-  for (const a of ALLERGENS) obj[a.key] = 'none'
-  return obj
-}
 
 export default function AllergenPage() {
   const { id } = useParams()
@@ -187,37 +149,7 @@ export default function AllergenPage() {
         <div className="text-sm text-gray-500">Loading allergens...</div>
       ) : (
         <>
-          <div className={`${card} overflow-hidden mb-6`}>
-            {ALLERGENS.map((allergen, i) => (
-              <div
-                key={allergen.key}
-                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 ${
-                  i < ALLERGENS.length - 1 ? 'border-b border-border' : ''
-                } ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-              >
-                <p className="text-sm font-medium text-gray-900">{allergen.label}</p>
-                <div className="flex gap-2">
-                  {STATES.map(state => {
-                    const isActive = values[allergen.key] === state.value
-                    return (
-                      <button
-                        key={state.value}
-                        type="button"
-                        onClick={() => setAllergenState(allergen.key, state.value)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                          isActive
-                            ? state.activeClass
-                            : 'bg-white text-gray-500 border-border hover:bg-gray-50'
-                        }`}
-                      >
-                        {state.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AllergenPicker values={values} onChange={setAllergenState} className="mb-6" />
 
           <div className="flex items-center gap-3">
             <button

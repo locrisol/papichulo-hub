@@ -4,6 +4,9 @@ import {
   deriveMenuItemAllergens,
   summariseAllergens,
   ALLERGEN_KEYS,
+  ALLERGENS,
+  emptyAllergens,
+  declaredCount,
 } from './allergens'
 
 // --- Fixtures ------------------------------------------------------------
@@ -139,5 +142,43 @@ describe('summariseAllergens', () => {
     const s = summariseAllergens(allergens)
     expect(s.contains).toBe(0)
     expect(s.mayContain).toBe(0)
+  })
+})
+
+describe('ALLERGENS', () => {
+  it('is the fourteen the law names, and no more', () => {
+    expect(ALLERGENS).toHaveLength(14)
+  })
+
+  it('has one entry per key, with no key twice', () => {
+    const keys = ALLERGENS.map(a => a.key)
+    expect(new Set(keys).size).toBe(14)
+  })
+
+  it('says what each one is called on a supplier sheet', () => {
+    // The whole point of the list. An allergen with no other names is one
+    // somebody has to go and look up while standing at the back door.
+    expect(ALLERGENS.every(a => a.also && a.also.length > 0)).toBe(true)
+  })
+
+  it('keeps peanuts and tree nuts apart', () => {
+    // The pair that catches people. Peanuts are a legume and are their own
+    // tick, so both entries have to say so.
+    const peanuts = ALLERGENS.find(a => a.key === 'peanuts')
+    const nuts = ALLERGENS.find(a => a.key === 'nuts')
+    expect(peanuts.also).toMatch(/not covered by Nuts/i)
+    expect(nuts.also).toMatch(/tree nuts only/i)
+  })
+
+  it('starts a product off as Not Present for all of them', () => {
+    const empty = emptyAllergens()
+    expect(Object.keys(empty)).toHaveLength(14)
+    expect(Object.values(empty).every(v => v === 'none')).toBe(true)
+    expect(declaredCount(empty)).toBe(0)
+  })
+
+  it('counts only what was actually declared', () => {
+    const values = { ...emptyAllergens(), gluten: 'contains', milk: 'may_contain' }
+    expect(declaredCount(values)).toBe(2)
   })
 })

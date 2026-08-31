@@ -15,18 +15,20 @@
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
 import { numberField } from '../lib/numberInput'
+import { perUnitPreview } from '../lib/productPrice'
 
-export default function PriceForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit }) {
+// The boxes on their own, with no form around them.
+//
+// Split out because the product form asks the same questions now: adding a
+// product and saying who you buy it from used to be three trips, and one of
+// them was hunting the product back down in a list. Two copies of these boxes
+// would have drifted the first time either was touched.
+export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }) {
   const isCase = formData.purchase_type === 'case'
-
-  const ppc = parseFloat(formData.price_per_case)
-  const upc = parseFloat(formData.units_per_case)
-  const previewPerUnit = isCase && !isNaN(ppc) && !isNaN(upc) && upc > 0
-    ? ppc / upc
-    : null
+  const previewPerUnit = perUnitPreview(formData)
 
   return (
-    <form onSubmit={onSubmit}>
+    <>
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Supplier</label>
@@ -77,6 +79,9 @@ export default function PriceForm({ formData, onChange, onSubmit, onCancel, subm
           placeholder="e.g. CHKN-BRS-5KG"
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
+        {errors.supplier_code && (
+          <p className="text-xs text-red-600 mt-1">{errors.supplier_code}</p>
+        )}
       </div>
 
       {isCase ? (
@@ -128,6 +133,27 @@ export default function PriceForm({ formData, onChange, onSubmit, onCancel, subm
           {errors.price_per_unit && <p className="text-xs text-red-600 mt-1">{errors.price_per_unit}</p>}
         </div>
       )}
+
+    </>
+  )
+}
+
+// The add and edit form for one supplier price on a product.
+//
+// The database has a check constraint on purchase_type allowing only case and
+// loose, and the arithmetic behind both lives in lib/productPrice.
+export default function PriceForm({
+  formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit,
+}) {
+  return (
+    <form onSubmit={onSubmit}>
+      <PriceFields
+        formData={formData}
+        onChange={onChange}
+        errors={errors}
+        suppliers={suppliers}
+        unit={unit}
+      />
 
       <div className="flex gap-3">
         <button
