@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { orderFormats } from '../lib/countUnits'
 import { rowButton } from '../lib/controlStyles'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
@@ -52,7 +53,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
         ])
 
         if (formatsErr) setError(friendlyError(formatsErr))
-        else setFormats(formatsData || [])
+        else setFormats(orderFormats(formatsData))
 
         if (!priceErr && priceData) {
             setAllowLoose(priceData.allow_loose_count ?? true)

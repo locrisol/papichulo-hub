@@ -9,6 +9,7 @@ import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { countName } from '../../lib/products'
 import { countedLine } from '../../lib/countedAt'
+import { orderFormats } from '../../lib/countUnits'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
@@ -159,7 +160,7 @@ export default function StockTakeCountPage() {
         for (const product_id in priceByProduct) {
             const price = priceByProduct[product_id]
             formatsMap[product_id] = {
-                formats: countUnitsData.filter(cu => cu.price_id === price.id),
+                formats: orderFormats(countUnitsData.filter(cu => cu.price_id === price.id)),
                 allowLoose: price.allow_loose_count ?? true,
             }
         }
