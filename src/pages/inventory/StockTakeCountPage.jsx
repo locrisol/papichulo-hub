@@ -221,14 +221,44 @@ export default function StockTakeCountPage() {
             .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
     }
 
-    function toggleExpand(key) {
+    // Anything typed and not added, before it is thrown away.
+    //
+    // Opening another product cleared the box, and so did closing the one you
+    // were in, so a number counted off a shelf could disappear because a thumb
+    // landed on the wrong row. It only asks when there is a real quantity in
+    // there, so it is never in the way of somebody just looking around.
+    //
+    // Add it is the main button because it is what you meant nine times out of
+    // ten. Both answers carry on to wherever you were going: the question is
+    // what to do with the number, not whether to move.
+    async function keepOrDropDraft() {
+        if (!expandedKey) return
+        const [productId, section] = expandedKey.split('|')
+        const product = products.find(p => p.id === productId)
+        if (!product) return
+
+        const { total, hasAny } = computeDraft(product)
+        if (!hasAny || total <= 0) return
+
+        const ok = await confirm({
+            title: `Add the ${fmtQty(total)} ${product.unit} first?`,
+            message: `You typed a quantity for ${countName(product)} and have not added it. Leaving now loses it.`,
+            confirmLabel: 'Add it',
+            cancelLabel: 'Discard it',
+        })
+        if (ok) await handleAddLine(product, section)
+    }
+
+    async function toggleExpand(key) {
+        await keepOrDropDraft()
+
         if (expandedKey === key) {
             setExpandedKey(null)
         } else {
             setExpandedKey(key)
-            setDraftCounts({})
-            setDraftLocation('')
         }
+        setDraftCounts({})
+        setDraftLocation('')
     }
 
     async function handleAddLine(product, section) {
