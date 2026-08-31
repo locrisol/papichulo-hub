@@ -91,7 +91,6 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     const rowFor = new Map(summary.sections.map(s => [s.section, s]))
 
     let y = 0
-    let pageNumber = 1
     // The section being printed, and where its run started on this page. The
     // pair of them draw the coloured rail down the left edge.
     let currentSection = null
@@ -149,12 +148,19 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         y += 6
     }
 
-    function drawFooter() {
-        pdf.setFont('helvetica', 'italic')
-        pdf.setFontSize(7)
-        pdf.setTextColor(140)
-        pdf.text('Papi Chulo Hub stock take record', marginX, pageHeight - 8)
-        pdf.text(`Page ${pageNumber}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
+    // Written at the very end, once there is a page count to say out of.
+    // A page on its own saying 4 tells you nothing about whether you are
+    // holding all of it.
+    function drawFooters() {
+        const pages = pdf.getNumberOfPages()
+        for (let page = 1; page <= pages; page++) {
+            pdf.setPage(page)
+            pdf.setFont('helvetica', 'italic')
+            pdf.setFontSize(7)
+            pdf.setTextColor(140)
+            pdf.text('Papi Chulo Hub stock take record', marginX, pageHeight - 8)
+            pdf.text(`Page ${page} of ${pages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
+        }
     }
 
     // The coloured rail beside the rows of the section being printed.
@@ -181,9 +187,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         if (y + needed <= pageHeight - 14) return
 
         flushRail()
-        drawFooter()
         pdf.addPage()
-        pageNumber++
         drawPageTop()
         drawColumns()
 
@@ -280,8 +284,9 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
             }
         }
 
-        ensureSpace(12)
-        y += 1
+        // Room between the rule and the words. They were all but touching.
+        ensureSpace(14)
+        y += 4
         pdf.setDrawColor(80)
         pdf.setLineWidth(0.4)
         pdf.line(marginX, y - 4, colTotalRight, y - 4)
@@ -509,7 +514,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         y += 3
     }
 
-    drawFooter()
+    drawFooters()
 
     const safeName = (restaurant.name || 'stocktake').toLowerCase().replace(/[^a-z0-9]+/g, '-')
     const dateStr = fmtDate(session.completed_at || session.started_at).replace(/[^a-z0-9]+/gi, '-')
