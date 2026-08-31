@@ -6,37 +6,38 @@ import { useState, useEffect } from 'react'
 // phone getting back to the search box meant a lot of thumb. On a laptop it
 // meant finding the scrollbar.
 //
-// Which thing is scrolling depends on the screen. On a computer it is the main
-// area beside the sidebar, because the sidebar and the header stay put; on a
-// phone that area has no overflow of its own and the whole window scrolls. This
-// watches both rather than guessing, since guessing wrong means a button that
-// never appears.
+// Which element is actually scrolling changes with the screen, which is the
+// whole difficulty. On a computer the header stays put and the body below it
+// scrolls; on a phone the header goes up with the page, so it is the column
+// holding both that moves and the body inside it never scrolls at all. Watching
+// the wrong one means a button that simply never appears, which is what
+// happened the first time.
+//
+// So it is handed both and watches whichever is moving, and the window besides.
 //
 // It only turns up once there is something to go back to. A button offering to
 // take you to the top of a page you are already at the top of is noise.
-export default function BackToTop({ scroller }) {
+export default function BackToTop({ scrollers = [] }) {
     const [show, setShow] = useState(false)
 
     useEffect(() => {
-        const main = scroller?.current
-        const far = () => {
-            const fromMain = main ? main.scrollTop : 0
-            return Math.max(fromMain, window.scrollY) > 400
-        }
+        const boxes = scrollers.map(ref => ref?.current).filter(Boolean)
 
         function onScroll() {
-            setShow(far())
+            const furthest = Math.max(window.scrollY, ...boxes.map(box => box.scrollTop))
+            setShow(furthest > 400)
         }
 
-        main?.addEventListener('scroll', onScroll, { passive: true })
+        for (const box of boxes) box.addEventListener('scroll', onScroll, { passive: true })
         window.addEventListener('scroll', onScroll, { passive: true })
         onScroll()
 
         return () => {
-            main?.removeEventListener('scroll', onScroll)
+            for (const box of boxes) box.removeEventListener('scroll', onScroll)
             window.removeEventListener('scroll', onScroll)
         }
-    }, [scroller])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     if (!show) return null
 
@@ -44,7 +45,9 @@ export default function BackToTop({ scroller }) {
         <button
             type="button"
             onClick={() => {
-                scroller?.current?.scrollTo({ top: 0, behavior: 'smooth' })
+                for (const ref of scrollers) {
+                    ref?.current?.scrollTo({ top: 0, behavior: 'smooth' })
+                }
                 window.scrollTo({ top: 0, behavior: 'smooth' })
             }}
             aria-label="Back to the top"

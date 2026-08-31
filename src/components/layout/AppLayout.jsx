@@ -88,10 +88,11 @@ export default function AppLayout({ children }) {
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
     const [sidebarOpen, setSidebarOpen] = useState(false)
-    // On a computer this is what scrolls, since the sidebar and the header
-    // stay put. On a phone it has no overflow of its own and the window
-    // scrolls instead, so the button watches both.
+    // Two, because which one scrolls depends on the screen. On a computer the
+    // header stays put and main scrolls under it; on a phone the header goes up
+    // with the page, so the column holding both is the one that moves.
     const mainRef = useRef(null)
+    const shellRef = useRef(null)
 
     async function handleSignOut() {
         await supabase.auth.signOut()
@@ -200,7 +201,7 @@ export default function AppLayout({ children }) {
                 hundred and thirty pixels of a small screen. On anything wider
                 the header stays put and the body scrolls under it, which is
                 what a mouse expects. */}
-            <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
+            <div ref={shellRef} className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
                 {/* Two lines on a phone, one on anything wider.
                     Side by side, the title and the restaurant switcher were
                     fighting over about three hundred pixels: Cost Dashboard and
@@ -277,7 +278,7 @@ export default function AppLayout({ children }) {
                 <main ref={mainRef} className="flex-1 md:overflow-y-auto p-4 md:p-7">
                     {children}
                 </main>
-                <BackToTop scroller={mainRef} />
+                <BackToTop scrollers={[mainRef, shellRef]} />
             </div>
         </div>
     )

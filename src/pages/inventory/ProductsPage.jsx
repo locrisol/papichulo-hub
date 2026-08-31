@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -155,6 +155,30 @@ export default function ProductsPage() {
   const [allergensTouched, setAllergensTouched] = useState(false)
   // One section open at a time, and both shut to start with.
   const [openExtra, setOpenExtra] = useState(null)
+
+  // Whether the heading has left its resting place and is riding along.
+  //
+  // It is rounded at the top when it is sitting in the card, because that is
+  // the card's corner. Once it is floating it has to be square, or the rows
+  // passing underneath show through the two little cut outs at either end.
+  const tableTop = useRef(null)
+  const [stuck, setStuck] = useState(false)
+
+  useEffect(() => {
+    const mark = tableTop.current
+    if (!mark) return
+
+    // The page header is four rem tall and does not scroll, so the heading
+    // comes to rest under it rather than at the top of the window. The margin
+    // is that height, which is what makes the corners square at the moment the
+    // heading actually stops rather than a moment later.
+    const watcher = new IntersectionObserver(
+      ([entry]) => setStuck(!entry.isIntersecting),
+      { rootMargin: '-76px 0px 0px 0px' },
+    )
+    watcher.observe(mark)
+    return () => watcher.disconnect()
+  }, [])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
@@ -936,6 +960,7 @@ export default function ProductsPage() {
             So the list stays one long list down the page and the heading rides
             along with it. Only on a computer: a phone gets cards and a card
             list has no heading to pin. */}
+        <div ref={tableTop} className="h-px" />
         <div className={`${card} hidden md:block`}>
           <table className="w-full text-sm">
             {/* The heading row used to be bg-gray-50, exactly the same as every
@@ -958,7 +983,7 @@ export default function ProductsPage() {
                     // by the card. Clipping means an overflow on the card, and
                     // an overflow on the card is what the heading would stick
                     // to instead of the page.
-                    className={`text-left px-4 py-3 whitespace-nowrap sticky ${STICK_TOP} z-10 bg-sidebar ${i === 0 ? 'rounded-tl-xl' : ''} ${col.width || ''}`}
+                    className={`text-left px-4 py-3 whitespace-nowrap sticky ${STICK_TOP} z-10 bg-sidebar ${i === 0 && !stuck ? 'rounded-tl-xl' : ''} ${col.width || ''}`}
                   >
                     {col.sortable ? (
                       <button
@@ -976,7 +1001,7 @@ export default function ProductsPage() {
                     )}
                   </th>
                 ))}
-                <th className={`text-left px-4 py-3 sticky ${STICK_TOP} z-10 bg-sidebar rounded-tr-xl ${tableHeadCell}`}>Actions</th>
+                <th className={`text-left px-4 py-3 sticky ${STICK_TOP} z-10 bg-sidebar ${stuck ? '' : 'rounded-tr-xl'} ${tableHeadCell}`}>Actions</th>
               </tr>
             </thead>
             <tbody>
