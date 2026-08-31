@@ -31,17 +31,27 @@ function useScrollers() {
     return useContext(ScrollContext)
 }
 
-// Put a page back where it was.
+// Put a page back where it was, but only when coming back from the right
+// place.
 //
 // key is what the position is filed under, so two lists do not inherit each
 // other's. ready says the rows are on screen: restoring before then sets a
 // position on a page one paragraph tall, and the browser clamps it to the top,
 // which looks exactly like the bug it is meant to fix.
 //
+// belongsTo says which departures are worth remembering. Stepping into a
+// product's prices and coming back is one errand and should land where it left
+// off; going to the sales screen and coming back later is a new visit, and
+// dropping somebody two hundred rows down a list they have not looked at since
+// this morning is not helpfulness, it is a page that has lost its place.
+//
+// Given nothing it remembers every departure, which is the right default for a
+// list with nowhere in particular to go.
+//
 // sessionStorage rather than memory, because coming back is a fresh mount, and
 // rather than localStorage, because where you were in a list last Tuesday is
 // not worth remembering.
-export function useKeepScroll(key, ready) {
+export function useKeepScroll(key, ready, belongsTo) {
     const { mainRef, shellRef } = useScrollers()
     const restored = useRef(false)
 
@@ -60,9 +70,14 @@ export function useKeepScroll(key, ready) {
 
         const store = `scroll:${key}`
 
+        // Where we are going is written down with the position. At cleanup the
+        // address bar already says the destination, which is what makes this
+        // possible at all.
         function remember() {
             const at = Math.max(...boxes.map(box => box.scrollTop))
-            if (at > 0) sessionStorage.setItem(store, String(at))
+            if (at > 0) {
+                sessionStorage.setItem(store, JSON.stringify({ at, to: window.location.pathname }))
+            }
         }
 
         for (const box of boxes) box.addEventListener('scroll', remember, { passive: true })
@@ -74,8 +89,13 @@ export function useKeepScroll(key, ready) {
 
     useLayoutEffect(() => {
         if (!ready || restored.current) return
-        const saved = Number(sessionStorage.getItem(`scroll:${key}`) || 0)
-        if (!saved) { restored.current = true; return }
+        const stored = readPlace(`scroll:${key}`)
+        const saved = stored && (!belongsTo || belongsTo(stored.to)) ? stored.at : 0
+        if (!saved) {
+            sessionStorage.removeItem(`scroll:${key}`)
+            restored.current = true
+            return
+        }
 
         const boxes = [mainRef?.current, shellRef?.current].filter(Boolean)
         const put = () => {
@@ -93,5 +113,18 @@ export function useKeepScroll(key, ready) {
 
         const frame = requestAnimationFrame(() => { put(); restored.current = true })
         return () => cancelAnimationFrame(frame)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ready, key, mainRef, shellRef])
+}
+
+function readPlace(store) {
+    try {
+        const raw = sessionStorage.getItem(store)
+        if (!raw) return null
+        const place = JSON.parse(raw)
+        return place && place.at > 0 ? place : null
+    } catch {
+        // Written by an older version of this, or by nothing at all.
+        return null
+    }
 }

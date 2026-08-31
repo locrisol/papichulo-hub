@@ -200,7 +200,11 @@ export default function ProductsPage() {
   // Opening a product's prices or its recipe leaves this page and comes
   // back to it, and coming back landed at the top of a few hundred rows
   // every time. Below the state it reads, or it reads it before it exists.
-  useKeepScroll('products', !loading)
+  //
+  // Only from a product's own screens. Coming back from the sales page an
+  // hour later is a new visit, not the end of an errand, and landing two
+  // hundred rows down a list you have not seen since is not helpful.
+  useKeepScroll('products', !loading, to => to.startsWith('/catalogue/products/'))
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
