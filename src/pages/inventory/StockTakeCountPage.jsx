@@ -41,6 +41,13 @@ function group(list) {
         .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
 }
 
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+function justLoose(parts) {
+    return parts.length === 1 && parts[0].isLoose
+}
+
 export default function StockTakeCountPage() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -641,9 +648,11 @@ export default function StockTakeCountPage() {
                                                                                                     {part.text}
                                                                                                 </span>
                                                                                             ))}
-                                                                                            <span className="text-xs text-muted">
-                                                                                                = {fmtQty(line.quantity_counted)} {product.unit}
-                                                                                            </span>
+                                                                                            {!justLoose(parts) && (
+                                                                                                <span className="text-xs text-muted">
+                                                                                                    = {fmtQty(line.quantity_counted)} {product.unit}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </div>
                                                                                     )
                                                                                 }

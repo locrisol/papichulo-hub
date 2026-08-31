@@ -31,6 +31,13 @@ function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+function justLoose(parts) {
+    return parts.length === 1 && parts[0].isLoose
+}
+
 export default function StockTakeSummaryPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -378,7 +385,9 @@ export default function StockTakeSummaryPage() {
                                         {part.text}
                                       </span>
                                     ))}
-                                    <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    {!justLoose(parts) && (
+                                      <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    )}
                                   </>
                                 ) : (
                                   <span className="bg-white border border-border rounded-full px-2 py-0.5 text-gray-600">
