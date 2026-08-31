@@ -489,14 +489,25 @@ export default function StockTakeCountPage() {
         [lines],
     )
 
-    // Places rather than products. Something kept in two of them is two things
-    // to walk up to, and a count that says done with one of them still standing
-    // is a count that will not add up.
     const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
 
+    // Products, not places.
+    //
+    // A second place is a might be there rather than an always is, so counting
+    // the product once finishes it and the bar can reach the end. Counting
+    // places meant a count could never be finished without walking to a shelf
+    // that may well be empty, which is the opposite of what the second place is
+    // for.
+    //
+    // The section headings still count their own shelf, because 3 of 12 in the
+    // freezer is the useful number while you are standing in the freezer, and a
+    // product waiting there is a prompt rather than an obligation. What was
+    // counted in one place and not the other is said on the review.
+    const countedProducts = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
+
     const progress = {
-        counted: allPlaces.filter(key => countedPlaces.has(key)).length,
-        total: allPlaces.length,
+        counted: products.filter(p => countedProducts.has(p.id)).length,
+        total: products.length,
     }
 
     const totalValue = useMemo(() => {

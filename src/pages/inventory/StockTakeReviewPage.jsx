@@ -6,7 +6,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { countName } from '../../lib/products'
-import { sectionRank } from '../../lib/sections'
+import { sectionRank, sectionColour } from '../../lib/sections'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 
@@ -40,6 +40,9 @@ export default function StockTakeReviewPage() {
   const [error, setError] = useState('')
 
   const [expandedProductId, setExpandedProductId] = useState(null)
+  // Folded to three, because the block has to be the same height holding
+  // two of these or forty.
+  const [allPlaces, setAllPlaces] = useState(false)
   const [draftQty, setDraftQty] = useState('')
   const [draftLocation, setDraftLocation] = useState('')
   const [savingLine, setSavingLine] = useState(false)
@@ -95,6 +98,29 @@ export default function StockTakeReviewPage() {
         return r !== 0 ? r : a.name.localeCompare(b.name)
       })
   }, [products, countedProductIds])
+
+  // Kept in more than one place, counted in some of them.
+  //
+  // A second place is a might be there, so it does not hold the count up and it
+  // is not treated as missing. It is worth one look before closing though, in
+  // case the other shelf was not empty after all, which is why it says which
+  // place was counted and which was not rather than only that something is odd.
+  const partlyCounted = useMemo(() => {
+    return products
+      .map(product => {
+        const places = [product.section || 'Other', ...(product.also_in || [])]
+          .filter((place, i, all) => place && all.indexOf(place) === i)
+        if (places.length < 2) return null
+
+        const counted = places.filter(place =>
+          lines.some(l => l.product_id === product.id && (l.section || 'Other') === place))
+        if (counted.length === 0 || counted.length === places.length) return null
+
+        return { product, counted, missing: places.filter(place => !counted.includes(place)) }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.product.name.localeCompare(b.product.name))
+  }, [products, lines])
 
   const totalValue = useMemo(() => {
     return lines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
@@ -244,6 +270,72 @@ export default function StockTakeReviewPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+      )}
+
+      {/* Counted in one place only.
+          Above the uncounted list because it is the shorter and stranger of the
+          two, and it never blocks closing. */}
+      {partlyCounted.length > 0 && (
+        <section className="mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">
+              Counted in one place only
+            </h2>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+              {partlyCounted.length}
+            </span>
+          </div>
+
+          <div className={`${card} p-4`}>
+            <p className="text-xs text-muted mb-3">
+              These are kept in more than one place and you counted them in one of them. Worth a
+              look before closing, in case the other shelf was not empty. It does not stop you
+              closing.
+            </p>
+
+            <div className="space-y-2">
+              {(allPlaces ? partlyCounted : partlyCounted.slice(0, 3)).map(({ product, counted, missing }) => (
+                <div key={product.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium text-gray-900 flex-1 min-w-0">{countName(product)}</span>
+                  {/* Filled where it was counted, outlined where it was not,
+                      each in that section's own colour, so the pair reads
+                      without being read. */}
+                  {counted.map(place => (
+                    <span
+                      key={place}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{
+                        color: sectionColour(place).ink,
+                        backgroundColor: `${sectionColour(place).ink}1a`,
+                      }}
+                    >
+                      {place}
+                    </span>
+                  ))}
+                  {missing.map(place => (
+                    <span
+                      key={place}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-white"
+                      style={{ color: sectionColour(place).ink, borderColor: sectionColour(place).ink }}
+                    >
+                      not {place}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {partlyCounted.length > 3 && (
+              <button
+                type="button"
+                onClick={() => setAllPlaces(!allPlaces)}
+                className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+              >
+                {allPlaces ? 'Show fewer' : `Show the other ${partlyCounted.length - 3}`}
+              </button>
+            )}
+          </div>
+        </section>
       )}
 
       {/* Uncounted products */}
