@@ -1,32 +1,37 @@
 import jsPDF from 'jspdf'
 import { fmtMoney, fmtQty } from './format'
-import { heldFor, partiesIn, countName } from './products'
+import { countName } from './products'
+import { sectionColour } from './sections'
+import { bySection, summarise } from './stockTakeSummary'
+import { slicePoints } from './donut'
 
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+// The stock take as a piece of paper.
+//
+// It leads with the summary and the two charts and then gives the count. The
+// summary used to be on the last page, which meant the one thing anybody opens
+// this for was nine pages in, behind the working.
+//
+// The colours come from the same place the screens take theirs, so a section is
+// the same colour on paper as it is on the phone.
+//
+// Nothing here works out what anything is worth. Every line saved its own unit
+// cost on the day it was counted, and the sums are in stockTakeSummary, which
+// the finished stock take page reads from as well so the two cannot disagree.
 
-// RGB colours matching the app's section theming (the -600 shades)
-const SECTION_RGB = {
-    'Freezer': [37, 99, 235],   // blue-600
-    'Cold Room': [22, 163, 74],   // green-600
-    'Dry': [217, 119, 6],   // amber-600
-    'Packaging': [220, 38, 38],   // red-600
-    'Cleaning': [147, 51, 234],  // purple-600
-    'Other': [75, 85, 99],    // gray-600
+function rgb(hex) {
+    const n = parseInt(String(hex).slice(1), 16)
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
-function sectionRgb(s) { return SECTION_RGB[s] || SECTION_RGB['Other'] }
 
-// Background tints matching the app's -100 shades
-const SECTION_RGB_LIGHT = {
-    'Freezer': [219, 234, 254],  // blue-100
-    'Cold Room': [220, 252, 231],  // green-100
-    'Dry': [254, 243, 199],  // amber-100
-    'Packaging': [254, 226, 226],  // red-100
-    'Cleaning': [243, 232, 255],  // purple-100
-    'Other': [243, 244, 246],  // gray-100
+// The same colour laid over white, for the band behind a summary row.
+function tint(hex, amount) {
+    return rgb(hex).map(c => Math.round(255 - (255 - c) * amount))
 }
-function sectionRgbLight(s) { return SECTION_RGB_LIGHT[s] || SECTION_RGB_LIGHT['Other'] }
 
-function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
+function inkOf(section) {
+    return sectionColour(section).ink
+}
+
 function fmtDate(iso) {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -69,42 +74,18 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     const colCostRight = pageWidth - marginX - 35
     const colTotalRight = pageWidth - marginX
 
-    const productById = {}
-    for (const p of products) productById[p.id] = p
-
-    // Group lines by product
-    const linesByProduct = {}
-    for (const line of lines) {
-        if (!linesByProduct[line.product_id]) linesByProduct[line.product_id] = []
-        linesByProduct[line.product_id].push(line)
-    }
-
-    // Build section -> items structure (only products that were counted)
-    const sectionMap = {}
-    for (const [productId, productLines] of Object.entries(linesByProduct)) {
-        const product = productById[productId]
-        if (!product) continue
-        const section = product.section || 'Other'
-        const qty = productLines.reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
-        const value = productLines.reduce((s, l) => s + Number(l.line_total || 0), 0)
-        const unitCost = productLines.find(l => l.unit_cost != null)?.unit_cost ?? null
-        if (!sectionMap[section]) sectionMap[section] = []
-        sectionMap[section].push({ product, lines: productLines, qty, value, unitCost })
-    }
-
-    const sections = Object.entries(sectionMap)
-        .map(([section, items]) => ({
-            section,
-            items: items.sort((a, b) => a.product.name.localeCompare(b.product.name)),
-        }))
-        .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-
-    const grandTotal = lines.reduce((s, l) => s + Number(l.line_total || 0), 0)
+    const places = bySection(products, lines)
+    const summary = summarise(products, lines)
+    const rowFor = new Map(summary.sections.map(s => [s.section, s]))
 
     let y = 0
     let pageNumber = 1
+    // The section being printed, and where its run started on this page. The
+    // pair of them draw the coloured rail down the left edge.
+    let currentSection = null
+    let railStart = null
 
-    function drawHeader() {
+    function drawPageTop() {
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(16)
         pdf.setTextColor(40)
@@ -126,17 +107,21 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         })
 
         pdf.setDrawColor(200)
+        pdf.setLineWidth(0.2)
         pdf.line(marginX, 29, pageWidth - marginX, 29)
 
+        y = 34
+    }
+
+    function drawColumns() {
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(8)
         pdf.setTextColor(100)
-        pdf.text('PRODUCT', marginX, 34)
-        pdf.text('QTY', colQtyRight, 34, { align: 'right' })
-        pdf.text('UNIT COST', colCostRight, 34, { align: 'right' })
-        pdf.text('VALUE', colTotalRight, 34, { align: 'right' })
-
-        y = 39
+        pdf.text('PRODUCT', marginX, y)
+        pdf.text('QTY', colQtyRight, y, { align: 'right' })
+        pdf.text('UNIT COST', colCostRight, y, { align: 'right' })
+        pdf.text('VALUE', colTotalRight, y, { align: 'right' })
+        y += 5
     }
 
     function drawFooter() {
@@ -147,34 +132,289 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         pdf.text(`Page ${pageNumber}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
     }
 
+    // The coloured rail beside the rows of the section being printed.
+    //
+    // Drawn in one piece when the section ends or the page does, rather than a
+    // stripe per row, because a run of separate stripes shows its joins.
+    //
+    // It is there so that flicking through ninety pages tells you where you are
+    // before you have read a word, which is the thing a long report is worst
+    // at.
+    function flushRail() {
+        const section = currentSection
+        const top = railStart
+        railStart = null
+        if (!section || top == null) return
+
+        const bottom = y - 3
+        if (bottom <= top - 4) return
+        pdf.setFillColor(...rgb(inkOf(section)))
+        pdf.rect(marginX - 4, top - 4, 1.3, bottom - (top - 4), 'F')
+    }
+
     function ensureSpace(needed) {
-        if (y + needed > pageHeight - 14) {
-            drawFooter()
-            pdf.addPage()
-            pageNumber++
-            drawHeader()
+        if (y + needed <= pageHeight - 14) return
+
+        flushRail()
+        drawFooter()
+        pdf.addPage()
+        pageNumber++
+        drawPageTop()
+        drawColumns()
+
+        // A colour on its own is something you have to remember the meaning
+        // of, so the page says it in words as well.
+        if (currentSection) {
+            pdf.setFont('helvetica', 'bold')
+            pdf.setFontSize(8)
+            pdf.setTextColor(...rgb(inkOf(currentSection)))
+            pdf.text(`${currentSection}, continued`, marginX, y)
+            pdf.setTextColor(40)
+            y += 5
+        }
+        railStart = y
+    }
+
+    // ---- the summary, at the top of the first page ----------------------
+
+    function summaryRow(row) {
+        ensureSpace(7)
+        pdf.setFillColor(...tint(row.ink, 0.12))
+        pdf.rect(marginX, y - 4.2, colTotalRight - marginX, 5.4, 'F')
+        pdf.setFillColor(...rgb(row.ink))
+        pdf.circle(marginX + 3, y - 1.4, 1.2, 'F')
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(10)
+        pdf.setTextColor(60)
+        pdf.text(`${row.section} (${row.count} ${row.count === 1 ? 'product' : 'products'})`, marginX + 7, y)
+
+        pdf.setFontSize(8)
+        pdf.setTextColor(120)
+        pdf.text(`${row.share.toFixed(1)}%`, colCostRight, y, { align: 'right' })
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(10)
+        pdf.setTextColor(40)
+        pdf.text(fmtMoney(row.value), colTotalRight - 2, y, { align: 'right' })
+        y += 6
+
+        // Whose stock it is, under any section that holds a mix. Pita Pit keep
+        // their boxes in the packaging cupboard, so a single packaging figure
+        // is two businesses added together. The line above stays the total,
+        // because the total is what came off the shelf.
+        for (const party of row.parties || []) {
+            ensureSpace(5)
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(9)
+            pdf.setTextColor(110)
+            pdf.text(`${row.section} (${party.who || 'ours'})`, marginX + 12, y)
+            pdf.text(fmtMoney(party.value), colTotalRight - 2, y, { align: 'right' })
+            y += 4.5
+        }
+        if (row.parties) y += 1
+    }
+
+    function drawSummary() {
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(12)
+        pdf.setTextColor(40)
+        pdf.text('Summary by section', marginX, y)
+        pdf.setDrawColor(80)
+        pdf.setLineWidth(0.6)
+        pdf.line(marginX, y + 1.5, colTotalRight, y + 1.5)
+        pdf.setLineWidth(0.2)
+        y += 7.5
+
+        const food = summary.food
+        const lastFood = food ? food.sections[food.sections.length - 1] : null
+
+        for (const row of summary.sections) {
+            summaryRow(row)
+
+            // Freezer, cold room and dry added up, which is the first thing
+            // anybody does to these figures by hand. It sits under the three it
+            // is made of, because a subtotal comes after what it adds.
+            if (food && row.section === lastFood) {
+                ensureSpace(7)
+                pdf.setDrawColor(170)
+                pdf.line(marginX + 4, y - 4.4, colTotalRight, y - 4.4)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(10)
+                pdf.setTextColor(40)
+                pdf.text(`Food (${food.sections.length} sections)`, marginX + 7, y)
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(8)
+                pdf.setTextColor(120)
+                pdf.text(`${food.share.toFixed(1)}%`, colCostRight, y, { align: 'right' })
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(10)
+                pdf.setTextColor(40)
+                pdf.text(fmtMoney(food.value), colTotalRight - 2, y, { align: 'right' })
+                y += 7
+            }
+        }
+
+        ensureSpace(12)
+        y += 1
+        pdf.setDrawColor(80)
+        pdf.setLineWidth(0.4)
+        pdf.line(marginX, y - 4, colTotalRight, y - 4)
+        pdf.setLineWidth(0.2)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(12)
+        pdf.setTextColor(40)
+        pdf.text('Grand total', marginX, y)
+        pdf.text(fmtMoney(summary.total), colTotalRight, y, { align: 'right' })
+        y += 5
+
+        // What is actually ours. A count can be more than a quarter somebody
+        // else's stock, and the grand total on its own has the business
+        // holding stock it does not own.
+        if (summary.owners) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(8.5)
+            pdf.setTextColor(110)
+            const bits = [
+                `Ours ${fmtMoney(summary.owners.ours)}`,
+                ...summary.owners.held.map(h => `Held for ${h.who} ${fmtMoney(h.value)}`),
+            ]
+            pdf.text(bits.join('        '), marginX, y)
+            y += 5
         }
     }
 
-    drawHeader()
+    // ---- the two charts, drawn rather than pasted ------------------------
+    //
+    // jsPDF has no arc, so the donut is handed to it as points close enough
+    // together that the corners stop showing. Drawing them here rather than
+    // taking a picture of the ones on screen keeps them sharp at any zoom and
+    // means the report still comes out right when it is made on a phone, where
+    // the chart may never have been on screen at all.
 
-    for (const { section, items } of sections) {
-        ensureSpace(10)
-        const [sr, sg, sb] = sectionRgb(section)
+    // outlined draws a hairline of white around the shape, so two slices of
+    // near colours never touch and blur into one. The band over the food
+    // sections is a single shape and thin enough that an outline would eat it,
+    // so it is filled plain.
+    function fillPolygon(points, colour, outlined = true) {
+        if (points.length < 3) return
+        const deltas = []
+        for (let i = 1; i < points.length; i++) {
+            deltas.push([points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]])
+        }
+        pdf.setFillColor(...colour)
+        if (!outlined) {
+            pdf.lines(deltas, points[0][0], points[0][1], [1, 1], 'F', true)
+            return
+        }
+        pdf.setDrawColor(255, 255, 255)
+        pdf.setLineWidth(0.3)
+        pdf.lines(deltas, points[0][0], points[0][1], [1, 1], 'FD', true)
+        pdf.setLineWidth(0.2)
+    }
+
+    // The donut geometry comes back on a 100 by 100 square, so it is moved and
+    // scaled onto the page here.
+    function drawDonut(cx, cy, size) {
+        const k = size / 100
+        const place = ([x, yy]) => [cx + (x - 50) * k, cy + (yy - 50) * k]
+        const angle = value => (summary.total > 0 ? (value / summary.total) * 360 : 0)
+
+        let before = 0
+        for (const row of summary.sections) {
+            const from = angle(before)
+            before += row.value
+            const to = angle(before)
+            if (to - from < 0.05) continue
+            fillPolygon(slicePoints(from, to, 44, 26).map(place), rgb(row.ink))
+        }
+
+        // The band over the food sections. They are always the first slices
+        // drawn, because the order is the order the store is walked and they
+        // come first in it, so it is one arc across the front of the circle.
+        if (summary.food) {
+            fillPolygon(slicePoints(0, angle(summary.food.value), 49.5, 47).map(place), [87, 82, 74], false)
+        }
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(6)
+        pdf.setTextColor(130)
+        pdf.text('Counted', cx, cy - 0.5, { align: 'center' })
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(8)
+        pdf.setTextColor(40)
+        pdf.text(fmtMoney(summary.total), cx, cy + 3.2, { align: 'center' })
+    }
+
+    function drawSideBars(x, top, width) {
+        const labelWidth = 24
+        const pctWidth = 11
+        const trackX = x + labelWidth + 2
+        const trackWidth = width - labelWidth - pctWidth - 4
+        const biggest = Math.max(...summary.sections.map(s => s.value), 1)
+
+        let barY = top
+        for (const row of summary.sections) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(7)
+            pdf.setTextColor(90)
+            pdf.text(row.section, x + labelWidth, barY + 1.5, { align: 'right' })
+
+            pdf.setFillColor(240, 238, 234)
+            pdf.roundedRect(trackX, barY - 0.7, trackWidth, 3, 0.7, 0.7, 'F')
+            pdf.setFillColor(...rgb(row.ink))
+            pdf.roundedRect(trackX, barY - 0.7, Math.max((row.value / biggest) * trackWidth, 1), 3, 0.7, 0.7, 'F')
+
+            pdf.setTextColor(130)
+            pdf.text(`${row.share.toFixed(1)}%`, x + width, barY + 1.5, { align: 'right' })
+            barY += 5.5
+        }
+    }
+
+    function drawCharts() {
+        const size = 32
+        const rows = summary.sections.length * 5.5
+        ensureSpace(Math.max(size, rows) + 6)
+
+        y += 2
+        drawDonut(marginX + size / 2, y + size / 2, size)
+        drawSideBars(marginX + size + 8, y + 4, colTotalRight - (marginX + size + 8))
+        y += Math.max(size, rows + 4) + 4
+
+        pdf.setDrawColor(200)
+        pdf.line(marginX, y - 2, colTotalRight, y - 2)
+        y += 3
+    }
+
+    // ---- the report ------------------------------------------------------
+
+    drawPageTop()
+    if (summary.sections.length > 0) {
+        drawSummary()
+        drawCharts()
+    }
+    drawColumns()
+
+    for (const place of places) {
+        const row = rowFor.get(place.section)
+        ensureSpace(12)
+
+        currentSection = place.section
+        const ink = rgb(row.ink)
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(11)
-        pdf.setTextColor(sr, sg, sb)
-        pdf.text(section, marginX, y)
-        const sectionValue = items.reduce((s, it) => s + it.value, 0)
-        pdf.text(fmtMoney(sectionValue), colTotalRight, y, { align: 'right' })
-        pdf.setDrawColor(sr, sg, sb)
+        pdf.setTextColor(...ink)
+        pdf.text(place.section, marginX, y)
+        pdf.text(fmtMoney(row.value), colTotalRight, y, { align: 'right' })
+        pdf.setDrawColor(...ink)
         pdf.setLineWidth(0.6)
         pdf.line(marginX, y + 1.5, colTotalRight, y + 1.5)
         pdf.setLineWidth(0.2)
         pdf.setTextColor(40)
         y += 6
+        railStart = y
 
-        for (const { product, lines: productLines, qty, value, unitCost } of items) {
+        for (const { product, lines: productLines, qty, value, unitCost } of place.items) {
             ensureSpace(7 + (productLines.length > 1 ? productLines.length * 3.5 : 0))
 
             pdf.setFont('helvetica', 'normal')
@@ -204,85 +444,10 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
             }
         }
 
+        flushRail()
+        currentSection = null
         y += 3
     }
-
-    // Summary by section
-    ensureSpace(14 + sections.length * 7)
-    y += 6
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(12)
-    pdf.setTextColor(40)
-    pdf.text('Summary by section', marginX, y)
-    pdf.setDrawColor(80)
-    pdf.setLineWidth(0.6)
-    pdf.line(marginX, y + 1.5, colTotalRight, y + 1.5)
-    pdf.setLineWidth(0.2)
-    y += 8
-
-    pdf.setFontSize(10)
-    const rowHeight = 7
-    for (const { section, items } of sections) {
-        const [sr, sg, sb] = sectionRgb(section)
-        const [lr, lg, lb] = sectionRgbLight(section)
-        const sectionValue = items.reduce((s, it) => s + it.value, 0)
-        ensureSpace(rowHeight)
-        // Light tinted background spanning full width
-        pdf.setFillColor(lr, lg, lb)
-        pdf.rect(marginX, y - 4.2, colTotalRight - marginX, rowHeight - 1, 'F')
-        // Coloured dot
-        pdf.setFillColor(sr, sg, sb)
-        pdf.circle(marginX + 3, y - 1.2, 1.2, 'F')
-        // Label
-        pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(60)
-        pdf.text(`${section} (${items.length} ${items.length === 1 ? 'product' : 'products'})`, marginX + 7, y)
-        // Value
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(40)
-        pdf.text(fmtMoney(sectionValue), colTotalRight - 2, y, { align: 'right' })
-        y += rowHeight
-
-        // Whose stock it is, under any section that holds a mix.
-        //
-        // Pita Pit keep their boxes in the packaging cupboard, so a single
-        // packaging figure is two businesses added together. The line above
-        // stays the total, because the total is what was counted off the
-        // shelf; these say how it divides.
-        //
-        // Only where there is a mix. Five headings each repeating themselves
-        // once would be five lines saying nothing.
-        const parties = partiesIn(items.map(it => it.product))
-        if (parties.length > 1) {
-            pdf.setFont('helvetica', 'normal')
-            pdf.setFontSize(9)
-            for (const party of parties) {
-                ensureSpace(5)
-                const theirs = items.filter(it => heldFor(it.product) === party)
-                const theirValue = theirs.reduce((sum, it) => sum + it.value, 0)
-                pdf.setTextColor(110)
-                pdf.text(`${section} (${party || 'ours'})`, marginX + 12, y)
-                pdf.text(fmtMoney(theirValue), colTotalRight - 2, y, { align: 'right' })
-                y += 5
-            }
-            pdf.setFontSize(10)
-            pdf.setTextColor(60)
-            y += 1
-        }
-    }
-
-    // Grand total
-    ensureSpace(14)
-    y += 2
-    pdf.setDrawColor(80)
-    pdf.setLineWidth(0.4)
-    pdf.line(marginX, y, pageWidth - marginX, y)
-    y += 6
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(12)
-    pdf.setTextColor(40)
-    pdf.text('Grand total', marginX, y)
-    pdf.text(fmtMoney(grandTotal), colTotalRight, y, { align: 'right' })
 
     drawFooter()
 

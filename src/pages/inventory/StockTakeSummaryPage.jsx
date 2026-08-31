@@ -5,8 +5,10 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
-import { sectionColour, sectionRank } from '../../lib/sections'
-import { heldFor, partiesIn, countName } from '../../lib/products'
+import { sectionColour } from '../../lib/sections'
+import { countName } from '../../lib/products'
+import { bySection, summarise } from '../../lib/stockTakeSummary'
+import StockTakeValue from '../../components/StockTakeValue'
 import { friendlyError } from '../../lib/errors'
 import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
@@ -96,33 +98,6 @@ export default function StockTakeSummaryPage() {
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
-  // All of these take the place as well as the product, because a product kept
-  // in two of them has lines in both and each heading is only about its own.
-  // Pass no section and you get the product's whole count, which is what the
-  // total at the top is.
-  function linesFor(productId, section) {
-    return lines.filter(l =>
-      l.product_id === productId
-      && (!section || (l.section || 'Other') === section))
-  }
-
-  function getProductLines(productId, section) {
-    return linesFor(productId, section)
-      .sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
-  }
-
-  function getProductTotal(productId, section) {
-    return linesFor(productId, section).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
-  }
-
-  function getProductValue(productId, section) {
-    return linesFor(productId, section).reduce((s, l) => s + Number(l.line_total || 0), 0)
-  }
-
-  function getSectionValue(items, section) {
-    return items.reduce((s, p) => s + getProductValue(p.id, section), 0)
-  }
-
   // Return a line's unit_breakdown as sorted parts (biggest format left,
   // loose last), or null for old-style lines without a breakdown.
   function breakdownParts(line, product) {
@@ -148,30 +123,13 @@ export default function StockTakeSummaryPage() {
     return parts
   }
 
-  // Sections containing only counted products, grouped and ordered.
-  //
-  // Grouped by where each line was actually counted rather than by the product's
-  // own section, because a product can be kept in two places and this is a
-  // valuation of what is sitting in each of them. Counting six in the cold room
-  // and four in dry and then reading ten against dry would be a number that
-  // matches nothing anybody saw on a shelf.
-  //
-  // A product kept in two places therefore appears under both headings, with
-  // only that place's lines behind each. Nothing is counted twice: a line
-  // belongs to one place and no more.
-  const sections = useMemo(() => {
-    const grouped = {}
-    for (const line of lines) {
-      const s = line.section || 'Other'
-      const product = products.find(p => p.id === line.product_id)
-      if (!product) continue
-      if (!grouped[s]) grouped[s] = []
-      if (!grouped[s].some(p => p.id === product.id)) grouped[s].push(product)
-    }
-    return Object.entries(grouped)
-      .map(([section, items]) => ({ section, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
-      .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-  }, [products, lines])
+  // Where everything was counted and what each place came to, both worked out
+  // in lib so the PDF gets the same answer. See stockTakeSummary for why a
+  // line belongs to the place it was written down in and not to the product's
+  // own section.
+  const places = useMemo(() => bySection(products, lines), [products, lines])
+  const summary = useMemo(() => summarise(products, lines), [products, lines])
+  const rowFor = useMemo(() => new Map(summary.sections.map(s => [s.section, s])), [summary])
 
   const uncountedProducts = useMemo(() => {
     return products.filter(p => !countedProductIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
@@ -312,22 +270,33 @@ export default function StockTakeSummaryPage() {
         </div>
       </div>
 
+      {/* The answer, above the working.
+          A hundred and sixty products is a long way to scroll for five numbers
+          and a total, and those are what anybody opening a finished count came
+          for. Same block, same figures and the same order as the first page of
+          the PDF. */}
+      {lines.length > 0 && (
+        <div className={`${card} p-4 sm:p-5 mb-6`}>
+          <StockTakeValue summary={summary} />
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
       {/* Counted products by section */}
       <div className="space-y-5 mb-6">
-        {sections.map(({ section, items }) => {
+        {places.map(({ section, items }) => {
           const colour = sectionColour(section)
-          const sectionValue = getSectionValue(items, section)
-          const parties = partiesIn(items)
+          const row = rowFor.get(section)
+          const parties = row?.parties
           return (
             <div key={section}>
               <div className={`${colour.solid} rounded-lg px-3 py-2 mb-2 flex items-center justify-between`}>
                 <h2 className="font-serif text-base font-bold text-white">{section}</h2>
                 <span className="text-sm font-semibold text-white bg-white/20 px-2.5 py-0.5 rounded-full">
-                  {fmtMoney(sectionValue)}
+                  {fmtMoney(row?.value || 0)}
                 </span>
               </div>
 
@@ -337,23 +306,18 @@ export default function StockTakeSummaryPage() {
                   breakdown under every heading to say one line would be noise
                   on five of them. The heading keeps the combined figure, since
                   that is what was counted off the shelf. */}
-              {parties.length > 1 && (
+              {parties && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
                   {parties.map(party => (
-                    <span key={party || 'ours'} className="text-xs text-gray-600">
-                      {section} ({party || 'ours'}){' '}
-                      <span className="font-semibold text-gray-900">
-                        {fmtMoney(getSectionValue(items.filter(p => heldFor(p) === party), section))}
-                      </span>
+                    <span key={party.who || 'ours'} className="text-xs text-gray-600">
+                      {section} ({party.who || 'ours'}){' '}
+                      <span className="font-semibold text-gray-900">{fmtMoney(party.value)}</span>
                     </span>
                   ))}
                 </div>
               )}
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
-                {items.map((product, i) => {
-                  const productLines = getProductLines(product.id, section)
-                  const total = getProductTotal(product.id, section)
-                  const value = getProductValue(product.id, section)
+                {items.map(({ product, lines: productLines, qty: total, value }, i) => {
                   return (
                     <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
                       {/* The name above the numbers on a phone, side by side
