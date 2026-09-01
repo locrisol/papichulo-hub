@@ -141,3 +141,36 @@ export function countName(product) {
     const owner = heldFor(product)
     return owner ? `(${owner}) ${product.name}` : (product?.name || '')
 }
+
+// The order products read in under a heading, wherever they are listed for a
+// count: the count screen, the finished stock take and the report.
+//
+// Held for somebody else goes to the very bottom, under everything, because it
+// is on our shelf and it is not our stock. Drinks go above them and below the
+// rest, so they sit together instead of scattered through the food a name at a
+// time. Everything else is alphabetical.
+//
+// The same two rules the catalogue has used since they were added. They were
+// only ever written into the catalogue, so a count and a report went on listing
+// a case of Coke in the middle of the dry goods and Pita Pit's boxes in the
+// middle of ours.
+//
+// The catalogue also puts MIX products first. That is not repeated here. In the
+// catalogue MIX is the thing that behaves differently, since its cost comes off
+// a recipe rather than a supplier. On a shelf a house made salsa is a tub like
+// any other and there is no reason to walk past it and come back.
+export function compareForCount(a, b) {
+    const aTheirs = !!heldFor(a)
+    const bTheirs = !!heldFor(b)
+    if (aTheirs !== bTheirs) return aTheirs ? 1 : -1
+
+    const aDrink = a?.category === 'drink'
+    const bDrink = b?.category === 'drink'
+    if (aDrink !== bDrink) return aDrink ? 1 : -1
+
+    return String(a?.name || '').localeCompare(String(b?.name || ''))
+}
+
+export function inCountOrder(products) {
+    return (products || []).slice().sort(compareForCount)
+}

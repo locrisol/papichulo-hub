@@ -19,7 +19,7 @@
 // belongs to one place and no more.
 
 import { sectionRank, sectionColour } from './sections'
-import { heldFor } from './products'
+import { heldFor, compareForCount } from './products'
 
 // The three the accountant adds together. Packaging and cleaning are stock but
 // they are not food cost, and that split is the first thing anybody does to
@@ -61,7 +61,7 @@ export function bySection(products, lines) {
                     // The cost the line saved on the day, not today's price.
                     unitCost: own.find(l => l.unit_cost != null)?.unit_cost ?? null,
                 }))
-                .sort((a, b) => a.product.name.localeCompare(b.product.name)),
+                .sort((a, b) => compareForCount(a.product, b.product)),
         }))
         .sort((a, b) => {
             const r = sectionRank(a.section) - sectionRank(b.section)
@@ -134,9 +134,43 @@ export function summarise(products, lines) {
         }
     }
 
+    // What was on the shelf, and what nobody looked at.
+    //
+    // A product with a line of zero is not the same as a product with no line.
+    // The zero means somebody went and looked and there was none, which is an
+    // order to place. No line means it was missed, and the stock is whatever it
+    // was, unknown. They are kept apart everywhere else and they are kept apart
+    // here.
+    //
+    // A missed product has no line, so there is nothing saying where it should
+    // have been counted. It is filed under its own section, which is the only
+    // thing there is to go on.
+    const countedTotals = new Map()
+    for (const line of lines || []) {
+        if (!countedTotals.has(line.product_id)) countedTotals.set(line.product_id, 0)
+        countedTotals.set(line.product_id,
+            countedTotals.get(line.product_id) + Number(line.quantity_counted || 0))
+    }
+
+    const onShelf = (products || []).filter(p => p && p.is_active !== false)
+    const bySectionThenName = (a, b) => {
+        const r = sectionRank(a.section) - sectionRank(b.section)
+        return r !== 0 ? r : compareForCount(a, b)
+    }
+
+    const noneInStock = onShelf
+        .filter(p => countedTotals.get(p.id) === 0)
+        .sort(bySectionThenName)
+
+    const notCounted = onShelf
+        .filter(p => !countedTotals.has(p.id))
+        .sort(bySectionThenName)
+
     return {
         sections,
         total,
+        noneInStock,
+        notCounted,
         food: food.length > 1
             ? { value: foodValue, share: share(foodValue), sections: food.map(s => s.section) }
             : null,

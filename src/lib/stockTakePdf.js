@@ -91,11 +91,14 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     const rowFor = new Map(summary.sections.map(s => [s.section, s]))
 
     let y = 0
-    let pageNumber = 1
     // The section being printed, and where its run started on this page. The
     // pair of them draw the coloured rail down the left edge.
     let currentSection = null
     let railStart = null
+    // The count itself, as against the lists of names after it. They have no
+    // quantities and no money, so the column headings would be four words over
+    // nothing.
+    let inBody = false
 
     // The top of every page: the logo, what this is, and when it was done.
     //
@@ -149,12 +152,19 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         y += 6
     }
 
-    function drawFooter() {
-        pdf.setFont('helvetica', 'italic')
-        pdf.setFontSize(7)
-        pdf.setTextColor(140)
-        pdf.text('Papi Chulo Hub stock take record', marginX, pageHeight - 8)
-        pdf.text(`Page ${pageNumber}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
+    // Written at the very end, once there is a page count to say out of.
+    // A page on its own saying 4 tells you nothing about whether you are
+    // holding all of it.
+    function drawFooters() {
+        const pages = pdf.getNumberOfPages()
+        for (let page = 1; page <= pages; page++) {
+            pdf.setPage(page)
+            pdf.setFont('helvetica', 'italic')
+            pdf.setFontSize(7)
+            pdf.setTextColor(140)
+            pdf.text('Papi Chulo Hub stock take record', marginX, pageHeight - 8)
+            pdf.text(`Page ${page} of ${pages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' })
+        }
     }
 
     // The coloured rail beside the rows of the section being printed.
@@ -181,11 +191,9 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         if (y + needed <= pageHeight - 14) return
 
         flushRail()
-        drawFooter()
         pdf.addPage()
-        pageNumber++
         drawPageTop()
-        drawColumns()
+        if (inBody) drawColumns()
 
         // A colour on its own is something you have to remember the meaning
         // of, so the page says it in words as well.
@@ -280,8 +288,9 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
             }
         }
 
-        ensureSpace(12)
-        y += 1
+        // Room between the rule and the words. They were all but touching.
+        ensureSpace(14)
+        y += 4
         pdf.setDrawColor(80)
         pdf.setLineWidth(0.4)
         pdf.line(marginX, y - 4, colTotalRight, y - 4)
@@ -305,6 +314,24 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
                 ...summary.owners.held.map(h => `Held for ${h.who} ${fmtMoney(h.value)}`),
             ]
             pdf.text(bits.join('        '), marginX, y)
+            y += 5
+        }
+
+        // Said here as well as at the end. Twenty products nobody looked at is
+        // not something to come across on the last page, and somebody reading
+        // the total needs to know what it does and does not cover.
+        const gaps = []
+        if (summary.noneInStock.length > 0) {
+            gaps.push(`${summary.noneInStock.length} counted as none in stock`)
+        }
+        if (summary.notCounted.length > 0) {
+            gaps.push(`${summary.notCounted.length} not counted`)
+        }
+        if (gaps.length > 0) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(8.5)
+            pdf.setTextColor(110)
+            pdf.text(`${gaps.join(', ')}. Both listed at the end.`, marginX, y)
             y += 5
         }
     }
@@ -427,6 +454,60 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         y += 8
     }
 
+    // A list of names under a heading, grouped by where they belong.
+    //
+    // Names only. There are no figures to give: that is the whole point of
+    // both of these lists.
+    function drawNameList(title, note, items) {
+        if (items.length === 0) return
+
+        ensureSpace(20)
+        y += 5
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(11)
+        pdf.setTextColor(40)
+        pdf.text(`${title} (${items.length})`, marginX, y)
+        pdf.setDrawColor(80)
+        pdf.setLineWidth(0.4)
+        pdf.line(marginX, y + 1.5, colTotalRight, y + 1.5)
+        pdf.setLineWidth(0.2)
+        y += 6
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8)
+        pdf.setTextColor(130)
+        pdf.text(note, marginX, y)
+        y += 5.5
+
+        // A dot with air around it rather than a comma, because a product name
+        // can be one word or five and a comma does not say where one stops.
+        // The screen puts a box round each name; forty boxes on paper would be
+        // fussy and use ink, and the dot answers the same question.
+        const groups = new Map()
+        for (const product of items) {
+            const place = product.section || 'Other'
+            if (!groups.has(place)) groups.set(place, [])
+            groups.get(place).push(countName(product))
+        }
+
+        const namesX = marginX + 26
+        for (const [place, names] of groups) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(8)
+            const wrapped = pdf.splitTextToSize(names.join('   ·   '), colTotalRight - namesX)
+            ensureSpace(wrapped.length * 3.6 + 3)
+
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(...rgb(inkOf(place)))
+            pdf.text(place, marginX, y)
+
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(90)
+            pdf.text(wrapped, namesX, y)
+            y += wrapped.length * 3.6 + 2.5
+        }
+    }
+
     // ---- the report ------------------------------------------------------
 
     drawPageTop()
@@ -434,6 +515,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         drawSummary()
         drawCharts()
     }
+    inBody = true
     drawColumns()
 
     for (const place of places) {
@@ -509,7 +591,22 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         y += 3
     }
 
-    drawFooter()
+    inBody = false
+
+    // What the count does not cover, kept as two lists because they mean
+    // different things. A zero is an order to place. No line at all is a shelf
+    // nobody went to, and the stock is whatever it was.
+    drawNameList(
+        'Counted as none in stock',
+        'Somebody looked and there was none. Worth an order.',
+        summary.noneInStock)
+
+    drawNameList(
+        'Not counted',
+        'No count was recorded this session, so nothing here is known either way.',
+        summary.notCounted)
+
+    drawFooters()
 
     const safeName = (restaurant.name || 'stocktake').toLowerCase().replace(/[^a-z0-9]+/g, '-')
     const dateStr = fmtDate(session.completed_at || session.started_at).replace(/[^a-z0-9]+/gi, '-')

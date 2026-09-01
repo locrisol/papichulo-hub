@@ -191,3 +191,45 @@ describe('summarise', () => {
         expect(summarise(products, zeroed).sections.every(s => s.share === 0)).toBe(true)
     })
 })
+
+describe('what was not there and what was not looked at', () => {
+    const products = [
+        product('p1', 'Beef', 'Freezer'),
+        product('p2', 'Limes', 'Cold Room'),
+        product('p3', 'Rice', 'Dry'),
+        product('p4', 'Coke', 'Dry', { category: 'drink' }),
+        product('p5', 'Bleach', 'Cleaning'),
+    ]
+
+    it('tells a zero apart from nobody looking', () => {
+        // A zero is an order to place. No line is a thing nobody checked.
+        const lines = [line('p1', 'Freezer', 10, 400), line('p3', 'Dry', 0, 0)]
+        const { noneInStock, notCounted } = summarise(products, lines)
+
+        expect(noneInStock.map(p => p.name)).toEqual(['Rice'])
+        expect(notCounted.map(p => p.name)).toEqual(['Limes', 'Coke', 'Bleach'])
+    })
+
+    it('adds a product up across its places before calling it none', () => {
+        // Nothing in dry, six in the cold room, so it is not none.
+        const lines = [line('p3', 'Dry', 0, 0), line('p3', 'Cold Room', 6, 60)]
+        expect(summarise(products, lines).noneInStock).toEqual([])
+    })
+
+    it('lists them in the order the store is walked, drinks last', () => {
+        expect(summarise(products, []).notCounted.map(p => p.name))
+            .toEqual(['Beef', 'Limes', 'Rice', 'Coke', 'Bleach'])
+    })
+
+    it('leaves out anything no longer stocked', () => {
+        const gone = [...products, product('p6', 'Old Thing', 'Dry', { is_active: false })]
+        expect(summarise(gone, []).notCounted.map(p => p.name)).not.toContain('Old Thing')
+    })
+
+    it('has nothing to say when everything was counted', () => {
+        const all = products.map((p, i) => line(p.id, p.section, i + 1, (i + 1) * 10))
+        const { noneInStock, notCounted } = summarise(products, all)
+        expect(noneInStock).toEqual([])
+        expect(notCounted).toEqual([])
+    })
+})

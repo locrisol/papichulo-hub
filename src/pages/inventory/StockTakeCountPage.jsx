@@ -7,7 +7,7 @@ import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
-import { countName } from '../../lib/products'
+import { countName, compareForCount } from '../../lib/products'
 import { countedLine } from '../../lib/countedAt'
 import { orderFormats } from '../../lib/countUnits'
 import { card } from '../../lib/controlStyles'
@@ -40,7 +40,7 @@ function group(list) {
     return Object.entries(grouped)
         .map(([section, items]) => ({
             section,
-            items: items.sort((a, b) => a.name.localeCompare(b.name)),
+            items: items.sort(compareForCount),
         }))
         .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
 }

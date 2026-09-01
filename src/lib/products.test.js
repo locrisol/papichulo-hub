@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
     heldFor, partiesIn, canBeMenuComponent, countName,
+    inCountOrder,
 } from './products'
 
 const PRODUCTS = [
@@ -201,5 +202,55 @@ describe('countName', () => {
 
     it('has nothing to say about nothing', () => {
         expect(countName(null)).toBe('')
+    })
+})
+
+describe('inCountOrder', () => {
+    const p = (name, extra = {}) => ({ name, ...extra })
+    const names = list => inCountOrder(list).map(x => x.name)
+
+    it('is alphabetical when nothing else applies', () => {
+        expect(names([p('Rice'), p('Avocado'), p('Salt')]))
+            .toEqual(['Avocado', 'Rice', 'Salt'])
+    })
+
+    it('sinks drinks under the food', () => {
+        // A case of Coke sat between Cinnamon and Dried Chile, which is not
+        // where anybody walks to find it.
+        expect(names([p('Rice'), p('CAN Coca-Cola', { category: 'drink' }), p('Salt')]))
+            .toEqual(['Rice', 'Salt', 'CAN Coca-Cola'])
+    })
+
+    it('puts stock held for somebody else right at the bottom', () => {
+        expect(names([
+            p('Carrier Bags'),
+            p('Catering Boxes', { held_for: 'PITA PIT' }),
+            p('Napkins'),
+        ])).toEqual(['Carrier Bags', 'Napkins', 'Catering Boxes'])
+    })
+
+    it('puts their stock below even the drinks', () => {
+        expect(names([
+            p('Their Cola', { held_for: 'PITA PIT', category: 'drink' }),
+            p('Our Cola', { category: 'drink' }),
+            p('Rice'),
+        ])).toEqual(['Rice', 'Our Cola', 'Their Cola'])
+    })
+
+    it('does not put MIX first the way the catalogue does', () => {
+        // On a shelf a house made salsa is a tub like any other.
+        expect(names([p('Rice'), p('Chipotle Sauce', { is_mix: true })]))
+            .toEqual(['Chipotle Sauce', 'Rice'])
+    })
+
+    it('does not change the list it was given', () => {
+        const original = [p('Rice'), p('Avocado')]
+        inCountOrder(original)
+        expect(original.map(x => x.name)).toEqual(['Rice', 'Avocado'])
+    })
+
+    it('has nothing to say about nothing', () => {
+        expect(inCountOrder([])).toEqual([])
+        expect(inCountOrder(null)).toEqual([])
     })
 })
