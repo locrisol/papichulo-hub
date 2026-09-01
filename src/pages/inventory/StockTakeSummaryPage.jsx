@@ -33,6 +33,17 @@ function fmtDateTime(iso) {
   return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// What a stock take is called, for any of them rather than only the one on
+// screen. A session can be given a name when it is started, and where it was
+// not it is named after the month it was counted in.
+function titleOf(session) {
+  if (!session) return 'the open stock take'
+  if (session.notes && session.notes.trim()) return session.notes.trim()
+  const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
+  const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
+  return `${typeWord} Stock Take (${monthYear})`
+}
+
 // One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
 // twice. The equals sign is there to show the arithmetic when somebody counted
 // in packs, and with a single loose entry there is no arithmetic to show.
@@ -54,6 +65,9 @@ export default function StockTakeSummaryPage() {
   const [error, setError] = useState('')
 
   const [showReopen, setShowReopen] = useState(false)
+  // The stock take standing in the way of this one being reopened, once we
+  // know there is one. Only ever set by a failed reopen.
+  const [blocker, setBlocker] = useState(null)
   const [reopenReason, setReopenReason] = useState('')
   const [reopening, setReopening] = useState(false)
 
@@ -132,10 +146,7 @@ export default function StockTakeSummaryPage() {
   const rowFor = useMemo(() => new Map(summary.sections.map(s => [s.section, s])), [summary])
 
   function sessionTitle() {
-    if (session.notes && session.notes.trim()) return session.notes.trim()
-    const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
-    const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
-    return `${typeWord} Stock Take (${monthYear})`
+    return titleOf(session)
   }
 
   function handleExportPdf() {
@@ -155,6 +166,7 @@ export default function StockTakeSummaryPage() {
     if (reopening) return
     setShowReopen(false)
     setError('')
+    setBlocker(null)
   }
 
   async function handleReopen() {
@@ -175,7 +187,17 @@ export default function StockTakeSummaryPage() {
 
     if (updateErr) {
       if (updateErr.code === '23505') {
-        setError('There is already an active stock take for this restaurant. Close it before reopening this one.')
+        setError('There is already a stock take open. Close it before reopening this one.')
+        // Which one, so it is somewhere to go rather than something to go and
+        // look for. Only asked for when the reopen has already failed, and if
+        // the lookup itself fails the message above still stands on its own.
+        const { data: open } = await supabase
+          .from('stock_takes')
+          .select('id, notes, type, started_at')
+          .eq('restaurant_id', session.restaurant_id)
+          .eq('status', 'in_progress')
+          .maybeSingle()
+        setBlocker(open || null)
       } else {
         setError(friendlyError(updateErr))
       }
@@ -430,7 +452,18 @@ export default function StockTakeSummaryPage() {
                 commonest reason is another stock take already open, which the
                 database refuses outright. */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">
+                <p>{error}</p>
+                {blocker && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/inventory/stock-takes/${blocker.id}`)}
+                    className="mt-1.5 font-semibold underline text-left"
+                  >
+                    Go to {titleOf(blocker)}
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="flex gap-2 justify-end">
