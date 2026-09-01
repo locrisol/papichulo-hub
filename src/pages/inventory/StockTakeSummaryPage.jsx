@@ -149,6 +149,14 @@ export default function StockTakeSummaryPage() {
     })
   }
 
+  // Shutting the dialog takes its message with it, so a failed reopen does
+  // not leave a red bar sitting on the page after you have walked away from it.
+  function closeReopen() {
+    if (reopening) return
+    setShowReopen(false)
+    setError('')
+  }
+
   async function handleReopen() {
     setReopening(true)
     setError('')
@@ -277,7 +285,10 @@ export default function StockTakeSummaryPage() {
         </div>
       )}
 
-      {error && (
+      {/* Not while the reopen dialog is up. The dialog covers the whole
+          screen, so a message drawn out here is behind it and the reopen looks
+          like it did nothing at all. It goes inside the dialog instead. */}
+      {error && !showReopen && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
@@ -399,7 +410,7 @@ export default function StockTakeSummaryPage() {
 
       {/* Reopen confirmation */}
       {showReopen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => !reopening && setShowReopen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={closeReopen}>
           <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
             <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Reopen this stock take?</h2>
             <p className="text-sm text-gray-700 mb-3">
@@ -414,8 +425,16 @@ export default function StockTakeSummaryPage() {
               maxLength={200}
               className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent mb-4"
             />
+
+            {/* Why it did not work, where you are looking when it does not. The
+                commonest reason is another stock take already open, which the
+                database refuses outright. */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+            )}
+
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowReopen(false)} disabled={reopening} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+              <button type="button" onClick={closeReopen} disabled={reopening} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={handleReopen} disabled={reopening} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">

@@ -173,6 +173,14 @@ export default function StockTakeReviewPage() {
     setDraftLocation('')
   }
 
+  // Shutting the dialog takes its message with it, so a failed close does not
+  // leave a red bar sitting on the page after you have walked away from it.
+  function closeConfirm() {
+    if (closing) return
+    setShowCloseConfirm(false)
+    setError('')
+  }
+
   async function handleCloseSession() {
     setClosing(true)
     setError('')
@@ -268,7 +276,9 @@ export default function StockTakeReviewPage() {
         </div>
       </div>
 
-      {error && (
+      {/* Not while the closing dialog is up, which covers the whole screen
+          and would hide it. It goes inside the dialog instead. */}
+      {error && !showCloseConfirm && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
@@ -438,7 +448,7 @@ export default function StockTakeReviewPage() {
 
       {/* Close confirmation */}
       {showCloseConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => !closing && setShowCloseConfirm(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={closeConfirm}>
           <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
             <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Close this stock take?</h2>
             <p className="text-sm text-gray-700 mb-3">
@@ -452,8 +462,13 @@ export default function StockTakeReviewPage() {
             <p className="text-sm text-gray-700 mb-4">
               Total value: <strong>{fmtMoney(totalValue)}</strong>
             </p>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+            )}
+
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowCloseConfirm(false)} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+              <button type="button" onClick={closeConfirm} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={handleCloseSession} disabled={closing} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">
