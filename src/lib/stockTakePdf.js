@@ -461,7 +461,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     function drawNameList(title, note, items) {
         if (items.length === 0) return
 
-        ensureSpace(20)
+        ensureSpace(26)
         y += 5
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(11)
@@ -473,11 +473,13 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         pdf.setLineWidth(0.2)
         y += 6
 
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(8)
-        pdf.setTextColor(130)
-        pdf.text(note, marginX, y)
-        y += 5.5
+        if (note) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(8)
+            pdf.setTextColor(130)
+            pdf.text(note, marginX, y)
+            y += 5.5
+        }
 
         // A dot with air around it rather than a comma, because a product name
         // can be one word or five and a comma does not say where one stops.
@@ -520,7 +522,13 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
 
     for (const place of places) {
         const row = rowFor.get(place.section)
-        ensureSpace(12)
+
+        // A heading needs its first few products under it or it does not go on
+        // this page. Left to fit on its own it landed at the foot of a page
+        // with nothing beneath it, which reads as a section that came to
+        // nothing until you turn over and find out it did not. Three rows is
+        // enough to see it has started.
+        ensureSpace(8 + Math.min(place.items.length, 3) * 9)
 
         currentSection = place.section
         drawSectionBand(place.section, row.value)
@@ -596,10 +604,8 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     // What the count does not cover, kept as two lists because they mean
     // different things. A zero is an order to place. No line at all is a shelf
     // nobody went to, and the stock is whatever it was.
-    drawNameList(
-        'Counted as none in stock',
-        'Somebody looked and there was none. Worth an order.',
-        summary.noneInStock)
+    // No line under this one. The heading says the whole of it.
+    drawNameList('Counted as none in stock', null, summary.noneInStock)
 
     drawNameList(
         'Not counted',
