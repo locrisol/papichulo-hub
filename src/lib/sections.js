@@ -56,7 +56,12 @@ export const SECTION_COLOURS = {
 }
 
 // Something we make ourselves, which is not kept anywhere in particular.
-export const MIX_COLOUR = { ink: '#a16207', label: 'House-made (MIX)' }
+//
+// Two ambers, because they do two jobs. ink is lettering, so it is dark enough
+// to read as words on white. badge is the amber the catalogue has always filled
+// its MIX pill with, bright with white lettering on it, and it is what anything
+// drawing that pill should use.
+export const MIX_COLOUR = { ink: '#a16207', badge: '#f59e0b', label: 'House-made (MIX)' }
 
 // A drink, which is kept somewhere but is read as its own thing.
 export const DRINK_COLOUR = { ink: '#0369a1', label: 'Drink' }
