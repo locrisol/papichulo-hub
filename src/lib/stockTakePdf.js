@@ -510,6 +510,31 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         }
     }
 
+    // How tall a product's row will be, worked out before anything is drawn.
+    //
+    // The same measurement decides whether a section can start on this page and
+    // whether this row fits on it, so the two can never disagree. Guessing at it
+    // was the bug: a flat nine millimetres a row is fine for a product counted
+    // once and nowhere near a Black Refuse Sacks counted in two places, which
+    // runs to sixteen.
+    function measure({ product, lines: productLines }) {
+        const showObs = productLines.length > 1
+            || productLines.some(l => l.location_note)
+            || productLines.some(l => breakdownString(l, product))
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(10)
+        const nameLines = pdf.splitTextToSize(countName(product), colQtyRight - marginX - 24)
+        const nameExtra = (nameLines.length - 1) * 4.4
+
+        return {
+            showObs,
+            nameLines,
+            nameExtra,
+            height: 5.4 + nameExtra + (showObs ? productLines.length * 3.6 + 0.6 : 0),
+        }
+    }
+
     // ---- the report ------------------------------------------------------
 
     drawPageTop()
@@ -523,38 +548,22 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
     for (const place of places) {
         const row = rowFor.get(place.section)
 
-        // A heading needs its first few products under it or it does not go on
-        // this page. Left to fit on its own it landed at the foot of a page
-        // with nothing beneath it, which reads as a section that came to
-        // nothing until you turn over and find out it did not. Three rows is
-        // enough to see it has started.
-        ensureSpace(8 + Math.min(place.items.length, 3) * 9)
+        // A heading needs its first three products under it, measured rather
+        // than guessed at, or it does not go on this page. Left to fit on its
+        // own it landed at the foot of a page with nothing much beneath it,
+        // which reads as a section that came to nothing until you turn over.
+        const opening = place.items
+            .slice(0, 3)
+            .reduce((sum, item) => sum + measure(item).height + 2.4, 0)
+        ensureSpace(8 + opening)
 
         currentSection = place.section
         drawSectionBand(place.section, row.value)
         railStart = y
 
-        for (const { product, lines: productLines, qty, value, unitCost } of place.items) {
-            // Only worth listing the counts under a product when they say
-            // something the line above does not: more than one of them, a
-            // format worth showing the working for, or where it was found.
-            const showObs = productLines.length > 1
-                || productLines.some(l => l.location_note)
-                || productLines.some(l => breakdownString(l, product))
-
-            // A name too long for its column wraps, and the row has to grow by
-            // however many lines it took. It did not, so River Rock Vital sat
-            // on top of the count underneath it.
-            pdf.setFont('helvetica', 'normal')
-            pdf.setFontSize(10)
-            // Stops short of the quantity column rather than at it, because the
-            // quantity is right aligned and grows leftwards into whatever is
-            // left. Measured against the longest one we have, which is 450ml
-            // bottles of River Rock Vital.
-            const nameLines = pdf.splitTextToSize(countName(product), colQtyRight - marginX - 24)
-            const nameExtra = (nameLines.length - 1) * 4.4
-
-            const height = 5.4 + nameExtra + (showObs ? productLines.length * 3.6 + 0.6 : 0)
+        for (const item of place.items) {
+            const { product, lines: productLines, qty, value, unitCost } = item
+            const { showObs, nameLines, nameExtra, height } = measure(item)
             ensureSpace(height + 3)
 
             // Set again, because ensureSpace may have started a page and drawn
