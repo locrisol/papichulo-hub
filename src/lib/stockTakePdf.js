@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import { fmtMoney, fmtQty } from './format'
 import { countName } from './products'
-import { sectionColour } from './sections'
+import { sectionColour, MIX_COLOUR } from './sections'
 import { bySection, summarise } from './stockTakeSummary'
 import { slicePoints } from './donut'
 import logo from '../assets/PapiChuloLogoPrint.png?inline'
@@ -568,10 +568,33 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
 
             // Set again, because ensureSpace may have started a page and drawn
             // the column headings in bold since the last time.
+            // Something we make ourselves rather than buy. It is the one thing
+            // on a stock take line that changes what the cost means: a MIX is
+            // priced off its recipe, not off an invoice from a supplier.
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(10)
             pdf.setTextColor(40)
             pdf.text(nameLines, marginX, y)
+
+            // A badge rather than a yellow row. The catalogue colours the whole
+            // row, which works on a screen with a handful of them; on a page
+            // where ten mixes run one after another it stops reading as ten
+            // marked rows and becomes one block of colour. A badge also still
+            // says MIX on a report printed in black and white.
+            if (product.is_mix) {
+                const lastLine = nameLines[nameLines.length - 1]
+                const badgeX = marginX + pdf.getTextWidth(lastLine) + 2
+                const badgeY = y + nameExtra - 3.1
+                pdf.setFillColor(...rgb(MIX_COLOUR.badge))
+                pdf.roundedRect(badgeX, badgeY, 8.4, 3.8, 1.9, 1.9, 'F')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(5.6)
+                pdf.setTextColor(255, 255, 255)
+                pdf.text('MIX', badgeX + 4.2, badgeY + 2.75, { align: 'center' })
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(10)
+                pdf.setTextColor(40)
+            }
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
             pdf.text(unitCost != null ? fmtMoney(unitCost) : '—', colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })

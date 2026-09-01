@@ -356,6 +356,16 @@ export default function StockTakeSummaryPage() {
                       <div className="sm:flex sm:items-center sm:justify-between sm:gap-3">
                         <p className="font-medium text-gray-900 sm:flex-1 sm:min-w-0">
                           {countName(product)}
+                          {/* Something we make ourselves. It is the one thing on a
+                              stock take line that changes what the cost means: a MIX
+                              is priced off its recipe and everything else off a
+                              supplier invoice. Same badge the report prints and the
+                              same amber the catalogue has always used. */}
+                          {product.is_mix && (
+                            <span className="ml-2 align-middle inline-block px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[0.65rem] font-bold tracking-wide">
+                              MIX
+                            </span>
+                          )}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>
                         <div className="flex items-baseline gap-2 mt-0.5 sm:mt-0 sm:block sm:text-right sm:flex-shrink-0">
