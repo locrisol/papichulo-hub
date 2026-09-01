@@ -479,6 +479,10 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         pdf.text(note, marginX, y)
         y += 5.5
 
+        // A dot with air around it rather than a comma, because a product name
+        // can be one word or five and a comma does not say where one stops.
+        // The screen puts a box round each name; forty boxes on paper would be
+        // fussy and use ink, and the dot answers the same question.
         const groups = new Map()
         for (const product of items) {
             const place = product.section || 'Other'
@@ -490,7 +494,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
         for (const [place, names] of groups) {
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(8)
-            const wrapped = pdf.splitTextToSize(names.join(', '), colTotalRight - namesX)
+            const wrapped = pdf.splitTextToSize(names.join('   ·   '), colTotalRight - namesX)
             ensureSpace(wrapped.length * 3.6 + 3)
 
             pdf.setFont('helvetica', 'bold')

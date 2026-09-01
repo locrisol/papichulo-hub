@@ -131,10 +131,6 @@ export default function StockTakeSummaryPage() {
   const summary = useMemo(() => summarise(products, lines), [products, lines])
   const rowFor = useMemo(() => new Map(summary.sections.map(s => [s.section, s])), [summary])
 
-  const uncountedProducts = useMemo(() => {
-    return products.filter(p => !countedProductIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
-  }, [products, countedProductIds])
-
   function sessionTitle() {
     if (session.notes && session.notes.trim()) return session.notes.trim()
     const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
@@ -375,17 +371,20 @@ export default function StockTakeSummaryPage() {
         })}
       </div>
 
-      {/* Uncounted products note */}
-      {uncountedProducts.length > 0 && (
-        <div className="bg-gray-50 border border-border rounded-xl p-4 mb-6">
-          <p className="text-sm font-semibold text-gray-700 mb-1">
-            {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product was' : 'products were'} not counted this session
-          </p>
-          <p className="text-xs text-muted">
-            {uncountedProducts.map(p => p.name).join(', ')}
-          </p>
-        </div>
-      )}
+      {/* What the count does not cover, in two lists rather than one.
+          A zero means somebody looked and there was none, which is an order to
+          place. No line at all means nobody went to that shelf. Same two lists
+          and the same words as the report, off the same figures. */}
+      <NameList
+        title="Counted as none in stock"
+        note="Somebody looked and there was none. Worth an order."
+        products={summary.noneInStock}
+      />
+      <NameList
+        title="Not counted"
+        note="No count was recorded this session, so nothing here is known either way."
+        products={summary.notCounted}
+      />
 
       {/* Reopen (managers, closed sessions only) */}
       {isManager && isClosed && (
@@ -427,5 +426,67 @@ export default function StockTakeSummaryPage() {
         </div>
       )}
     </PageContainer>
+  )
+}
+
+// A list of names under a heading, grouped by where they belong.
+//
+// Names only, because there are no figures to give: that is the point of both
+// of the lists that use this. Grouped by section so it reads as somewhere to
+// walk back to rather than as a paragraph of product names, which is what the
+// uncounted note used to be.
+function NameList({ title, note, products }) {
+  if (!products || products.length === 0) return null
+
+  const groups = []
+  for (const product of products) {
+    const place = product.section || 'Other'
+    const found = groups.find(g => g.place === place)
+    if (found) found.items.push(product)
+    else groups.push({ place, items: [product] })
+  }
+
+  return (
+    <div className="bg-gray-50 border border-border rounded-xl p-4 mb-6">
+      <div className="flex items-center gap-2 mb-1">
+        <p className="text-sm font-semibold text-gray-700">{title}</p>
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white border border-border text-gray-700">
+          {products.length}
+        </span>
+      </div>
+      <p className="text-xs text-muted mb-2.5">{note}</p>
+
+      <div className="space-y-2 sm:space-y-1.5">
+        {groups.map(({ place, items }) => (
+          <div key={place} className="sm:flex sm:gap-3 text-xs">
+            {/* Its own line on a phone, beside the names on anything wider.
+                Sharing the line on a narrow screen there is no gap to put
+                between them, so the section ran straight into the first
+                product. */}
+            <span
+              className="block font-bold whitespace-nowrap sm:w-24 sm:flex-shrink-0 sm:pt-0.5"
+              style={{ color: sectionColour(place).ink }}
+            >
+              {place}
+            </span>
+
+            {/* A box each rather than commas between them. A product name can
+                be one word or five, and run together with commas there was
+                nothing saying where one stopped and the next started. These
+                are the same boxes the counts use further up the page. */}
+            <span className="flex flex-wrap gap-1">
+              {items.map(product => (
+                <span
+                  key={product.id}
+                  className="bg-white border border-border rounded-md px-2 py-0.5 text-gray-700"
+                >
+                  {countName(product)}
+                </span>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
