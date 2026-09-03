@@ -4,7 +4,9 @@ import { useAuth } from '../../context/AuthContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '../../lib/dates'
 import { DAY_NAMES } from '../../lib/events'
-import { card, cardEdge, badge, jumpButton, segmentTrack, segmentButton } from '../../lib/controlStyles'
+import {
+    card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton,
+} from '../../lib/controlStyles'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '../../lib/roster'
@@ -12,9 +14,13 @@ import { weekSpan, freeEnds, dayShape } from '../../lib/presence'
 import { absenceOn } from '../../lib/absences'
 import { AWAY } from '../../lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '../../lib/team'
+import {
+    LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
+} from '../../lib/shiftRequests'
 import DateStepper from '../../components/DateStepper'
 import RosterWeek from '../../components/RosterWeek'
 import PresenceGrid from '../../components/PresenceGrid'
+import ShiftRequestDialog from '../../components/ShiftRequestDialog'
 
 // The staff side of the roster. One page.
 //
@@ -44,6 +50,10 @@ export default function MyShiftsPage() {
     const [dayNotes, setDayNotes] = useState([])
     const [absences, setAbsences] = useState([])
     const [openingHours, setOpeningHours] = useState(null)
+    const [breakRules, setBreakRules] = useState(null)
+    const [requests, setRequests] = useState([])
+    const [asking, setAsking] = useState(null)
+    const [saving, setSaving] = useState(false)
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const [view, setView] = useState('mine')
     const [picked, setPicked] = useState(null)
@@ -92,7 +102,8 @@ export default function MyShiftsPage() {
                 // Spain.
                 supabase.from('roster_away').select('*')
                     .lte('starts_on', to).gte('ends_on', from),
-                supabase.from('restaurants').select('opening_hours').eq('id', mine.restaurant_id).maybeSingle(),
+                supabase.from('restaurants').select('opening_hours, break_rules')
+                    .eq('id', mine.restaurant_id).maybeSingle(),
             ])
 
             if (!live) return
@@ -103,7 +114,19 @@ export default function MyShiftsPage() {
             setDayNotes(noteRes.data || [])
             setAbsences(awayRes.data || [])
             setOpeningHours(restRes.data?.opening_hours || null)
+            setBreakRules(restRes.data?.break_rules || null)
             setReady(true)
+
+            // The asks about this week, fetched after it rather than beside it
+            // because they are looked up by the shifts they are about. Nobody
+            // is waiting on this to read their own Tuesday.
+            const ids = (shiftRes.data || []).map(row => row.id)
+            if (ids.length === 0) { setRequests([]); return }
+            const { data: asks } = await supabase.from('shift_requests').select('*')
+                .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+                .order('created_at', { ascending: false })
+            if (!live) return
+            setRequests(asks || [])
         }
 
         load()
@@ -143,6 +166,66 @@ export default function MyShiftsPage() {
 
     const rows = weekRows(roster, shifts, dates)
     const span = weekSpan(Object.fromEntries(dates.map(d => [d, hoursOn(d)])), shifts)
+
+    // Everything about this week that is still going somewhere.
+    const liveAsks = requests.filter(r => LIVE_STATES.includes(r.status))
+    // Everything with your name on either end, whichever end that is. One
+    // that already has your yes on it still belongs here: it is waiting on a
+    // manager, and not showing it would look like it had gone away.
+    const involving = liveAsks.filter(r =>
+        r.from_employee_id === me?.id || r.to_employee_id === me?.id)
+    const shiftById = id => shifts.find(s => s.id === id) || null
+
+    async function reload() {
+        const ids = shifts.map(s => s.id)
+        if (ids.length === 0) return
+        const { data } = await supabase.from('shift_requests').select('*')
+            .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+            .order('created_at', { ascending: false })
+        setRequests(data || [])
+    }
+
+    async function send(draft) {
+        setSaving(true)
+        setError('')
+        const { error: err } = await supabase.from('shift_requests').insert({
+            ...draft,
+            restaurant_id: me.restaurant_id,
+            created_by: user.id,
+        })
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+        setAsking(null)
+        reload()
+    }
+
+    // Yes or no from the person asked. Nothing on the roster moves here: a
+    // manager still has to approve it, because approving is what rewrites a
+    // published week and staff cannot write one.
+    async function answer(request, yes) {
+        setSaving(true)
+        const { error: err } = await supabase.from('shift_requests')
+            .update({ status: yes ? 'accepted' : 'declined', answered_at: new Date().toISOString() })
+            .eq('id', request.id)
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+        reload()
+    }
+
+    async function withdraw(request) {
+        setSaving(true)
+        const { error: err } = await supabase.from('shift_requests')
+            .update({ status: 'withdrawn' }).eq('id', request.id)
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+        reload()
+    }
+
+    // Opening a shift starts an ask. Your own goes out, somebody else's comes
+    // in, and the dialog is the same one either way.
+    function openShift(shift) {
+        setAsking(shift.employee_id === me.id ? { mine: shift } : { theirs: shift })
+    }
 
     if (!ready) {
         return <p className="text-sm text-gray-400">Loading...</p>
@@ -227,6 +310,29 @@ export default function MyShiftsPage() {
                 ))}
             </div>
 
+            {/* Anything still going somewhere, above the week rather than on
+                a page of its own. A request is about a shift, and the shift is
+                right there, so a separate Requests screen would be a second
+                place to look for the same thing. The band is only here when
+                there is something in it. */}
+            {involving.length > 0 && (
+                <div className="space-y-2 mb-4">
+                    {involving.map(r => (
+                        <RequestCard
+                            key={r.id}
+                            request={r}
+                            meId={me.id}
+                            nameOf={nameOf}
+                            shiftById={shiftById}
+                            hoursOn={hoursOn}
+                            saving={saving}
+                            onAnswer={waitingOn(r, me.id, false) === 'answer' ? answer : null}
+                            onWithdraw={r.from_employee_id === me.id ? withdraw : null}
+                        />
+                    ))}
+                </div>
+            )}
+
             {view === 'mine' ? (
                 <MyWeek
                     dates={dates}
@@ -237,6 +343,8 @@ export default function MyShiftsPage() {
                     hoursOn={hoursOn}
                     nameOf={nameOf}
                     colourOf={colourOf}
+                    onOpenShift={openShift}
+                    asksOn={id => requestsOnShift(liveAsks, id)}
                 />
             ) : (
                 <>
@@ -255,6 +363,12 @@ export default function MyShiftsPage() {
                             openingHours={openingHours}
                             absences={absences}
                             today={today}
+                            onOpenShift={openShift}
+                            shiftMark={shift => (
+                                requestsOnShift(liveAsks, shift.id).length > 0
+                                    ? <span className="ml-1 text-accent-ink" title="Somebody has asked about this">*</span>
+                                    : null
+                            )}
                         />
                     </div>
 
@@ -290,10 +404,29 @@ export default function MyShiftsPage() {
                                 hoursOn={hoursOn}
                                 closedOn={closedOn}
                                 awayOn={awayOn}
+                                onOpenShift={openShift}
+                                asksOn={id => requestsOnShift(liveAsks, id)}
                             />
                         )}
                     </div>
                 </>
+            )}
+
+            {asking && (
+                <ShiftRequestDialog
+                    mine={asking.mine}
+                    theirs={asking.theirs}
+                    meId={me.id}
+                    weekShifts={shifts}
+                    employees={roster}
+                    absences={absences}
+                    dayNotes={dayNotes}
+                    openingHours={openingHours}
+                    breakRules={breakRules}
+                    saving={saving}
+                    onSend={send}
+                    onClose={() => setAsking(null)}
+                />
             )}
 
             {dayNotes.some(n => n.message) && (
@@ -314,7 +447,9 @@ export default function MyShiftsPage() {
 // On a laptop the same list sits in one column and reads perfectly well, so
 // there is nothing here a wide screen does differently. The one view that is
 // the same shape everywhere.
-function MyWeek({ dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colourOf }) {
+function MyWeek({
+    dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colourOf, onOpenShift, asksOn,
+}) {
     return (
         <div className="space-y-3">
             {dates.map((d, i) => {
@@ -359,6 +494,24 @@ function MyWeek({ dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colo
                                         {fmtHours(shiftHours(s))} hours · {breakLabel(s.break_minutes)}
                                     </p>
                                     {s.notes && <p className="text-xs text-gray-600 mt-1">{s.notes}</p>}
+                                    {/* On the shift rather than on a page of
+                                        its own, because this is where somebody
+                                        is standing when they realise they
+                                        cannot do Wednesday. */}
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenShift(s)}
+                                            className={rowButton('plain')}
+                                        >
+                                            Ask somebody to take this
+                                        </button>
+                                        {asksOn(s.id).length > 0 && (
+                                            <span className={`${badge} bg-accent-light text-accent-ink`}>
+                                                Asked
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
 
@@ -374,7 +527,13 @@ function MyWeek({ dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colo
                                     </p>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                                         {others.map(s => (
-                                            <span key={s.id} className="inline-flex items-center gap-1.5 text-xs text-gray-700">
+                                            <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => onOpenShift(s)}
+                                                title={`Ask ${nameOf(s.employee_id)} for this shift`}
+                                                className="inline-flex items-center gap-1.5 text-xs text-gray-700 rounded hover:bg-gray-50 px-1 -mx-1 py-0.5"
+                                            >
                                                 <span
                                                     className="w-1.5 h-4 rounded-full flex-shrink-0"
                                                     style={{ backgroundColor: colourOf(s.employee_id) }}
@@ -383,7 +542,7 @@ function MyWeek({ dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colo
                                                 <span className="text-muted">
                                                     {shortTime(s.starts_at)} to {endLabel(s, hours)}
                                                 </span>
-                                            </span>
+                                            </button>
                                         ))}
                                     </div>
                                 </div>
@@ -402,7 +561,10 @@ function MyWeek({ dates, today, mineOn, othersOn, noteFor, hoursOn, nameOf, colo
 // in words what the bar was showing, and lists everybody else on that day, which
 // is the list you are really after: the square you tapped told you Majo finishes
 // at three, and this tells you who else does.
-function DayCard({ picked, dates, shifts, meId, span, nameOf, colourOf, hoursOn, closedOn, awayOn }) {
+function DayCard({
+    picked, dates, shifts, meId, span, nameOf, colourOf, hoursOn, closedOn, awayOn,
+    onOpenShift, asksOn,
+}) {
     const { employeeId, date } = picked
     const hours = hoursOn(date)
     const theirs = shifts.filter(s => s.employee_id === employeeId && s.shift_date === date)
@@ -448,6 +610,22 @@ function DayCard({ picked, dates, shifts, meId, span, nameOf, colourOf, hoursOn,
                             Free until {toTime(free.before.to)}.
                         </p>
                     )}
+
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                        {theirs.map(s => (
+                            <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => onOpenShift(s)}
+                                className={rowButton(isMe ? 'plain' : 'edit')}
+                            >
+                                {isMe ? 'Ask somebody to take this' : 'Ask for this shift'}
+                            </button>
+                        ))}
+                        {theirs.some(s => asksOn(s.id).length > 0) && (
+                            <span className={`${badge} bg-accent-light text-accent-ink`}>Asked</span>
+                        )}
+                    </div>
                 </>
             )}
 
@@ -473,6 +651,114 @@ function DayCard({ picked, dates, shifts, meId, span, nameOf, colourOf, hoursOn,
                         ))}
                     </div>
                 </div>
+            )}
+        </div>
+    )
+}
+
+
+// One ask, as it reads to whoever is looking at it.
+//
+// Two lines, because a request has two halves and either can be empty. The
+// second line is missing on a plain cover, which is exactly what a plain cover
+// is, and there was no need to invent a word for it.
+function RequestCard({ request, meId, nameOf, shiftById, hoursOn, saving, onAnswer, onWithdraw }) {
+    const who = id => (id === meId ? 'You' : nameOf(id))
+    const state = stateOf(request.status)
+
+    const half = (shiftId, from, to, takerId) => {
+        const shift = shiftById(shiftId)
+        if (!shift) return null
+        const window = windowOf(shift, from, to)
+        const whole = isWholeShift(shift, from, to)
+        return {
+            taker: who(takerId),
+            date: shift.shift_date,
+            owner: who(shift.employee_id),
+            when: whole
+                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
+                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+            whole,
+        }
+    }
+
+    const halves = [
+        half(request.give_shift_id, request.give_from, request.give_to, request.to_employee_id),
+        half(request.take_shift_id, request.take_from, request.take_to, request.from_employee_id),
+    ].filter(Boolean)
+
+    const mineToAnswer = !!onAnswer
+
+    return (
+        <div className={`${cardEdge} p-3 ${mineToAnswer ? 'bg-accent-light' : 'bg-white'}`}>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className="text-sm font-semibold text-gray-900">
+                    {who(request.from_employee_id)} asked {who(request.to_employee_id)}
+                </span>
+                <span className={`${badge} ${
+                    state.tone === 'yes' ? 'bg-green-100 text-green-800'
+                        : state.tone === 'no' ? 'bg-gray-200 text-gray-700'
+                            : 'bg-amber-100 text-amber-800'
+                }`}>
+                    {state.label}
+                </span>
+            </div>
+
+            {halves.map(part => (
+                <p key={part.date + part.when} className="text-sm text-gray-800">
+                    <span className="font-medium">{part.taker}</span>
+                    {' take'}{part.taker === 'You' ? '' : 's'}{' '}
+                    {DAY_NAMES[new Date(part.date + 'T00:00:00').getDay()]} {shortDate(part.date)},{' '}
+                    {part.when}
+                    {!part.whole && <span className="text-muted"> (part of it)</span>}
+                </p>
+            ))}
+
+            {halves.length === 1 && (
+                <p className="text-xs text-muted mt-0.5">Nothing comes back the other way.</p>
+            )}
+
+            {request.message && (
+                <p className="text-sm text-gray-600 mt-2 italic">{request.message}</p>
+            )}
+
+            <div className="flex flex-wrap gap-2 mt-3">
+                {onAnswer && (
+                    <>
+                        <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => onAnswer(request, true)}
+                            className={rowButton('good')}
+                        >
+                            Yes, I will take it
+                        </button>
+                        <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => onAnswer(request, false)}
+                            className={rowButton('danger')}
+                        >
+                            No
+                        </button>
+                    </>
+                )}
+                {onWithdraw && (
+                    <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onWithdraw(request)}
+                        className={rowButton('plain')}
+                    >
+                        Take it back
+                    </button>
+                )}
+            </div>
+
+            {request.status === 'accepted' && (
+                <p className="text-xs text-muted mt-2">
+                    Agreed. It changes the roster once a manager approves it.
+                </p>
             )}
         </div>
     )

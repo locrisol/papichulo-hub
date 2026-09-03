@@ -42,7 +42,7 @@ import {
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay, staff = false,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, shiftMark, staff = false,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -350,6 +350,7 @@ export default function RosterWeek({
                                                         <span className={edges.closing ? mark : ''}>
                                                             {endLabel(s, hours)}
                                                         </span>
+                                                        {shiftMark?.(s)}
                                                     </>
                                                 )
                                                 const look = 'block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 whitespace-nowrap transition'
