@@ -169,11 +169,15 @@ export default function MyShiftsPage() {
 
     // Everything about this week that is still going somewhere.
     const liveAsks = requests.filter(r => LIVE_STATES.includes(r.status))
-    // Everything with your name on either end, whichever end that is. One
-    // that already has your yes on it still belongs here: it is waiting on a
-    // manager, and not showing it would look like it had gone away.
-    const involving = liveAsks.filter(r =>
-        r.from_employee_id === me?.id || r.to_employee_id === me?.id)
+    // Everything with your name on either end, whichever end that is.
+    //
+    // Not only the live ones. A request that was turned down has to say so
+    // somewhere, or the person who sent it goes on believing it is going
+    // through and does not turn up. The only one left out is one you took back
+    // yourself, since you already know about that.
+    const involving = requests.filter(r =>
+        r.status !== 'withdrawn'
+        && (r.from_employee_id === me?.id || r.to_employee_id === me?.id))
     const shiftById = id => shifts.find(s => s.id === id) || null
 
     async function reload() {

@@ -38,7 +38,11 @@ export function windowOf(shift, from, to) {
 export function isWholeShift(shift, from, to) {
     const window = windowOf(shift, from, to)
     if (!window) return false
-    return window.from === shift.starts_at && window.to === shift.ends_at
+    // By the minute rather than by the string. The database hands back
+    // 09:00:00 and a time field hands back 09:00, and those are the same
+    // moment however differently they read.
+    return toMinutes(window.from) === toMinutes(shift.starts_at)
+        && toMinutes(window.to) === toMinutes(shift.ends_at)
 }
 
 function overlaps(a, b) {
@@ -262,4 +266,42 @@ export function requestsOnShift(requests, shiftId) {
     return (requests || []).filter(r =>
         LIVE_STATES.includes(r.status)
         && (r.give_shift_id === shiftId || r.take_shift_id === shiftId))
+}
+
+// What has to be written for a request to become true.
+//
+// Three lists, because that is what the database takes. Rows that changed keep
+// their ids and are updated; rows that have to exist are inserted; rows that
+// were merged away or given up entirely are removed.
+//
+// published_at is deliberately left alone. An approved change alters the week
+// that already went out rather than pulling it back for a re-publish: the swap
+// is the roster now, and marking the week unpublished would tell everybody the
+// thing they just agreed had been undone.
+export function writesFor(request, shifts, breakRules) {
+    const { shifts: after, removedIds } = weekAfter(request, shifts, breakRules)
+    const before = new Map((shifts || []).map(s => [s.id, s]))
+
+    const same = (a, b) =>
+        a.employee_id === b.employee_id
+        && a.shift_date === b.shift_date
+        && toMinutes(a.starts_at) === toMinutes(b.starts_at)
+        && toMinutes(a.ends_at) === toMinutes(b.ends_at)
+        && (a.break_minutes ?? 0) === (b.break_minutes ?? 0)
+
+    return {
+        updates: after.filter(s => s.id && before.has(s.id) && !same(before.get(s.id), s)),
+        inserts: after.filter(s => !s.id),
+        removes: removedIds,
+    }
+}
+
+// Two lists of findings, and only what is new in the second one.
+//
+// Approving re-runs the checks, but a week that already had a warning on it
+// should not read as though the swap caused it. Only what the swap actually
+// broke is worth putting in front of somebody about to press Approve.
+export function newFindings(before, after) {
+    const had = new Set((before || []).map(f => `${f.kind}|${f.employeeId}|${f.text}`))
+    return (after || []).filter(f => !had.has(`${f.kind}|${f.employeeId}|${f.text}`))
 }

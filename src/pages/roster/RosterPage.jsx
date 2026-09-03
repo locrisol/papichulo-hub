@@ -14,6 +14,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
 import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
+import { writesFor, requestsOnShift } from '../../lib/shiftRequests'
 import RosterDay from '../../components/RosterDay'
 import RosterWeek from '../../components/RosterWeek'
 import ShareWeekButton from '../../components/ShareWeekButton'
@@ -23,6 +24,7 @@ import RosterRulesModal from '../../components/RosterRulesModal'
 import ShiftDialog from '../../components/ShiftDialog'
 import TimeOffDialog from '../../components/TimeOffDialog'
 import WeeklyExtrasModal from '../../components/WeeklyExtrasModal'
+import RequestDeskModal from '../../components/RequestDeskModal'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
@@ -65,6 +67,9 @@ export default function RosterPage() {
     // shifts does not stop on a Saturday night, so they cannot be worked out
     // from seven days alone.
     const [nearbyShifts, setNearbyShifts] = useState([])
+    // What two people have agreed between them and are waiting on.
+    const [requests, setRequests] = useState([])
+    const [deskOpen, setDeskOpen] = useState(false)
     const [view, setView] = useState('day')
     const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
@@ -79,6 +84,18 @@ export default function RosterPage() {
     const dates = weekDates(weekStart)
     const date = dates[dayIndex]
     const weekEnd = dates[6]
+
+    // The asks about this week's shifts. Nothing about the roster waits on
+    // them, so they are fetched on their own and a failure here leaves the week
+    // on screen rather than taking it down.
+    async function loadRequests(weekShifts) {
+        const ids = (weekShifts || []).map(s => s.id)
+        if (ids.length === 0) { setRequests([]); return }
+        const { data } = await supabase.from('shift_requests').select('*')
+            .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+            .order('created_at', { ascending: false })
+        setRequests(data || [])
+    }
 
     useEffect(() => {
         if (!restaurantId) return
@@ -136,6 +153,7 @@ export default function RosterPage() {
         const weekLast = addDays(weekStart, 6)
         setShifts(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setNearbyShifts(fetched.filter(s => s.shift_date < weekStart || s.shift_date > weekLast))
+        loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
         setAbsences(offRes.data || [])
@@ -201,6 +219,92 @@ export default function RosterPage() {
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
     const alerts = findingsByEmployee([...findings, ...overlapFindings(clashes, employeesById)])
+
+    // Two people have agreed it and it is waiting on somebody to say yes.
+    const agreed = requests.filter(r => r.status === 'accepted')
+
+    // The same checks, run against a week that does not exist yet. It is how
+    // the desk can say what a swap would break rather than finding out after.
+    const checkShifts = list => checkWeek({
+        shifts: list,
+        employees: roster,
+        weekDates: dates,
+        rules: activeRestaurant?.roster_rules,
+        priorHoursByEmployee: priorHours,
+        absences,
+        nearbyShifts,
+    })
+
+    // Saying yes, and it is the only thing in the app that rewrites a week
+    // that has already gone out.
+    //
+    // published_at is left exactly as it was on purpose. The swap is the roster
+    // now, and dropping the week back to a draft would tell everybody the thing
+    // they just agreed had been undone.
+    async function approveRequest(request) {
+        setSaving(true)
+        setError('')
+        const plan = writesFor(request, shifts, activeRestaurant?.break_rules)
+        const fail = problem => { setSaving(false); setError(friendlyError(problem)) }
+
+        if (plan.removes.length > 0) {
+            const { error: err } = await supabase.from('roster_shifts')
+                .delete().in('id', plan.removes)
+            if (err) return fail(err)
+        }
+
+        for (const row of plan.updates) {
+            const { error: err } = await supabase.from('roster_shifts').update({
+                employee_id: row.employee_id,
+                shift_date: row.shift_date,
+                starts_at: row.starts_at,
+                ends_at: row.ends_at,
+                break_minutes: row.break_minutes,
+                break_is_manual: row.break_is_manual,
+            }).eq('id', row.id)
+            if (err) return fail(err)
+        }
+
+        if (plan.inserts.length > 0) {
+            const { error: err } = await supabase.from('roster_shifts').insert(
+                plan.inserts.map(row => ({
+                    restaurant_id: restaurantId,
+                    employee_id: row.employee_id,
+                    shift_date: row.shift_date,
+                    starts_at: row.starts_at,
+                    ends_at: row.ends_at,
+                    break_minutes: row.break_minutes,
+                    break_is_manual: row.break_is_manual,
+                    notes: row.notes || null,
+                    published_at: row.published_at || null,
+                    created_by: user?.id,
+                })),
+            )
+            if (err) return fail(err)
+        }
+
+        const { error: err } = await supabase.from('shift_requests').update({
+            status: 'approved',
+            decided_at: new Date().toISOString(),
+            decided_by: user?.id,
+        }).eq('id', request.id)
+
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+        load({ quiet: true })
+    }
+
+    async function refuseRequest(request) {
+        setSaving(true)
+        const { error: err } = await supabase.from('shift_requests').update({
+            status: 'refused',
+            decided_at: new Date().toISOString(),
+            decided_by: user?.id,
+        }).eq('id', request.id)
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+        loadRequests(shifts)
+    }
 
     async function saveShift(row) {
         setSaving(true)
@@ -525,6 +629,17 @@ export default function RosterPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 ml-auto">
+                    {/* Only here when there is something in it. A button that
+                        says nought is a button people stop reading. */}
+                    {agreed.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setDeskOpen(true)}
+                            className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:brightness-95 whitespace-nowrap"
+                        >
+                            {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
+                        </button>
+                    )}
                     <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
                         Add staff
                     </button>
@@ -582,6 +697,11 @@ export default function RosterPage() {
                 <p className="text-sm text-gray-400">Loading...</p>
             ) : view === 'week' ? (
                 <RosterWeek
+                    shiftMark={shift => (
+                        requestsOnShift(requests, shift.id).length > 0
+                            ? <span className="ml-1 text-accent-ink" title="Somebody has asked about this">*</span>
+                            : null
+                    )}
                     dates={dates}
                     employees={roster}
                     shifts={shifts}
@@ -673,6 +793,22 @@ export default function RosterPage() {
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
+
+            {deskOpen && (
+                <RequestDeskModal
+                    requests={agreed}
+                    shifts={shifts}
+                    employees={roster}
+                    breakRules={activeRestaurant?.break_rules}
+                    dayNotes={dayNotes}
+                    openingHours={activeRestaurant?.opening_hours}
+                    check={checkShifts}
+                    saving={saving}
+                    onApprove={async request => { await approveRequest(request); setDeskOpen(false) }}
+                    onRefuse={refuseRequest}
+                    onClose={() => setDeskOpen(false)}
+                />
+            )}
 
             {editingDay && (
                 <DayNoteDialog

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
-    waitingOn, requestsOnShift,
+    waitingOn, requestsOnShift, writesFor, newFindings,
 } from './shiftRequests'
 
 const WED = '2026-08-26'
@@ -268,5 +268,78 @@ describe('requestsOnShift', () => {
 
     it('has nothing to say about a shift nobody asked about', () => {
         expect(requestsOnShift(requests, 's9')).toEqual([])
+    })
+})
+
+describe('writesFor', () => {
+    it('changes one row when a whole shift changes hands', () => {
+        const week = [shift('s1', 'ana', WED, '09:00', '21:00')]
+        const plan = writesFor(
+            { from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 's1' }, week)
+
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.updates[0].id).toBe('s1')
+        expect(plan.updates[0].employee_id).toBe('ben')
+        expect(plan.inserts).toHaveLength(0)
+        expect(plan.removes).toHaveLength(0)
+    })
+
+    it('removes the row that got merged away', () => {
+        const plan = writesFor(
+            { from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 's1' }, WEEK)
+
+        // Ana's twelve hours joined onto Ben's morning, so one of the two rows
+        // has nothing left to be.
+        expect(plan.removes).toHaveLength(1)
+    })
+
+    it('inserts the piece the other person picks up', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '15:00', give_to: '21:00',
+        }, WEEK)
+
+        expect(plan.updates.some(r => r.id === 's1' && r.ends_at === '15:00')).toBe(true)
+        expect(plan.updates.some(r => r.id === 's2' && r.ends_at === '21:00')).toBe(true)
+    })
+
+    it('leaves a row alone when nothing about it moved', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '15:00', give_to: '21:00',
+        }, WEEK)
+
+        expect(plan.updates.some(r => r.id === 's3')).toBe(false)
+    })
+
+    it('reads the database time format the same as a time field', () => {
+        const week = [shift('s1', 'ana', WED, '09:00:00', '21:00:00')]
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '09:00', give_to: '21:00',
+        }, week)
+
+        // The same hours written two ways is still the whole shift, so it is
+        // one change of name rather than a split.
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.inserts).toHaveLength(0)
+    })
+})
+
+describe('newFindings', () => {
+    const finding = (kind, employeeId, text) => ({ kind, employeeId, text })
+
+    it('leaves out what was already wrong', () => {
+        const before = [finding('dailyRest', 'ana', 'Ana has only 9 hours.')]
+        const after = [
+            finding('dailyRest', 'ana', 'Ana has only 9 hours.'),
+            finding('visaCap', 'ben', 'Ben is over.'),
+        ]
+        expect(newFindings(before, after).map(f => f.kind)).toEqual(['visaCap'])
+    })
+
+    it('has nothing to say when the swap broke nothing', () => {
+        const same = [finding('dailyRest', 'ana', 'Ana has only 9 hours.')]
+        expect(newFindings(same, same)).toEqual([])
     })
 })
