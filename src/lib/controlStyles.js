@@ -163,3 +163,18 @@ export function jumpButton(isCurrent) {
         ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent shadow-sm whitespace-nowrap'
         : 'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 whitespace-nowrap'
 }
+
+// A switch between two or three ways of looking at the same thing: Day or
+// Week on the roster, Mine or Everyone on the staff page.
+//
+// Not a row of buttons. Buttons offer to do something; this says which of them
+// you are already in, so it is one sunk track with the chosen one raised out of
+// it. Written down here because the roster had it typed into the page and the
+// staff week needed the same control, and the second copy is where these things
+// start drifting apart.
+export const segmentTrack = 'inline-flex bg-gray-100 rounded-lg p-1 gap-1'
+
+export function segmentButton(isOn) {
+    return 'px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize '
+        + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
+}

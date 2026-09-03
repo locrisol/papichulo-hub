@@ -57,7 +57,12 @@ create or replace view public.roster_colleagues as
     e.position_id,
     p.name   as position_name,
     p.colour as position_colour,
-    e.sort_order
+    e.sort_order,
+    -- The day somebody started and the day they left, so the staff week can
+    -- leave out a row for a person who was gone in June. No secret: you know
+    -- who works with you. It is the same pair the manager's roster filters on.
+    e.started_on,
+    e.ended_on
   from public.employees e
   left join public.positions p on p.id = e.position_id
   where e.restaurant_id = public.get_my_restaurant_id()

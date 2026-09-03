@@ -7,7 +7,7 @@ import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
 import { DAY_NAMES } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge } from '../../lib/controlStyles'
+import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
@@ -510,16 +510,14 @@ export default function RosterPage() {
                 you want the break rules is that the roster in front of you is
                 giving somebody the wrong break. */}
             <div className={`${cardEdge} bg-white p-2 mb-4 flex flex-wrap items-center gap-2`}>
-                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label="Roster view">
+                <div className={segmentTrack} role="group" aria-label="Roster view">
                     {['day', 'week'].map(v => (
                         <button
                             key={v}
                             type="button"
                             onClick={() => setView(v)}
                             aria-pressed={view === v}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize ${
-                                view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                            }`}
+                            className={segmentButton(view === v)}
                         >
                             {v}
                         </button>
