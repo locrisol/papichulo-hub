@@ -20,10 +20,9 @@ import DateStepper from '../../components/DateStepper'
 // for building a roster on a laptop and the wrong shape for answering "am I in
 // on Thursday" on a four inch screen.
 //
-// Published only, which is the database's rule rather than this page's: the
-// view it reads has drafts filtered out. A draft is a work in progress and
-// somebody planning their week around one is exactly what publishing exists to
-// prevent.
+// Published only, and that is the database's rule rather than this page's. The
+// policy staff read through only returns rows that have gone out, so a draft
+// cannot reach here by mistake.
 export default function MyShiftsPage() {
     const { user } = useAuth()
 
@@ -59,7 +58,10 @@ export default function MyShiftsPage() {
             setMe(mine)
 
             const [shiftRes, mateRes, noteRes, restRes] = await Promise.all([
-                supabase.from('roster_published').select('*')
+                // Straight off the table. A policy lets staff read published
+                // rows at their own restaurant, so there is nothing between
+                // this and the same shifts a manager sees.
+                supabase.from('roster_shifts').select('*')
                     .gte('shift_date', dates[0]).lte('shift_date', dates[6])
                     .order('shift_date').order('starts_at'),
                 supabase.from('roster_colleagues').select('*').order('sort_order'),
