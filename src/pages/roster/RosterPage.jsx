@@ -61,6 +61,10 @@ export default function RosterPage() {
     const [editingDay, setEditingDay] = useState(null)
     const [events, setEvents] = useState([])
     const [priorHours, setPriorHours] = useState({})
+    // The week either side. Only the rest checks read it: a break between two
+    // shifts does not stop on a Saturday night, so they cannot be worked out
+    // from seven days alone.
+    const [nearbyShifts, setNearbyShifts] = useState([])
     const [view, setView] = useState('day')
     const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
@@ -103,7 +107,7 @@ export default function RosterPage() {
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
                 .eq('restaurant_id', restaurantId)
-                .gte('shift_date', weekStart).lte('shift_date', addDays(weekStart, 6)),
+                .gte('shift_date', addDays(weekStart, -7)).lte('shift_date', addDays(weekStart, 13)),
             supabase.from('day_notes').select('*')
                 .eq('restaurant_id', restaurantId)
                 .gte('note_date', weekStart).lte('note_date', addDays(weekStart, 6)),
@@ -126,7 +130,12 @@ export default function RosterPage() {
 
         setEmployees(empRes.data || [])
         setPositions(posRes.data || [])
-        setShifts(shiftRes.data || [])
+        // Three weeks came back and only the middle one is the roster. The
+        // other two are here so a break can be measured across the join.
+        const fetched = shiftRes.data || []
+        const weekLast = addDays(weekStart, 6)
+        setShifts(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
+        setNearbyShifts(fetched.filter(s => s.shift_date < weekStart || s.shift_date > weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
         setAbsences(offRes.data || [])
@@ -181,6 +190,7 @@ export default function RosterPage() {
         rules: activeRestaurant?.roster_rules,
         priorHoursByEmployee: priorHours,
         absences,
+        nearbyShifts,
     })
     const blocks = findings.filter(f => f.level === 'block')
     const warnings = findings.filter(f => f.level === 'warn')

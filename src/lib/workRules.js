@@ -140,46 +140,93 @@ export function ageOn(dateOfBirth, date) {
     return age
 }
 
-// The longest run of hours somebody is not working, across a week.
+// Where a shift sits on a real timeline, counted in minutes from midnight at
+// the start of the week.
 //
-// Measured from the end of one shift to the start of the next, so a person with
-// one shift on Monday and one on Friday has a very long rest and a person on
-// every day has whatever their nights come to.
-export function longestRest(shifts, weekDates) {
-    const sorted = (shifts || []).slice().sort((a, b) =>
+// It is worked out from the dates themselves rather than from where the day
+// falls in the week, which is the whole point: a shift last Saturday and a
+// shift next Monday both have a place on this line, and the week's own edges
+// stop being walls.
+function placeOf(anchor, shift) {
+    return daysBetween(anchor, shift.shift_date) * 1440 + toMinutes(shift.starts_at)
+}
+
+function inOrder(shifts) {
+    return (shifts || []).slice().sort((a, b) =>
         a.shift_date.localeCompare(b.shift_date) || toMinutes(a.starts_at) - toMinutes(b.starts_at),
     )
-    if (sorted.length === 0) return Infinity
+}
 
-    const dayIndex = d => (weekDates || []).indexOf(d)
-    const startOf = s => dayIndex(s.shift_date) * 1440 + toMinutes(s.starts_at)
+// The longest run of hours somebody is not working, around a week.
+//
+// Rest does not stop on a Saturday night, so neither does this. Give it the
+// shifts either side of the week as well as the week's own and it measures from
+// the last shift before to the first shift after.
+//
+// Nothing back means it cannot say, and that is different from saying somebody
+// is fine. Two of those:
+//
+//   nothing rostered after the week   the week after has not been built yet, so
+//                                     a long break at the end of this one is a
+//                                     guess. It stays quiet rather than clearing
+//                                     somebody who might be in on Sunday.
+//   nothing rostered in the week      no shifts, nothing to check.
+//
+// Nothing rostered before the week is not the same case. The week before either
+// was worked or was not, and an empty one is a week off, so the run in front of
+// the first shift is as long as we like.
+export function longestRest(shifts, weekDates) {
+    const first = weekDates?.[0]
+    const last = weekDates?.[6]
+    if (!first || !last) return null
+
+    const sorted = inOrder(shifts)
+    const inWeek = sorted.filter(s => s.shift_date >= first && s.shift_date <= last)
+    if (inWeek.length === 0) return null
+
+    const next = sorted.find(s => s.shift_date > last)
+    if (!next) return null
+
+    const previous = sorted.filter(s => s.shift_date < first).pop()
+
+    const startOf = s => placeOf(first, s)
     const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
 
-    // The week's own edges count: time before the first shift and after the
-    // last one is rest as far as this week can see.
-    let best = Math.max(startOf(sorted[0]), 7 * 1440 - endOf(sorted[sorted.length - 1]))
-    for (let i = 1; i < sorted.length; i++) {
-        best = Math.max(best, startOf(sorted[i]) - endOf(sorted[i - 1]))
+    const run = [...(previous ? [previous] : []), ...inWeek, next]
+    let best = previous ? 0 : Infinity
+    for (let i = 1; i < run.length; i++) {
+        best = Math.max(best, startOf(run[i]) - endOf(run[i - 1]))
     }
     return best / 60
 }
 
 // The shortest gap between two shifts in a row.
+//
+// Same timeline, and for the same reason. Somebody closing on Saturday night
+// and opening on Sunday morning is the exact turnaround the eleven hour rule
+// exists to catch, and it used to go unnoticed because the two shifts were in
+// different weeks.
+//
+// A pair is only measured if one of the two is in the week being checked.
+// Last week's own turnarounds were last week's problem.
 export function shortestGap(shifts, weekDates) {
-    const sorted = (shifts || []).slice().sort((a, b) =>
-        a.shift_date.localeCompare(b.shift_date) || toMinutes(a.starts_at) - toMinutes(b.starts_at),
-    )
-    if (sorted.length < 2) return { hours: Infinity, after: null }
+    const first = weekDates?.[0]
+    const last = weekDates?.[6]
+    if (!first || !last) return { hours: Infinity, after: null }
 
-    const dayIndex = d => (weekDates || []).indexOf(d)
-    const startOf = s => dayIndex(s.shift_date) * 1440 + toMinutes(s.starts_at)
+    const sorted = inOrder(shifts)
+    const startOf = s => placeOf(first, s)
     const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
+    const thisWeek = s => s.shift_date >= first && s.shift_date <= last
 
     let best = Infinity
     let after = null
     for (let i = 1; i < sorted.length; i++) {
-        const gap = startOf(sorted[i]) - endOf(sorted[i - 1])
-        if (gap < best) { best = gap; after = sorted[i - 1] }
+        const before = sorted[i - 1]
+        const then = sorted[i]
+        if (!thisWeek(before) && !thisWeek(then)) continue
+        const gap = startOf(then) - endOf(before)
+        if (gap < best) { best = gap; after = before }
     }
     return { hours: best / 60, after }
 }
@@ -190,7 +237,7 @@ export function shortestGap(shifts, weekDates) {
 // warnings do not. Nothing here throws anything away or refuses to save: it is
 // all said out loud and left to the person building the roster.
 export function checkWeek({
-    shifts, employees, weekDates, rules, priorHoursByEmployee, absences,
+    shifts, employees, weekDates, rules, priorHoursByEmployee, absences, nearbyShifts,
 }) {
     const settings = { ...DEFAULT_RULES, ...(rules || {}) }
     const findings = []
@@ -199,6 +246,14 @@ export function checkWeek({
     for (const employee of employees || []) {
         const mine = (shifts || []).filter(s => s.employee_id === employee.id)
         const hours = mine.reduce((t, s) => t + shiftHours(s), 0)
+        // The same person's week with a few days of either side added on, for
+        // the two checks about rest. Everything else is about this week alone.
+        const around = [
+            ...mine,
+            ...(nearbyShifts || []).filter(s =>
+                s.employee_id === employee.id
+                && (s.shift_date < weekDates?.[0] || s.shift_date > weekEnd)),
+        ]
         const name = employee.full_name
         const add = (level, kind, text) => findings.push({ level, kind, employeeId: employee.id, name, text })
 
@@ -265,7 +320,7 @@ export function checkWeek({
                 if (late) {
                     add('block', 'minorLate', `${name} is under 18 and is rostered past ten at night on ${late.shift_date}.`)
                 }
-                const gap = shortestGap(mine, weekDates)
+                const gap = shortestGap(around, weekDates)
                 if (gap.hours < 12) {
                     add('warn', 'minorRest', `${name} is under 18 and has only ${gap.hours.toFixed(1)} hours between two shifts, against 12.`)
                 }
@@ -308,16 +363,19 @@ export function checkWeek({
         }
 
         if (settings.dailyRest?.on) {
-            const gap = shortestGap(mine, weekDates)
+            const gap = shortestGap(around, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
                 add('warn', 'dailyRest',
                     `${name} has only ${gap.hours.toFixed(1)} hours between two shifts, against ${settings.dailyRest.hours}.`)
             }
         }
 
+        // Nothing back from longestRest means the week after has not been
+        // built, so there is no honest answer yet. It waits rather than
+        // warning about a break that has not been decided.
         if (settings.weeklyRest?.on) {
-            const rest = longestRest(mine, weekDates)
-            if (rest < settings.weeklyRest.hours) {
+            const rest = longestRest(around, weekDates)
+            if (rest !== null && rest < settings.weeklyRest.hours) {
                 add('warn', 'weeklyRest',
                     `${name}'s longest break this week is ${rest.toFixed(1)} hours, against ${settings.weeklyRest.hours}.`)
             }

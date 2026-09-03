@@ -114,23 +114,80 @@ describe('shortestGap', () => {
     it('has no gap to measure with one shift', () => {
         expect(shortestGap([shift(WEEK[0], '09:00', '17:00')], WEEK).hours).toBe(Infinity)
     })
+
+    it('catches closing on Saturday and opening on Sunday', () => {
+        // The pattern the eleven hour rule exists for, and the one the week
+        // boundary used to hide.
+        const shifts = [shift(WEEK[6], '15:00', '23:00'), shift('2026-08-30', '08:00', '16:00')]
+        expect(shortestGap(shifts, WEEK).hours).toBe(9)
+    })
+
+    it('catches the same turnaround coming into the week', () => {
+        const shifts = [shift('2026-08-22', '15:00', '23:00'), shift(WEEK[0], '08:00', '16:00')]
+        expect(shortestGap(shifts, WEEK).hours).toBe(9)
+    })
+
+    it("leaves last week's own turnarounds to last week", () => {
+        const shifts = [
+            shift('2026-08-21', '15:00', '23:00'),
+            shift('2026-08-22', '08:00', '16:00'),
+            shift(WEEK[3], '09:00', '17:00'),
+        ]
+        // The tight pair is Friday to Saturday, both before the week.
+        expect(shortestGap(shifts, WEEK).hours).toBeGreaterThan(11)
+    })
 })
 
 describe('longestRest', () => {
+    const nextWeek = shift('2026-08-31', '09:00', '17:00')
+
     it('finds a long stretch in the middle of a week', () => {
-        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[4], '09:00', '17:00')]
+        const shifts = [
+            shift('2026-08-22', '09:00', '17:00'),
+            shift(WEEK[0], '09:00', '17:00'),
+            shift(WEEK[4], '09:00', '17:00'),
+            nextWeek,
+        ]
         // Sunday 17:00 to Thursday 09:00 is 88 hours.
         expect(longestRest(shifts, WEEK)).toBe(88)
     })
 
-    it('counts the run before the first shift', () => {
-        const shifts = [shift(WEEK[5], '09:00', '17:00')]
-        // Nothing until Friday morning.
-        expect(longestRest(shifts, WEEK)).toBe(5 * 24 + 9)
+    it('counts the run before the first shift as long as it really is', () => {
+        // Nothing since a fortnight ago, so the rest in front is not the five
+        // days the week can see, it is everything since.
+        const shifts = [
+            shift('2026-08-15', '09:00', '17:00'),
+            shift(WEEK[5], '09:00', '17:00'),
+            nextWeek,
+        ]
+        expect(longestRest(shifts, WEEK)).toBe(12 * 24 + 16)
     })
 
-    it('gives somebody with nothing rostered the whole week', () => {
-        expect(longestRest([], WEEK)).toBe(Infinity)
+    it('does not stop at the end of the week', () => {
+        // Leandro's case. Finishing on Friday at 15:00 with nothing on
+        // Saturday used to read as 33 hours, because the week ended there.
+        const shifts = [
+            shift('2026-08-22', '07:00', '15:00'),
+            ...WEEK.slice(0, 6).map(d => shift(d, '07:00', '15:00')),
+            shift('2026-08-31', '09:00', '17:00'),
+        ]
+        // Friday 15:00 to the Monday after at 09:00. Clipped at the week it
+        // came to 33, which is the warning he was shown.
+        expect(longestRest(shifts, WEEK)).toBe(66)
+    })
+
+    it('says nothing when the week after has not been built', () => {
+        const shifts = [shift(WEEK[0], '09:00', '17:00'), shift(WEEK[4], '09:00', '17:00')]
+        expect(longestRest(shifts, WEEK)).toBe(null)
+    })
+
+    it('says nothing when there is nothing in the week', () => {
+        expect(longestRest([], WEEK)).toBe(null)
+    })
+
+    it('treats an empty week before as a week off', () => {
+        const shifts = [shift(WEEK[6], '09:00', '17:00'), nextWeek]
+        expect(longestRest(shifts, WEEK)).toBe(Infinity)
     })
 })
 
