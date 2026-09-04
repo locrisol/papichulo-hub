@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '../../lib/dates'
-import { DAY_NAMES } from '../../lib/events'
+import { DAY_NAMES, dayName } from '../../lib/events'
 import {
     card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton,
 } from '../../lib/controlStyles'
@@ -12,6 +12,7 @@ import {
 } from '../../lib/roster'
 import { weekSpan, freeEnds, dayShape } from '../../lib/presence'
 import { absenceOn } from '../../lib/absences'
+import { openGaps } from '../../lib/timeOff'
 import { AWAY } from '../../lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '../../lib/team'
 import {
@@ -157,6 +158,15 @@ export default function MyShiftsPage() {
     const colourOf = id => mateOf(id)?.position_colour || NO_COLOUR
     const closedOn = d => !!noteFor(d)?.is_closed
     const awayOn = (id, d) => !!absenceOn(absences, id, d)
+
+    // Hours somebody was given off after the week went out, that nobody has
+    // picked up. The away view carries them, so this needs nothing anybody
+    // below a manager is not already allowed to see.
+    const freeShifts = openGaps(
+        absences.map(a => ({ ...a, status: 'approved' })),
+        shifts,
+        dates,
+    )
 
     const mineOn = d => shifts.filter(s => s.employee_id === me?.id && s.shift_date === d)
     const othersOn = d => shifts.filter(s => s.employee_id !== me?.id && s.shift_date === d)
@@ -458,6 +468,28 @@ export default function MyShiftsPage() {
                         )}
                     </div>
                 </>
+            )}
+
+            {/* Hours going spare this week, because somebody was given the day
+                off after the roster was out. No name on them: what matters to
+                anybody reading this is that Saturday evening is free, not whose
+                it used to be. */}
+            {freeShifts.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
+                    <p className="text-sm font-semibold text-green-900 mb-1">
+                        {freeShifts.length === 1
+                            ? 'One shift is free this week'
+                            : `${freeShifts.length} shifts are free this week`}
+                    </p>
+                    <ul className="text-xs text-green-800 space-y-0.5">
+                        {freeShifts.map((g, i) => (
+                            <li key={i}>
+                                {dayName(g.date)} {shortDate(g.date)}, {shortTime(g.starts_at)} to {shortTime(g.ends_at)}
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="text-xs text-green-800 mt-1.5">Ask a manager if you want one of them.</p>
+                </div>
             )}
 
             {/* Time off, under the week. It is the other thing somebody opens

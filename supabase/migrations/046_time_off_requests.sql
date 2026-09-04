@@ -106,3 +106,33 @@ create policy absences_withdraw_own on public.absences
   );
 
 notify pgrst, 'reload schema';
+
+
+-- ---------- 7. the shifts a freed day left going spare ----------
+-- Staff see them too, and that is the point of them.
+--
+-- Somebody looking for extra hours can only take a shift they know is
+-- there, and the alternative is a manager messaging the group asking
+-- who wants Saturday, which is the thing all of this is replacing.
+--
+-- A fifth column on the away view rather than opening the table. It is
+-- a date and two times, which is what a shift already says out loud on
+-- the roster everybody can see. No name, no reason, no money.
+create or replace view public.roster_away as
+  select
+    a.employee_id,
+    a.restaurant_id,
+    a.starts_on,
+    a.ends_on,
+    a.cleared_shifts
+  from public.absences a
+  where a.status = 'approved'
+    and (
+      a.restaurant_id = public.get_my_restaurant_id()
+      or public.get_my_role() = 'super_admin'
+    );
+
+comment on view public.roster_away is
+  'The days somebody is not there, with no reason attached, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
+
+notify pgrst, 'reload schema';
