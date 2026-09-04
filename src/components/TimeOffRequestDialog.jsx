@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { todayISO } from '../lib/dates'
 import { noticeProblem, noticeDays } from '../lib/timeOff'
+import { emailTheAsk } from '../lib/timeOffMail'
 import { modalFooter, secondaryButton } from '../lib/controlStyles'
 
 // Asking for time off.
@@ -66,7 +67,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
         setSaving(true)
         setError('')
 
-        const { error: insertErr } = await supabase.from('absences').insert({
+        const { data: saved, error: insertErr } = await supabase.from('absences').insert({
             restaurant_id: me.restaurant_id,
             employee_id: me.id,
             kind: isHoliday ? 'holiday' : 'day_off',
@@ -76,10 +77,15 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
             note: note.trim() || null,
             can_work_from: isPart ? (canFrom || null) : null,
             can_work_to: isPart ? (canTo || null) : null,
-        })
+        }).select('id').single()
 
         setSaving(false)
         if (insertErr) { setError(friendlyError(insertErr)); return }
+
+        // The people who can answer it hear about it. Not awaited: the request
+        // is saved and the desk already has it, so an email that does not go
+        // out costs a notification and nothing else.
+        emailTheAsk(saved?.id)
         onSaved()
     }
 

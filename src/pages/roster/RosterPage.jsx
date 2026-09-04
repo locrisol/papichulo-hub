@@ -15,6 +15,7 @@ import {
 } from '../../lib/roster'
 import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
 import { openGaps, asCleared } from '../../lib/timeOff'
+import { emailTheAnswer } from '../../lib/timeOffMail'
 import { absenceRange } from '../../lib/absences'
 import TimeOffDeskModal from '../../components/TimeOffDeskModal'
 import { writesFor, requestsOnShift } from '../../lib/shiftRequests'
@@ -238,6 +239,22 @@ export default function RosterPage() {
         setAnswering({ request, shifts: data || [] })
     }
 
+    // Telling them the answer, by email, with the record attached.
+    //
+    // After the save and never awaited. An answer that is written down is
+    // written down, and a mail server having a bad morning is not a reason to
+    // hold a manager on a spinner or to make them wonder whether it went
+    // through.
+    function told(request, status, cleared) {
+        emailTheAnswer({
+            absence: { ...request, status, decided_at: new Date().toISOString() },
+            employeeName: employeesById[request.employee_id]?.full_name || 'Somebody',
+            restaurant: activeRestaurant,
+            answeredBy: user?.full_name || '',
+            cleared,
+        })
+    }
+
     // Approving with shifts to clear takes them off and writes down what they
     // were, so the week can go on asking for cover until somebody is on them.
     async function approveTimeOff(request, clearing) {
@@ -259,6 +276,8 @@ export default function RosterPage() {
 
         setSavingOff(false)
         if (updErr) { setError(friendlyError(updErr)); return }
+
+        told(request, 'approved', clearing.map(asCleared))
         setAnswering(null)
         load({ quiet: true })
     }
@@ -274,6 +293,8 @@ export default function RosterPage() {
 
         setSavingOff(false)
         if (err) { setError(friendlyError(err)); return }
+
+        told(request, 'declined', [])
         setAnswering(null)
         load({ quiet: true })
     }
