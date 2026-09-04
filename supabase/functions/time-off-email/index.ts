@@ -21,6 +21,9 @@
 //   MAIL_FROM        who it comes from, until a domain is verified this has to
 //                    be onboarding@resend.dev and Resend will only deliver to
 //                    the address that owns the account
+//   MAIL_REPLY_TO    optional, a real address replies should go to. Mail sent
+//                    from a sending subdomain has nowhere to receive a reply,
+//                    and somebody told their holiday is off will hit reply.
 //   APP_URL          where the buttons point, https://papichulo-hub.vercel.app
 //   APP_URL_ALSO     optional, comma separated, the other addresses the app is
 //                    allowed to say it is being used from: a preview build, a
@@ -66,6 +69,13 @@ async function send(mail: { to: string[], subject: string, html: string, text: s
         html: mail.html,
         text: mail.text,
     }
+
+    // Somebody told their holiday is not approved will hit reply, and a
+    // sending subdomain has nowhere for that to land. Point it at an address
+    // a person actually reads.
+    const replyTo = Deno.env.get('MAIL_REPLY_TO')
+    if (replyTo) body.reply_to = replyTo
+
     if (mail.attachment) {
         body.attachments = [{ filename: mail.attachment.filename, content: mail.attachment.content }]
     }
