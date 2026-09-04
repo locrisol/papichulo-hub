@@ -18,9 +18,15 @@ import { timeOffRecordBase64, recordName } from './timeOffPdf'
 // expired last Tuesday, the roster is still right and nobody is left staring at
 // a spinner. It goes in the console and that is the end of it.
 
+// Which address the app is being used from, so the buttons in the email come
+// back to the same place. The function only takes it when it is one it was told
+// to expect, so a preview build works and nothing else can put an address of
+// its own into an email that goes out under our name.
+const origin = typeof window === 'undefined' ? '' : window.location.origin
+
 async function post(body) {
     try {
-        const { error } = await supabase.functions.invoke('time-off-email', { body })
+        const { error } = await supabase.functions.invoke('time-off-email', { body: { ...body, origin } })
         if (error) console.warn('Time off email did not go out.', error)
     } catch (err) {
         console.warn('Time off email did not go out.', err)

@@ -22,6 +22,9 @@
 //                    be onboarding@resend.dev and Resend will only deliver to
 //                    the address that owns the account
 //   APP_URL          where the buttons point, https://papichulo-hub.vercel.app
+//   APP_URL_ALSO     optional, comma separated, the other addresses the app is
+//                    allowed to say it is being used from: a preview build, a
+//                    laptop running the dev server
 //
 // email.js sits in this folder because only what is inside a function's own
 // folder gets deployed with it, the same as ics.js next door.
@@ -100,10 +103,10 @@ Deno.serve(async (request) => {
     if (!me) return json({ error: 'Not signed in' }, 401)
 
     // ---------- what happened ----------
-    let payload: { absenceId?: string, event?: string, pdf?: string, pdfName?: string }
+    let payload: { absenceId?: string, event?: string, pdf?: string, pdfName?: string, origin?: string }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
 
-    const { absenceId, event, pdf, pdfName } = payload
+    const { absenceId, event, pdf, pdfName, origin } = payload
     if (!absenceId || (event !== 'asked' && event !== 'answered')) {
         return json({ error: 'Bad request' }, 400)
     }
@@ -132,7 +135,20 @@ Deno.serve(async (request) => {
     const { data: restaurant } = await admin
         .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
     const restaurantName = restaurant?.name || 'Papi Chulo'
-    const appUrl = Deno.env.get('APP_URL') || ''
+    // Where the buttons point.
+    //
+    // APP_URL is the real site and the answer unless told otherwise. The app
+    // also says which address it is being used from, and that is taken only
+    // when it is one of the ones listed in APP_URL_ALSO, so testing on a
+    // preview build gives buttons that come back to the preview build.
+    //
+    // A list rather than trusting what the browser says, because what the
+    // browser says goes into an email we send under our own name, and anybody
+    // who can post to this function can say anything they like.
+    const allowed = (Deno.env.get('APP_URL_ALSO') || '')
+        .split(',').map(v => v.trim().replace(/\/$/, '')).filter(Boolean)
+    const asked = String(origin || '').trim().replace(/\/$/, '')
+    const appUrl = asked && allowed.includes(asked) ? asked : (Deno.env.get('APP_URL') || '')
 
     // The address is the one they log in with. Somebody with no account has no
     // address here and no email goes out, which is the trial case and is fine:
