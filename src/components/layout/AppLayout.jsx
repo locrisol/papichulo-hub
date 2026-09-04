@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -89,6 +89,37 @@ export default function AppLayout({ children }) {
     const navigate = useNavigate()
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
+
+    // Anything on the roster waiting on an answer, counted on the menu so it is
+    // visible from wherever you happen to be. Swaps and time off together,
+    // because from where a manager is standing they are the same job.
+    //
+    // Counted rather than listed, and read again whenever the page changes, so
+    // it goes back down as soon as it has been dealt with.
+    const [waitingCount, setWaitingCount] = useState(0)
+
+    useEffect(() => {
+        let live = true
+        async function count() {
+            if (!activeRestaurant?.id || !MANAGERS.includes(user?.role)) {
+                if (live) setWaitingCount(0)
+                return
+            }
+            const [swaps, off] = await Promise.all([
+                supabase.from('shift_requests')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .eq('status', 'accepted'),
+                supabase.from('absences')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .eq('status', 'requested'),
+            ])
+            if (live) setWaitingCount((swaps.count || 0) + (off.count || 0))
+        }
+        count()
+        return () => { live = false }
+    }, [activeRestaurant?.id, user?.role, location.pathname])
     const [sidebarOpen, setSidebarOpen] = useState(false)
     // Two, because which one scrolls depends on the screen. On a computer the
     // header stays put and main scrolls under it; on a phone the header goes up
@@ -169,7 +200,12 @@ export default function AppLayout({ children }) {
                                         <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d={icons[item.icon]} />
                                         </svg>
-                                        {item.label}
+                                        <span className="flex-1 text-left">{item.label}</span>
+                                        {item.path === '/roster' && waitingCount > 0 && (
+                                            <span className="bg-amber-500 text-white text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 rounded-full grid place-items-center flex-shrink-0">
+                                                {waitingCount}
+                                            </span>
+                                        )}
                                     </button>
                                 )
                             })}
