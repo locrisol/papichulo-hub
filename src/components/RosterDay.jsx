@@ -4,7 +4,8 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
-import { absenceOn, kindOf } from '../lib/absences'
+import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
+import { partWords, partDaySpans } from '../lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
@@ -447,8 +448,16 @@ export default function RosterDay({
                         const away = dayState(employee.availability, date)
                         const awaySpans = unavailableSpans(employee.availability, date, from, to)
                         const canWork = windowsFor(employee.availability, date)
-                        const off = absenceOn(absences, employee.id, date)
+                        const off = wholeDayOn(absences, employee.id, date)
                         const offKind = off ? kindOf(off.kind) : null
+                        // Part of a day is not a day gone. Somebody who can
+                        // work until three is in that morning, and the timeline
+                        // beside this already draws the hours.
+                        const part = !off && partDayOn(absences, employee.id, date)
+                        // Drawn the same way their usual availability is,
+                        // because it is the same idea: hours that cannot be
+                        // worked. One picture for one meaning.
+                        const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
@@ -471,12 +480,14 @@ export default function RosterDay({
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
-                                        <span className="block text-[0.625rem] text-muted truncate">
+                                        <span className={`block text-[0.625rem] truncate ${part ? 'text-amber-700 font-semibold' : 'text-muted'}`}>
                                             {offKind
                                                 ? offKind.label
-                                                : away === 'none'
-                                                    ? 'Not available today'
-                                                    : positionOf(employee.position_id)?.name || 'No position'}
+                                                : part
+                                                    ? partWords(part).replace('can work ', 'Can work ')
+                                                    : away === 'none'
+                                                        ? 'Not available today'
+                                                        : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                     {/* Beside the name, where the eye already
@@ -571,6 +582,19 @@ export default function RosterDay({
                                         still perfectly readable, and not
                                         pressable, so the row still takes a drag
                                         straight through it. */}
+                                    {partSpans.map(([spanFrom, spanTo]) => (
+                                        <span
+                                            key={`part-${spanFrom}`}
+                                            title={`${employee.full_name} ${partWords(part)} this day`}
+                                            className="absolute top-0 bottom-0 pointer-events-none"
+                                            style={{
+                                                left: `${pct(spanFrom)}%`,
+                                                width: `${pct(spanTo) - pct(spanFrom)}%`,
+                                                backgroundImage: AWAY_HATCH,
+                                            }}
+                                        />
+                                    ))}
+
                                     {awaySpans.map(([spanFrom, spanTo]) => (
                                         <span
                                             key={spanFrom}

@@ -186,15 +186,16 @@ describe('shortlist', () => {
         shift('s2', 'ben', WED, '09:00', '15:00'),
         shift('s4', 'dan', WED, '13:00', '21:00'),
     ]
-    const away = [{ employee_id: 'cara', starts_on: WED, ends_on: WED }]
+    const away = [{ employee_id: 'cara', starts_on: WED, ends_on: WED, status: 'approved' }]
 
-    const run = () => shortlist({
+    const run = (over = {}) => shortlist({
         date: WED,
         window: { from: '15:00', to: '21:00' },
         employees: people,
         shifts: week,
         absences: away,
         askerId: 'ana',
+        ...over,
     })
 
     it('puts the person already in that day at the top', () => {
@@ -212,6 +213,13 @@ describe('shortlist', () => {
 
     it('rules out somebody who is away', () => {
         expect(run().cannot.find(c => c.person.id === 'cara').why).toBe('away')
+    })
+
+    it('does not rule out somebody who has only asked to be away', () => {
+        // Nobody has answered her yet, so she is still working that day and is
+        // still somebody you can ask.
+        const asked = [{ employee_id: 'cara', starts_on: WED, ends_on: WED, status: 'requested' }]
+        expect(run({ absences: asked }).cannot.find(c => c.person.id === 'cara')).toBeUndefined()
     })
 
     it('never offers the asker themselves', () => {

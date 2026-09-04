@@ -17,7 +17,9 @@
 
 import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
 import { outsideAvailability, windowsLabel, dayNameOf } from './availability'
-import { absencesOn, kindPhrase } from './absences'
+import { absencesOn, kindPhrase, isPartDay } from './absences'
+import { hitsShift, partWords } from './timeOff'
+import { shortDate } from './dates'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -343,7 +345,7 @@ export function checkWeek({
                         `${name} is rostered on ${s.shift_date}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
                 } else {
                     add('warn', 'availabilityTime',
-                        `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${s.shift_date} and can work ${windowsLabel(outside.windows)}.`)
+                        `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and can work ${windowsLabel(outside.windows)}.`)
                 }
             }
         }
@@ -355,10 +357,18 @@ export function checkWeek({
         // week off, is a real thing rather than a mistake.
         if (settings.timeOff?.on) {
             for (const s of mine) {
+                // Only the ones the shift actually runs into. Somebody who can
+                // work until three and is on nine to one has no clash, and
+                // warning about it would be crying wolf at the one person who
+                // did everything right.
                 const off = absencesOn(absences, employee.id, s.shift_date)
+                    .filter(a => hitsShift(a, s))
                 if (off.length === 0) continue
-                add('warn', 'timeOff',
-                    `${name} is rostered on ${s.shift_date} and is down as ${kindPhrase(off[0].kind)}.`)
+
+                const first = off[0]
+                add('warn', 'timeOff', isPartDay(first)
+                    ? `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and ${partWords(first)}.`
+                    : `${name} is rostered on ${shortDate(s.shift_date)} and is down as ${kindPhrase(first.kind)}.`)
             }
         }
 

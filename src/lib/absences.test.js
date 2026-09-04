@@ -258,3 +258,25 @@ describe('holidayHoursInWeek', () => {
         expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(7.78)
     })
 })
+
+describe('a request is not time off yet', () => {
+    const rows = [
+        { id: 'a', employee_id: 'e1', kind: 'holiday', starts_on: '2026-09-14', ends_on: '2026-09-16', status: 'requested' },
+        { id: 'b', employee_id: 'e1', kind: 'holiday', starts_on: '2026-10-01', ends_on: '2026-10-03', status: 'approved' },
+        { id: 'c', employee_id: 'e1', kind: 'day_off', starts_on: '2026-09-20', ends_on: '2026-09-20', status: 'declined' },
+    ]
+
+    it('leaves a day nobody has answered alone', () => {
+        // Drawing it as away would tell the whole team she has the day before
+        // anybody said yes.
+        expect(absenceOn(rows, 'e1', '2026-09-15')).toBeNull()
+    })
+
+    it('still draws one that was approved', () => {
+        expect(absenceOn(rows, 'e1', '2026-10-02')?.id).toBe('b')
+    })
+
+    it('still ignores one that was declined', () => {
+        expect(absenceOn(rows, 'e1', '2026-09-20')).toBeNull()
+    })
+})

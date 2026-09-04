@@ -63,10 +63,16 @@ export function coversDate(absence, date) {
 // Everything rather than the first one, because two can genuinely overlap: a
 // holiday somebody then went sick during is two facts and neither one replaces
 // the other.
+//
+// Approved only. A request nobody has answered is not time off, it is a
+// question, and drawing the day as away would tell the whole team she has it
+// before anybody has said yes. The roster marks those days its own way. Rows
+// written by a manager are approved the moment they are written, which is
+// every row that existed before staff could ask.
 export function absencesOn(absences, employeeId, date) {
     return (absences || []).filter(a =>
         a.employee_id === employeeId
-        && a.status !== 'declined'
+        && a.status === 'approved'
         && coversDate(a, date),
     )
 }
@@ -74,6 +80,30 @@ export function absencesOn(absences, employeeId, date) {
 // The one to draw, when only one can be drawn.
 export function absenceOn(absences, employeeId, date) {
     return absencesOn(absences, employeeId, date)[0] || null
+}
+
+// Part of a day, not the whole of it.
+//
+// Somebody who can work until three is in that morning. Every screen that
+// treats time off as a day gone has to know the difference, or a dentist at
+// half three empties a Tuesday.
+export function isPartDay(absence) {
+    return !!(absence?.can_work_from || absence?.can_work_to)
+}
+
+// Away for the whole day, which is what "away" used to mean when every row was
+// a whole day. This is the one to ask when a day is being greyed out.
+export function wholeDaysOn(absences, employeeId, date) {
+    return absencesOn(absences, employeeId, date).filter(a => !isPartDay(a))
+}
+
+export function wholeDayOn(absences, employeeId, date) {
+    return wholeDaysOn(absences, employeeId, date)[0] || null
+}
+
+// The hours they can still work that day, if somebody asked for part of it.
+export function partDayOn(absences, employeeId, date) {
+    return absencesOn(absences, employeeId, date).find(isPartDay) || null
 }
 
 // Everything touching a stretch of dates, which is how a week asks.

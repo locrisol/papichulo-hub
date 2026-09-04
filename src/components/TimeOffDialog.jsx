@@ -11,6 +11,10 @@ import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
 } from '../lib/absences'
+import { shiftsHit, asCleared } from '../lib/timeOff'
+import { shortTime } from '../lib/roster'
+import { dayName } from '../lib/events'
+import { shortDate } from '../lib/dates'
 
 // The days somebody is not there.
 //
@@ -33,6 +37,10 @@ export default function TimeOffDialog({
     const [form, setForm] = useState(EMPTY)
     const [editing, setEditing] = useState(null)
     const [saving, setSaving] = useState(false)
+    // What they are already on for inside the dates being typed. Only for a new
+    // one: editing the dates of something already recorded is a correction, and
+    // taking shifts off on a correction would be a surprise.
+    const [rosteredShifts, setRosteredShifts] = useState([])
     const [error, setError] = useState('')
 
     // The whole of one person's, fetched here rather than handed in.
@@ -52,6 +60,23 @@ export default function TimeOffDialog({
             })
         return () => { live = false }
     }, [employeeId])
+
+    useEffect(() => {
+        const from = form.startsOn
+        const to = form.endsOn || form.startsOn
+        // Nothing to look up, and nothing set either: clearing state here
+        // would be a render inside an effect for no gain. Anything left over
+        // from a previous set of dates is filtered out below by the dates
+        // themselves.
+        if (!employeeId || !from || editing) return
+        let live = true
+        supabase.from('roster_shifts').select('*')
+            .eq('employee_id', employeeId)
+            .gte('shift_date', from).lte('shift_date', to)
+            .order('shift_date').order('starts_at')
+            .then(({ data }) => { if (live) setRosteredShifts(data || []) })
+        return () => { live = false }
+    }, [employeeId, form.startsOn, form.endsOn, editing])
 
     const mine = sortAbsences(absences)
     const person = employees?.find(e => e.id === employeeId)
@@ -106,11 +131,27 @@ export default function TimeOffDialog({
         }
     }
 
-    async function save(e) {
+    // What this would take off the roster.
+    //
+    // Somebody going off sick empties a day by force, and it empties today,
+    // which is worse than a holiday six weeks out. So typing one in asks the
+    // same question an approved holiday does, and leaves the same note behind.
+    const clashing = !editing && form.startsOn
+        ? shiftsHit({ ...toRow(), employee_id: employeeId }, rosteredShifts)
+        : []
+
+    async function save(e, freeing = false) {
         e.preventDefault()
         if (problem) return
         setSaving(true)
         setError('')
+
+        const clearing = freeing ? clashing : []
+        if (clearing.length > 0) {
+            const { error: delErr } = await supabase.from('roster_shifts')
+                .delete().in('id', clearing.map(x => x.id))
+            if (delErr) { setSaving(false); setError(friendlyError(delErr)); return }
+        }
 
         const { error: err } = editing
             ? await supabase.from('absences').update(toRow()).eq('id', editing.id)
@@ -118,9 +159,10 @@ export default function TimeOffDialog({
                 ...toRow(),
                 restaurant_id: restaurantId,
                 // A manager typing it in is the approval. Somebody asking for
-                // their own comes later, and lands here as requested.
+                // their own arrives as requested and is answered on the roster.
                 status: 'approved',
                 created_by: userId,
+                cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
             })
 
         setSaving(false)
@@ -247,14 +289,44 @@ export default function TimeOffDialog({
                         <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mt-3">{problem || error}</p>
                     )}
 
+                    {/* What this empties. Somebody going off sick this morning
+                        is the case that matters: the shifts are already out and
+                        somebody has to cover them. */}
+                    {!problem && clashing.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mt-3">
+                            <p className="text-sm font-semibold text-red-800">
+                                {person?.full_name || 'They'} {clashing.length === 1 ? 'is' : 'is'} rostered on{' '}
+                                {clashing.length} of {clashing.length === 1 ? 'these days' : 'these days'}
+                            </p>
+                            <ul className="text-xs text-red-700 mt-1 space-y-0.5">
+                                {clashing.map(x => (
+                                    <li key={x.id}>
+                                        {dayName(x.shift_date)} {shortDate(x.shift_date)},{' '}
+                                        {shortTime(x.starts_at)} to {shortTime(x.ends_at)}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2 mt-4">
                         <button
                             type="submit"
                             disabled={saving || !!problem}
                             className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50"
                         >
-                            {saving ? 'Saving...' : editing ? 'Save it' : 'Add it'}
+                            {saving ? 'Saving...' : editing ? 'Save it' : clashing.length > 0 ? 'Add it, leave the shifts' : 'Add it'}
                         </button>
+                        {!editing && clashing.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={e => save(e, true)}
+                                disabled={saving || !!problem}
+                                className="px-5 py-2 bg-green-brand text-white text-sm font-semibold rounded-lg hover:bg-green-brand/90 disabled:opacity-50"
+                            >
+                                Add it and free {clashing.length === 1 ? 'that day' : `those ${clashing.length} days`}
+                            </button>
+                        )}
                         {editing && (
                             <button type="button" onClick={openNew} className={secondaryButton}>
                                 Add a new one instead

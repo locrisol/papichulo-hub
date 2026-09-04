@@ -4,7 +4,8 @@ import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
-import { absenceOn, kindOf, holidayHoursInWeek } from '../lib/absences'
+import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '../lib/absences'
+import { askedOff, partWords } from '../lib/timeOff'
 import { AWAY } from '../lib/rosterShare'
 import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
@@ -279,25 +280,56 @@ export default function RosterWeek({
                                     // Time off beats everything else the cell
                                     // could be saying. Somebody on holiday is
                                     // away whatever their usual Tuesday is.
-                                    const off = absenceOn(absences, row.employee.id, day.date)
+                                    const off = wholeDayOn(absences, row.employee.id, day.date)
                                     const offKind = awayLook(off)
+                                    // Somebody who can work until three is in
+                                    // that morning. Greying the day out would
+                                    // turn a dentist appointment into a day off.
+                                    const part = !off && partDayOn(absences, row.employee.id, day.date)
+                                    // Asked for, not agreed. Her shifts stay
+                                    // exactly where they are, because until
+                                    // somebody says yes she is still working
+                                    // them. A dashed edge rather than the
+                                    // greying out an approved day gets, so the
+                                    // week says the difference without a word.
+                                    const asked = !off && !staff
+                                        && askedOff(absences, row.employee.id, day.date)
                                     return (
                                         <td
                                             key={day.date}
-                                            title={offKind
+                                            title={asked
+                                                ? `${row.employee.full_name} has asked for this day off and is waiting on an answer`
+                                                : part
+                                                ? `${row.employee.full_name} ${partWords(part)} this day`
+                                                : offKind
                                                 ? `${row.employee.full_name} is ${staff ? 'not available' : `down as ${offKind.label.toLowerCase()}`}`
                                                 : away === 'none'
                                                     ? `${row.employee.full_name} is not available this day`
                                                     : away === 'windows'
                                                         ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
                                                         : undefined}
-                                            style={offKind
-                                                ? { backgroundColor: offKind.fill }
-                                                : away === 'none' ? { backgroundImage: awayHatch } : undefined}
+                                            style={{
+                                                ...(offKind
+                                                    ? { backgroundColor: offKind.fill }
+                                                    : away === 'none' ? { backgroundImage: awayHatch } : {}),
+                                                ...(asked
+                                                    ? { outline: '2px dashed #d97706', outlineOffset: '-3px' }
+                                                    : {}),
+                                            }}
                                             className={`${cell} text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                             }`}
                                         >
+                                            {/* The hours they can work, above
+                                                whatever they are rostered for.
+                                                Short, because the cell is
+                                                narrow and "can work" is said by
+                                                the hours themselves. */}
+                                            {part && (
+                                                <span className="block text-[0.5625rem] font-semibold text-amber-700 leading-tight">
+                                                    {partWords(part).replace('can work ', '')}
+                                                </span>
+                                            )}
                                             {day.shifts.length === 0 ? (
                                                 offKind ? (
                                                     // The label rather than a

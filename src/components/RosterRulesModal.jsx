@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
+import { NOTICE_DEFAULT } from '../lib/timeOff'
 import { modalFooter } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import { DEFAULT_RULES } from '../lib/workRules'
@@ -177,6 +178,43 @@ export default function RosterRulesModal({ onClose }) {
                             </span>
                         </label>
                     </div>
+                </div>
+                </ModalSection>
+
+                <ModalSection
+                    title="Time off"
+                    description="How far ahead somebody should ask for a holiday. A day off and part of a day are not covered: something coming up next week is the ordinary case."
+                >
+                <div className="py-1">
+                    <div className="flex items-center gap-2">
+                        <input
+                            {...numberField({
+                                value: String(rules.holidayNoticeDays ?? NOTICE_DEFAULT),
+                                onChange: v => setRules(r => ({ ...r, holidayNoticeDays: Number(v) || 0 })),
+                            })}
+                            className={numCls}
+                        />
+                        <span className="text-sm text-gray-500">days' notice for a holiday</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Set it to 0 and no notice is asked for.</p>
+
+                    <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border">
+                        <input
+                            type="checkbox"
+                            checked={rules.holidayNoticeBlocks === true}
+                            onChange={e => setRules(r => ({ ...r, holidayNoticeBlocks: e.target.checked }))}
+                            className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                        />
+                        <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-gray-900">
+                                Do not let anyone send a request with less notice than this
+                            </span>
+                            <span className="block text-xs text-gray-500 mt-0.5">
+                                Off, they are warned and can send it anyway. On, they cannot send it at all.
+                                Either way you see the short notice on the request before you answer it.
+                            </span>
+                        </span>
+                    </label>
                 </div>
                 </ModalSection>
 

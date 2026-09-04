@@ -38,3 +38,27 @@
 :root {
   font-size: 118.75%;
 }
+
+/* Two things about form fields on a phone, set once here rather than
+ * remembered on every dialog.
+ *
+ * A native date or time input carries its own idea of how wide it should be,
+ * and flexbox will not shrink a child below that unless it is told it may. Two
+ * dates side by side in a dialog on a 411 pixel screen therefore pushed the
+ * second one out through the right hand edge. Everything in the app that sits
+ * two fields in a row hits this, so it is answered for all of them.
+ *
+ * The second is what happens to a placeholder too long for its box. Left alone
+ * it is chopped mid letter, which reads as a rendering fault. Now it ends in an
+ * ellipsis, which reads as a sentence that carries on.
+ */
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+input::placeholder,
+textarea::placeholder {
+  text-overflow: ellipsis;
+}
