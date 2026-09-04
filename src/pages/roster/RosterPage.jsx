@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
-import { DAY_NAMES } from '../../lib/events'
+import { DAY_NAMES, dayName } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
@@ -14,6 +14,9 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
 import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
+import { waiting, openGaps, asCleared } from '../../lib/timeOff'
+import { absenceRange } from '../../lib/absences'
+import TimeOffDeskModal from '../../components/TimeOffDeskModal'
 import { writesFor, requestsOnShift } from '../../lib/shiftRequests'
 import RosterDay from '../../components/RosterDay'
 import RosterWeek from '../../components/RosterWeek'
@@ -53,6 +56,11 @@ export default function RosterPage() {
     const [shifts, setShifts] = useState([])
     const [dayNotes, setDayNotes] = useState([])
     const [absences, setAbsences] = useState([])
+    // A request somebody is waiting on, with all of their shifts inside its
+    // dates rather than only this week's, because a holiday does not stop on a
+    // Saturday any more than a rest does.
+    const [answering, setAnswering] = useState(null)
+    const [savingOff, setSavingOff] = useState(false)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -193,6 +201,13 @@ export default function RosterPage() {
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const noteFor = d => dayNotes.find(n => n.note_date === d) || null
+    const hoursOn = d => hoursForDate(activeRestaurant?.opening_hours, noteFor(d), d)
+
+    // Time off nobody has answered, and hours a freed day left behind that
+    // nobody has picked up. Both are read off the absences themselves, so
+    // neither can go stale and there is nothing to tick off.
+    const timeOffWaiting = waiting(absences)
+    const gaps = openGaps(absences, shifts, dates)
     const dayShifts = shifts.filter(s => s.shift_date === date)
     const dayHours = hoursForDate(activeRestaurant?.opening_hours, noteFor(date), date)
 
@@ -200,6 +215,57 @@ export default function RosterPage() {
     const day = totals(dayShifts, employeesById)
     const state = publishState(shifts)
     const clashes = findOverlaps(shifts)
+
+    // Opening a request fetches every shift of theirs inside its dates, not
+    // just this week's. A fortnight off crosses two weeks and the roster only
+    // ever holds one.
+    async function openTimeOff(request) {
+        const { data } = await supabase.from('roster_shifts').select('*')
+            .eq('employee_id', request.employee_id)
+            .gte('shift_date', request.starts_on).lte('shift_date', request.ends_on)
+            .order('shift_date').order('starts_at')
+        setAnswering({ request, shifts: data || [] })
+    }
+
+    // Approving with shifts to clear takes them off and writes down what they
+    // were, so the week can go on asking for cover until somebody is on them.
+    async function approveTimeOff(request, clearing) {
+        setSavingOff(true)
+        setError('')
+
+        if (clearing.length > 0) {
+            const { error: delErr } = await supabase.from('roster_shifts')
+                .delete().in('id', clearing.map(s => s.id))
+            if (delErr) { setSavingOff(false); setError(friendlyError(delErr)); return }
+        }
+
+        const { error: updErr } = await supabase.from('absences').update({
+            status: 'approved',
+            decided_by: user.id,
+            decided_at: new Date().toISOString(),
+            cleared_shifts: clearing.length > 0 ? clearing.map(asCleared) : null,
+        }).eq('id', request.id)
+
+        setSavingOff(false)
+        if (updErr) { setError(friendlyError(updErr)); return }
+        setAnswering(null)
+        load({ quiet: true })
+    }
+
+    async function declineTimeOff(request) {
+        setSavingOff(true)
+        setError('')
+        const { error: err } = await supabase.from('absences').update({
+            status: 'declined',
+            decided_by: user.id,
+            decided_at: new Date().toISOString(),
+        }).eq('id', request.id)
+
+        setSavingOff(false)
+        if (err) { setError(friendlyError(err)); return }
+        setAnswering(null)
+        load({ quiet: true })
+    }
 
     const findings = checkWeek({
         shifts,
@@ -534,6 +600,55 @@ export default function RosterPage() {
                 </div>
             )}
 
+            {/* Somebody is waiting on an answer. Above the roster rather than
+                on a page of its own, because the answer depends on the week and
+                this is the week. */}
+            {timeOffWaiting.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm font-semibold text-amber-900 mb-1.5">
+                        {timeOffWaiting.length === 1
+                            ? 'One time off request is waiting'
+                            : `${timeOffWaiting.length} time off requests are waiting`}
+                    </p>
+                    <div className="space-y-1.5">
+                        {timeOffWaiting.map(a => (
+                            <div key={a.id} className="flex items-center justify-between gap-3 flex-wrap">
+                                <span className="text-xs text-amber-800">
+                                    {employeesById[a.employee_id]?.full_name || 'Somebody'}
+                                    {' asked for '}
+                                    {absenceRange(a, d => `${dayName(d)} ${shortDate(d)}`)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => openTimeOff(a)}
+                                    className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
+                                >
+                                    Answer it
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Hours a freed day left behind. Each line goes as soon as anybody
+                is rostered over it, so there is nothing to tick off. */}
+            {gaps.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm font-semibold text-amber-900 mb-1">
+                        {gaps.length === 1 ? 'One shift needs covering' : `${gaps.length} shifts need covering`}
+                    </p>
+                    <ul className="text-xs text-amber-800 space-y-0.5">
+                        {gaps.map((g, i) => (
+                            <li key={i}>
+                                {dayName(g.date)} {shortDate(g.date)}, {shortTime(g.starts_at)} to{' '}
+                                {shortTime(g.ends_at)}, was {employeesById[g.employeeId]?.full_name || 'somebody'}'s
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
             {clashes.length > 0 && (
                 <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">
                     {clashes.length === 1 ? 'One person is' : `${clashes.length} people are`} rostered in two places at
@@ -821,6 +936,25 @@ export default function RosterPage() {
                     usualExtras={activeRestaurant?.usual_extras}
                     onClose={() => setEditingDay(null)}
                     onSaved={() => { setEditingDay(null); load({ quiet: true }) }}
+                />
+            )}
+
+            {answering && (
+                <TimeOffDeskModal
+                    request={answering.request}
+                    employee={employeesById[answering.request.employee_id]}
+                    shifts={answering.shifts}
+                    rules={activeRestaurant?.roster_rules}
+                    today={todayISO()}
+                    hoursOn={hoursOn}
+                    saving={savingOff}
+                    onApprove={approveTimeOff}
+                    onDecline={declineTimeOff}
+                    onOpenWeek={() => {
+                        setWeekStart(weekStartOf(answering.request.starts_on))
+                        setAnswering(null)
+                    }}
+                    onClose={() => setAnswering(null)}
                 />
             )}
         </div>

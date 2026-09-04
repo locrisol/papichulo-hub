@@ -63,10 +63,16 @@ export function coversDate(absence, date) {
 // Everything rather than the first one, because two can genuinely overlap: a
 // holiday somebody then went sick during is two facts and neither one replaces
 // the other.
+//
+// Approved only. A request nobody has answered is not time off, it is a
+// question, and drawing the day as away would tell the whole team she has it
+// before anybody has said yes. The roster marks those days its own way. Rows
+// written by a manager are approved the moment they are written, which is
+// every row that existed before staff could ask.
 export function absencesOn(absences, employeeId, date) {
     return (absences || []).filter(a =>
         a.employee_id === employeeId
-        && a.status !== 'declined'
+        && a.status === 'approved'
         && coversDate(a, date),
     )
 }
