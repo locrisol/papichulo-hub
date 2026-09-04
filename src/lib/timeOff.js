@@ -80,6 +80,24 @@ export function partWords(absence) {
     return `can work from ${shortTime(from)}`
 }
 
+// The hours a part day takes out, as spans on a day's timeline.
+//
+// The same shape unavailableSpans gives back for somebody's usual availability,
+// and on purpose: "cannot work these hours" is one idea and the roster should
+// draw it one way, whether it comes from their usual week or from a Tuesday
+// they asked about. from and to are the ends of the day being drawn.
+export function partDaySpans(absence, from, to) {
+    if (!isPartDay(absence)) return []
+
+    const canFrom = absence.can_work_from ? toMinutes(absence.can_work_from) : null
+    const canTo = absence.can_work_to ? toMinutes(absence.can_work_to) : null
+
+    const spans = []
+    if (canFrom != null && canFrom > from) spans.push([from, Math.min(canFrom, to)])
+    if (canTo != null && canTo < to) spans.push([Math.max(canTo, from), to])
+    return spans.filter(([a, b]) => b > a)
+}
+
 // Does this request land on that shift?
 //
 // For a whole day it is the date and nothing else. For part of a day the shift

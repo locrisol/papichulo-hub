@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     NOTICE_DEFAULT, noticeDays, noticeBlocks, daysBefore, noticeProblem,
-    isPartDay, requestLabel, partWords, hitsShift, shiftsHit,
+    isPartDay, requestLabel, partWords, hitsShift, shiftsHit, partDaySpans,
     isCovered, openGaps, waiting, askedOff,
 } from './timeOff'
 
@@ -179,5 +179,33 @@ describe('what is waiting', () => {
     it('stops marking them once it has been answered', () => {
         const asks = [ask({ status: 'approved', starts_on: '2026-09-13', ends_on: '2026-09-15' })]
         expect(askedOff(asks, 'e1', '2026-09-14')).toBe(false)
+    })
+})
+
+describe('the hours a part day takes out', () => {
+    // A day drawn from eight in the morning to midnight.
+    const from = 8 * 60
+    const to = 24 * 60
+
+    it('hatches the evening for somebody finishing early', () => {
+        expect(partDaySpans(ask({ can_work_to: '15:00' }), from, to)).toEqual([[900, 1440]])
+    })
+
+    it('hatches the morning for somebody starting late', () => {
+        expect(partDaySpans(ask({ can_work_from: '15:00' }), from, to)).toEqual([[480, 900]])
+    })
+
+    it('hatches both ends for a window in the middle', () => {
+        expect(partDaySpans(ask({ can_work_from: '12:00', can_work_to: '16:00' }), from, to))
+            .toEqual([[480, 720], [960, 1440]])
+    })
+
+    it('has nothing to hatch for a whole day', () => {
+        expect(partDaySpans(ask(), from, to)).toEqual([])
+    })
+
+    it('does not draw outside the day it was given', () => {
+        // Somebody who can work from seven, on a day drawn from eight.
+        expect(partDaySpans(ask({ can_work_from: '07:00' }), from, to)).toEqual([])
     })
 })
