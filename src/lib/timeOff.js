@@ -9,7 +9,12 @@
 // No React in here, so all of it can be tested.
 
 import { toMinutes, shortTime } from './roster'
-import { coversDate } from './absences'
+import { coversDate, isPartDay } from './absences'
+
+// Part of a day rather than the whole of it. It lives with the other questions
+// about an absence row and is passed through here so anything reading this file
+// does not have to know that.
+export { isPartDay } from './absences'
 
 // A month, near enough, and it is the number he asked for. Set it to 0 in the
 // roster rules and no notice is asked for at all.
@@ -50,11 +55,6 @@ export function noticeProblem(kind, startsOn, rules, today) {
     if (actual == null || actual >= needed) return null
 
     return { needed, actual, blocks: noticeBlocks(rules) }
-}
-
-// Part of a day, or the whole of it.
-export function isPartDay(absence) {
-    return !!(absence?.can_work_from || absence?.can_work_to)
 }
 
 // What to call it on a list. A part day is a day off with hours on it, so the

@@ -106,7 +106,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                 </div>
 
                 <div className="flex gap-2">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                         <label className="block text-xs font-medium text-muted mb-1">
                             {isHoliday ? 'First day' : 'Which day'}
                         </label>
@@ -114,7 +114,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                             onChange={e => setStartsOn(e.target.value)} className={field} />
                     </div>
                     {isHoliday && (
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                             <label className="block text-xs font-medium text-muted mb-1">Last day</label>
                             <input type="date" value={endsOn} min={startsOn || today}
                                 onChange={e => setEndsOn(e.target.value)} className={field} />
@@ -142,7 +142,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                     <label className="block text-xs font-medium text-muted mb-1">Add a note (optional)</label>
                     <input type="text" value={note} maxLength={200}
                         onChange={e => setNote(e.target.value)} className={field}
-                        placeholder="Anything your manager should know" />
+                        placeholder="Anything they should know" />
                 </div>
 
                 {/* How long it is and how far off, once there is enough to say

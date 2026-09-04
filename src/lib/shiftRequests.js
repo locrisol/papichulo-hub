@@ -9,7 +9,7 @@
 // the manager's screen is the only thing allowed to make it true.
 
 import { toMinutes, shiftHours, breakFor } from './roster'
-import { absenceOn } from './absences'
+import { wholeDayOn } from './absences'
 
 export const REQUEST_STATES = {
     asked: { label: 'Waiting on them', tone: 'wait' },
@@ -217,7 +217,7 @@ export function shortlist({ date, window, employees, shifts, absences, askerId }
             .filter(s => s.employee_id === person.id && s.shift_date === date)
             .sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
 
-        const away = !!absenceOn(absences, person.id, date)
+        const away = !!wholeDayOn(absences, person.id, date)
         const clash = window
             ? theirs.some(s => overlaps({ from: s.starts_at, to: s.ends_at }, window))
             : false

@@ -82,6 +82,30 @@ export function absenceOn(absences, employeeId, date) {
     return absencesOn(absences, employeeId, date)[0] || null
 }
 
+// Part of a day, not the whole of it.
+//
+// Somebody who can work until three is in that morning. Every screen that
+// treats time off as a day gone has to know the difference, or a dentist at
+// half three empties a Tuesday.
+export function isPartDay(absence) {
+    return !!(absence?.can_work_from || absence?.can_work_to)
+}
+
+// Away for the whole day, which is what "away" used to mean when every row was
+// a whole day. This is the one to ask when a day is being greyed out.
+export function wholeDaysOn(absences, employeeId, date) {
+    return absencesOn(absences, employeeId, date).filter(a => !isPartDay(a))
+}
+
+export function wholeDayOn(absences, employeeId, date) {
+    return wholeDaysOn(absences, employeeId, date)[0] || null
+}
+
+// The hours they can still work that day, if somebody asked for part of it.
+export function partDayOn(absences, employeeId, date) {
+    return absencesOn(absences, employeeId, date).find(isPartDay) || null
+}
+
 // Everything touching a stretch of dates, which is how a week asks.
 export function absencesInRange(absences, from, to) {
     return (absences || []).filter(a =>

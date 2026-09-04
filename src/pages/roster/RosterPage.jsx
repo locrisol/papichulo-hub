@@ -14,7 +14,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '../../lib/roster'
 import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
-import { waiting, openGaps, asCleared } from '../../lib/timeOff'
+import { openGaps, asCleared } from '../../lib/timeOff'
 import { absenceRange } from '../../lib/absences'
 import TimeOffDeskModal from '../../components/TimeOffDeskModal'
 import { writesFor, requestsOnShift } from '../../lib/shiftRequests'
@@ -61,6 +61,10 @@ export default function RosterPage() {
     // Saturday any more than a rest does.
     const [answering, setAnswering] = useState(null)
     const [savingOff, setSavingOff] = useState(false)
+    // Everything waiting, whatever week it is for. The count on the menu is
+    // restaurant wide, so a strip that only knew about this week left you with
+    // a number and nowhere to click.
+    const [allWaiting, setAllWaiting] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -127,7 +131,7 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes, askRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -148,6 +152,12 @@ export default function RosterPage() {
             supabase.from('absences').select('*')
                 .eq('restaurant_id', restaurantId)
                 .lte('starts_on', addDays(weekStart, 6)).gte('ends_on', weekStart),
+            // Not week bound. A holiday asked for in October is waiting on an
+            // answer whatever week happens to be on screen.
+            supabase.from('absences').select('*')
+                .eq('restaurant_id', restaurantId)
+                .eq('status', 'requested')
+                .order('created_at'),
         ])
 
         if (empRes.error) { setError(friendlyError(empRes.error)); setLoading(false); return }
@@ -165,6 +175,7 @@ export default function RosterPage() {
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
         setAbsences(offRes.data || [])
+        setAllWaiting(askRes.data || [])
         setLoading(false)
 
         // The weeks behind this one, for the forty eight hour average. It is an
@@ -206,7 +217,7 @@ export default function RosterPage() {
     // Time off nobody has answered, and hours a freed day left behind that
     // nobody has picked up. Both are read off the absences themselves, so
     // neither can go stale and there is nothing to tick off.
-    const timeOffWaiting = waiting(absences)
+    const timeOffWaiting = allWaiting
     const gaps = openGaps(absences, shifts, dates)
     const dayShifts = shifts.filter(s => s.shift_date === date)
     const dayHours = hoursForDate(activeRestaurant?.opening_hours, noteFor(date), date)
@@ -618,13 +629,24 @@ export default function RosterPage() {
                                     {' asked for '}
                                     {absenceRange(a, d => `${dayName(d)} ${shortDate(d)}`)}
                                 </span>
-                                <button
-                                    type="button"
-                                    onClick={() => openTimeOff(a)}
-                                    className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
-                                >
-                                    Answer it
-                                </button>
+                                <span className="flex gap-1.5 flex-shrink-0">
+                                    {weekStartOf(a.starts_on) !== weekStart && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setWeekStart(weekStartOf(a.starts_on))}
+                                            className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
+                                        >
+                                            Go to that week
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => openTimeOff(a)}
+                                        className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+                                    >
+                                        Answer it
+                                    </button>
+                                </span>
                             </div>
                         ))}
                     </div>

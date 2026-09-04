@@ -13,7 +13,7 @@ import { fullDate, shortDate } from './dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
 } from './roster'
-import { absencesOn, holidayHoursInWeek } from './absences'
+import { wholeDaysOn, holidayHoursInWeek } from './absences'
 import { extrasFor, extraLabel } from './dayExtras'
 
 // A day somebody is not there, as it goes out.
@@ -101,7 +101,7 @@ export function weekTable({
                 // each of the four things that draw this. One boundary in one
                 // place is the only kind that holds: a renderer cannot leak a
                 // reason it was never handed.
-                away: absencesOn(absences, row.employee.id, day.date).length > 0,
+                away: wholeDaysOn(absences, row.employee.id, day.date).length > 0,
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)
