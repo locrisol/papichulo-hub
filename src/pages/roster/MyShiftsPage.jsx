@@ -11,7 +11,7 @@ import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '../../lib/roster'
 import { weekSpan, freeEnds, dayShape } from '../../lib/presence'
-import { absenceOn } from '../../lib/absences'
+import { wholeDayOn } from '../../lib/absences'
 import { openGaps } from '../../lib/timeOff'
 import { AWAY } from '../../lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '../../lib/team'
@@ -157,7 +157,7 @@ export default function MyShiftsPage() {
     const nameOf = id => mateOf(id)?.full_name || 'Somebody'
     const colourOf = id => mateOf(id)?.position_colour || NO_COLOUR
     const closedOn = d => !!noteFor(d)?.is_closed
-    const awayOn = (id, d) => !!absenceOn(absences, id, d)
+    const awayOn = (id, d) => !!wholeDayOn(absences, id, d)
 
     // Hours somebody was given off after the week went out, that nobody has
     // picked up. The away view carries them, so this needs nothing anybody
