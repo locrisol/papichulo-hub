@@ -5,6 +5,7 @@ import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { absenceOn, kindOf, holidayHoursInWeek } from '../lib/absences'
+import { AWAY } from '../lib/rosterShare'
 import { extrasFor, extraLabel } from '../lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
@@ -21,15 +22,39 @@ import {
 // A shift that runs past closing prints as Closing and never as a time. Somebody
 // reading 21:30 off this will leave at 21:30 with the floor unswept, and then
 // argue about it, and they will be right to because it is what it said.
+//
+// staff is the same table with three things taken out of it, and it is the same
+// table on purpose rather than a thinner copy. A second week view would drift
+// from this one the first time either was changed, and then two people would be
+// looking at the same week and seeing different things.
+//
+// What goes, and why:
+//
+//   the reason for a day off   it reads Not available, exactly as the picture
+//                              that goes to the WhatsApp group does. Off sick
+//                              and unpaid leave are nobody else's business.
+//   the rule warnings          they are about a manager's job, and half of them
+//                              name somebody's visa or their date of birth.
+//   the ways in                no plus on an empty cell and no add button, since
+//                              nobody below a manager types anything here.
+//
+// The hours stay. Everybody sees everybody's, which is a decision rather than an
+// oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, shiftMark, staff = false,
 }) {
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
     const perDay = dayTotals(shifts, dates, employeesById)
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const positionOf = id => (positions || []).find(p => p.id === id)
+
+    // Two rows that exist for a manager because they are also the way things
+    // get typed in. Staff cannot type anything, so for them an empty one is a
+    // line of dashes taking up space on a week they are trying to read.
+    const showEvents = !staff || (events || []).length > 0
+    const showExtras = !staff || (dayNotes || []).some(n => extrasFor(n).length > 0)
 
     // Down the middle, not up at the top.
     //
@@ -49,6 +74,16 @@ export default function RosterWeek({
             <td className="border-l border-border" />
         </>
     )
+
+    // What a day somebody is away looks like. A manager gets the kind and its
+    // colour; staff get the one word and the grey the shared picture uses.
+    const awayLook = off => {
+        if (!off) return null
+        if (staff) return { label: AWAY.label, colour: AWAY.ink, fill: AWAY.fill }
+        const kind = kindOf(off.kind)
+        if (!kind) return null
+        return { label: kind.label, colour: kind.colour, fill: tint(kind.colour, 0.22) }
+    }
 
     const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-middle'
     // The same hatch the day timeline uses for the hours somebody cannot work.
@@ -126,7 +161,7 @@ export default function RosterWeek({
                         {tail}
                     </tr>
 
-                    <tr className="bg-accent-light/60 border-b border-border">
+                    {showEvents && <tr className="bg-accent-light/60 border-b border-border">
                         <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 bg-accent-light">
                             Events
                         </td>
@@ -150,45 +185,51 @@ export default function RosterWeek({
                             )
                         })}
                         {tail}
-                    </tr>
+                    </tr>}
 
-                    {/* Always here, empty or not, because it is also the way
-                        in. A row that only appears once something is in it is a
-                        row you cannot use to put the first thing in. */}
-                    <tr className="bg-slate-50 border-b border-border">
+                    {/* Always here for a manager, empty or not, because it is
+                        also the way in. A row that only appears once something
+                        is in it is a row you cannot use to put the first thing
+                        in. */}
+                    {showExtras && <tr className="bg-slate-50 border-b border-border">
                             <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
                                 Also on
                             </td>
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))
+                                const inside = extras.length === 0 ? (
+                                    <span className="text-gray-300 text-xs">{staff ? '' : '+'}</span>
+                                ) : extras.map(extra => (
+                                    <span
+                                        key={extra.name}
+                                        className="block text-[0.6875rem] text-slate-700 leading-snug break-words"
+                                    >
+                                        {extraLabel(extra)}
+                                    </span>
+                                ))
                                 return (
                                     <td key={d} className={`${cell} text-center p-0`}>
                                         {/* The same way in as an empty cell on
                                             somebody's row: press it and the
                                             day opens, which is where all of
                                             this is typed anyway. */}
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenDay?.(d)}
-                                            aria-label={`Add something to ${fullDate(d)}`}
-                                            className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors"
-                                        >
-                                            {extras.length === 0 ? (
-                                                <span className="text-gray-300 text-xs">+</span>
-                                            ) : extras.map(extra => (
-                                                <span
-                                                    key={extra.name}
-                                                    className="block text-[0.6875rem] text-slate-700 leading-snug break-words"
-                                                >
-                                                    {extraLabel(extra)}
-                                                </span>
-                                            ))}
-                                        </button>
+                                        {staff ? (
+                                            <span className="block px-2 py-1.5">{inside}</span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenDay?.(d)}
+                                                aria-label={`Add something to ${fullDate(d)}`}
+                                                className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors"
+                                            >
+                                                {inside}
+                                            </button>
+                                        )}
                                     </td>
                                 )
                             })}
                             {tail}
-                        </tr>
+                        </tr>}
 
                     {/* Two rows per person: the shifts, and the breaks under
                         them. The breaks are printed and never taken off the
@@ -239,19 +280,19 @@ export default function RosterWeek({
                                     // could be saying. Somebody on holiday is
                                     // away whatever their usual Tuesday is.
                                     const off = absenceOn(absences, row.employee.id, day.date)
-                                    const offKind = off ? kindOf(off.kind) : null
+                                    const offKind = awayLook(off)
                                     return (
                                         <td
                                             key={day.date}
                                             title={offKind
-                                                ? `${row.employee.full_name} is down as ${offKind.label.toLowerCase()}`
+                                                ? `${row.employee.full_name} is ${staff ? 'not available' : `down as ${offKind.label.toLowerCase()}`}`
                                                 : away === 'none'
                                                     ? `${row.employee.full_name} is not available this day`
                                                     : away === 'windows'
                                                         ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
                                                         : undefined}
                                             style={offKind
-                                                ? { backgroundColor: tint(offKind.colour, 0.22) }
+                                                ? { backgroundColor: offKind.fill }
                                                 : away === 'none' ? { backgroundImage: awayHatch } : undefined}
                                             className={`${cell} text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
@@ -272,6 +313,15 @@ export default function RosterWeek({
                                                     >
                                                         {offKind.label}
                                                     </span>
+                                                ) : staff ? (
+                                                    // Nothing to press, rather
+                                                    // than a plus that leads
+                                                    // nowhere. An empty cell on
+                                                    // the staff week means
+                                                    // somebody is not in, which
+                                                    // is what an empty cell
+                                                    // should look like.
+                                                    <span className="block py-0.5 text-gray-300 text-xs">-</span>
                                                 ) : (
                                                     <button
                                                         type="button"
@@ -291,14 +341,8 @@ export default function RosterWeek({
                                                 // the PDF now do.
                                                 const edges = shiftEdges(s, hours)
                                                 const mark = 'bg-amber-200 rounded px-0.5'
-                                                return (
-                                                    <button
-                                                        key={s.id}
-                                                        type="button"
-                                                        onClick={() => onOpenShift?.(s)}
-                                                        style={{ backgroundColor: tint(colour), borderColor: colour }}
-                                                        className="block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 hover:brightness-95 whitespace-nowrap transition"
-                                                    >
+                                                const face = (
+                                                    <>
                                                         <span className={edges.opening ? mark : ''}>
                                                             {shortTime(s.starts_at)}
                                                         </span>
@@ -306,7 +350,30 @@ export default function RosterWeek({
                                                         <span className={edges.closing ? mark : ''}>
                                                             {endLabel(s, hours)}
                                                         </span>
+                                                        {shiftMark?.(s)}
+                                                    </>
+                                                )
+                                                const look = 'block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 whitespace-nowrap transition'
+                                                const paint = { backgroundColor: tint(colour), borderColor: colour }
+                                                // A shift nobody can do anything
+                                                // with is not a button. On the
+                                                // staff week that is every one
+                                                // of them until there is
+                                                // something to ask about it.
+                                                return onOpenShift ? (
+                                                    <button
+                                                        key={s.id}
+                                                        type="button"
+                                                        onClick={() => onOpenShift(s)}
+                                                        style={paint}
+                                                        className={`${look} hover:brightness-95`}
+                                                    >
+                                                        {face}
                                                     </button>
+                                                ) : (
+                                                    <span key={s.id} style={paint} className={look}>
+                                                        {face}
+                                                    </span>
                                                 )
                                             })}
                                         </td>

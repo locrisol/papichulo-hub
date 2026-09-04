@@ -48,6 +48,7 @@ import CostDashboardPage from './pages/costs/CostDashboardPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
 import EmployeesPage from './pages/team/EmployeesPage'
 import RosterPage from './pages/roster/RosterPage'
+import MyShiftsPage from './pages/roster/MyShiftsPage'
 
 export default function App() {
   return (
@@ -107,6 +108,7 @@ export default function App() {
                     the database refuses the whole table to anyone else. */}
                 <Route path="/team" element={<RequireRole allowed={MANAGERS}><EmployeesPage /></RequireRole>} />
                 <Route path="/roster" element={<RequireRole allowed={MANAGERS}><RosterPage /></RequireRole>} />
+                <Route path="/my-shifts" element={<MyShiftsPage />} />
 
                 {/* Settings. Restaurant configuration excludes owners. */}
                 <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
