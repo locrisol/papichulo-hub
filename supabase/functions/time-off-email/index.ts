@@ -17,13 +17,22 @@
 // Unlike the calendar feed this one has a logged in person behind every call,
 // so leave JWT verification on. Secrets it needs:
 //
-//   RESEND_API_KEY   the sending key, sending access only
-//   MAIL_FROM        who it comes from, until a domain is verified this has to
-//                    be onboarding@resend.dev and Resend will only deliver to
-//                    the address that owns the account
-//   MAIL_REPLY_TO    optional, a real address replies should go to. Mail sent
-//                    from a sending subdomain has nowhere to receive a reply,
-//                    and somebody told their holiday is off will hit reply.
+// There are two ways out and it takes whichever one is set up.
+//
+// Google first, because papichulo.ie already runs on Workspace: the SPF and the
+// DKIM are live on the domain, so mail sent through it is authenticated with no
+// DNS to add and nobody to ask. Resend is the other way, and it needs three
+// records on the domain before it will send to anybody but the account owner.
+//
+//   GMAIL_USER          the Workspace address that does the sending
+//   GMAIL_APP_PASSWORD  an app password on that account, 2 step must be on
+//
+//   RESEND_API_KEY      used only when the two above are not set
+//
+//   MAIL_FROM        who it comes from. Through Google this has to be the
+//                    Workspace address itself or an alias it is allowed to send
+//                    as, or Google quietly rewrites it to the account address.
+//   MAIL_REPLY_TO    optional, a real address replies should go to.
 //   APP_URL          where the buttons point, https://papichulo-hub.vercel.app
 //   APP_URL_ALSO     optional, comma separated, the other addresses the app is
 //                    allowed to say it is being used from: a preview build, a
@@ -58,21 +67,73 @@ const json = (body: unknown, status = 200) =>
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
-async function send(mail: { to: string[], subject: string, html: string, text: string, attachment?: { filename: string, content: string } }) {
+type Mail = {
+    to: string[]
+    subject: string
+    html: string
+    text: string
+    attachment?: { filename: string, content: string }
+}
+
+const from = () => Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>'
+
+// Through the restaurant's own Workspace account.
+//
+// The domain is already set up for Google, so this needs nothing added to DNS
+// and no third party holding a key that can send as us. It comes from a real
+// papichulo.ie address, which is the one staff recognise and can reply to.
+//
+// The library is loaded here rather than at the top so the Resend way does not
+// pay for it.
+async function byGmail(mail: Mail, user: string, password: string) {
+    const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
+
+    const client = new SMTPClient({
+        connection: {
+            hostname: 'smtp.gmail.com',
+            port: 465,
+            tls: true,
+            auth: { username: user, password },
+        },
+    })
+
+    try {
+        await client.send({
+            from: from(),
+            to: mail.to,
+            replyTo: Deno.env.get('MAIL_REPLY_TO') || undefined,
+            subject: mail.subject,
+            content: mail.text,
+            html: mail.html,
+            attachments: mail.attachment
+                ? [{
+                    filename: mail.attachment.filename,
+                    contentType: 'application/pdf',
+                    encoding: 'base64',
+                    content: mail.attachment.content,
+                }]
+                : undefined,
+        })
+    } finally {
+        // Left open, the function is held until it times out.
+        await client.close()
+    }
+
+    return { by: 'gmail' }
+}
+
+async function byResend(mail: Mail) {
     const key = Deno.env.get('RESEND_API_KEY')
-    if (!key) throw new Error('No RESEND_API_KEY in the function secrets.')
+    if (!key) throw new Error('Nothing is set up to send. Set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY.')
 
     const body: Record<string, unknown> = {
-        from: Deno.env.get('MAIL_FROM') || 'Papi Chulo Hub <onboarding@resend.dev>',
+        from: from(),
         to: mail.to,
         subject: mail.subject,
         html: mail.html,
         text: mail.text,
     }
 
-    // Somebody told their holiday is not approved will hit reply, and a
-    // sending subdomain has nowhere for that to land. Point it at an address
-    // a person actually reads.
     const replyTo = Deno.env.get('MAIL_REPLY_TO')
     if (replyTo) body.reply_to = replyTo
 
@@ -88,6 +149,14 @@ async function send(mail: { to: string[], subject: string, html: string, text: s
 
     if (!res.ok) throw new Error(`Resend said ${res.status}: ${await res.text()}`)
     return await res.json()
+}
+
+// Whichever one is set up, Google first.
+async function send(mail: Mail) {
+    const user = Deno.env.get('GMAIL_USER')
+    const password = Deno.env.get('GMAIL_APP_PASSWORD')
+    if (user && password) return await byGmail(mail, user, password)
+    return await byResend(mail)
 }
 
 Deno.serve(async (request) => {
