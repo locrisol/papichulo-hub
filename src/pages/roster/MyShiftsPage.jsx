@@ -22,6 +22,8 @@ import DateStepper from '../../components/DateStepper'
 import RosterWeek from '../../components/RosterWeek'
 import PresenceGrid from '../../components/PresenceGrid'
 import ShiftRequestDialog from '../../components/ShiftRequestDialog'
+import TimeOffRequestDialog from '../../components/TimeOffRequestDialog'
+import TimeOffCard from '../../components/TimeOffCard'
 
 // The staff side of the roster. One page.
 //
@@ -54,6 +56,11 @@ export default function MyShiftsPage() {
     const [breakRules, setBreakRules] = useState(null)
     const [requests, setRequests] = useState([])
     const [asking, setAsking] = useState(null)
+    // My own time off, whole rows this time rather than the away view, because
+    // these are mine and I am allowed to know why I asked.
+    const [myTimeOff, setMyTimeOff] = useState([])
+    const [rosterRules, setRosterRules] = useState(null)
+    const [askingOff, setAskingOff] = useState(false)
     const [saving, setSaving] = useState(false)
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const [view, setView] = useState('mine')
@@ -86,7 +93,7 @@ export default function MyShiftsPage() {
             const from = dates[0]
             const to = dates[6]
 
-            const [shiftRes, mateRes, noteRes, awayRes, restRes] = await Promise.all([
+            const [shiftRes, mateRes, noteRes, awayRes, restRes, offRes] = await Promise.all([
                 // Straight off the table. A policy lets staff read published
                 // rows at their own restaurant, so there is nothing between
                 // this and the same shifts a manager sees.
@@ -103,8 +110,14 @@ export default function MyShiftsPage() {
                 // Spain.
                 supabase.from('roster_away').select('*')
                     .lte('starts_on', to).gte('ends_on', from),
-                supabase.from('restaurants').select('opening_hours, break_rules')
+                supabase.from('restaurants').select('opening_hours, break_rules, roster_rules')
                     .eq('id', mine.restaurant_id).maybeSingle(),
+                // My own requests, not week bound. What I asked for in March is
+                // still the answer to "did I already ask about this".
+                supabase.from('absences').select('*')
+                    .eq('employee_id', mine.id)
+                    .order('starts_on', { ascending: false })
+                    .limit(30),
             ])
 
             if (!live) return
@@ -116,6 +129,8 @@ export default function MyShiftsPage() {
             setAbsences(awayRes.data || [])
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
+            setRosterRules(restRes.data?.roster_rules || null)
+            setMyTimeOff(offRes.data || [])
             setReady(true)
 
             // The asks about this week, fetched after it rather than beside it
@@ -188,6 +203,23 @@ export default function MyShiftsPage() {
             .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
             .order('created_at', { ascending: false })
         setRequests(data || [])
+    }
+
+    async function reloadTimeOff() {
+        if (!me) return
+        const { data } = await supabase.from('absences').select('*')
+            .eq('employee_id', me.id)
+            .order('starts_on', { ascending: false })
+            .limit(30)
+        setMyTimeOff(data || [])
+    }
+
+    // Only while nobody has answered it. Once it has been decided it is a
+    // record of what was decided, and the database refuses anything else.
+    async function withdrawTimeOff(id) {
+        const { error: err } = await supabase.from('absences').delete().eq('id', id)
+        if (err) { setError(friendlyError(err)); return }
+        reloadTimeOff()
     }
 
     async function send(draft) {
@@ -426,6 +458,23 @@ export default function MyShiftsPage() {
                         )}
                     </div>
                 </>
+            )}
+
+            {/* Time off, under the week. It is the other thing somebody opens
+                this page to do, and it has to live somewhere. */}
+            <TimeOffCard
+                requests={myTimeOff}
+                onAsk={() => setAskingOff(true)}
+                onWithdraw={withdrawTimeOff}
+            />
+
+            {askingOff && (
+                <TimeOffRequestDialog
+                    me={me}
+                    rules={rosterRules}
+                    onClose={() => setAskingOff(false)}
+                    onSaved={() => { setAskingOff(false); reloadTimeOff() }}
+                />
             )}
 
             {asking && (
