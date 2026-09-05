@@ -238,7 +238,7 @@ export default function TimeOffDialog({
                                 className={fieldCls}
                             >
                                 {ABSENCE_KINDS.map(k => (
-                                    <option key={k.value} value={k.value}>{k.label}</option>
+                                    <option key={k.value} value={k.value}>{k.pickerLabel || k.label}</option>
                                 ))}
                             </select>
                         </div>
