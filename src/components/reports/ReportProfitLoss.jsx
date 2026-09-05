@@ -26,6 +26,10 @@ import { secondaryButton } from '../../lib/controlStyles'
 //
 // There is nowhere to type a delivery total. It is the platform lines added up,
 // so it cannot say something the lines do not.
+//
+// Still to come: a chart per platform on the delivery costs, so what each one
+// keeps can be watched week to week rather than read one week at a time. Forty
+// three percent is only alarming once you can see it was thirty eight in May.
 
 // A row that reads at any width. A table with four columns cannot do that, and
 // two layouts for one list is two places to change.
