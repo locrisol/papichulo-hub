@@ -481,10 +481,18 @@ export function weekPdf(table, restaurantName, weekStart) {
     })
     // Last and lighter, the same as the picture. It is on every roster, so it
     // is the one nobody needs to read twice.
+    // The standing note gets a band of its own rather than the lightest line on
+    // the page. It is what explains the yellow and why a closing shift has no
+    // finishing time, and it is tinted to match the mark it is about.
     if (table.standing) {
-        at(table.standing, l.pad, y + h(16) + table.messages.length * h(14), {
-            size: 7, rgb: [156, 163, 175],
-        })
+        const noteY = y + h(8) + table.messages.length * h(14)
+        const noteH = h(20)
+        pdf.setFillColor(254, 248, 225)
+        pdf.rect(l.pad, noteY, pageWidth - l.pad * 2, noteH, 'F')
+        pdf.setDrawColor(...YELLOW_EDGE)
+        pdf.setLineWidth(0.5)
+        pdf.line(l.pad, noteY, pageWidth - l.pad, noteY)
+        at(table.standing, l.pad + 8, noteY + noteH / 2 + 2.5, { size: 8, rgb: [107, 83, 16] })
     }
 
     pdf.save(shareName(restaurantName, weekStart, 'pdf'))

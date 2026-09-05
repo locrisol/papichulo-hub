@@ -537,8 +537,14 @@ export default function RosterWeek({
                             <span className="font-semibold">{fullDate(n.note_date)}:</span> {n.message}
                         </p>
                     ))}
+                    {/* Not a footnote. It is the thing that explains why a
+                        closing shift has no finishing time and why the hours
+                        beside it are what they are, and in grey at the foot it
+                        was read once and never again. Tinted to match the
+                        yellow it is explaining, so the mark and the reason for
+                        it are visibly the same subject. */}
                     {standingNote && (
-                        <p className="px-4 py-2 text-sm text-gray-500 border-t border-border">
+                        <p className="px-4 py-2.5 text-sm font-medium text-amber-900 bg-amber-50 border-t border-amber-200">
                             {standingNote}
                         </p>
                     )}

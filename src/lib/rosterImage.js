@@ -454,12 +454,16 @@ export function drawWeek(canvas, table) {
         table.messages.forEach((m, i) => {
             text(m, l.pad, y + 8 + i * 22, { colour: MUTED, max: l.width - l.pad * 2 })
         })
-        // The standing line last and lighter. It is on every roster, so it is
-        // the one nobody needs to read twice.
+        // The standing line gets a band rather than the faintest text on the
+        // picture. It is what explains the yellow and why a closing shift has
+        // no finishing time, and it is tinted to match the mark it is about.
         if (table.standing) {
-            font(11)
-            text(table.standing, l.pad, y + 8 + table.messages.length * 22, {
-                colour: '#9ca3af', max: l.width - l.pad * 2,
+            const noteY = y + table.messages.length * 22
+            box(l.pad, noteY, l.width - l.pad * 2, 26, '#fef8e1')
+            rule(l.pad, noteY, l.width - l.pad, noteY, YELLOW_EDGE, 1)
+            font(12, '500')
+            text(table.standing, l.pad + 10, noteY + 13, {
+                colour: '#6b5310', max: l.width - l.pad * 2 - 20,
             })
         }
     }

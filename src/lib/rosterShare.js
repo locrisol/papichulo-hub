@@ -312,8 +312,12 @@ export function sheetLayout(table, {
     const totalH = 34
 
     const bodyRows = table.people.length
-    const lines = table.messages.length + (table.standing ? 1 : 0)
-    const messagesH = lines ? 22 * lines + 12 : 0
+    // The manager's messages are a line each. The standing note is a band with
+    // a tint behind it rather than one more line, so it asks for more than one
+    // line's worth of room.
+    const messageLines = table.messages.length
+    const standingH = table.standing ? 30 : 0
+    const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
     const height = pad * 2 + titleH + headH + metaH + eventsH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
