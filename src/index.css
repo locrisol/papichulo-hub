@@ -39,6 +39,29 @@
   font-size: 118.75%;
 }
 
+/* Except on a screen that has not got the room for it.
+ *
+ * Windows display scaling and this multiply. The store laptop is set to 125%,
+ * which leaves a 1920 screen with a 1536 pixel window, and then the app makes
+ * everything 1.1875 times bigger on top of that. Text ends up around half again
+ * the size a browser would normally give it, so less fits, and the roster grid
+ * needs 1216 pixels where the page only has 1204. Twelve pixels short, and the
+ * week gets cut off down the right hand side.
+ *
+ * So the foot rule shrinks when the window does. 17px between a small laptop
+ * and a big monitor, which gives the roster about 150 pixels of room to spare
+ * instead of being 12 short.
+ *
+ * It stops at 768px on purpose. Below that is the phone, every phone view has
+ * been checked at 19px, and nothing about a phone is short of room in the way
+ * a squeezed laptop is: the pages stack into cards down there.
+ */
+@media (min-width: 768px) and (max-width: 1600px) {
+  :root {
+    font-size: 106.25%;
+  }
+}
+
 /* Two things about form fields on a phone, set once here rather than
  * remembered on every dialog.
  *
