@@ -46,6 +46,7 @@ import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
 import ReportsListPage from './pages/reports/ReportsListPage'
+import ReportPage from './pages/reports/ReportPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
 import EmployeesPage from './pages/team/EmployeesPage'
 import RosterPage from './pages/roster/RosterPage'
@@ -75,6 +76,7 @@ export default function App() {
                     and which of those you are is settled in the database rather
                     than by which page you reached. */}
                 <Route path="/reports" element={<RequireRole allowed={MANAGERS}><ReportsListPage /></RequireRole>} />
+                <Route path="/reports/:id" element={<RequireRole allowed={MANAGERS}><ReportPage /></RequireRole>} />
 
                 {/* Anyone logs waste; only managers see the week. */}
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />

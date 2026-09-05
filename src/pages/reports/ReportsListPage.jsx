@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { shortDate, addDays, weekNumber } from '../../lib/dates'
+import { shortDate, addDays, weekNumber, weekRange } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '../../lib/controlStyles'
 import {
@@ -295,7 +295,7 @@ export default function ReportsListPage() {
                                         Week {weekNumber(week.weekStart)}
                                     </p>
                                     <p className="text-sm text-muted mt-0.5">
-                                        {shortDate(week.weekStart)} to {shortDate(addDays(week.weekStart, 6))}
+                                        {weekRange(week.weekStart)}
                                     </p>
                                 </div>
                                 <div className="flex-shrink-0">
@@ -365,7 +365,7 @@ export default function ReportsListPage() {
                                             {weekNumber(week.weekStart)}
                                         </td>
                                         <td className="px-5 py-3 text-sm text-gray-700 whitespace-nowrap">
-                                            {shortDate(week.weekStart)} to {shortDate(addDays(week.weekStart, 6))}
+                                            {weekRange(week.weekStart)}
                                         </td>
                                         <td className="px-5 py-3 text-sm text-right tabular-nums text-gray-700">
                                             {week.net > 0

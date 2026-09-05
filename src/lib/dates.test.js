@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange } from './dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -225,5 +225,15 @@ describe('weekNumber', () => {
 
     it('gives a week that began in the old year that year, not this one', () => {
         expect(weekNumber('2025-12-28')).toBe(52)
+    })
+})
+
+describe('weekRange', () => {
+    it('puts the year on the week', () => {
+        expect(weekRange('2026-08-09')).toBe('9 Aug to 15 Aug 2026')
+    })
+
+    it('shows both years on a week that crosses into a new one', () => {
+        expect(weekRange('2025-12-28')).toBe('28 Dec 2025 to 3 Jan 2026')
     })
 })

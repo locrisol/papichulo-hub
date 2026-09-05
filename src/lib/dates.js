@@ -140,3 +140,27 @@ export function weekNumber(weekStart) {
 
     return Math.round((start - firstSunday) / 604800000) + 1
 }
+
+// A week written out with its year. For example 9 Aug to 15 Aug 2026.
+//
+// The year is on it because a list of weeks is read across the turn of the
+// year, and "28 Dec to 3 Jan" beside "21 Dec to 27 Dec" says nothing about
+// which December. Week numbers restart too, so week 52 and week 1 can sit
+// beside each other with nothing but the year telling them apart.
+//
+// Only the end year, unless the week crosses into a new one, in which case both
+// are shown. Repeating the same year twice on a row that does not need it is
+// noise, and this is a column that is read at a glance.
+export function weekRange(weekStart) {
+    const start = new Date(weekStart + 'T00:00:00')
+    const end = new Date(weekStart + 'T00:00:00')
+    end.setDate(end.getDate() + 6)
+
+    const from = shortDate(weekStart)
+    const to = shortDate(toISODate(end))
+
+    if (start.getFullYear() !== end.getFullYear()) {
+        return `${from} ${start.getFullYear()} to ${to} ${end.getFullYear()}`
+    }
+    return `${from} to ${to} ${end.getFullYear()}`
+}
