@@ -13,7 +13,6 @@ import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
-import PageContainer from '../../components/layout/PageContainer'
 import { numberField } from '../../lib/numberInput'
 import { card, rowButton } from '../../lib/controlStyles'
 
@@ -141,7 +140,7 @@ export default function RestaurantPage() {
     }
 
     return (
-        <PageContainer width="form">
+        <>
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -409,6 +408,6 @@ export default function RestaurantPage() {
             {showHoursModal && <OpeningHoursModal onClose={() => setShowHoursModal(false)} />}
             {showBreaksModal && <BreakRulesModal onClose={() => setShowBreaksModal(false)} />}
             {showRulesModal && <RosterRulesModal onClose={() => setShowRulesModal(false)} />}
-        </PageContainer>
+        </>
     )
 }

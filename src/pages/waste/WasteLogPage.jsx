@@ -7,7 +7,6 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
@@ -243,11 +242,11 @@ export default function WasteLogPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     if (loading) {
-        return <PageContainer width="form"><p className="text-sm text-gray-400">Loading...</p></PageContainer>
+        return <p className="text-sm text-gray-400">Loading...</p>
     }
 
     return (
-        <PageContainer width="form">
+        <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
@@ -495,6 +494,6 @@ export default function WasteLogPage() {
                     )}
                 </div>
             </div>
-        </PageContainer>
+        </>
     )
 }

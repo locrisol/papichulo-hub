@@ -9,7 +9,6 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
@@ -394,11 +393,11 @@ export default function SalesPage() {
     }
 
     if (loading) {
-        return <PageContainer width="form"><p className="text-sm text-gray-400">Loading...</p></PageContainer>
+        return <p className="text-sm text-gray-400">Loading...</p>
     }
 
     return (
-        <PageContainer width="form">
+        <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
@@ -589,6 +588,6 @@ export default function SalesPage() {
                             : (recordId ? 'Update day' : 'Save day')}
                 </button>
             </div>
-        </PageContainer>
+        </>
     )
 }
