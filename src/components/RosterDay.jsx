@@ -431,8 +431,12 @@ export default function RosterDay({
                             ))}
 
                         </div>
+                        {/* One word. The last hour label on the timeline is
+                            centred on its tick, so half of it hangs over the
+                            edge into this column, and anything longer than this
+                            gets sat on by midnight. */}
                         <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
-                            This week
+                            Week
                         </div>
                     </div>
 
