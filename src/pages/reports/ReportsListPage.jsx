@@ -61,6 +61,42 @@ function varianceWords(unbalanced) {
         .join(', ')
 }
 
+// The one button a week offers, wherever it is drawn.
+//
+// Written once and used by both layouts. The phone list and the table showing
+// different buttons is exactly the kind of thing that happens when the same
+// decision is made twice.
+function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSales, wide }) {
+    const width = wide ? 'w-full justify-center ' : ''
+
+    if (week.report) {
+        return (
+            <button onClick={onOpen} className={`${width}${secondaryButton}`}>
+                {week.report.status === 'draft' ? 'Carry on' : 'Read'}
+            </button>
+        )
+    }
+    if (blocked) {
+        return (
+            <button onClick={onSales} className={`${width}${secondaryButton}`}>
+                Open weekly sales
+            </button>
+        )
+    }
+    if (!canWrite) {
+        return <span className="text-sm text-muted">Not written</span>
+    }
+    return (
+        <button
+            onClick={onStart}
+            disabled={starting}
+            className={`${wide ? 'w-full ' : ''}px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50`}
+        >
+            {starting ? 'Starting' : 'Start'}
+        </button>
+    )
+}
+
 function StateBadge({ report }) {
     if (!report) {
         return <span className={`${badge} bg-gray-100 text-gray-600`}>Not started</span>
@@ -235,7 +271,79 @@ export default function ReportsListPage() {
                 </div>
             )}
 
-            <div className={tableCard}>
+            {/* Below md this is a list of cards rather than a table.
+
+                A five column table on a phone either scrolls sideways, which
+                puts the button out of reach, or squeezes every column until the
+                dates wrap onto four lines. Products, suppliers, menu items and
+                the team already made this choice, so this follows them rather
+                than inventing a third way. */}
+            <div className="md:hidden space-y-3">
+                {weeks.map(week => {
+                    const blocked = !week.report && !week.readiness.ready
+                    const off = week.readiness.unbalanced
+                    return (
+                        <div
+                            key={week.weekStart}
+                            className={`rounded-xl border p-4 ${blocked
+                                ? 'bg-accent-light/50 border-accent/30'
+                                : 'bg-white border-border'}`}
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-serif text-lg font-bold text-sidebar leading-tight">
+                                        Week {weekNumber(week.weekStart)}
+                                    </p>
+                                    <p className="text-sm text-muted mt-0.5">
+                                        {shortDate(week.weekStart)} to {shortDate(addDays(week.weekStart, 6))}
+                                    </p>
+                                </div>
+                                <div className="flex-shrink-0">
+                                    {blocked
+                                        ? <span className={`${badge} bg-accent-light text-accent-ink`}>Sales not finished</span>
+                                        : <StateBadge report={week.report} />}
+                                </div>
+                            </div>
+
+                            <p className="mt-3 text-xl font-bold tabular-nums text-sidebar">
+                                {week.net > 0
+                                    ? fmtMoney(week.net)
+                                    : <span className="text-muted text-base font-normal">No sales entered</span>}
+                                {week.net > 0 && (
+                                    <span className="text-xs font-normal text-muted ml-2">net sales</span>
+                                )}
+                            </p>
+
+                            {blocked && (
+                                <p className="mt-2 text-sm text-accent-ink">
+                                    {missingWords(week.readiness.missing)}
+                                </p>
+                            )}
+                            {off.length > 0 && (
+                                <p className="mt-2 text-sm text-muted">
+                                    {off.length === 1 ? 'One day is' : `${off.length} days are`}
+                                    {' '}out against the till: {varianceWords(off)}.
+                                </p>
+                            )}
+
+                            <div className="mt-3">
+                                <WeekAction
+                                    wide
+                                    week={week}
+                                    blocked={blocked}
+                                    canWrite={canWrite}
+                                    starting={starting === week.weekStart}
+                                    onOpen={() => navigate(`/reports/${week.report.id}`)}
+                                    onStart={() => start(week.weekStart)}
+                                    onSales={() => navigate('/sales/weekly')}
+                                />
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            <div className={`${tableCard} hidden md:block`}>
                 <table className="w-full">
                     <thead>
                         <tr className={tableHeadRow}>
@@ -270,31 +378,15 @@ export default function ReportsListPage() {
                                                 : <StateBadge report={week.report} />}
                                         </td>
                                         <td className="px-5 py-3 text-right whitespace-nowrap">
-                                            {week.report ? (
-                                                <button
-                                                    onClick={() => navigate(`/reports/${week.report.id}`)}
-                                                    className={secondaryButton}
-                                                >
-                                                    {week.report.status === 'draft' ? 'Carry on' : 'Read'}
-                                                </button>
-                                            ) : blocked ? (
-                                                <button
-                                                    onClick={() => navigate('/sales/weekly')}
-                                                    className={secondaryButton}
-                                                >
-                                                    Open weekly sales
-                                                </button>
-                                            ) : canWrite ? (
-                                                <button
-                                                    onClick={() => start(week.weekStart)}
-                                                    disabled={starting === week.weekStart}
-                                                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50"
-                                                >
-                                                    {starting === week.weekStart ? 'Starting' : 'Start'}
-                                                </button>
-                                            ) : (
-                                                <span className="text-sm text-muted">Not written</span>
-                                            )}
+                                            <WeekAction
+                                                week={week}
+                                                blocked={blocked}
+                                                canWrite={canWrite}
+                                                starting={starting === week.weekStart}
+                                                onOpen={() => navigate(`/reports/${week.report.id}`)}
+                                                onStart={() => start(week.weekStart)}
+                                                onSales={() => navigate('/sales/weekly')}
+                                            />
                                         </td>
                                     </tr>
 
