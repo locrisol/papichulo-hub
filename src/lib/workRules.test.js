@@ -325,6 +325,26 @@ describe('checkWeek', () => {
         expect(run([shift(WEEK[1], '09:00', '17:00')], [off])).toEqual([])
     })
 
+    it('says nothing about a shift that has already gone out', () => {
+        // Somebody changing their hours in September does not make a shift
+        // published in August a mistake. The staff were told, they planned
+        // around it, and it is a fact rather than a decision still to make.
+        const off = person({ availability: { 0: [] } })
+        const out = { ...shift(WEEK[0], '09:00', '17:00'), published_at: '2026-08-20T10:00:00Z' }
+        expect(run([out], [off]).find(f => f.kind === 'availabilityDay')).toBeUndefined()
+    })
+
+    it('still says it about one still being built beside it', () => {
+        // Half a week published and half not. The half that has gone out is
+        // left alone; the half you are still working on is not.
+        const off = person({ availability: { 0: [], 1: [] } })
+        const out = { ...shift(WEEK[0], '09:00', '17:00'), published_at: '2026-08-20T10:00:00Z' }
+        const draft = shift(WEEK[1], '09:00', '17:00')
+        const found = run([out, draft], [off]).filter(f => f.kind === 'availabilityDay')
+        expect(found).toHaveLength(1)
+        expect(found[0].text).toContain('Monday')
+    })
+
     it('says nothing at all about a week that has already gone', () => {
         // Availability carries no date, so somebody saying today that they
         // cannot do Sundays must not turn every Sunday they have worked into a
