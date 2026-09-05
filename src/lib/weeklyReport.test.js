@@ -7,6 +7,7 @@ import {
     reportFigures,
     platformShare,
     carriedItems,
+    startsOpen,
     wasChanged,
     weeksOpen,
     reviewNeedsNote,
@@ -245,6 +246,20 @@ describe('carriedItems', () => {
         expect(kinds).not.toContain('refund')
         expect(kinds).not.toContain('review')
         expect(kinds).not.toContain('comment')
+    })
+})
+
+describe('startsOpen', () => {
+    it('leaves every line open on the first report, where nothing carried', () => {
+        expect(startsOpen({ amount: 0, carried_from: null })).toBe(true)
+    })
+
+    it('locks a line that carried from last week', () => {
+        expect(startsOpen({ amount: 865, carried_from: 865 })).toBe(false)
+    })
+
+    it('leaves a line added this week open', () => {
+        expect(startsOpen({ amount: 0, label: 'Alarm monitoring' })).toBe(true)
     })
 })
 

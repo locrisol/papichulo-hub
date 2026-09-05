@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { fmtMoney } from '../../lib/format'
 import { numberField } from '../../lib/numberInput'
-import { wasChanged, platformShare } from '../../lib/weeklyReport'
+import { wasChanged, platformShare, startsOpen } from '../../lib/weeklyReport'
 import { secondaryButton } from '../../lib/controlStyles'
 
 // The weekly profit and loss.
@@ -14,6 +14,11 @@ import { secondaryButton } from '../../lib/controlStyles'
 // press, and a line that was opened and changed says so on the report, because
 // an overhead that moved without explanation is the thing an owner will ask
 // about.
+//
+// The exception is a line nothing carried into: the first report a restaurant
+// writes, and any line added later. There is nothing for a lock to protect
+// there, so it is open from the start and stays open while that week is being
+// written.
 //
 // Third party delivery is the opposite. It changes every week and there is no
 // rate that would hold, because promotions, penalties and goodwill credits all
@@ -36,17 +41,25 @@ function pctText(v) {
     return v == null ? '—' : `${v.toFixed(1)}%`
 }
 
-// One standing cost. Locked until somebody opens it.
+// One standing cost. Locked until somebody opens it, unless it has never been
+// set, in which case it is open from the start and stays open. On the first
+// report every line is like that, and so is any line added afterwards.
 function OverheadLine({ item, net, canEdit, onSave }) {
+    const never = startsOpen(item)
     const [open, setOpen] = useState(false)
     const [draft, setDraft] = useState(String(item.amount ?? ''))
+
+    const editing = canEdit && (never || open)
 
     const amount = Number(item.amount) || 0
     const share = net > 0 ? (amount / net) * 100 : null
     const changed = wasChanged(item)
 
     async function commit() {
-        setOpen(false)
+        // A line that has never been set stays open. Locking it the moment the
+        // first figure is typed would mean pressing Open again to fix a typo,
+        // which is the opposite of what the first report needs.
+        if (!never) setOpen(false)
         const next = draft === '' ? 0 : Number(draft)
         if (Math.abs(next - amount) < 0.005) return
         await onSave(item.id, next)
@@ -56,10 +69,11 @@ function OverheadLine({ item, net, canEdit, onSave }) {
         <Row tint={changed ? 'bg-accent-light/40' : ''}>
             <span className="flex-1 min-w-[8rem] text-sm text-gray-800">{item.label}</span>
 
-            {open ? (
+            {editing ? (
                 <input
                     {...numberField({ value: draft, onChange: setDraft })}
-                    autoFocus
+                    autoFocus={open}
+                    placeholder="0.00"
                     onBlur={commit}
                     onKeyDown={e => {
                         if (e.key === 'Enter') e.currentTarget.blur()
@@ -75,7 +89,7 @@ function OverheadLine({ item, net, canEdit, onSave }) {
 
             <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(share)}</span>
 
-            {canEdit && !open && (
+            {canEdit && !editing && (
                 <button
                     onClick={() => { setDraft(String(item.amount ?? '')); setOpen(true) }}
                     className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
@@ -148,6 +162,9 @@ export default function ReportProfitLoss({
     const [name, setName] = useState('')
 
     const overheads = section.items.filter(i => i.kind === 'overhead')
+    // The first report a restaurant writes: nothing carried into any line, so
+    // there is nothing for a lock to protect.
+    const firstTime = overheads.length > 0 && overheads.every(startsOpen)
     const delivery = section.items.filter(i => i.kind === 'delivery')
     const byKey = new Map(delivery.map(d => [d.key, d]))
 
@@ -196,7 +213,9 @@ export default function ReportProfitLoss({
                 Fixed overhead
             </p>
             <p className="text-xs text-muted mb-2">
-                Locked at what each was last week. Open one to change it, and it carries forward from then on.
+                {firstTime
+                    ? 'Nothing has been set for this restaurant yet, so every line is open. Fill in what you know and leave the rest at nothing. From next week they carry and lock.'
+                    : 'Locked at what each was last week. Open one to change it, and it carries forward from then on.'}
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">

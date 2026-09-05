@@ -228,6 +228,21 @@ export function carriedItems(previousItems = [], weekStart) {
     return out
 }
 
+// Is this line open to be typed into, rather than locked?
+//
+// The lock exists to stop rent being retyped every Monday, and it can only do
+// that job once there is something to carry. On the very first report a
+// restaurant writes there is nothing, so locking fourteen empty lines only
+// makes somebody press Open fourteen times to enter figures the Hub has never
+// held.
+//
+// Nothing carried in means the line has never been set, which is exactly the
+// case that should be open: the first report, and any line added afterwards.
+// From the week after, it carries and it locks.
+export function startsOpen(item) {
+    return item?.carried_from == null
+}
+
 // Was this line opened and changed this week?
 //
 // Only says yes when there is something to compare against. A line added this
