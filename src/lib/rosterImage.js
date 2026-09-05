@@ -12,7 +12,13 @@ import { sheetLayout, wrapLines, AWAY } from './rosterShare'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
+// Three weights, the same as the sheet. A picture in a chat is looked at rather
+// than read, so what tells you how the week is spread is the lines before it is
+// the words: heavier between one person and the next than inside a person's own
+// row, and the days divided all the way down.
 const RULE = '#d8d3ca'
+const RULE_ROW = '#787164'
+const RULE_DAY = '#a8a195'
 // The week's own total, which is not one of the seven days beside it.
 const ACCENT = '#c2410c'
 // A shade lighter, for the line inside a person's own row.
@@ -24,6 +30,9 @@ const SLATE = '#e8ecef'
 const RED = '#b91c1c'
 // The same yellow the spreadsheet uses on an opening or a closing time.
 const YELLOW = '#fde68a'
+// The line round it, so the mark survives being printed in black and white, or
+// looked at on a screen with the brightness down in a bright kitchen.
+const YELLOW_EDGE = '#b48c14'
 
 // Three device pixels to the point.
 //
@@ -45,23 +54,60 @@ export function drawWeek(canvas, table) {
     // The events have to be measured before the sheet can be sized, because a
     // day with two acts on it makes that row taller and everything below it
     // moves down.
-    const probe = sheetLayout(table)
+    // What the three columns either side of the week actually need, measured
+    // rather than fixed at the worst case. Every point they give up is a point
+    // the seven days get, and the days are where the long things are.
+    const widest = (items, size, weight) => {
+        c.font = FONT(size, weight)
+        return Math.max(0, ...items.filter(Boolean).map(t => c.measureText(String(t)).width))
+    }
+
+    const cols = {
+        nameCol: Math.min(160, Math.max(90, Math.max(
+            widest(table.people.map(p => p.name), 14, '700'),
+            widest(['HOURS ON THE DAY'], 12, '700'),
+        ) + 24)),
+        hoursCol: Math.min(78, Math.max(52, Math.max(
+            widest(['HOURS'], 13, '700'),
+            widest(table.people.map(p => p.hours), 14, '700'),
+        ) + 20)),
+        holidayCol: Math.min(62, Math.max(46, Math.max(
+            widest(['HOLIDAY'], 13, '700'),
+            widest(table.people.map(p => p.holiday), 14, '700'),
+        ) + 18)),
+    }
+
+    const probe = sheetLayout(table, cols)
+
+    // A card each rather than a line each, and which half is picked out depends
+    // on what it is: the time on a delivery, because eleven and three are
+    // different problems, and the name on a concert, because what you want to
+    // know is which one it is.
     c.font = FONT(12)
-    const eventLines = table.whatIsOn.map(
-        v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
-    )
-    // Each thing wrapped on its own rather than the day wrapped as one string.
-    // Joined, Feedr and Clockmeal broke wherever the column ran out, which had
-    // nothing to do with where one of them ended and the next began.
-    const deliveryLines = table.deliveries.map(
-        list => list.flatMap(v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width)),
-    )
+    const cardFor = (lead, tail) => ({
+        // Counted on the same normalised spacing wrapLines uses, so the two
+        // agree about where the picked out half ends. A long tour name runs
+        // over three lines and every one of them is still the name.
+        leadLen: String(lead).split(/\s+/).filter(Boolean).join(' ').length,
+        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 30, t => c.measureText(t).width),
+    })
+
+    const CARD_PAD_LINES = 0.5
+    const eventCards = (table.eventsOn || []).map(list => list.map(
+        e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
+    ))
+    const chipsPerDay = (table.extras || []).map(list => list.map(
+        extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
+    ))
+    const cardLines = cards => cards.reduce((t, x) => t + x.lines.length + CARD_PAD_LINES, 0)
+
     const noteLines = table.notes.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
     const l = sheetLayout(table, {
-        eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
-        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        ...cols,
+        eventLines: Math.max(1, ...eventCards.map(cardLines)),
+        deliveryLines: Math.max(1, ...chipsPerDay.map(cardLines)),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
@@ -92,6 +138,79 @@ export function drawWeek(canvas, table) {
         c.fillText(out, x, y)
     }
 
+    // Canvas has roundRect on it now, but not on every browser somebody might
+    // open this on, so the path is drawn rather than assumed.
+    const roundedPath = (x, y, w, h, r) => {
+        c.beginPath()
+        c.moveTo(x + r, y)
+        c.arcTo(x + w, y, x + w, y + h, r)
+        c.arcTo(x + w, y + h, x, y + h, r)
+        c.arcTo(x, y + h, x, y, r)
+        c.arcTo(x, y, x + w, y, r)
+        c.closePath()
+    }
+
+    // One card drawer for both bands. `ink` is the colour of the half that is
+    // picked out; the rest is grey either way.
+    const drawCards = (cards, i, bandTop, bandH, ink, edge) => {
+        if (cards.length === 0) return
+
+        const lineH = 15
+        const padY = 5
+        const gap = 6
+        const width = l.dayCol - 10
+
+        const heights = cards.map(card => padY * 2 + card.lines.length * lineH)
+        const block = heights.reduce((t, v) => t + v, 0) + gap * (cards.length - 1)
+
+        let top = bandTop + bandH / 2 - block / 2
+        const x = l.columnX(i) + (l.dayCol - width) / 2
+        const centre = x + width / 2
+
+        cards.forEach((card, n) => {
+            roundedPath(x, top, width, heights[n], 5)
+            c.fillStyle = '#ffffff'
+            c.fill()
+            c.strokeStyle = edge
+            c.lineWidth = 1
+            c.stroke()
+
+            let ty = top + padY + lineH / 2
+            // How much of the picked out half is already behind us, so a name
+            // that runs over three lines keeps its weight on all three.
+            let used = 0
+
+            card.lines.forEach(line => {
+                const inLead = Math.max(0, Math.min(line.length, card.leadLen - used))
+                const head = line.slice(0, inLead)
+                const rest = line.slice(inLead)
+                used += line.length + 1
+
+                c.font = FONT(12, '700')
+                const headW = head ? c.measureText(head).width : 0
+                c.font = FONT(12)
+                const restW = rest ? c.measureText(rest).width : 0
+
+                c.textAlign = 'left'
+                let tx = centre - (headW + restW) / 2
+                if (head) {
+                    c.font = FONT(12, '700')
+                    c.fillStyle = ink
+                    c.fillText(head, tx, ty)
+                    tx += headW
+                }
+                if (rest) {
+                    c.font = FONT(12)
+                    c.fillStyle = MUTED
+                    c.fillText(rest, tx, ty)
+                }
+                ty += lineH
+            })
+
+            top += heights[n] + gap
+        })
+    }
+
     // A shift written out with the opening or the closing time picked out in
     // yellow behind it, the way the spreadsheet does.
     //
@@ -105,19 +224,28 @@ export function drawWeek(canvas, table) {
             { text: ' - ', mark: false },
             { text: shift.end, mark: shift.closes },
         ]
+        // The room inside the mark is in the sums rather than painted over the
+        // top. A shift can be marked at both ends, and a box simply drawn wider
+        // than the number under it would meet the other one in the middle.
+        const MARK_PAD = 4
         const widths = parts.map(p => c.measureText(p.text).width)
-        const total = widths.reduce((a, b) => a + b, 0)
+        const advances = parts.map((p, i) => widths[i] + (p.mark ? MARK_PAD * 2 : 0))
+        const total = advances.reduce((a, b) => a + b, 0)
 
         let x = centreX - total / 2
         c.textAlign = 'left'
         parts.forEach((p, i) => {
             if (p.mark) {
+                roundedPath(x, y - 9, advances[i], 18, 3)
                 c.fillStyle = YELLOW
-                c.fillRect(x - 2, y - 8, widths[i] + 4, 16)
+                c.fill()
+                c.strokeStyle = YELLOW_EDGE
+                c.lineWidth = 1
+                c.stroke()
             }
             c.fillStyle = INK
-            c.fillText(p.text, x, y)
-            x += widths[i]
+            c.fillText(p.text, x + (p.mark ? MARK_PAD : 0), y)
+            x += advances[i]
         })
     }
 
@@ -168,22 +296,17 @@ export function drawWeek(canvas, table) {
             align: 'center', colour: '#334155', max: l.dayCol - 10,
         })
     })
-    rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH)
+    // The same weight that separates one person from the next, so the bands at
+    // the top read as their own things rather than as shading behind the week.
+    rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH, RULE_ROW, 2)
     y += l.metaH
 
     // ---- what is on, written out in full rather than cut short
     box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
     font(11, '700')
     text('EVENTS', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
-    font(12)
-    eventLines.forEach((lines, i) => {
-        const x = l.columnX(i) + l.dayCol / 2
-        const top = y + l.eventsH / 2 - ((lines.length - 1) * 15) / 2
-        lines.forEach((line, n) => {
-            text(line, x, top + n * 15, { align: 'center', colour: '#9a4a26' })
-        })
-    })
-    rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH)
+    eventCards.forEach((cards, i) => drawCards(cards, i, y, l.eventsH, '#9a4a26', '#deb8a0'))
+    rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH, RULE_ROW, 2)
     y += l.eventsH
 
     // ---- everything else the day has on, when any of it does
@@ -191,19 +314,14 @@ export function drawWeek(canvas, table) {
         box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
         font(11, '700')
         text('ALSO ON', l.pad + 12, y + l.deliveriesH / 2, { colour: '#475569' })
-        font(12)
-        deliveryLines.forEach((lines, i) => {
-            const x = l.columnX(i) + l.dayCol / 2
-            const top = y + l.deliveriesH / 2 - ((lines.length - 1) * 15) / 2
-            lines.forEach((line, n) => {
-                text(line, x, top + n * 15, { align: 'center', colour: '#475569' })
-            })
-        })
-        rule(l.pad, y + l.deliveriesH, l.width - l.pad, y + l.deliveriesH)
+        chipsPerDay.forEach((cards, i) => drawCards(cards, i, y, l.deliveriesH, '#1e293b', '#cbd5e1'))
+        rule(l.pad, y + l.deliveriesH, l.width - l.pad, y + l.deliveriesH, RULE_ROW, 2)
         y += l.deliveriesH
     }
 
     // ---- the people
+    const rowEdges = []
+
     table.people.forEach((person, row) => {
         const top = y
         box(l.pad, y, l.width - l.pad * 2, l.shiftH + l.breakH, row % 2 ? '#ffffff' : '#fcfbf9')
@@ -239,24 +357,38 @@ export function drawWeek(canvas, table) {
                 marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
             })
             font(10)
+            const stack = day.shifts.length
             day.shifts.forEach((s, n) => {
-                text(s.break, x, y + l.shiftH + 10 + n * 11, {
+                // In the middle of the break half rather than hard against the
+                // line above it, which left the row bottom heavy.
+                text(s.break, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
                     align: 'center', colour: RED, max: l.dayCol - 8,
                 })
             })
         })
 
-        // A hairline between somebody's times and their breaks, and a heavier
-        // one under the pair. A person is one row made of two, and drawn with
-        // one weight the sheet reads as twice as many rows as it has people.
-        rule(
-            l.pad + l.nameCol, top + l.shiftH,
-            l.width - l.pad - l.hoursCol - l.holidayCol, top + l.shiftH, FAINT,
-        )
+        // A hairline between somebody's times and their breaks. A person is one
+        // row made of two, and drawn with one weight the sheet reads as twice
+        // as many rows as it has people.
+        //
+        // A day at a time, so a blocked day is not divided into two halves it
+        // does not have. Nobody is on, so there is no break to separate from
+        // anything, and a line through it only says there might have been.
+        person.days.forEach((day, i) => {
+            if (day.away) return
+            rule(l.columnX(i), top + l.shiftH, l.columnX(i) + l.dayCol, top + l.shiftH, FAINT)
+        })
 
+        // Recorded rather than drawn. A row paints its own background and a
+        // blocked day paints its own block, and both go down after the line
+        // above them, so the line disappeared under them.
+        if (row === 0) rowEdges.push(top)
         y += l.shiftH + l.breakH
-        rule(l.pad, y, l.width - l.pad, y, RULE, 2)
+        rowEdges.push(y)
     })
+
+    // Now, over everything, so nothing can paint them out.
+    for (const edge of rowEdges) rule(l.pad, edge, l.width - l.pad, edge, RULE_ROW, 2)
 
     // ---- anything the manager wants read
     if (table.notes.some(Boolean)) {
@@ -304,7 +436,7 @@ export function drawWeek(canvas, table) {
         // White over the two green bands, because a cream rule on dark green is
         // no rule at all.
         rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
-        rule(x, gridTop, x, gridBottom - l.totalH, RULE)
+        rule(x, gridTop, x, gridBottom - l.totalH, RULE_DAY)
         rule(x, gridBottom - l.totalH, x, gridBottom, 'rgba(255,255,255,0.3)')
     }
 
