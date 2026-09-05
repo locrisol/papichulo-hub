@@ -340,9 +340,24 @@ export function checkWeek({
         // and be told once.
         if (settings.availability?.on) {
             for (const s of mine) {
-                // Nothing on a week that has gone, for the same reason
-                // the grid stops shading one: availability carries no date,
-                // so today's answer is not evidence about last month.
+                // Nothing about a shift that has already gone out.
+                //
+                // Availability carries no date on it, so what somebody tells
+                // you today is not evidence about what they could do when the
+                // week was built. Two things follow from that, and this is the
+                // second: a week that has gone, and a shift that was published.
+                //
+                // A published shift is a fact. The staff have been told, they
+                // are planning around it, and somebody changing their hours
+                // afterwards does not make last Monday a mistake. Warning about
+                // it says the roster is wrong when what actually happened is
+                // that the world moved on after it was agreed.
+                //
+                // Per shift rather than per week, so a week half published
+                // warns about the half still being built and leaves the half
+                // that has gone out alone.
+                if (s.published_at) continue
+
                 const outside = outsideAvailability(availabilityOn(employee, s.shift_date, availableFrom), s)
                 if (!outside) continue
 
