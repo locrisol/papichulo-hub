@@ -102,3 +102,49 @@ input::placeholder,
 textarea::placeholder {
   text-overflow: ellipsis;
 }
+
+/* The scrollbar down the side menu.
+ *
+ * It was the one part of the app nobody had styled, so it got whatever the
+ * operating system draws, and on Windows that is a wide light grey bar down a
+ * dark green panel.
+ *
+ * Nothing at all until the pointer is over the menu, then a thin bar in the
+ * menu's own colours. It is what a Mac does by default and what Notion, Linear
+ * and GitHub do on the web, and it suits a menu that is mostly being read past
+ * rather than scrolled.
+ *
+ * The width is reserved whether the bar is visible or not, because "thin" is a
+ * real gutter rather than an overlay. That is the point: nothing moves sideways
+ * when it appears.
+ *
+ * Somebody with four menu items has nothing to scroll and sees nothing either
+ * way, and a phone has no pointer to hover, which is the ordinary behaviour on
+ * a touch screen anyway.
+ */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.sidebar-scroll:hover {
+  scrollbar-color: #3d5b4b transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* The border and the clip are what make it thin without making the corners
+ * square: the thumb is drawn inside its own padding box. */
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 99px;
+  transition: background 0.18s;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: #3d5b4b;
+  background-clip: padding-box;
+}
