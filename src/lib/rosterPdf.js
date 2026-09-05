@@ -80,8 +80,12 @@ export function weekPdf(table, restaurantName, weekStart) {
     // problems, and on a concert it is the name, because what you are looking
     // for is which one it is.
     const cardFor = (lead, tail) => ({
-        lead,
-        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 24, t => pdf.getTextWidth(t)),
+        // How many characters of the wrapped text belong to the half that is
+        // picked out, counted on the same normalised spacing wrapLines uses so
+        // the two agree about where they are. A long concert name runs over
+        // three lines and every one of them is still the name.
+        leadLen: String(lead).split(/\s+/).filter(Boolean).join(' ').length,
+        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 14, t => pdf.getTextWidth(t)),
     })
 
     const eventCards = (table.eventsOn || []).map(list => list.map(
@@ -243,26 +247,28 @@ export function weekPdf(table, restaurantName, weekStart) {
             pdf.roundedRect(x, top, width, heights[n], h(3), h(3), 'FD')
 
             let ty = top + padY + lineH * 0.75
-            card.lines.forEach((line, k) => {
-                // The bold half only leads the first line, and only when it is
-                // still on it after wrapping.
-                const leads = k === 0 && card.lead && line.startsWith(card.lead)
-                if (!leads) {
-                    at(line, centre, ty, { align: 'center', size: 7, rgb: [107, 114, 128] })
-                    ty += lineH
-                    return
-                }
+            // How much of the picked out half is already behind us. A long
+            // concert name runs over two or three lines, and it used to be
+            // checked with "does this line start with the whole name", which is
+            // only ever true when the name fits on one. Every card that wrapped
+            // came out entirely grey, with none of the colour it has on screen.
+            let used = 0
 
-                const rest = line.slice(card.lead.length)
+            card.lines.forEach(line => {
+                const inLead = Math.max(0, Math.min(line.length, card.leadLen - used))
+                const head = line.slice(0, inLead)
+                const rest = line.slice(inLead)
+                used += line.length + 1
+
                 pdf.setFontSize(7)
                 pdf.setFont('helvetica', 'bold')
-                const leadW = pdf.getTextWidth(card.lead)
+                const headW = head ? pdf.getTextWidth(head) : 0
                 pdf.setFont('helvetica', 'normal')
-                const restW = pdf.getTextWidth(rest)
-                const startX = centre - (leadW + restW) / 2
+                const restW = rest ? pdf.getTextWidth(rest) : 0
 
-                at(card.lead, startX, ty, { size: 7, style: 'bold', rgb: ink })
-                at(rest, startX + leadW, ty, { size: 7, rgb: [107, 114, 128] })
+                const startX = centre - (headW + restW) / 2
+                if (head) at(head, startX, ty, { size: 7, style: 'bold', rgb: ink })
+                if (rest) at(rest, startX + headW, ty, { size: 7, rgb: [107, 114, 128] })
                 ty += lineH
             })
 
@@ -313,32 +319,57 @@ export function weekPdf(table, restaurantName, weekStart) {
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
 
+            // The two halves of a row each hold their own things in the
+            // middle of themselves: the times in the top half, the breaks in
+            // the bottom. The breaks used to sit just under the line dividing
+            // them instead, hard against it, which left the row bottom heavy
+            // with a gap under the breaks and none above them.
+            const timesMiddle = y + h(l.shiftH) / 2 + 3
+            const breaksMiddle = y + h(l.shiftH) + h(l.breakH) / 2 + 2
+
             // Same as the picture: filled, one word, and no reason on it.
+            //
+            // The word lines up with the times on the row rather than with the
+            // middle of the box behind it. A day that is blocked is still one
+            // of seven you read across, and it sat a line lower than every
+            // shift beside it.
             if (day.away) {
                 box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
-                at(AWAY.label, x, top + rowH / 2 + 3, {
+                at(AWAY.label, x, timesMiddle, {
                     align: 'center', size: 7, style: 'bold', rgb: AWAY.inkRgb, max: l.dayCol - 6,
                 })
             }
 
+            // Somebody on twice in a day has two of each, so the pair is
+            // centred as a block rather than the first one being centred and
+            // the second hanging off the bottom of it.
+            const stack = day.shifts.length
             day.shifts.forEach((s, n) => {
-                marked(s, x, y + h(l.shiftH) / 2 + 3 + n * h(11))
+                marked(s, x, timesMiddle - ((stack - 1) * h(11)) / 2 + n * h(11))
             })
             day.shifts.forEach((s, n) => {
-                at(s.break, x, y + h(l.shiftH) + h(9) + n * h(9), {
+                at(s.break, x, breaksMiddle - ((stack - 1) * h(9)) / 2 + n * h(9), {
                     align: 'center', size: 6, rgb: RED, max: l.dayCol - 6,
                 })
             })
         })
 
-        // Same two weights as the picture and the screen. A hairline between
-        // somebody's times and their breaks, a heavier one under the pair.
+        // A hairline between somebody's times and their breaks, and a heavier
+        // one under the pair.
+        //
+        // Drawn a day at a time rather than straight across, so a blocked day
+        // is not divided into two halves it does not have. Nobody is on, so
+        // there is no break to separate from anything, and a line through it
+        // only says there might have been.
         pdf.setDrawColor(...RULE_SOFT.rgb)
         pdf.setLineWidth(RULE_SOFT.width)
-        pdf.line(
-            l.pad + l.nameCol, top + h(l.shiftH),
-            pageWidth - l.pad - l.hoursCol - l.holidayCol, top + h(l.shiftH),
-        )
+        person.days.forEach((day, i) => {
+            if (day.away) return
+            pdf.line(
+                l.columnX(i), top + h(l.shiftH),
+                l.columnX(i) + l.dayCol, top + h(l.shiftH),
+            )
+        })
 
         y += rowH
         pdf.setDrawColor(...RULE_ROW.rgb)
