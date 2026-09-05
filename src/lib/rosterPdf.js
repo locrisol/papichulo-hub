@@ -15,6 +15,12 @@ const RED = [185, 28, 28]
 // The week's own total, which is not one of the seven days beside it.
 const ACCENT = [194, 65, 12]
 const YELLOW = [253, 230, 138]
+// The line round the yellow, and the only reason it exists is that this sheet
+// gets printed on whatever is in the office. In black and white the yellow
+// becomes a tint you have to hunt for, and the mark on an opening or a closing
+// time is the one thing here that nothing else says twice. An outline is a
+// shape rather than a colour, so it survives the trip.
+const YELLOW_EDGE = [180, 140, 20]
 
 // Three weights, because a printed week is read by its lines before it is read
 // by its words. The eye follows a column down and a person across, and it can
@@ -85,7 +91,7 @@ export function weekPdf(table, restaurantName, weekStart) {
         // the two agree about where they are. A long concert name runs over
         // three lines and every one of them is still the name.
         leadLen: String(lead).split(/\s+/).filter(Boolean).join(' ').length,
-        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 14, t => pdf.getTextWidth(t)),
+        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 26, t => pdf.getTextWidth(t)),
     })
 
     const eventCards = (table.eventsOn || []).map(list => list.map(
@@ -164,7 +170,9 @@ export function weekPdf(table, restaurantName, weekStart) {
         parts.forEach((p, i) => {
             if (p.mark) {
                 pdf.setFillColor(...YELLOW)
-                pdf.rect(x - 1, yy - 6, widths[i] + 2, 9, 'F')
+                pdf.setDrawColor(...YELLOW_EDGE)
+                pdf.setLineWidth(0.4)
+                pdf.rect(x - 1, yy - 6, widths[i] + 2, 9, 'FD')
             }
             at(p.text, x, yy, { size: 8, style: 'bold' })
             x += widths[i]
@@ -174,7 +182,9 @@ export function weekPdf(table, restaurantName, weekStart) {
     // ---- title
     at(table.title, l.pad, y + h(18), { size: 16, style: 'bold' })
     pdf.setFillColor(...YELLOW)
-    pdf.rect(pageWidth - l.pad - 130, y + h(8), 9, 9, 'F')
+    pdf.setDrawColor(...YELLOW_EDGE)
+    pdf.setLineWidth(0.4)
+    pdf.rect(pageWidth - l.pad - 130, y + h(8), 9, 9, 'FD')
     at('opens or closes the store', pageWidth - l.pad - 117, y + h(15), {
         size: 7, rgb: [107, 114, 128],
     })
@@ -299,6 +309,8 @@ export function weekPdf(table, restaurantName, weekStart) {
     pdf.setDrawColor(216, 211, 202)
     pdf.setLineWidth(0.5)
 
+    const rowEdges = []
+
     table.people.forEach((person, row) => {
         const top = y
         const rowH = h(l.shiftH + l.breakH)
@@ -335,7 +347,10 @@ export function weekPdf(table, restaurantName, weekStart) {
             // shift beside it.
             if (day.away) {
                 box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
-                at(AWAY.label, x, timesMiddle, {
+                // The middle of the whole cell, not of the top half of it.
+                // This one is not divided into times and breaks, so it has no
+                // top half to sit in.
+                at(AWAY.label, x, top + rowH / 2 + 3, {
                     align: 'center', size: 7, style: 'bold', rgb: AWAY.inkRgb, max: l.dayCol - 6,
                 })
             }
@@ -371,12 +386,20 @@ export function weekPdf(table, restaurantName, weekStart) {
             )
         })
 
+        // Recorded rather than drawn. A row paints its own background and a
+        // blocked day paints its own block, and both of those go down after
+        // the line above them was drawn, so the line disappeared under them.
+        // The top of the first row went the same way, under the band above it.
+        if (row === 0) rowEdges.push(top)
         y += rowH
-        pdf.setDrawColor(...RULE_ROW.rgb)
-        pdf.setLineWidth(RULE_ROW.width)
-        pdf.line(l.pad, y, pageWidth - l.pad, y)
-        pdf.setLineWidth(0.5)
+        rowEdges.push(y)
     })
+
+    // Now, over everything, so nothing can paint them out.
+    pdf.setDrawColor(...RULE_ROW.rgb)
+    pdf.setLineWidth(RULE_ROW.width)
+    for (const edge of rowEdges) pdf.line(l.pad, edge, pageWidth - l.pad, edge)
+    pdf.setLineWidth(0.5)
 
     // ---- notes
     if (table.notes.some(Boolean)) {
