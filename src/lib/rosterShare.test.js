@@ -133,7 +133,7 @@ describe('weekTable', () => {
         const t = build({
             events: [{ id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' }],
         })
-        expect(t.whatIsOn[4]).toBe('Westlife (18:00)')
+        expect(t.whatIsOn[4]).toBe('Westlife (doors 18:00)')
     })
 
     it('runs two events on one day together rather than losing one', () => {
@@ -143,7 +143,7 @@ describe('weekTable', () => {
                 { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
             ],
         })
-        expect(t.whatIsOn[4]).toBe('One (13:00), Two (19:00)')
+        expect(t.whatIsOn[4]).toBe('One (doors 13:00), Two (doors 19:00)')
     })
 
     it('adds each person and each day up', () => {
@@ -192,7 +192,7 @@ describe('weekCsv', () => {
             ],
         })
         const line = weekCsv(table).split('\r\n').find(l => l.startsWith('Events'))
-        expect(line).toContain('"One (13:00), Two (19:00)"')
+        expect(line).toContain('"One (doors 13:00), Two (doors 19:00)"')
     })
 
     it('doubles a quote inside a value rather than ending the field', () => {

@@ -16,6 +16,17 @@ const RED = [185, 28, 28]
 const ACCENT = [194, 65, 12]
 const YELLOW = [253, 230, 138]
 
+// Three weights, because a printed week is read by its lines before it is read
+// by its words. The eye follows a column down and a person across, and it can
+// only do that if those two are heavier than the hairline inside a row.
+//
+//   ROW   between one person and the next, and under each band at the top
+//   DAY   between one day and the next
+//   SOFT  between somebody's times and their breaks, which are one thing
+const RULE_ROW = { rgb: [120, 113, 100], width: 1.1 }
+const RULE_DAY = { rgb: [168, 161, 149], width: 0.7 }
+const RULE_SOFT = { rgb: [225, 220, 212], width: 0.4 }
+
 export function weekPdf(table, restaurantName, weekStart) {
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()
@@ -24,13 +35,77 @@ export function weekPdf(table, restaurantName, weekStart) {
     // makes that row taller and everything below it moves down.
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7)
-    const probe = sheetLayout(table, { width: pageWidth, pad: 24 })
-    const eventLines = table.whatIsOn.map(
-        v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
+    // What the three fixed columns actually need, measured rather than guessed.
+    //
+    // Clamped at both ends. A floor so a week of short names does not leave the
+    // heading squashed against its own edge, and a ceiling so one very long
+    // name cannot eat the week. Anything longer than the ceiling is shortened
+    // the way it always was.
+    const widest = (items, size, style) => {
+        pdf.setFontSize(size)
+        pdf.setFont('helvetica', style)
+        return Math.max(0, ...items.filter(Boolean).map(t => pdf.getTextWidth(String(t))))
+    }
+
+    const nameCol = Math.min(160, Math.max(80,
+        Math.max(
+            widest(table.people.map(p => p.name), 9, 'bold'),
+            widest(['HOURS ON THE DAY'], 8, 'bold'),
+        ) + 16))
+
+    const hoursCol = Math.min(78, Math.max(46,
+        Math.max(
+            widest(['HOURS'], 8, 'bold'),
+            widest(table.people.map(p => p.hours), 9, 'bold'),
+        ) + 16))
+
+    const holidayCol = Math.min(62, Math.max(40,
+        Math.max(
+            widest(['HOLIDAY'], 7, 'bold'),
+            widest(table.people.map(p => p.holiday), 9, 'bold'),
+        ) + 14))
+
+    const cols = { nameCol, hoursCol, holidayCol }
+
+    // Put the font back. Measuring above left it on bold, and everything below
+    // wraps by asking how wide its own text is, so leaving it there quietly
+    // measured every card in a heavier face than it is drawn in and broke the
+    // lines earlier than they needed to break.
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+
+    const probe = sheetLayout(table, { width: pageWidth, pad: 24, ...cols })
+    // Both bands draw the same card. What differs is which half is picked out:
+    // on a delivery it is the time, because eleven and three are different
+    // problems, and on a concert it is the name, because what you are looking
+    // for is which one it is.
+    const cardFor = (lead, tail) => ({
+        lead,
+        lines: wrapLines(`${lead}${tail}`, probe.dayCol - 24, t => pdf.getTextWidth(t)),
+    })
+
+    const eventCards = (table.eventsOn || []).map(list => list.map(
+        e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
+    ))
+    const eventLines = eventCards.map(
+        cards => cards.reduce((t, c) => t + c.lines.length + 0.5, 0),
     )
-    // Each thing on its own line, the same as the picture.
-    const deliveryLines = table.deliveries.map(
-        list => list.flatMap(v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t))),
+    // A card each rather than a line each. Two things on a Wednesday read as
+    // one paragraph when they are plain lines, and the time is picked out
+    // because a delivery at eleven and a delivery at three are different
+    // problems, which is the whole reason these carry a time.
+    //
+    // The time sits beside the name rather than above it. Above was clearer and
+    // cost twice the height, and this band is on a landscape page that already
+    // squeezes itself to fit a week of people onto it.
+    //
+    // Measured in lines because that is the currency the layout works in.
+    const CHIP_PAD_LINES = 0.5
+    const chipsPerDay = (table.extras || []).map(list => list.map(
+        extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
+    ))
+    const dayChipLines = chipsPerDay.map(
+        chips => chips.reduce((t, c) => t + c.lines.length + CHIP_PAD_LINES, 0),
     )
     const noteLines = table.notes.map(
         v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
@@ -38,8 +113,9 @@ export function weekPdf(table, restaurantName, weekStart) {
     const l = sheetLayout(table, {
         width: pageWidth,
         pad: 24,
-        eventLines: Math.max(1, ...eventLines.map(lines => lines.length)),
-        deliveryLines: Math.max(1, ...deliveryLines.map(lines => lines.length)),
+        ...cols,
+        eventLines: Math.max(1, ...eventLines),
+        deliveryLines: Math.max(1, ...dayChipLines),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
 
@@ -130,18 +206,76 @@ export function weekPdf(table, restaurantName, weekStart) {
         })
     })
     y += h(l.metaH)
+    bandRule()
+
+    // The same weight that separates one person from the next, so the bands at
+    // the top read as their own things rather than as shading behind the week.
+    function bandRule() {
+        pdf.setDrawColor(...RULE_ROW.rgb)
+        pdf.setLineWidth(RULE_ROW.width)
+        pdf.line(l.pad, y, pageWidth - l.pad, y)
+        pdf.setLineWidth(0.5)
+    }
+
+    // One drawer for both bands.
+    function drawCards(cards, i, bandTop, bandH, ink, edge) {
+        if (cards.length === 0) return
+
+        // The lettering inside a card does not shrink with the squeeze, so the
+        // spacing has a floor under it. Without one, a busy week closes the gap
+        // until the lines touch.
+        const lineH = Math.max(8.4, h(9))
+        const padY = Math.max(1.8, h(2.5))
+        const gap = Math.max(2.5, h(3.5))
+        const width = l.dayCol - 6
+
+        const heights = cards.map(c => padY * 2 + c.lines.length * lineH)
+        const block = heights.reduce((t, v) => t + v, 0) + gap * (cards.length - 1)
+
+        let top = bandTop + h(bandH) / 2 - block / 2
+        const x = l.columnX(i) + (l.dayCol - width) / 2
+        const centre = x + width / 2
+
+        cards.forEach((card, n) => {
+            pdf.setFillColor(255, 255, 255)
+            pdf.setDrawColor(...edge)
+            pdf.setLineWidth(0.4)
+            pdf.roundedRect(x, top, width, heights[n], h(3), h(3), 'FD')
+
+            let ty = top + padY + lineH * 0.75
+            card.lines.forEach((line, k) => {
+                // The bold half only leads the first line, and only when it is
+                // still on it after wrapping.
+                const leads = k === 0 && card.lead && line.startsWith(card.lead)
+                if (!leads) {
+                    at(line, centre, ty, { align: 'center', size: 7, rgb: [107, 114, 128] })
+                    ty += lineH
+                    return
+                }
+
+                const rest = line.slice(card.lead.length)
+                pdf.setFontSize(7)
+                pdf.setFont('helvetica', 'bold')
+                const leadW = pdf.getTextWidth(card.lead)
+                pdf.setFont('helvetica', 'normal')
+                const restW = pdf.getTextWidth(rest)
+                const startX = centre - (leadW + restW) / 2
+
+                at(card.lead, startX, ty, { size: 7, style: 'bold', rgb: ink })
+                at(rest, startX + leadW, ty, { size: 7, rgb: [107, 114, 128] })
+                ty += lineH
+            })
+
+            top += heights[n] + gap
+        })
+    }
 
     // Written out in full over as many lines as it needs, rather than cut short.
     box(l.pad, y, pageWidth - l.pad * 2, h(l.eventsH), WARM)
     at('EVENTS', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
-    eventLines.forEach((lines, i) => {
-        const x = l.columnX(i) + l.dayCol / 2
-        const top = y + h(l.eventsH) / 2 + 3 - ((lines.length - 1) * h(9)) / 2
-        lines.forEach((line, n) => {
-            at(line, x, top + n * h(9), { align: 'center', size: 7, rgb: [154, 74, 38] })
-        })
-    })
+    eventCards.forEach((cards, i) => drawCards(cards, i, y, l.eventsH, [154, 74, 38], [222, 184, 160]))
     y += h(l.eventsH)
+    bandRule()
 
     // ---- everything else the day has on
     if (l.deliveriesH) {
@@ -149,14 +283,10 @@ export function weekPdf(table, restaurantName, weekStart) {
         at('ALSO ON', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
             size: 7, style: 'bold', rgb: [71, 85, 105],
         })
-        deliveryLines.forEach((lines, i) => {
-            const x = l.columnX(i) + l.dayCol / 2
-            const top = y + h(l.deliveriesH) / 2 + 3 - ((lines.length - 1) * h(11)) / 2
-            lines.forEach((line, n) => {
-                at(line, x, top + n * h(11), { align: 'center', size: 7, rgb: [71, 85, 105] })
-            })
-        })
+        chipsPerDay.forEach((cards, i) =>
+            drawCards(cards, i, y, l.deliveriesH, [30, 41, 59], [203, 213, 225]))
         y += h(l.deliveriesH)
+        bandRule()
     }
 
     // ---- the people
@@ -203,15 +333,16 @@ export function weekPdf(table, restaurantName, weekStart) {
 
         // Same two weights as the picture and the screen. A hairline between
         // somebody's times and their breaks, a heavier one under the pair.
-        pdf.setDrawColor(236, 232, 226)
+        pdf.setDrawColor(...RULE_SOFT.rgb)
+        pdf.setLineWidth(RULE_SOFT.width)
         pdf.line(
             l.pad + l.nameCol, top + h(l.shiftH),
             pageWidth - l.pad - l.hoursCol - l.holidayCol, top + h(l.shiftH),
         )
 
         y += rowH
-        pdf.setDrawColor(216, 211, 202)
-        pdf.setLineWidth(1)
+        pdf.setDrawColor(...RULE_ROW.rgb)
+        pdf.setLineWidth(RULE_ROW.width)
         pdf.line(l.pad, y, pageWidth - l.pad, y)
         pdf.setLineWidth(0.5)
     })
@@ -269,8 +400,10 @@ export function weekPdf(table, restaurantName, weekStart) {
         pdf.setDrawColor(255, 255, 255)
         pdf.line(x, headTop, x, gridTop)
         pdf.line(x, gridBottom - h(l.totalH), x, gridBottom)
-        pdf.setDrawColor(216, 211, 202)
+        pdf.setDrawColor(...RULE_DAY.rgb)
+        pdf.setLineWidth(RULE_DAY.width)
         pdf.line(x, gridTop, x, gridBottom - h(l.totalH))
+        pdf.setLineWidth(0.5)
     }
 
     // ---- messages

@@ -76,7 +76,7 @@ export function weekTable({
 
     const whatIsOn = (dates || []).map(d => (events || [])
         .filter(e => e.event_date === d)
-        .map(e => (e.event_time ? `${e.name} (${shortTime(e.event_time)})` : e.name))
+        .map(e => (e.event_time ? `${e.name} (doors ${shortTime(e.event_time)})` : e.name))
         .join(', '))
 
     // A shift is kept in parts rather than as one string, because the start and
@@ -127,6 +127,14 @@ export function weekTable({
     // they get separate lines.
     const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel))
 
+    // The same things again with the time and the name still apart, because a
+    // sheet draws them as a card each with one of the two picked out, and only
+    // the CSV wants them flattened into a string.
+    const extras = (dates || []).map(d => extrasFor(noteFor(d)))
+    const eventsOn = (dates || []).map(d => (events || [])
+        .filter(e => e.event_date === d)
+        .map(e => ({ name: e.name, time: e.event_time ? shortTime(e.event_time) : '' })))
+
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
         .map(n => `${shortDate(n.note_date)}: ${n.message}`)
@@ -143,7 +151,9 @@ export function weekTable({
         head,
         storeHours,
         whatIsOn,
+        eventsOn,
         deliveries,
+        extras,
         people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
         anyHoliday,
         notes,
@@ -262,12 +272,23 @@ export function wrapLines(text, maxWidth, measure) {
 // by whoever is drawing, because only they know how wide their letters are.
 export function sheetLayout(table, {
     width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1,
+    nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
-    const nameCol = 160
-    const hoursCol = 78
+    // The three columns either side of the week used to be fixed, and they were
+    // sized for the worst case: a long name, a wide figure. Most weeks are not
+    // the worst case, and every point they hold on to is a point the seven days
+    // do not have, which is where the long things actually are, a tour name or
+    // a delivery with a company in it.
+    //
+    // So whoever is drawing can measure its own lettering and say what they
+    // really need. The numbers below are what it falls back to, and they are
+    // the ones that were fixed before, so nothing that does not measure changes
+    // at all.
+    const nameCol = askedName ?? 160
+    const hoursCol = askedHours ?? 78
     // Only in a week somebody was on holiday. It comes out of the days, so an
     // ordinary week keeps every pixel it had.
-    const holidayCol = table.anyHoliday ? 62 : 0
+    const holidayCol = table.anyHoliday ? (askedHoliday ?? 62) : 0
     const dayCol = (width - pad * 2 - nameCol - hoursCol - holidayCol) / 7
 
     const titleH = 62
