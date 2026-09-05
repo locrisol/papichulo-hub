@@ -163,8 +163,14 @@ export function weekPdf(table, restaurantName, weekStart) {
             { text: ' - ', mark: false },
             { text: shift.end, mark: shift.closes },
         ]
+        // The room inside the mark, and it is in the sums rather than drawn
+        // over the top. A shift can be marked at both ends, so if the box were
+        // simply painted wider than the number it sits on, the one round the
+        // start and the one round the finish would meet in the middle.
+        const MARK_PAD = 2.4
         const widths = parts.map(p => pdf.getTextWidth(p.text))
-        const total = widths.reduce((a, b) => a + b, 0)
+        const advances = parts.map((p, i) => widths[i] + (p.mark ? MARK_PAD * 2 : 0))
+        const total = advances.reduce((a, b) => a + b, 0)
 
         let x = centreX - total / 2
         parts.forEach((p, i) => {
@@ -172,10 +178,11 @@ export function weekPdf(table, restaurantName, weekStart) {
                 pdf.setFillColor(...YELLOW)
                 pdf.setDrawColor(...YELLOW_EDGE)
                 pdf.setLineWidth(0.4)
-                pdf.rect(x - 1, yy - 6, widths[i] + 2, 9, 'FD')
+                // Rounded, the same as the mark on screen.
+                pdf.roundedRect(x, yy - 6.9, advances[i], 10.2, 1.5, 1.5, 'FD')
             }
-            at(p.text, x, yy, { size: 8, style: 'bold' })
-            x += widths[i]
+            at(p.text, x + (p.mark ? MARK_PAD : 0), yy, { size: 8, style: 'bold' })
+            x += advances[i]
         })
     }
 
