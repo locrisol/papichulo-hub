@@ -226,8 +226,10 @@ export function weekCsv(table) {
     for (const person of table.people) {
         line([person.name, ...person.days.map(d => {
             const shifts = d.shifts.map(s => s.text).join(' / ')
-            if (!d.away) return shifts
-            return shifts ? `${shifts} (${AWAY.label})` : AWAY.label
+            // The same rule the sheet and the picture follow. A day with a
+            // shift on it is an ordinary day, whatever somebody usually does.
+            if (d.shifts.length > 0) return shifts
+            return d.away ? AWAY.label : shifts
         }), ...(table.anyHoliday ? [person.holiday] : []), person.hours])
         line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ...pad])
     }

@@ -389,10 +389,20 @@ describe('time off on a shared week', () => {
 
     // A shift on a day somebody is down as away is still a shift, and the
     // printed copy has to show it or the roster and the wall disagree.
-    it('keeps a shift rostered on a day they are away', () => {
+    it('a day with a shift on it is an ordinary day, whatever is behind it', () => {
+        // Ana is down as away and rostered anyway, which happens: the app warns
+        // about it rather than refusing. Once it is on the roster it is a shift
+        // she is doing, so it goes out as one and says nothing else. What she
+        // usually does was weighed up before she was put on, and that belongs
+        // on the screen where the decision gets made, not on the wall after.
         const clash = [{ ...away[0], starts_on: DATES[1], ends_on: DATES[1] }]
         const csv = weekCsv(build({ absences: clash }))
         expect(csv).toContain('09:00')
+        expect(csv).not.toContain(AWAY.label)
+    })
+
+    it('still says it on a day nobody is on', () => {
+        const csv = weekCsv(build({ absences: away }))
         expect(csv).toContain(AWAY.label)
     })
 })

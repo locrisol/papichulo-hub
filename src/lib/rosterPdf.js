@@ -352,16 +352,14 @@ export function weekPdf(table, restaurantName, weekStart) {
             // middle of the box behind it. A day that is blocked is still one
             // of seven you read across, and it sat a line lower than every
             // shift beside it.
-            if (day.away) {
-                box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
-            }
-
-            // Only when there is nothing else in the cell. Somebody can be
-            // rostered on a day they said they could not work, because that is
-            // a warning on the screen and not a refusal, and then the word and
-            // the shift were drawn one on top of the other. The fill still says
-            // it, and the shift is the thing you need to be able to read.
+            // Only when nobody is on. A shift on a day somebody does not
+            // usually work is still a shift they are doing, and once it is on
+            // the roster it is an ordinary day: same white, same times, nothing
+            // to explain. What they usually do is a thing the manager weighed
+            // up before putting them on, and it belongs on the screen where
+            // that decision gets made rather than on the wall afterwards.
             if (day.away && day.shifts.length === 0) {
+                box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
                 // The middle of the whole cell, not of the top half of it.
                 // This one is not divided into times and breaks, so it has no
                 // top half to sit in.
