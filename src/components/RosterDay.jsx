@@ -50,6 +50,8 @@ const AWAY_HATCH =
 
 export default function RosterDay({
     employees,
+    weekHours,
+    closedLastNight,
     shifts,
     positions,
     date,
@@ -430,7 +432,7 @@ export default function RosterDay({
 
                         </div>
                         <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
-                            Hours
+                            This week
                         </div>
                     </div>
 
@@ -440,7 +442,16 @@ export default function RosterDay({
                         </p>
                     ) : employees.map((employee, row) => {
                         const mine = byEmployee[employee.id] || []
-                        const dayTotal = mine.reduce((t, s) => t + shiftHours(s), 0)
+                        // What they have this week, not what they have today.
+                        // Today is written on the shift beside it, and a number
+                        // that repeats the one next to it is a number nobody
+                        // reads. The week is the one you are trying not to
+                        // overshoot while you place another shift.
+                        const theirWeek = weekHours?.[employee.id] || 0
+                        // Finished after closing time yesterday. Said so you
+                        // are not handing somebody an opening shift blind, and
+                        // it stops there: no warning, no block, nothing harder.
+                        const closedLate = closedLastNight?.[employee.id]
                         const dragging = drag?.employeeId === employee.id
                         const dragFrom = dragging ? Math.min(drag.from, drag.to) : -1
                         const dragTo = dragging ? Math.max(drag.from, drag.to) + 1 : -1
@@ -471,7 +482,12 @@ export default function RosterDay({
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
-                                <div className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border">
+                                <div
+                                    className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border"
+                                    title={closedLate
+                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. Closed last night, finished at ${shortTime(closedLate)}.`
+                                        : employee.full_name}
+                                >
                                     <span
                                         className="w-1.5 h-7 rounded-full flex-shrink-0"
                                         style={{ backgroundColor: colour }}
@@ -480,14 +496,31 @@ export default function RosterDay({
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
-                                        <span className={`block text-[0.625rem] truncate ${part ? 'text-amber-700 font-semibold' : 'text-muted'}`}>
+                                        {/* One line, saying whichever of these
+                                            is worth knowing today. Closed last
+                                            night comes above the position
+                                            because the position is the same
+                                            every day and is already in the
+                                            colour down the left, and this is
+                                            only ever true on the day it
+                                            matters. It says nothing else: no
+                                            warning, no block, and putting
+                                            somebody on anyway is exactly as
+                                            easy as it was. */}
+                                        <span className={`block text-[0.625rem] truncate ${
+                                            part ? 'text-amber-700 font-semibold'
+                                                : closedLate && !offKind && away !== 'none' ? 'text-slate-600 font-semibold'
+                                                    : 'text-muted'
+                                        }`}>
                                             {offKind
                                                 ? offKind.label
                                                 : part
                                                     ? partWords(part).replace('can work ', 'Can work ')
                                                     : away === 'none'
                                                         ? 'Not available today'
-                                                        : positionOf(employee.position_id)?.name || 'No position'}
+                                                        : closedLate
+                                                            ? `Closed ${shortTime(closedLate)} last night`
+                                                            : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                     {/* Beside the name, where the eye already
@@ -690,8 +723,8 @@ export default function RosterDay({
                                 </div>
 
                                 <div className="w-20 flex-shrink-0 px-2 flex items-center justify-center border-l border-border">
-                                    <span className={`text-sm font-semibold ${dayTotal ? 'text-gray-900' : 'text-gray-300'}`}>
-                                        {dayTotal ? fmtHours(dayTotal) : '—'}
+                                    <span className={`text-sm font-semibold ${theirWeek ? 'text-gray-900' : 'text-gray-300'}`}>
+                                        {theirWeek ? fmtHours(theirWeek) : '—'}
                                     </span>
                                 </div>
                             </div>
