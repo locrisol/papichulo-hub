@@ -65,12 +65,18 @@ export function sectionKey(title, taken = []) {
 // ---------------------------------------------------------------------------
 
 // A report built on four days of a seven day week is worse than no report,
-// because it looks like a report. So a week cannot be started until every day
-// of it either has figures that balance against the till or is marked closed.
+// because it looks like a report. So a week cannot be started until every one
+// of its days has been entered, or marked closed.
 //
-// This is the same test the sales grid already applies to one day, read across
-// seven. `days` is the sales_records rows for the week, `tenders` every till
-// row for the restaurant.
+// A day that is entered but does not balance against the till is a different
+// thing and does not block anything. Net sales is its own column, not a sum of
+// the till rows, so a day three euro short still reports the right figure. What
+// the variance says is that somebody was over or short on the drawer, which is
+// worth putting in front of a manager and is not a reason to stop a correct
+// report being written. It comes back as a warning instead.
+//
+// `days` is the sales_records rows for the week, `tenders` every till row for
+// the restaurant.
 export function weekReadiness(weekStart, days, tenders) {
     const dates = weekDates(weekStart)
     const byDate = new Map((days || []).map(d => [d.sale_date, d]))
@@ -88,7 +94,7 @@ export function weekReadiness(weekStart, days, tenders) {
         if (out !== 0) unbalanced.push({ date, out })
     }
 
-    return { ready: missing.length === 0 && unbalanced.length === 0, missing, unbalanced }
+    return { ready: missing.length === 0, missing, unbalanced }
 }
 
 // Has the week finished? A week is written up after it has ended, never while

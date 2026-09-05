@@ -21,11 +21,17 @@ import {
 // Three things a week can be. Not started, which offers a button. Draft, which
 // somebody is part way through. Published, which has gone out and can be read.
 //
-// A fourth state matters more than the other three: a week whose sales are not
-// finished. That week cannot be started at all, and the row says exactly what
-// is wrong with it rather than grey out a button and leave somebody guessing. A
-// report built on four days of a seven day week is worse than no report,
-// because it looks like a report.
+// A fourth state matters more than the other three: a week with a day nobody
+// has entered. That week cannot be started at all, and the row names the days
+// rather than grey out a button and leave somebody guessing. A report built on
+// four days of a seven day week is worse than no report, because it looks like
+// a report.
+//
+// A day that is entered but does not balance against the till is only ever a
+// note. Net sales is its own column rather than a sum of the till rows, so a
+// day three euro short still reports the right figure, and refusing to write a
+// correct report over a drawer being short is the wrong trade. The row says it
+// and the week starts anyway.
 //
 // Owners read this list and do not write it, the same split the rest of the app
 // uses for anything a store runs itself. That is enforced in the database, not
@@ -39,26 +45,20 @@ function num(v) {
     return isNaN(n) ? 0 : n
 }
 
-// What is wrong with a week, in a sentence somebody can act on.
-//
-// Days are named rather than counted. "Thursday and Friday" tells you where to
-// go; "2 days missing" only makes you go and look.
-function readinessWords(readiness) {
-    const parts = []
+// The days nobody has entered, named rather than counted. "Thursday and
+// Friday" tells you where to go; "2 days missing" only makes you go and look.
+function missingWords(missing) {
+    const days = missing.map(shortDate)
+    if (days.length === 1) return `${days[0]} has no figures yet.`
+    return `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]} have no figures yet.`
+}
 
-    if (readiness.missing.length > 0) {
-        const days = readiness.missing.map(shortDate)
-        parts.push(days.length === 1
-            ? `${days[0]} has no figures yet`
-            : `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]} have no figures yet`)
-    }
-
-    for (const off of readiness.unbalanced) {
-        parts.push(`${shortDate(off.date)} is ${fmtMoney(Math.abs(off.out))} `
-            + `${off.out < 0 ? 'short' : 'over'} against the till`)
-    }
-
-    return parts.join(', and ') + '.'
+// The days that were entered and do not add up. Said, never enforced.
+function varianceWords(unbalanced) {
+    return unbalanced
+        .map(off => `${shortDate(off.date)} is ${fmtMoney(Math.abs(off.out))} `
+            + `${off.out < 0 ? 'short' : 'over'}`)
+        .join(', ')
 }
 
 function StateBadge({ report }) {
@@ -249,6 +249,7 @@ export default function ReportsListPage() {
                     <tbody className="divide-y divide-border">
                         {weeks.map(week => {
                             const blocked = !week.report && !week.readiness.ready
+                            const off = week.readiness.unbalanced
                             return (
                                 <Fragment key={week.weekStart}>
                                     <tr className={blocked ? 'bg-accent-light/50' : ''}>
@@ -297,10 +298,22 @@ export default function ReportsListPage() {
                                         </td>
                                     </tr>
 
-                                    {blocked && (
-                                        <tr className="bg-accent-light/50">
-                                            <td colSpan={5} className="px-5 pb-3 text-sm text-accent-ink">
-                                                {readinessWords(week.readiness)}
+                                    {(blocked || off.length > 0) && (
+                                        <tr className={blocked ? 'bg-accent-light/50' : ''}>
+                                            <td colSpan={5} className="px-5 pb-3 text-sm">
+                                                {blocked && (
+                                                    <span className="text-accent-ink">
+                                                        {missingWords(week.readiness.missing)}
+                                                    </span>
+                                                )}
+                                                {off.length > 0 && (
+                                                    <span className={blocked ? 'text-muted ml-1' : 'text-muted'}>
+                                                        {off.length === 1 ? 'One day is' : `${off.length} days are`}
+                                                        {' '}out against the till: {varianceWords(off)}. This does not
+                                                        stop the report, because net sales does not come from the till
+                                                        rows.
+                                                    </span>
+                                                )}
                                             </td>
                                         </tr>
                                     )}
@@ -313,7 +326,7 @@ export default function ReportsListPage() {
 
             <p className="text-sm text-muted px-1">
                 {canWrite
-                    ? 'A week can be started once every day of it either has figures that balance against the till or is marked closed.'
+                    ? 'A week can be started once every one of its days has been entered or marked closed. A day that does not add up against the till is noted, not enforced.'
                     : 'Reports are written by the store manager. This is the same list they see, so any week can be read here without going back through a mailbox.'}
             </p>
         </div>

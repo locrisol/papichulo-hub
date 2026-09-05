@@ -72,10 +72,20 @@ describe('weekReadiness', () => {
         const days = fullWeek()
         days[6] = day('2026-08-15', 100, 887.60, 1000)
         const out = weekReadiness('2026-08-09', days, TENDERS)
-        expect(out.ready).toBe(false)
         expect(out.unbalanced).toHaveLength(1)
         expect(out.unbalanced[0].date).toBe('2026-08-15')
         expect(out.unbalanced[0].out).toBeCloseTo(-12.40, 2)
+    })
+
+    it('does not stop a week over a day that is short, only says so', () => {
+        const days = fullWeek()
+        days[6] = day('2026-08-15', 100, 897, 1000)
+        expect(weekReadiness('2026-08-09', days, TENDERS).ready).toBe(true)
+    })
+
+    it('still stops a week that is missing a day', () => {
+        const days = fullWeek().slice(0, 6)
+        expect(weekReadiness('2026-08-09', days, TENDERS).ready).toBe(false)
     })
 
     it('does not ask a closed day to balance', () => {
