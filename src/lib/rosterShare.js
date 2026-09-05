@@ -9,6 +9,7 @@
 // everything else here is for the wall and for the accountant.
 
 import { DAY_NAMES } from './events'
+import { dayState, availabilityOn, availabilityStart } from './availability'
 import { fullDate, shortDate } from './dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
@@ -55,8 +56,12 @@ export function shareName(restaurantName, weekStart, extension) {
 // the screen never showed them.
 export function weekTable({
     dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
-    standingNote,
+    standingNote, today,
 }) {
+    // The first date somebody's availability is allowed to say anything about.
+    // Taken as an argument so it can be pinned in a test rather than moving
+    // with the clock. See availabilityStart for why there is a line at all.
+    const availableFrom = availabilityStart(today)
     const employeesById = Object.fromEntries((employees || []).map(e => [e.id, e]))
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const hoursFor = d => hoursForDate(openingHours, noteFor(d), d)
@@ -101,7 +106,15 @@ export function weekTable({
                 // each of the four things that draw this. One boundary in one
                 // place is the only kind that holds: a renderer cannot leak a
                 // reason it was never handed.
-                away: wholeDaysOn(absences, row.employee.id, day.date).length > 0,
+                //
+                // Two ways to be off: it was written down as time off, or their
+                // own availability says they do not work that day at all. The
+                // screen has always shown both, hatching the second, and the
+                // exports only knew about the first, so a day somebody never
+                // works came out blank on the sheet and in the picture and
+                // looked like a day nobody had got round to filling.
+                away: wholeDaysOn(absences, row.employee.id, day.date).length > 0
+                    || dayState(availabilityOn(row.employee, day.date, availableFrom), day.date) === 'none',
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)

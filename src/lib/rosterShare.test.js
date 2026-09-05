@@ -327,6 +327,29 @@ describe('time off on a shared week', () => {
         expect(table.people.every(p => p.days.every(d => d.away === false))).toBe(true)
     })
 
+    it('counts a day they never work as one they are not about', () => {
+        // The screen has always hatched these. The sheet and the picture knew
+        // only about time off, so a day somebody does not work came out blank
+        // and read as a day nobody had got round to filling in.
+        const table = build({
+            employees: [{ ...employees[0], availability: { 0: [], 2: [] } }, employees[1]],
+            today: DATES[0],
+        })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.map(d => d.away)).toEqual([true, false, true, false, false, false, false])
+    })
+
+    it('leaves a day they work part of alone', () => {
+        // Somebody who can only do afternoons is in that afternoon. Marking the
+        // whole day would say they were not there at all.
+        const table = build({
+            employees: [{ ...employees[0], availability: { 0: [['15:00', '21:00']] } }, employees[1]],
+            today: DATES[0],
+        })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.some(d => d.away)).toBe(false)
+    })
+
     it('ignores time off that was turned down', () => {
         const declined = [{ ...away[0], status: 'declined' }]
         const table = build({ absences: declined })
