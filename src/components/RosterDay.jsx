@@ -2,7 +2,7 @@ import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
-import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
@@ -103,7 +103,7 @@ export default function RosterDay({
     // Only worth explaining when somebody's availability is actually drawn on
     // the day. On a day where nobody has any recorded there is nothing hatched
     // and a note about hatching is one more line to read past.
-    const anyAway = employees.some(e => unavailableSpans(e.availability, date, from, to).length > 0)
+    const anyAway = employees.some(e => unavailableSpans(availabilityOn(e, date), date, from, to).length > 0)
 
     // What else the day has on. Feedr at twelve and a delivery at three are the
     // reason the middle of the day needs another pair of hands, and neither of
@@ -460,9 +460,14 @@ export default function RosterDay({
                         const dragFrom = dragging ? Math.min(drag.from, drag.to) : -1
                         const dragTo = dragging ? Math.max(drag.from, drag.to) + 1 : -1
                         const colour = positionOf(employee.position_id)?.colour || NO_COLOUR
-                        const away = dayState(employee.availability, date)
-                        const awaySpans = unavailableSpans(employee.availability, date, from, to)
-                        const canWork = windowsFor(employee.availability, date)
+                        // Nothing at all on a week that has gone. There is one
+                        // availability per person with no date on it, so what
+                        // somebody tells you today would otherwise rewrite what
+                        // the app claims about every Sunday they ever worked.
+                        const theirs = availabilityOn(employee, date)
+                        const away = dayState(theirs, date)
+                        const awaySpans = unavailableSpans(theirs, date, from, to)
+                        const canWork = windowsFor(theirs, date)
                         const off = wholeDayOn(absences, employee.id, date)
                         const offKind = off ? kindOf(off.kind) : null
                         // Part of a day is not a day gone. Somebody who can

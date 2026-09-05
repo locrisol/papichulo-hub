@@ -2,7 +2,7 @@ import { cardEdge, tableHeadRow } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
-import { dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '../lib/absences'
 import { askedOff, partWords } from '../lib/timeOff'
@@ -281,7 +281,7 @@ export default function RosterWeek({
                                     // somebody can work part of reads the same
                                     // as any other and the day timeline is
                                     // where that gets drawn.
-                                    const away = dayState(row.employee.availability, day.date)
+                                    const away = dayState(availabilityOn(row.employee, day.date), day.date)
                                     // Time off beats everything else the cell
                                     // could be saying. Somebody on holiday is
                                     // away whatever their usual Tuesday is.
@@ -311,7 +311,7 @@ export default function RosterWeek({
                                                 : away === 'none'
                                                     ? `${row.employee.full_name} is not available this day`
                                                     : away === 'windows'
-                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
+                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(availabilityOn(row.employee, day.date), day.date))}`
                                                         : undefined}
                                             style={{
                                                 ...(offKind

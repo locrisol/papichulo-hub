@@ -192,8 +192,12 @@ describe('longestRest', () => {
 })
 
 describe('checkWeek', () => {
+    // Pinned, because availability says nothing about a week that has already
+    // gone and WEEK would otherwise fall behind the line as time passes.
+    const TODAY = WEEK[0]
+
     const run = (shifts, employees, rules = {}) => checkWeek({
-        shifts, employees, weekDates: WEEK, rules: { ...DEFAULT_RULES, ...rules },
+        shifts, employees, weekDates: WEEK, rules: { ...DEFAULT_RULES, ...rules }, today: TODAY,
     })
 
     it('is happy with an ordinary week', () => {
@@ -319,6 +323,21 @@ describe('checkWeek', () => {
     it('says nothing about the days that record says nothing about', () => {
         const off = person({ availability: { 0: [] } })
         expect(run([shift(WEEK[1], '09:00', '17:00')], [off])).toEqual([])
+    })
+
+    it('says nothing at all about a week that has already gone', () => {
+        // Availability carries no date, so somebody saying today that they
+        // cannot do Sundays must not turn every Sunday they have worked into a
+        // warning. The shifts on a past week are a record, not a decision.
+        const off = person({ availability: { 0: [] } })
+        const found = checkWeek({
+            shifts: [shift(WEEK[0], '09:00', '17:00')],
+            employees: [off],
+            weekDates: WEEK,
+            rules: DEFAULT_RULES,
+            today: '2026-09-05',
+        })
+        expect(found.find(f => f.kind === 'availabilityDay')).toBeUndefined()
     })
 
     it('says so when a shift runs outside the hours they can work', () => {
