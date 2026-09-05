@@ -100,17 +100,22 @@ export default function RosterWeek({
                 corporate order stretches its own column and squeezes the other
                 six, and the week stops being readable as a week. Anything too
                 long for its column wraps inside it now rather than pushing it
-                wider. */}
-            <table className="w-full text-sm min-w-[64rem] table-fixed">
+                wider.
+
+                68rem, up from 64. A day column has to hold "08:30 - Closing",
+                which is the widest ordinary thing in the week, and at 64 it did
+                not. The staff column gave up the difference: the longest name
+                in either restaurant still fits in 36. */}
+            <table className="w-full text-sm min-w-[68rem] table-fixed">
                 <colgroup>
-                    <col className="w-40" />
+                    <col className="w-36" />
                     {dates.map(d => <col key={d} />)}
                     {anyHoliday && <col className="w-20" />}
                     <col className="w-20" />
                 </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
-                        <th className="px-3 py-2 text-left text-xs w-40 sticky left-0 bg-sidebar z-10">
+                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 bg-sidebar z-10">
                             Staff
                         </th>
                         {dates.map((d, i) => (
@@ -385,7 +390,14 @@ export default function RosterWeek({
                                                         {shiftMark?.(s)}
                                                     </>
                                                 )
-                                                const look = 'block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 whitespace-nowrap transition'
+                                                // No whitespace-nowrap on this. It had one, and a chip
+                                                // that cannot wrap does not shrink, it hangs over
+                                                // the edge of its own column and sits on top of the
+                                                // next day. "08:30 - Closing" is the one that does
+                                                // it, and on a laptop at 125% it did it constantly.
+                                                // Wrapping to two lines is the thing the rest of
+                                                // this table already does.
+                                                const look = 'block w-full mb-0.5 last:mb-0 rounded border px-1 py-0.5 font-medium text-gray-900 leading-tight text-center transition'
                                                 const paint = { backgroundColor: tint(colour), borderColor: colour }
                                                 // A shift nobody can do anything
                                                 // with is not a button. On the
