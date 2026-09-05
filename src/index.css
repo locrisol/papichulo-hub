@@ -39,26 +39,43 @@
   font-size: 118.75%;
 }
 
-/* Except on a screen that has not got the room for it.
+/* Except where the window has not got the room for it.
  *
- * Windows display scaling and this multiply. The store laptop is set to 125%,
- * which leaves a 1920 screen with a 1536 pixel window, and then the app makes
- * everything 1.1875 times bigger on top of that. Text ends up around half again
- * the size a browser would normally give it, so less fits, and the roster grid
- * needs 1216 pixels where the page only has 1204. Twelve pixels short, and the
- * week gets cut off down the right hand side.
+ * Once the layout is side by side rather than stacked, these pages are tables
+ * and grids, and what they need is a number of columns readable at once. The
+ * widest of them is the roster week, and the number comes out of the app rather
+ * than off any screen:
  *
- * So the foot rule shrinks when the window does. 17px between a small laptop
- * and a big monitor, which gives the roster about 150 pixels of room to spare
- * instead of being 12 short.
+ *     the week          68rem
+ *     the sidebar       14rem   (w-56)
+ *     the page padding   3.5rem (p-7, both sides)
+ *     ----------------------------
+ *     a window of       85.5rem
  *
- * It stops at 768px on purpose. Below that is the phone, every phone view has
- * been checked at 19px, and nothing about a phone is short of room in the way
- * a squeezed laptop is: the pages stack into cards down there.
+ * Everything there is in rem, so it is not a pixel count, it is a ratio: the
+ * week fits whenever the window is about 86 times the foot rule. Turn that
+ * round and the foot rule is the window over 90, which is the 1.1vw below, with
+ * a little to spare.
+ *
+ * Clamped at both ends. 19px is as big as it goes, so a large monitor is not
+ * absurd. 16px is as small, so nothing ever becomes unreadable to make a table
+ * fit, and below that width the roster simply scrolls sideways, which is what
+ * it has an overflow for.
+ *
+ * Continuous on purpose. No threshold anybody picked, nothing measured against
+ * one machine, and no width at which it suddenly stops working. It behaves the
+ * same whether a window is small because the screen is, because the browser is
+ * sharing it, or because the display is running OS scaling and every CSS pixel
+ * is bigger than it looks.
+ *
+ * Below 768px it does not apply, and that is the one deliberate step. Down
+ * there the layout is not a table at all, it is a column of cards, so it is not
+ * short of width in the way a squeezed table is, and a phone is held closer and
+ * tapped rather than clicked. It keeps the full 19px.
  */
-@media (min-width: 768px) and (max-width: 1600px) {
+@media (min-width: 768px) {
   :root {
-    font-size: 106.25%;
+    font-size: clamp(16px, 1.1vw, 19px);
   }
 }
 

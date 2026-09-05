@@ -32,6 +32,7 @@ export default function ProductForm({
   recipe, onRecipeChange, ingredientOptions,
   allergens, onAllergenChange, allergensAnswered, onNoAllergens,
   extras, openExtra, onOpenExtra,
+  otherPriceCount = 0, onOpenPrices, recipeBlock = true,
 }) {
   // Both of these only make sense for something you buy. A mix has no supplier
   // by definition, and its allergens come from its recipe rather than from
@@ -51,7 +52,24 @@ export default function ProductForm({
   // Cleaning and packaging still have a supplier, they just have nothing to
   // declare. So only the allergens go, not the whole block.
   const showAllergens = showExtras && declaresAllergens(formData)
-  const showRecipe = extras && formData.is_mix
+  // Not while editing. What a MIX is made of is a screen with an ingredient
+  // list on it, and the cut down version here is for getting a new one started,
+  // not for changing one that exists.
+  const showRecipe = extras && recipeBlock && formData.is_mix
+
+  // What the closed supplier row says.
+  //
+  // The count matters. A product can be priced by more than one supplier, and
+  // the whole reason for that is to put two of them side by side and see which
+  // is cheaper. This form only ever holds one, so if it said nothing about the
+  // others it would be quietly lying about what the product costs.
+  const supplierName = priceForm?.supplier_id
+    ? suppliers.find(s => s.id === priceForm.supplier_id)?.name || 'Set'
+    : 'Not set'
+  const supplierSummary = otherPriceCount > 0
+    ? `${supplierName} + ${otherPriceCount} more`
+    : supplierName
+
   return (
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -413,9 +431,7 @@ export default function ProductForm({
             collapsible
             tone="supplier"
             title="Who you buy it from"
-            summary={priceForm?.supplier_id
-              ? suppliers.find(s => s.id === priceForm.supplier_id)?.name || 'Set'
-              : 'Not set'}
+            summary={supplierSummary}
             open={openExtra === 'supplier'}
             onToggle={() => onOpenExtra(openExtra === 'supplier' ? null : 'supplier')}
           />
@@ -425,6 +441,28 @@ export default function ProductForm({
                 Optional. Leave the supplier empty and you can add prices later from the
                 product's own Prices screen.
               </p>
+
+              {/* Said out loud rather than left for somebody to find out. This
+                  block edits the preferred price and only that one, so on a
+                  product bought from two places it is showing one of them. */}
+              {otherPriceCount > 0 && (
+                <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-xs text-amber-900">
+                    This is the preferred price.{' '}
+                    {otherPriceCount === 1 ? 'One other supplier' : `${otherPriceCount} other suppliers`}
+                    {' '}also price this product, and are not shown here.
+                  </p>
+                  {onOpenPrices && (
+                    <button
+                      type="button"
+                      onClick={onOpenPrices}
+                      className="flex-shrink-0 text-xs font-semibold text-amber-900 underline underline-offset-2"
+                    >
+                      Compare them
+                    </button>
+                  )}
+                </div>
+              )}
               <PriceFields
                 formData={priceForm}
                 onChange={onPriceChange}
