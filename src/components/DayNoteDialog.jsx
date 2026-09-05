@@ -262,9 +262,19 @@ export default function DayNoteDialog({
                         </div>
                     )}
 
+                    {/* In the order they are held, not in time order.
+                        Sorted here, a row moved out from under the cursor while
+                        the time was still being typed: type the 1 of 11:30 and
+                        it is 01:00 for a moment, which sorts above the 12:00
+                        below it, and the box you were typing into jumps.
+
+                        Nothing is lost by leaving it. Saving sorts them, and
+                        everything that reads a day sorts them again on the way
+                        out, so the roster is in time order wherever it is
+                        shown. This is the one place somebody is mid-thought. */}
                     {form.extras.length > 0 && (
                         <div className="divide-y divide-border mb-4">
-                            {sortExtras(form.extras).map(extra => (
+                            {form.extras.map(extra => (
                                 <div key={extra.name} className="py-2 flex flex-wrap items-center gap-2">
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
