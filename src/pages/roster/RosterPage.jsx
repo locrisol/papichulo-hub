@@ -860,12 +860,22 @@ export default function RosterPage() {
                 for while building. */}
             {view === 'week' && (
                 <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center justify-between gap-3`}>
-                    <p className="text-xs text-muted">
+                    {/* The sharing is off until the week is published, and
+                        this says why rather than leaving three dead buttons
+                        with no explanation.
+
+                        It used to ask you to publish first and then let you
+                        share anyway, which is the weakest kind of advice: the
+                        one thing it was there to stop was two versions of a
+                        week going round, and it stopped nothing. */}
+                    <p className={`text-xs ${state === 'published' ? 'text-muted' : 'text-amber-800 font-medium'}`}>
                         {state === 'published'
                             ? 'This week is published. Send it out.'
                             : state === 'changed'
-                                ? 'Changed since it went out. Publish again before sharing, or the staff get two different weeks.'
-                                : 'Still a draft. Publishing first is what stops two versions going round.'}
+                                ? 'Changed since it went out. Publish again and you can share it.'
+                                : state === 'empty'
+                                    ? 'Nothing on this week yet.'
+                                    : 'Not published yet. Publish it and you can share it.'}
                     </p>
                     <ShareWeekButton
                         dates={dates}
@@ -878,7 +888,7 @@ export default function RosterPage() {
                         standingNote={activeRestaurant?.roster_note}
                         restaurantName={activeRestaurant?.name}
                         weekStart={weekStart}
-                        disabled={shifts.length === 0}
+                        disabled={state !== 'published'}
                     />
                 </div>
             )}
