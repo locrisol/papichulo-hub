@@ -7,7 +7,6 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
 import { countName } from '../../lib/products'
 import { sectionRank, sectionColour } from '../../lib/sections'
-import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 
 // The last look before a stock take is closed. Managers only.
@@ -241,7 +240,7 @@ export default function StockTakeReviewPage() {
   const countedCount = products.length - uncountedProducts.length
 
   return (
-    <PageContainer>
+    <>
       <button
         type="button"
         onClick={() => navigate(`/inventory/stock-takes/${id}`)}
@@ -478,6 +477,6 @@ export default function StockTakeReviewPage() {
           </div>
         </div>
       )}
-    </PageContainer>
+    </>
   )
 }

@@ -5,7 +5,6 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
@@ -104,7 +103,7 @@ export default function InvoiceHistoryPage() {
     const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <PageContainer>
+        <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Invoice history</h2>
@@ -239,6 +238,6 @@ export default function InvoiceHistoryPage() {
                 )}
                 </div>
             </div>
-        </PageContainer>
+        </>
     )
 }

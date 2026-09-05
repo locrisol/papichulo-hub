@@ -5,7 +5,6 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 
 // The way in to stock takes: whatever is open now, and the last ten that closed.
@@ -155,7 +154,7 @@ export default function StockTakesListPage() {
   }
 
   return (
-    <PageContainer>
+    <>
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl font-bold text-gray-900">Stock Takes</h1>
@@ -338,6 +337,6 @@ export default function StockTakesListPage() {
           }}
         />
       )}
-    </PageContainer>
+    </>
   )
 }

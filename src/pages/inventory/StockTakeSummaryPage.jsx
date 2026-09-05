@@ -10,7 +10,6 @@ import { countName } from '../../lib/products'
 import { bySection, summarise } from '../../lib/stockTakeSummary'
 import StockTakeValue from '../../components/StockTakeValue'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
@@ -223,7 +222,7 @@ export default function StockTakeSummaryPage() {
   const isClosed = session.status !== 'in_progress'
 
   return (
-    <PageContainer>
+    <>
       <button
         type="button"
         onClick={() => navigate('/inventory/stock-takes')}
@@ -487,7 +486,7 @@ export default function StockTakeSummaryPage() {
           </div>
         </div>
       )}
-    </PageContainer>
+    </>
   )
 }
 

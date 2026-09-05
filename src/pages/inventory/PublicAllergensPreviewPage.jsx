@@ -6,7 +6,6 @@ import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
-import PageContainer from '../../components/layout/PageContainer'
 import { card } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 
@@ -440,7 +439,7 @@ export default function PublicAllergensPreviewPage() {
     }
 
     return (
-        <PageContainer>
+        <>
             <header className="mb-6">
                 <h1 className="font-serif text-2xl font-bold text-gray-900">Public Allergens</h1>
                 <p className="text-sm text-muted mt-1">
@@ -541,6 +540,6 @@ export default function PublicAllergensPreviewPage() {
             <div className="border border-border rounded-xl overflow-hidden bg-app-bg">
                 <PublicAllergensPage slugOverride={activeRestaurant.slug} />
             </div>
-        </PageContainer>
+        </>
     )
 }

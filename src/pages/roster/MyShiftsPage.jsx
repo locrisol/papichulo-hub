@@ -18,7 +18,6 @@ import { isWorkingOn, sortEmployees, NO_COLOUR } from '../../lib/team'
 import {
     LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
 } from '../../lib/shiftRequests'
-import PageContainer from '../../components/layout/PageContainer'
 import DateStepper from '../../components/DateStepper'
 import RosterWeek from '../../components/RosterWeek'
 import PresenceGrid from '../../components/PresenceGrid'
@@ -275,30 +274,27 @@ export default function MyShiftsPage() {
     }
 
     if (!ready) {
-        return <PageContainer><p className="text-sm text-gray-400">Loading...</p></PageContainer>
+        return <p className="text-sm text-gray-400">Loading...</p>
     }
 
     // Somebody with a login but no record on the team list. It happens the day
     // an account is made and before the manager joins it up, and a blank page
     // would leave them wondering which of the two is broken.
     if (!me) {
+        // The card stays narrow inside a full width page, because it is a
+        // paragraph and a paragraph the width of a monitor is unreadable. Its
+        // own max-w goes on the card and nowhere else: two max-w classes on one
+        // element and the winner is whichever Tailwind happens to emit last.
         return (
-            <PageContainer>
-                {/* The card stays narrow inside a full width page, because it
-                    is a paragraph and a paragraph the width of a monitor is
-                    unreadable. Its own max-w goes on the card and not on the
-                    container: two max-w classes on one element and the winner
-                    is whichever Tailwind happens to emit last. */}
-                <div className={`${card} p-6 max-w-md`}>
-                    <h2 className="font-serif text-lg font-bold text-gray-900 mb-2">
-                        Not on the team list yet
-                    </h2>
-                    <p className="text-sm text-muted">
-                        Your account is not joined up to anybody on the roster, so there are no shifts to
-                        show. Ask a manager to link it and this fills in.
-                    </p>
-                </div>
-            </PageContainer>
+            <div className={`${card} p-6 max-w-md`}>
+                <h2 className="font-serif text-lg font-bold text-gray-900 mb-2">
+                    Not on the team list yet
+                </h2>
+                <p className="text-sm text-muted">
+                    Your account is not joined up to anybody on the roster, so there are no shifts to
+                    show. Ask a manager to link it and this fills in.
+                </p>
+            </div>
         )
     }
 
@@ -307,7 +303,7 @@ export default function MyShiftsPage() {
         // component, so it moves when they move. This page was capped at 48rem
         // and was the only one that was, which read as a page that had not
         // finished loading rather than as a choice.
-        <PageContainer>
+        <>
             <div className="mb-4">
                 <h2 className="font-serif text-2xl font-bold text-gray-900">
                     {view === 'mine' ? 'My shifts' : 'The week'}
@@ -535,7 +531,7 @@ export default function MyShiftsPage() {
                     ))}
                 </div>
             )}
-        </PageContainer>
+        </>
     )
 }
 

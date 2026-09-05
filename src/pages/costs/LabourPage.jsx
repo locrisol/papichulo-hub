@@ -6,7 +6,6 @@ import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
@@ -254,7 +253,7 @@ export default function LabourPage() {
     }
 
     return (
-        <PageContainer>
+        <>
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Labour</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -414,6 +413,6 @@ export default function LabourPage() {
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
-        </PageContainer>
+        </>
     )
 }
