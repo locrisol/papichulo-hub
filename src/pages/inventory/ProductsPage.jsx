@@ -164,6 +164,7 @@ export default function ProductsPage() {
   }
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
   const [priceErrors, setPriceErrors] = useState({})
+  const [priceCounts, setPriceCounts] = useState({})
   const [formats, setFormats] = useState(EMPTY_FORMATS)
   const [recipe, setRecipe] = useState(EMPTY_RECIPE)
   const [allergens, setAllergens] = useState(emptyAllergens())
@@ -309,6 +310,22 @@ export default function ProductsPage() {
       .in('price_id', ids)
       .order('sort_order')
     setCountUnits(units || [])
+
+    // How many suppliers price each product, counting the ones that are not
+    // preferred. The edit form holds one price and has to be able to say when
+    // there are others, rather than quietly showing one of several as if it
+    // were the whole story. Comparing two suppliers is the point of the table
+    // carrying more than one row per product.
+    const { data: everyPrice } = await supabase
+      .from('product_supplier_prices')
+      .select('product_id')
+      .eq('restaurant_id', activeRestaurant.id)
+
+    const counts = {}
+    for (const row of everyPrice || []) {
+      counts[row.product_id] = (counts[row.product_id] || 0) + 1
+    }
+    setPriceCounts(counts)
   }
 
   async function fetchRecipeLines() {
@@ -391,7 +408,7 @@ export default function ProductsPage() {
     const newErrors = validate()
     // The price block is only checked if somebody started filling it in. Left
     // alone it is not an error, it is the normal case.
-    const wantsPrice = !editingProduct && !formData.is_mix && hasPrice(priceForm)
+    const wantsPrice = !formData.is_mix && hasPrice(priceForm)
     const newPriceErrors = wantsPrice ? priceProblem(priceForm) : {}
 
     // The same code from the same supplier, against what this screen already
@@ -399,7 +416,8 @@ export default function ProductsPage() {
     // things is a coincidence rather than a mistake.
     if (wantsPrice && !newPriceErrors.supplier_code) {
       const clash = sameSupplierCode(prices, priceForm.supplier_id, priceForm.supplier_code)
-      if (clash) {
+      // Its own code is not a clash with itself.
+      if (clash && clash.product_id !== editingProduct?.id) {
         const owner = products.find(p => p.id === clash.product_id)
         newPriceErrors.supplier_code =
           `${owner?.name || 'Another product'} already has this code with this supplier.`
@@ -425,10 +443,11 @@ export default function ProductsPage() {
         .select('product_id')
         .eq('supplier_id', priceForm.supplier_id)
         .eq('supplier_code', priceForm.supplier_code.trim())
-        .limit(1)
+        .limit(2)
 
-      if (codeRows?.length > 0) {
-        const owner = products.find(p => p.id === codeRows[0].product_id)
+      const someoneElse = (codeRows || []).filter(r => r.product_id !== editingProduct?.id)
+      if (someoneElse.length > 0) {
+        const owner = products.find(p => p.id === someoneElse[0].product_id)
         setPriceErrors({
           supplier_code: `${owner?.name || 'Another product'} already has this code with this supplier.`,
         })
@@ -490,8 +509,74 @@ export default function ProductsPage() {
         .update(payload)
         .eq('id', editingProduct.id)
 
-      if (error) setError(friendlyError(error))
-      else { fetchProducts(); resetForm() }
+      if (error) { setError(friendlyError(error)); return }
+
+      // The price, the packs and the allergens, the same three things creating
+      // a product asks for. Written here so changing any of them is done where
+      // you are rather than on two other screens.
+      const existing = getPreferredPrice(editingProduct.id)
+
+      if (wantsPrice) {
+        const row = {
+          ...pricePayload(priceForm),
+          allow_loose_count: formats.allowLoose,
+        }
+
+        const { data: saved, error: priceErr } = existing
+          ? await supabase.from('product_supplier_prices')
+              .update(row).eq('id', existing.id).select().single()
+          : await supabase.from('product_supplier_prices')
+              .insert({
+                ...row,
+                product_id: editingProduct.id,
+                restaurant_id: activeRestaurant.id,
+                is_preferred: true,
+              }).select().single()
+
+        if (priceErr) {
+          setError(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          fetchProducts()
+          return
+        }
+
+        // The packs are replaced rather than reconciled. There are a handful of
+        // them, they have no history worth keeping, and working out which one
+        // somebody renamed is a lot of care for a list of three.
+        if (saved) {
+          await supabase.from('price_count_units').delete().eq('price_id', saved.id)
+          if (formats.packs.length > 0) {
+            await supabase.from('price_count_units').insert(
+              formats.packs.map((pack, order) => ({
+                price_id: saved.id,
+                label: pack.label,
+                factor: pack.factor,
+                sort_order: order,
+              })),
+            )
+          }
+        }
+      }
+
+      // Emptying the supplier boxes does not remove a price. Taking a supplier
+      // off a product is what the Prices screen is for, and doing it silently
+      // because somebody cleared a field would be a poor way to lose a cost.
+
+      if (allergensTouched && declaresAllergens(formData)) {
+        const { error: allergenErr } = await supabase
+          .from('product_allergens')
+          .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
+            { onConflict: 'product_id' })
+
+        if (allergenErr) {
+          setError(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          fetchProducts()
+          return
+        }
+      }
+
+      fetchProducts()
+      fetchPrices()
+      resetForm()
     } else {
       const { data, error } = await supabase
         .from('products')
@@ -618,7 +703,17 @@ export default function ProductsPage() {
     setPriceErrors({})
   }
 
-  function startEdit(product) {
+  // Opening a product to change it.
+  //
+  // The form offers the same things whether a product is being made or being
+  // changed, so this has to fill in what creating one would have asked for: the
+  // preferred price, the packs hanging off it, and the allergens. Without that
+  // the sections would all read Not set on a product that has had a supplier
+  // for a year, and saving would look like it had wiped them.
+  //
+  // The price and the packs are already on this screen. The allergens are their
+  // own row and their own fetch, which is why this waits.
+  async function startEdit(product) {
     setFormData({
       name: product.name,
       section: product.section,
@@ -631,9 +726,57 @@ export default function ProductsPage() {
       notes: product.notes || '',
       is_active: product.is_active,
     })
+
+    const price = getPreferredPrice(product.id)
+    setPriceForm(price
+      ? {
+          supplier_id: price.supplier_id || '',
+          purchase_type: price.purchase_type || 'case',
+          supplier_code: price.supplier_code || '',
+          price_per_case: price.price_per_case ?? '',
+          units_per_case: price.units_per_case ?? '',
+          price_per_unit: price.price_per_unit ?? '',
+        }
+      : EMPTY_PRICE)
+
+    setFormats(price
+      ? {
+          packs: countUnits
+            .filter(u => u.price_id === price.id)
+            .map(u => ({ label: u.label, factor: Number(u.factor) })),
+          allowLoose: price.allow_loose_count !== false,
+          draft: { label: '', factor: '' },
+        }
+      : EMPTY_FORMATS)
+
+    setRecipe(EMPTY_RECIPE)
     setEditingProduct(product)
     setShowForm(true)
     setErrors({})
+    setPriceErrors({})
+    setOpenExtra(null)
+
+    // Whatever is on the row now, so ticking nothing and saving does not read
+    // as declaring the product free of all fourteen.
+    const { data: row } = await supabase
+      .from('product_allergens')
+      .select('*')
+      .eq('product_id', product.id)
+      .maybeSingle()
+
+    if (row) {
+      // Only the fourteen. The row also carries its own id and stamps, and
+      // handing those to the picker would put them straight back into the save.
+      const values = {}
+      for (const key of Object.keys(emptyAllergens())) {
+        if (key in row) values[key] = row[key]
+      }
+      setAllergens({ ...emptyAllergens(), ...values })
+      setAllergensTouched(true)
+    } else {
+      setAllergens(emptyAllergens())
+      setAllergensTouched(false)
+    }
   }
 
   async function toggleActive(product) {
@@ -1059,6 +1202,25 @@ export default function ProductsPage() {
                       errors={errors}
                       nameClash={nameClash}
                       heldForNames={heldForNames}
+                      extras
+                      recipeBlock={false}
+                      priceForm={priceForm}
+                      onPriceChange={handlePriceChange}
+                      priceErrors={priceErrors}
+                      suppliers={activeSuppliers}
+                      formats={formats}
+                      onFormatsChange={setFormats}
+                      allergens={allergens}
+                      onAllergenChange={handleAllergenChange}
+                      allergensAnswered={allergensTouched}
+                      onNoAllergens={handleNoAllergens}
+                      recipe={recipe}
+                      onRecipeChange={setRecipe}
+                      ingredientOptions={ingredientOptions}
+                      openExtra={openExtra}
+                      onOpenExtra={setOpenExtra}
+                      otherPriceCount={Math.max(0, (priceCounts[editingProduct?.id] || 0) - 1)}
+                      onOpenPrices={() => navigate(`/catalogue/products/${editingProduct.id}/prices`)}
                     />
                   </div>
                 )}
@@ -1241,6 +1403,25 @@ export default function ProductsPage() {
               errors={errors}
               nameClash={nameClash}
               heldForNames={heldForNames}
+              extras
+              recipeBlock={false}
+              priceForm={priceForm}
+              onPriceChange={handlePriceChange}
+              priceErrors={priceErrors}
+              suppliers={activeSuppliers}
+              formats={formats}
+              onFormatsChange={setFormats}
+              allergens={allergens}
+              onAllergenChange={handleAllergenChange}
+              allergensAnswered={allergensTouched}
+              onNoAllergens={handleNoAllergens}
+              recipe={recipe}
+              onRecipeChange={setRecipe}
+              ingredientOptions={ingredientOptions}
+              openExtra={openExtra}
+              onOpenExtra={setOpenExtra}
+              otherPriceCount={Math.max(0, (priceCounts[editingProduct?.id] || 0) - 1)}
+              onOpenPrices={() => navigate(`/catalogue/products/${editingProduct.id}/prices`)}
             />
           </div>
         </Modal>
