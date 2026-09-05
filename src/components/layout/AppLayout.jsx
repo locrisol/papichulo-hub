@@ -180,7 +180,7 @@ export default function AppLayout({ children }) {
                     </p>
                 </div>
 
-                <nav className="flex-1 py-4 overflow-y-auto">
+                <nav className="flex-1 py-4 overflow-y-auto sidebar-scroll">
                     {sections.map(section => (
                         <div key={section} className="mb-2">
                             <p className="px-5 py-2 text-xs font-semibold text-green-700 uppercase tracking-widest">
