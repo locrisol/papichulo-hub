@@ -11,6 +11,7 @@ import {
   heldFor, partiesIn,
 } from '../../lib/products'
 import SearchBox from '../../components/SearchBox'
+import RowActions from '../../components/RowActions'
 import { useKeepScroll } from '../../context/ScrollContext'
 import { sectionColour, productInk, DRINK_COLOUR } from '../../lib/sections'
 import ProductForm from '../../components/ProductForm'
@@ -659,49 +660,44 @@ export default function ProductsPage() {
     else fetchProducts()
   }
 
-  // The row buttons, written once and used by both layouts.
+  // What you can do to a product, written once as a list rather than as
+  // markup, because the table and the phone cards lay the same things out
+  // differently and a list cannot drift the way two copies of markup can.
   //
-  // This is a plain function rather than a component on purpose. A component
-  // declared inside another component is a new type on every render, so React
-  // throws the old one away and builds it again, and that is a lot of churn for
-  // five buttons.
+  // A plain function rather than a component on purpose. A component declared
+  // inside another component is a new type on every render, so React throws the
+  // old one away and builds it again.
+  function rowActionList(p) {
+    const editing = editingProduct?.id === p.id
+    return {
+      primary: {
+        label: editing ? 'Cancel' : 'Edit',
+        tone: 'edit',
+        onClick: () => editing ? resetForm() : startEdit(p),
+      },
+      items: [
+        { label: 'Allergens', onClick: () => navigate(`/catalogue/products/${p.id}/allergens`) },
+        p.is_mix && { label: 'Recipe', onClick: () => navigate(`/catalogue/products/${p.id}/recipe`) },
+        { label: 'Prices', onClick: () => navigate(`/catalogue/products/${p.id}/prices`) },
+        {
+          label: p.is_active ? 'Deactivate' : 'Reactivate',
+          tone: p.is_active ? 'danger' : 'good',
+          onClick: () => toggleActive(p),
+        },
+      ].filter(Boolean),
+    }
+  }
+
+  // The phone card shows all of them side by side. It is a card, there is
+  // nothing beside them to collide with, and hiding any of it behind a menu
+  // would cost a tap and buy nothing.
   function rowActions(p) {
-    return (
-      <>
-        <button
-          onClick={() => editingProduct?.id === p.id ? resetForm() : startEdit(p)}
-          className={rowButton('edit')}
-        >
-          {editingProduct?.id === p.id ? 'Cancel' : 'Edit'}
-        </button>
-        <button
-          onClick={() => navigate(`/catalogue/products/${p.id}/allergens`)}
-          className={rowButton()}
-        >
-          Allergens
-        </button>
-        {p.is_mix && (
-          <button
-            onClick={() => navigate(`/catalogue/products/${p.id}/recipe`)}
-            className={rowButton()}
-          >
-            Recipe
-          </button>
-        )}
-        <button
-          onClick={() => navigate(`/catalogue/products/${p.id}/prices`)}
-          className={rowButton()}
-        >
-          Prices
-        </button>
-        <button
-          onClick={() => toggleActive(p)}
-          className={rowButton(p.is_active ? 'danger' : 'good')}
-        >
-          {p.is_active ? 'Deactivate' : 'Reactivate'}
-        </button>
-      </>
-    )
+    const { primary, items } = rowActionList(p)
+    return [primary, ...items].map(a => (
+      <button key={a.label} onClick={a.onClick} className={rowButton(a.tone)}>
+        {a.label}
+      </button>
+    ))
   }
 
   // Everything a product shows that is not simply a column off the record,
@@ -1216,7 +1212,7 @@ export default function ProductsPage() {
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
                       <td className={`px-4 py-3 ${last ? 'rounded-br-xl' : ''}`}>
-                        <div className="flex flex-wrap gap-2">{rowActions(p)}</div>
+                        <RowActions label={p.name} {...rowActionList(p)} />
                       </td>
                     </tr>
                   </Fragment>

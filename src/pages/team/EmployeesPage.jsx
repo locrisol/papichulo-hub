@@ -17,6 +17,7 @@ import {
     NO_COLOUR,
 } from '../../lib/team'
 import Modal from '../../components/Modal'
+import RowActions from '../../components/RowActions'
 import EmployeeForm from '../../components/EmployeeForm'
 import PositionsModal from '../../components/PositionsModal'
 import CalendarLinkDialog from '../../components/CalendarLinkDialog'
@@ -201,6 +202,49 @@ export default function EmployeesPage() {
         if (ok) openEdit(employee)
     }
 
+    // What you can do to one person, written once as a list rather than as
+    // markup, because the table and the phone cards lay the same things out
+    // differently and a list cannot drift the way two copies of markup can.
+    function rowActionList(employee) {
+        return {
+            primary: { label: 'Edit', tone: 'edit', onClick: () => openEdit(employee) },
+            items: [
+                {
+                    label: 'Time off',
+                    title: 'Holidays, days off and anything else they are away for',
+                    onClick: () => setTimeOffFor(employee),
+                },
+                {
+                    label: 'Availability',
+                    title: 'The days and hours they can normally work',
+                    onClick: () => setAvailabilityFor(employee),
+                },
+                {
+                    label: 'Calendar',
+                    title: "A link they can subscribe their phone's calendar to",
+                    onClick: () => setCalendarFor(employee),
+                },
+                !employee.ended_on && {
+                    label: 'Leaving',
+                    tone: 'danger',
+                    onClick: () => recordLastDay(employee),
+                },
+            ].filter(Boolean),
+        }
+    }
+
+    // The phone card shows all of them side by side. It is a card, there is
+    // nothing beside them to collide with, and hiding any of it behind a menu
+    // would cost a tap and buy nothing.
+    function rowActions(employee) {
+        const { primary, items } = rowActionList(employee)
+        return [primary, ...items].map(a => (
+            <button key={a.label} onClick={a.onClick} title={a.title} className={rowButton(a.tone)}>
+                {a.label}
+            </button>
+        ))
+    }
+
     const sorted = sortEmployees(employees)
     const current = sorted.filter(e => employeeStatus(e, today).state !== 'left')
     const past = sorted.filter(e => employeeStatus(e, today).state === 'left')
@@ -333,23 +377,7 @@ export default function EmployeesPage() {
                                     </dl>
 
                                     <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
-                                        <button onClick={() => openEdit(employee)} className={rowButton('edit')}>
-                                            Edit
-                                        </button>
-                                        <button onClick={() => setTimeOffFor(employee)} className={rowButton()}>
-                                            Time off
-                                        </button>
-                                        <button onClick={() => setAvailabilityFor(employee)} className={rowButton()}>
-                                            Availability
-                                        </button>
-                                        <button onClick={() => setCalendarFor(employee)} className={rowButton()}>
-                                            Calendar
-                                        </button>
-                                        {!employee.ended_on && (
-                                            <button onClick={() => recordLastDay(employee)} className={rowButton()}>
-                                                Leaving
-                                            </button>
-                                        )}
+                                        {rowActions(employee)}
                                     </div>
 
                                     {/* The order they appear in on the roster is
@@ -484,43 +512,7 @@ export default function EmployeesPage() {
                                                     : `€${Number(employee.hourly_rate).toFixed(2)}`}
                                             </td>
                                             <td className="px-3 py-2">
-                                                <div className="flex flex-wrap gap-2 justify-end">
-                                                    <button
-                                                        onClick={() => openEdit(employee)}
-                                                        className={rowButton('edit')}
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setTimeOffFor(employee)}
-                                                        className={rowButton()}
-                                                        title="Holidays, days off and anything else they are away for"
-                                                    >
-                                                        Time off
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setAvailabilityFor(employee)}
-                                                        className={rowButton()}
-                                                        title="The days and hours they can normally work"
-                                                    >
-                                                        Availability
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setCalendarFor(employee)}
-                                                        className={rowButton()}
-                                                        title="A link they can subscribe their phone's calendar to"
-                                                    >
-                                                        Calendar
-                                                    </button>
-                                                    {!employee.ended_on && (
-                                                        <button
-                                                            onClick={() => recordLastDay(employee)}
-                                                            className={rowButton()}
-                                                        >
-                                                            Leaving
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                <RowActions label={employee.full_name} {...rowActionList(employee)} />
                                             </td>
                                         </tr>
                                     )
