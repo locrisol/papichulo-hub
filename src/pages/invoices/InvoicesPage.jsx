@@ -6,7 +6,6 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
 import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
 import InvoiceForm from '../../components/InvoiceForm'
 import { useConfirm } from '../../context/ConfirmContext'
@@ -260,7 +259,7 @@ export default function InvoicesPage() {
     const weekTotal = invoices.reduce((sum, i) => sum + num(i.total_amount), 0)
 
     return (
-        <PageContainer>
+        <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-900">Invoices</h2>
@@ -418,6 +417,6 @@ export default function InvoicesPage() {
                     </div>
                 </Modal>
             )}
-        </PageContainer>
+        </>
     )
 }

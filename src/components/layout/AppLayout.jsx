@@ -322,7 +322,23 @@ export default function AppLayout({ children }) {
                     {/* Which of the two is scrolling, handed down rather than
                         hunted for, so a page can remember where somebody was. */}
                     <ScrollProvider mainRef={mainRef} shellRef={shellRef}>
-                        {children}
+                        {/* How wide a page is allowed to get, for every page,
+                            decided here rather than by each page remembering to
+                            ask for it. It used to be a PageContainer component a
+                            page wrapped itself in, and thirteen of the
+                            twenty six pages never did, so the app had three
+                            different widths depending on which one you were
+                            looking at. A page cannot forget this one.
+
+                            1600 because a table row stretched the whole way
+                            across a big monitor puts long gaps between the
+                            columns and makes your eye travel further to read a
+                            single row. The seven day grids on the roster and
+                            the weekly sales are the widest things in here and
+                            both still fit inside it. */}
+                        <div className="max-w-[1600px]">
+                            {children}
+                        </div>
                     </ScrollProvider>
                 </main>
                 <BackToTop scrollers={[mainRef, shellRef]} />

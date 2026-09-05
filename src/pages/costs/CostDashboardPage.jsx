@@ -6,7 +6,6 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
-import PageContainer from '../../components/layout/PageContainer'
 import { dateField, jumpButton, card, rowButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
@@ -312,15 +311,11 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     if (!ready) {
-        return (
-            <PageContainer>
-                <p className="text-sm text-gray-400">Loading...</p>
-            </PageContainer>
-        )
+        return <p className="text-sm text-gray-400">Loading...</p>
     }
 
     return (
-        <PageContainer>
+        <>
             {/* Header: the week, and what it has done so far */}
             <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
                 <div>
@@ -524,6 +519,6 @@ export default function CostDashboardPage() {
                     onSaved={() => setRefresh(n => n + 1)}
                 />
             )}
-        </PageContainer>
+        </>
     )
 }
