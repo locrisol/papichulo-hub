@@ -92,7 +92,7 @@ export function drawWeek(canvas, table) {
         lines: wrapLines(`${lead}${tail}`, probe.dayCol - 30, t => c.measureText(t).width),
     })
 
-    const CARD_PAD_LINES = 0.5
+    const CARD_PAD_LINES = 1
     const eventCards = (table.eventsOn || []).map(list => list.map(
         e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
     ))
@@ -346,6 +346,13 @@ export function drawWeek(canvas, table) {
             // screen, and a roster on a wall does not need to say who was sick.
             if (day.away) {
                 box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, AWAY.fill)
+            }
+
+            // Only when there is nothing else in the cell, or the word and the
+            // shift are drawn one on top of the other. Being rostered on a day
+            // you said you could not work is a warning on the screen rather
+            // than a refusal, so it does happen.
+            if (day.away && day.shifts.length === 0) {
                 font(11, '700')
                 text(AWAY.label, x, top + (l.shiftH + l.breakH) / 2, {
                     align: 'center', colour: AWAY.ink, max: l.dayCol - 8,

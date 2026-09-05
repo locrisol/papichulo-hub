@@ -304,7 +304,11 @@ export function sheetLayout(table, {
     // Tall enough for the longest label, rather than one line with the rest cut
     // off. Deep Cleaning Day came out as Deep Cleaning D and an ellipsis, which
     // is a note nobody can act on.
-    const notesH = Math.max(28, noteLines * 15 + 13)
+    // Nothing at all when no day has one, rather than an empty band, which is
+    // the same rule Also on already follows. It used to be reserved whether it
+    // was drawn or not, and both the sheet and the picture ended with a blank
+    // strip under the last person that read as somebody with no shifts.
+    const notesH = table.notes?.some(Boolean) ? Math.max(28, noteLines * 15 + 13) : 0
     const totalH = 34
 
     const bodyRows = table.people.length

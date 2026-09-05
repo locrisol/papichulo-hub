@@ -110,7 +110,7 @@ export function weekPdf(table, restaurantName, weekStart) {
     // squeezes itself to fit a week of people onto it.
     //
     // Measured in lines because that is the currency the layout works in.
-    const CHIP_PAD_LINES = 0.5
+    const CHIP_PAD_LINES = 1
     const chipsPerDay = (table.extras || []).map(list => list.map(
         extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
     ))
@@ -354,6 +354,14 @@ export function weekPdf(table, restaurantName, weekStart) {
             // shift beside it.
             if (day.away) {
                 box(l.columnX(i), top, l.dayCol, rowH, AWAY.fillRgb)
+            }
+
+            // Only when there is nothing else in the cell. Somebody can be
+            // rostered on a day they said they could not work, because that is
+            // a warning on the screen and not a refusal, and then the word and
+            // the shift were drawn one on top of the other. The fill still says
+            // it, and the shift is the thing you need to be able to read.
+            if (day.away && day.shifts.length === 0) {
                 // The middle of the whole cell, not of the top half of it.
                 // This one is not divided into times and breaks, so it has no
                 // top half to sit in.
