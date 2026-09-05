@@ -25,7 +25,16 @@ import { addDays } from './dates'
 // reading "is down as Holiday" is written by a form rather than by a person.
 export const ABSENCE_KINDS = [
     { value: 'holiday', label: 'Holiday', phrase: 'on holiday', colour: '#4a7fb5', hours: true },
-    { value: 'day_off', label: 'Day off', phrase: 'having the day off', colour: '#6b7f8c', hours: false },
+    // pickerLabel is what the dropdown says while somebody is still choosing,
+    // and it is only different where the plain label would mislead them. A day
+    // off can be part of a day, and picking this is how you get to the hours,
+    // so an option that only says Day off hides the way in. Everywhere the
+    // label is used afterwards it is describing an absence that already exists
+    // and already is one or the other, and there the short one is right.
+    {
+        value: 'day_off', label: 'Day off', pickerLabel: 'Day off, or part of one',
+        phrase: 'having the day off', colour: '#6b7f8c', hours: false,
+    },
     { value: 'sick', label: 'Off sick', phrase: 'off sick', colour: '#b5654a', hours: false },
     { value: 'event', label: 'Away at something', phrase: 'away at something', colour: '#7a6bb5', hours: false },
     { value: 'lent', label: 'At the other restaurant', phrase: 'at the other restaurant', colour: '#4a9b7f', hours: false },

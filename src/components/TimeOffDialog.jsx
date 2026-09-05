@@ -11,7 +11,7 @@ import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
 } from '../lib/absences'
-import { shiftsHit, asCleared } from '../lib/timeOff'
+import { shiftsHit, asCleared, isPartDay, partWords } from '../lib/timeOff'
 import { shortTime } from '../lib/roster'
 import { dayName } from '../lib/events'
 import { shortDate } from '../lib/dates'
@@ -26,7 +26,7 @@ import { shortDate } from '../lib/dates'
 // It lists and it edits in the same place, the same as the positions dialog,
 // because a list of somebody's time off with no way to fix a typo in it is a
 // list you end up keeping somewhere else as well.
-const EMPTY = { kind: 'holiday', startsOn: '', endsOn: '', hours: '', note: '' }
+const EMPTY = { kind: 'holiday', startsOn: '', endsOn: '', hours: '', note: '', canFrom: '', canTo: '' }
 
 export default function TimeOffDialog({
     employees, initialEmployeeId, restaurantId, userId, onClose, onChanged,
@@ -88,7 +88,13 @@ export default function TimeOffDialog({
     }
 
     const change = (field, value) => setForm(f => ({ ...f, [field]: value }))
-    const problem = absenceProblem({ ...form, employeeId })
+    // The one thing absenceProblem cannot know about, since it has never had to
+    // think about hours. An end before a start is the only way to get these two
+    // wrong; leaving both empty is a whole day and is the ordinary case.
+    const hoursProblem = form.canFrom && form.canTo && form.canTo <= form.canFrom
+        ? 'The end is before the start.'
+        : null
+    const problem = absenceProblem({ ...form, employeeId }) || hoursProblem
 
     // Only worth saying while it is being typed. Two overlapping is usually
     // somebody going sick in the middle of a holiday, which is two true things,
@@ -114,8 +120,14 @@ export default function TimeOffDialog({
             endsOn: absence.ends_on || '',
             hours: absence.hours == null ? '' : String(absence.hours),
             note: absence.note || '',
+            canFrom: absence.can_work_from ? String(absence.can_work_from).slice(0, 5) : '',
+            canTo: absence.can_work_to ? String(absence.can_work_to).slice(0, 5) : '',
         })
     }
+
+    // Part of a day only makes sense on one date, so the fields for it only
+    // appear on one date and what they hold is only saved on one date.
+    const onePart = !!form.startsOn && (!form.endsOn || form.endsOn === form.startsOn)
 
     function toRow() {
         return {
@@ -128,6 +140,16 @@ export default function TimeOffDialog({
             ends_on: form.endsOn || form.startsOn,
             hours: takesHours(form.kind) && form.hours !== '' ? Number(form.hours) : null,
             note: form.note.trim() || null,
+            // The hours they can still work, which is what makes this part of a
+            // day rather than the whole of it. Stored that way round because it
+            // is the way somebody says it out loud: not "away from three" but
+            // "can work until three".
+            //
+            // Only on one date. A part day across a fortnight means nothing,
+            // and cleared rather than left behind when the dates are widened,
+            // or a stretch would quietly carry hours nobody can see.
+            can_work_from: onePart ? (form.canFrom || null) : null,
+            can_work_to: onePart ? (form.canTo || null) : null,
         }
     }
 
@@ -216,7 +238,7 @@ export default function TimeOffDialog({
                                 className={fieldCls}
                             >
                                 {ABSENCE_KINDS.map(k => (
-                                    <option key={k.value} value={k.value}>{k.label}</option>
+                                    <option key={k.value} value={k.value}>{k.pickerLabel || k.label}</option>
                                 ))}
                             </select>
                         </div>
@@ -265,6 +287,46 @@ export default function TimeOffDialog({
                                 </p>
                             </div>
                         )}
+                        {/* Part of a day rather than the whole of it.
+                            "Leaving at three on Tuesday" and "starting at one"
+                            had nowhere to go before this: a whole day off says
+                            too much, and changing their availability says it
+                            about every Tuesday there will ever be.
+
+                            Stored as the hours they can still work, because
+                            that is the way it gets said out loud, and it is the
+                            way the staff form asks it too, so both write the
+                            same thing.
+
+                            Not tied to a day off. Somebody going home sick at
+                            three is the same shape and worth having properly. */}
+                        {onePart && (
+                            <div className="sm:col-span-3">
+                                <label className={labelCls}>Only part of the day, optional</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="time"
+                                        value={form.canFrom}
+                                        onChange={e => change('canFrom', e.target.value)}
+                                        className={fieldCls}
+                                        aria-label="Can work from"
+                                    />
+                                    <span className="text-xs text-muted flex-shrink-0">to</span>
+                                    <input
+                                        type="time"
+                                        value={form.canTo}
+                                        onChange={e => change('canTo', e.target.value)}
+                                        className={fieldCls}
+                                        aria-label="Can work until"
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    The hours they can still work. Leave both empty for the whole day,
+                                    or fill one in for somebody leaving early or starting late.
+                                </p>
+                            </div>
+                        )}
+
                         <div className={takesHours(form.kind) ? 'sm:col-span-2' : 'sm:col-span-3'}>
                             <label className={labelCls}>Note</label>
                             <input
@@ -353,6 +415,16 @@ export default function TimeOffDialog({
                                     <span className="min-w-0 flex-1">
                                         <span className="block text-sm font-medium text-gray-900">
                                             {kind.label}
+                                            {/* Otherwise a day off where they
+                                                work the morning reads exactly
+                                                like a day off where they do
+                                                not, and the only way to tell
+                                                would be to open it. */}
+                                            {isPartDay(absence) && (
+                                                <span className="font-normal text-amber-700">
+                                                    {' '}· {partWords(absence)}
+                                                </span>
+                                            )}
                                             {absence.hours != null && (
                                                 <span className="font-normal text-gray-500">
                                                     {' '}· {Number(absence.hours).toFixed(2)} hours

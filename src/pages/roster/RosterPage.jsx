@@ -12,6 +12,7 @@ import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
+    shiftEdges,
 } from '../../lib/roster'
 import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
 import { openGaps, asCleared } from '../../lib/timeOff'
@@ -225,6 +226,37 @@ export default function RosterPage() {
 
     const week = totals(shifts, employeesById)
     const day = totals(dayShifts, employeesById)
+
+    // How much of the week each person already has.
+    //
+    // The day view showed their hours for that day, which the shift block
+    // beside it is already saying. What you actually want while placing one is
+    // how much they have had this week, because that is the number you are
+    // trying not to overshoot.
+    const weekHoursByEmployee = {}
+    for (const s of shifts) {
+        weekHoursByEmployee[s.employee_id] = (weekHoursByEmployee[s.employee_id] || 0) + shiftHours(s)
+    }
+
+    // Who closed the night before.
+    //
+    // Said quietly and nothing more. Closing at eleven and opening at half
+    // eight is legal and sometimes it is what somebody wants, so this does not
+    // block it, warn about it or make it any harder to do. It just means you
+    // are not deciding it blind.
+    //
+    // Both lists, because the day before the first day of the week is in the
+    // week before, which is why those are fetched at all.
+    const yesterday = addDays(date, -1)
+    const yesterdayHours = hoursOn(yesterday)
+    const closedLastNight = {}
+    for (const s of [...shifts, ...nearbyShifts]) {
+        if (s.shift_date !== yesterday) continue
+        if (!shiftEdges(s, yesterdayHours).closing) continue
+        // The latest one, for somebody on twice in a day.
+        const held = closedLastNight[s.employee_id]
+        if (!held || s.ends_at > held) closedLastNight[s.employee_id] = s.ends_at
+    }
     const state = publishState(shifts)
     const clashes = findOverlaps(shifts)
 
@@ -884,6 +916,8 @@ export default function RosterPage() {
             ) : (
                 <RosterDay
                     employees={roster}
+                    weekHours={weekHoursByEmployee}
+                    closedLastNight={closedLastNight}
                     shifts={dayShifts}
                     positions={positions}
                     date={date}

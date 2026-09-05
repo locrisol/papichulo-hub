@@ -2,12 +2,12 @@ import { cardEdge, tableHeadRow } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
-import { dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '../lib/absences'
 import { askedOff, partWords } from '../lib/timeOff'
 import { AWAY } from '../lib/rosterShare'
-import { extrasFor, extraLabel } from '../lib/dayExtras'
+import { extrasFor } from '../lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -178,12 +178,19 @@ export default function RosterWeek({
                                     {on.length === 0 ? (
                                         <span className="text-gray-300 text-xs">—</span>
                                     ) : on.map(e => (
-                                        <span key={e.id} className="block text-[0.6875rem] text-accent-ink font-medium leading-snug break-words mb-1 last:mb-0">
-                                            {e.name}
+                                        // The same card as Also on, and for the
+                                        // same reason: a week with two concerts
+                                        // in it read as one run of words. The
+                                        // name leads here rather than the time,
+                                        // because with a concert the thing you
+                                        // are looking for is which one it is.
+                                        <span
+                                            key={e.id}
+                                            className="block rounded-md border border-accent/30 bg-white px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words mb-1 last:mb-0"
+                                        >
+                                            <span className="font-bold text-accent-ink">{e.name}</span>
                                             {e.event_time && (
-                                                <span className="block font-normal text-gray-500">
-                                                    doors {shortTime(e.event_time)}
-                                                </span>
+                                                <span className="text-gray-500"> (doors {shortTime(e.event_time)})</span>
                                             )}
                                         </span>
                                     ))}
@@ -206,11 +213,32 @@ export default function RosterWeek({
                                 const inside = extras.length === 0 ? (
                                     <span className="text-gray-300 text-xs">{staff ? '' : '+'}</span>
                                 ) : extras.map(extra => (
+                                    // One chip each, because two of them as
+                                    // plain lines read as one paragraph, and
+                                    // the time picked out from the name because
+                                    // the time is the half you scan for. A
+                                    // delivery at eleven and a delivery at
+                                    // three are different problems, which is
+                                    // the whole reason these carry a time.
+                                    // Inline rather than flex on purpose. As a
+                                    // flex item the name is one lump and drops
+                                    // to a line of its own the moment it does
+                                    // not fit, so "18:00 Extraction cleaning"
+                                    // left the time sitting alone on a line.
+                                    // Ordinary text flow wraps it mid phrase,
+                                    // beside the time, the way a sentence does.
                                     <span
                                         key={extra.name}
-                                        className="block text-[0.6875rem] text-slate-700 leading-snug break-words"
+                                        className="block rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words"
                                     >
-                                        {extraLabel(extra)}
+                                        {extra.time && (
+                                            <>
+                                                <span className="font-bold text-slate-800 tabular-nums">
+                                                    {extra.time}
+                                                </span>{' '}
+                                            </>
+                                        )}
+                                        <span className="text-slate-600">{extra.name}</span>
                                     </span>
                                 ))
                                 return (
@@ -220,13 +248,13 @@ export default function RosterWeek({
                                             day opens, which is where all of
                                             this is typed anyway. */}
                                         {staff ? (
-                                            <span className="block px-2 py-1.5">{inside}</span>
+                                            <span className="flex flex-col gap-1 px-2 py-1.5">{inside}</span>
                                         ) : (
                                             <button
                                                 type="button"
                                                 onClick={() => onOpenDay?.(d)}
                                                 aria-label={`Add something to ${fullDate(d)}`}
-                                                className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors"
+                                                className="w-full h-full px-2 py-1.5 hover:bg-slate-100 rounded transition-colors flex flex-col gap-1"
                                             >
                                                 {inside}
                                             </button>
@@ -281,7 +309,7 @@ export default function RosterWeek({
                                     // somebody can work part of reads the same
                                     // as any other and the day timeline is
                                     // where that gets drawn.
-                                    const away = dayState(row.employee.availability, day.date)
+                                    const away = dayState(availabilityOn(row.employee, day.date), day.date)
                                     // Time off beats everything else the cell
                                     // could be saying. Somebody on holiday is
                                     // away whatever their usual Tuesday is.
@@ -311,7 +339,7 @@ export default function RosterWeek({
                                                 : away === 'none'
                                                     ? `${row.employee.full_name} is not available this day`
                                                     : away === 'windows'
-                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(row.employee.availability, day.date))}`
+                                                        ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(availabilityOn(row.employee, day.date), day.date))}`
                                                         : undefined}
                                             style={{
                                                 ...(offKind
@@ -509,8 +537,14 @@ export default function RosterWeek({
                             <span className="font-semibold">{fullDate(n.note_date)}:</span> {n.message}
                         </p>
                     ))}
+                    {/* Not a footnote. It is the thing that explains why a
+                        closing shift has no finishing time and why the hours
+                        beside it are what they are, and in grey at the foot it
+                        was read once and never again. Tinted to match the
+                        yellow it is explaining, so the mark and the reason for
+                        it are visibly the same subject. */}
                     {standingNote && (
-                        <p className="px-4 py-2 text-sm text-gray-500 border-t border-border">
+                        <p className="px-4 py-2.5 text-sm font-medium text-amber-900 bg-amber-50 border-t border-amber-200">
                             {standingNote}
                         </p>
                     )}

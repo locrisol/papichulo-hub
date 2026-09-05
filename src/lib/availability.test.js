@@ -6,6 +6,8 @@ import {
     dayState,
     outsideAvailability,
     unavailableSpans,
+    availabilityStart,
+    availabilityOn,
     windowsLabel,
     availabilitySummary,
     toRows,
@@ -335,5 +337,34 @@ describe('availabilityProblem', () => {
         const rows = toRows(null)
         rows[0].state = 'none'
         expect(availabilityProblem(rows)).toBe('')
+    })
+})
+
+describe('which weeks availability speaks for', () => {
+    it('starts at the beginning of the week we are in', () => {
+        // Thursday 3 September 2026, so the line is the Sunday before it.
+        expect(availabilityStart('2026-09-03')).toBe('2026-08-30')
+    })
+
+    it('hands it over for today and for anything after', () => {
+        const e = { availability: { 0: [] } }
+        expect(availabilityOn(e, '2026-09-03', '2026-08-30')).toBe(e.availability)
+        expect(availabilityOn(e, '2026-08-30', '2026-08-30')).toBe(e.availability)
+        expect(availabilityOn(e, '2027-01-01', '2026-08-30')).toBe(e.availability)
+    })
+
+    it('hands over nothing for a week that has gone', () => {
+        // Not "they were available", which would be its own claim. Nothing, so
+        // every reader treats it as no availability recorded, because that is
+        // the truth: it was overwritten and nobody kept what it said.
+        const e = { availability: { 0: [] } }
+        expect(availabilityOn(e, '2026-08-29', '2026-08-30')).toBeNull()
+        expect(availabilityOn(e, '2026-01-01', '2026-08-30')).toBeNull()
+    })
+
+    it('is not upset by somebody with none set, or by no date', () => {
+        expect(availabilityOn({}, '2027-01-01', '2026-08-30')).toBeNull()
+        expect(availabilityOn(null, '2027-01-01', '2026-08-30')).toBeNull()
+        expect(availabilityOn({ availability: {} }, null, '2026-08-30')).toBeNull()
     })
 })

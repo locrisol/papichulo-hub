@@ -133,7 +133,7 @@ describe('weekTable', () => {
         const t = build({
             events: [{ id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' }],
         })
-        expect(t.whatIsOn[4]).toBe('Westlife (18:00)')
+        expect(t.whatIsOn[4]).toBe('Westlife (doors 18:00)')
     })
 
     it('runs two events on one day together rather than losing one', () => {
@@ -143,7 +143,7 @@ describe('weekTable', () => {
                 { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
             ],
         })
-        expect(t.whatIsOn[4]).toBe('One (13:00), Two (19:00)')
+        expect(t.whatIsOn[4]).toBe('One (doors 13:00), Two (doors 19:00)')
     })
 
     it('adds each person and each day up', () => {
@@ -192,7 +192,7 @@ describe('weekCsv', () => {
             ],
         })
         const line = weekCsv(table).split('\r\n').find(l => l.startsWith('Events'))
-        expect(line).toContain('"One (13:00), Two (19:00)"')
+        expect(line).toContain('"One (doors 13:00), Two (doors 19:00)"')
     })
 
     it('doubles a quote inside a value rather than ending the field', () => {
@@ -327,6 +327,29 @@ describe('time off on a shared week', () => {
         expect(table.people.every(p => p.days.every(d => d.away === false))).toBe(true)
     })
 
+    it('counts a day they never work as one they are not about', () => {
+        // The screen has always hatched these. The sheet and the picture knew
+        // only about time off, so a day somebody does not work came out blank
+        // and read as a day nobody had got round to filling in.
+        const table = build({
+            employees: [{ ...employees[0], availability: { 0: [], 2: [] } }, employees[1]],
+            today: DATES[0],
+        })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.map(d => d.away)).toEqual([true, false, true, false, false, false, false])
+    })
+
+    it('leaves a day they work part of alone', () => {
+        // Somebody who can only do afternoons is in that afternoon. Marking the
+        // whole day would say they were not there at all.
+        const table = build({
+            employees: [{ ...employees[0], availability: { 0: [['15:00', '21:00']] } }, employees[1]],
+            today: DATES[0],
+        })
+        const ana = table.people.find(p => p.name === 'Ana')
+        expect(ana.days.some(d => d.away)).toBe(false)
+    })
+
     it('ignores time off that was turned down', () => {
         const declined = [{ ...away[0], status: 'declined' }]
         const table = build({ absences: declined })
@@ -366,10 +389,20 @@ describe('time off on a shared week', () => {
 
     // A shift on a day somebody is down as away is still a shift, and the
     // printed copy has to show it or the roster and the wall disagree.
-    it('keeps a shift rostered on a day they are away', () => {
+    it('a day with a shift on it is an ordinary day, whatever is behind it', () => {
+        // Ana is down as away and rostered anyway, which happens: the app warns
+        // about it rather than refusing. Once it is on the roster it is a shift
+        // she is doing, so it goes out as one and says nothing else. What she
+        // usually does was weighed up before she was put on, and that belongs
+        // on the screen where the decision gets made, not on the wall after.
         const clash = [{ ...away[0], starts_on: DATES[1], ends_on: DATES[1] }]
         const csv = weekCsv(build({ absences: clash }))
         expect(csv).toContain('09:00')
+        expect(csv).not.toContain(AWAY.label)
+    })
+
+    it('still says it on a day nobody is on', () => {
+        const csv = weekCsv(build({ absences: away }))
         expect(csv).toContain(AWAY.label)
     })
 })

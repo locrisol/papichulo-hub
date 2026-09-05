@@ -20,7 +20,19 @@ export default function ShareWeekButton({
     restaurantName, weekStart, disabled,
 }) {
     const [busy, setBusy] = useState('')
-    const [note, setNote] = useState('')
+    // What was said, and which week it was said about.
+    //
+    // It used to be the message on its own, and stepping to the next week left
+    // it sitting there, so every week claimed to have been saved as a picture.
+    // The component is not rebuilt when the week changes, it is handed a new
+    // date, so nothing was ever going to clear it.
+    //
+    // Kept with its week rather than cleared by an effect. A message about
+    // Monday's roster is not true of Tuesday's, so it says which one it is
+    // about and shows only there.
+    const [note, setNote] = useState(null)
+    const say = text => setNote({ week: weekStart, text })
+    const showing = note?.week === weekStart ? note.text : ''
 
     const build = () => weekTable({
         dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
@@ -39,7 +51,7 @@ export default function ShareWeekButton({
 
     async function shareImage() {
         setBusy('image')
-        setNote('')
+        setNote(null)
         try {
             const blob = await weekImageBlob(build())
             const filename = shareName(restaurantName, weekStart, 'png')
@@ -52,11 +64,11 @@ export default function ShareWeekButton({
                 await navigator.share({ files: [file], title: `Roster, ${restaurantName}` })
             } else {
                 save(blob, filename)
-                setNote('Saved as a picture. This browser cannot hand it straight to WhatsApp.')
+                say('Saved as a picture. This browser cannot hand it straight to WhatsApp.')
             }
         } catch (e) {
             // Somebody backing out of the share sheet is not a failure.
-            if (e?.name !== 'AbortError') setNote('Could not make the picture.')
+            if (e?.name !== 'AbortError') say('Could not make the picture.')
         } finally {
             setBusy('')
         }
@@ -85,7 +97,7 @@ export default function ShareWeekButton({
             <button type="button" onClick={downloadCsv} disabled={disabled} className={secondaryButton}>
                 Spreadsheet
             </button>
-            {note && <span className="text-xs text-muted">{note}</span>}
+            {showing && <span className="text-xs text-muted">{showing}</span>}
         </div>
     )
 }

@@ -9,6 +9,7 @@
 // everything else here is for the wall and for the accountant.
 
 import { DAY_NAMES } from './events'
+import { dayState, availabilityOn, availabilityStart } from './availability'
 import { fullDate, shortDate } from './dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
@@ -55,8 +56,12 @@ export function shareName(restaurantName, weekStart, extension) {
 // the screen never showed them.
 export function weekTable({
     dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
-    standingNote,
+    standingNote, today,
 }) {
+    // The first date somebody's availability is allowed to say anything about.
+    // Taken as an argument so it can be pinned in a test rather than moving
+    // with the clock. See availabilityStart for why there is a line at all.
+    const availableFrom = availabilityStart(today)
     const employeesById = Object.fromEntries((employees || []).map(e => [e.id, e]))
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const hoursFor = d => hoursForDate(openingHours, noteFor(d), d)
@@ -76,7 +81,7 @@ export function weekTable({
 
     const whatIsOn = (dates || []).map(d => (events || [])
         .filter(e => e.event_date === d)
-        .map(e => (e.event_time ? `${e.name} (${shortTime(e.event_time)})` : e.name))
+        .map(e => (e.event_time ? `${e.name} (doors ${shortTime(e.event_time)})` : e.name))
         .join(', '))
 
     // A shift is kept in parts rather than as one string, because the start and
@@ -101,7 +106,15 @@ export function weekTable({
                 // each of the four things that draw this. One boundary in one
                 // place is the only kind that holds: a renderer cannot leak a
                 // reason it was never handed.
-                away: wholeDaysOn(absences, row.employee.id, day.date).length > 0,
+                //
+                // Two ways to be off: it was written down as time off, or their
+                // own availability says they do not work that day at all. The
+                // screen has always shown both, hatching the second, and the
+                // exports only knew about the first, so a day somebody never
+                // works came out blank on the sheet and in the picture and
+                // looked like a day nobody had got round to filling.
+                away: wholeDaysOn(absences, row.employee.id, day.date).length > 0
+                    || dayState(availabilityOn(row.employee, day.date, availableFrom), day.date) === 'none',
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)
@@ -127,6 +140,14 @@ export function weekTable({
     // they get separate lines.
     const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel))
 
+    // The same things again with the time and the name still apart, because a
+    // sheet draws them as a card each with one of the two picked out, and only
+    // the CSV wants them flattened into a string.
+    const extras = (dates || []).map(d => extrasFor(noteFor(d)))
+    const eventsOn = (dates || []).map(d => (events || [])
+        .filter(e => e.event_date === d)
+        .map(e => ({ name: e.name, time: e.event_time ? shortTime(e.event_time) : '' })))
+
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
         .map(n => `${shortDate(n.note_date)}: ${n.message}`)
@@ -143,7 +164,9 @@ export function weekTable({
         head,
         storeHours,
         whatIsOn,
+        eventsOn,
         deliveries,
+        extras,
         people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
         anyHoliday,
         notes,
@@ -203,8 +226,10 @@ export function weekCsv(table) {
     for (const person of table.people) {
         line([person.name, ...person.days.map(d => {
             const shifts = d.shifts.map(s => s.text).join(' / ')
-            if (!d.away) return shifts
-            return shifts ? `${shifts} (${AWAY.label})` : AWAY.label
+            // The same rule the sheet and the picture follow. A day with a
+            // shift on it is an ordinary day, whatever somebody usually does.
+            if (d.shifts.length > 0) return shifts
+            return d.away ? AWAY.label : shifts
         }), ...(table.anyHoliday ? [person.holiday] : []), person.hours])
         line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ...pad])
     }
@@ -262,12 +287,23 @@ export function wrapLines(text, maxWidth, measure) {
 // by whoever is drawing, because only they know how wide their letters are.
 export function sheetLayout(table, {
     width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1,
+    nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
-    const nameCol = 160
-    const hoursCol = 78
+    // The three columns either side of the week used to be fixed, and they were
+    // sized for the worst case: a long name, a wide figure. Most weeks are not
+    // the worst case, and every point they hold on to is a point the seven days
+    // do not have, which is where the long things actually are, a tour name or
+    // a delivery with a company in it.
+    //
+    // So whoever is drawing can measure its own lettering and say what they
+    // really need. The numbers below are what it falls back to, and they are
+    // the ones that were fixed before, so nothing that does not measure changes
+    // at all.
+    const nameCol = askedName ?? 160
+    const hoursCol = askedHours ?? 78
     // Only in a week somebody was on holiday. It comes out of the days, so an
     // ordinary week keeps every pixel it had.
-    const holidayCol = table.anyHoliday ? 62 : 0
+    const holidayCol = table.anyHoliday ? (askedHoliday ?? 62) : 0
     const dayCol = (width - pad * 2 - nameCol - hoursCol - holidayCol) / 7
 
     const titleH = 62
@@ -283,12 +319,20 @@ export function sheetLayout(table, {
     // Tall enough for the longest label, rather than one line with the rest cut
     // off. Deep Cleaning Day came out as Deep Cleaning D and an ellipsis, which
     // is a note nobody can act on.
-    const notesH = Math.max(28, noteLines * 15 + 13)
+    // Nothing at all when no day has one, rather than an empty band, which is
+    // the same rule Also on already follows. It used to be reserved whether it
+    // was drawn or not, and both the sheet and the picture ended with a blank
+    // strip under the last person that read as somebody with no shifts.
+    const notesH = table.notes?.some(Boolean) ? Math.max(28, noteLines * 15 + 13) : 0
     const totalH = 34
 
     const bodyRows = table.people.length
-    const lines = table.messages.length + (table.standing ? 1 : 0)
-    const messagesH = lines ? 22 * lines + 12 : 0
+    // The manager's messages are a line each. The standing note is a band with
+    // a tint behind it rather than one more line, so it asks for more than one
+    // line's worth of room.
+    const messageLines = table.messages.length
+    const standingH = table.standing ? 30 : 0
+    const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
     const height = pad * 2 + titleH + headH + metaH + eventsH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH

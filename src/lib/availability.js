@@ -21,6 +21,7 @@
 // once rather than standing in the way.
 
 import { toMinutes, shiftMinutes } from './roster'
+import { todayISO, weekStartOf } from './dates'
 
 // The two edges of a day.
 //
@@ -257,4 +258,34 @@ export function availabilityProblem(rows) {
         }
     }
     return ''
+}
+
+// Which weeks availability is allowed to say anything about.
+//
+// There is one availability per person and no date on it, so changing it
+// changes the answer for every week ever drawn. Somebody who told you in
+// September that they cannot do Sundays any more turned every Sunday they
+// worked in August into a shift against their availability, hatched on the
+// grid and warned about in the strip, and none of that was true at the time.
+//
+// The app cannot know what somebody could work last month, because it never
+// kept it. So it stops claiming to. From the start of this week it applies as
+// it always did, and before that it says nothing at all: the shifts on a week
+// that has gone are a record of what happened, and there is no decision left to
+// help anybody make.
+//
+// The week rather than today, because a week is the unit the roster is built
+// in and half a week shaded one way and half the other would be worse than
+// either.
+export function availabilityStart(today) {
+    return weekStartOf(today || todayISO())
+}
+
+// Somebody's availability as it applies to one date, or nothing at all when
+// that date is behind the line above. Every reader here treats nothing as "no
+// availability recorded", which is exactly the right answer for a week nobody
+// can change any more.
+export function availabilityOn(employee, date, from) {
+    if (!date) return null
+    return date < (from || availabilityStart()) ? null : (employee?.availability || null)
 }

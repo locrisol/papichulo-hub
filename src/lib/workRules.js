@@ -16,7 +16,7 @@
 // exactly that reason.
 
 import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
-import { outsideAvailability, windowsLabel, dayNameOf } from './availability'
+import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from './availability'
 import { absencesOn, kindPhrase, isPartDay } from './absences'
 import { hitsShift, partWords } from './timeOff'
 import { shortDate } from './dates'
@@ -239,11 +239,14 @@ export function shortestGap(shifts, weekDates) {
 // warnings do not. Nothing here throws anything away or refuses to save: it is
 // all said out loud and left to the person building the roster.
 export function checkWeek({
-    shifts, employees, weekDates, rules, priorHoursByEmployee, absences, nearbyShifts,
+    shifts, employees, weekDates, rules, priorHoursByEmployee, absences, nearbyShifts, today,
 }) {
     const settings = { ...DEFAULT_RULES, ...(rules || {}) }
     const findings = []
     const weekEnd = weekDates?.[6]
+    // The first date availability is allowed to say anything about. Taken as an
+    // argument so it can be pinned in a test rather than moving with the clock.
+    const availableFrom = availabilityStart(today)
 
     for (const employee of employees || []) {
         const mine = (shifts || []).filter(s => s.employee_id === employee.id)
@@ -337,7 +340,10 @@ export function checkWeek({
         // and be told once.
         if (settings.availability?.on) {
             for (const s of mine) {
-                const outside = outsideAvailability(employee.availability, s)
+                // Nothing on a week that has gone, for the same reason
+                // the grid stops shading one: availability carries no date,
+                // so today's answer is not evidence about last month.
+                const outside = outsideAvailability(availabilityOn(employee, s.shift_date, availableFrom), s)
                 if (!outside) continue
 
                 if (outside.kind === 'day') {

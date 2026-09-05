@@ -2,7 +2,7 @@ import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
-import { unavailableSpans, dayState, windowsFor, windowsLabel } from '../lib/availability'
+import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
@@ -50,6 +50,8 @@ const AWAY_HATCH =
 
 export default function RosterDay({
     employees,
+    weekHours,
+    closedLastNight,
     shifts,
     positions,
     date,
@@ -101,7 +103,7 @@ export default function RosterDay({
     // Only worth explaining when somebody's availability is actually drawn on
     // the day. On a day where nobody has any recorded there is nothing hatched
     // and a note about hatching is one more line to read past.
-    const anyAway = employees.some(e => unavailableSpans(e.availability, date, from, to).length > 0)
+    const anyAway = employees.some(e => unavailableSpans(availabilityOn(e, date), date, from, to).length > 0)
 
     // What else the day has on. Feedr at twelve and a delivery at three are the
     // reason the middle of the day needs another pair of hands, and neither of
@@ -429,8 +431,12 @@ export default function RosterDay({
                             ))}
 
                         </div>
+                        {/* One word. The last hour label on the timeline is
+                            centred on its tick, so half of it hangs over the
+                            edge into this column, and anything longer than this
+                            gets sat on by midnight. */}
                         <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
-                            Hours
+                            Week
                         </div>
                     </div>
 
@@ -440,14 +446,28 @@ export default function RosterDay({
                         </p>
                     ) : employees.map((employee, row) => {
                         const mine = byEmployee[employee.id] || []
-                        const dayTotal = mine.reduce((t, s) => t + shiftHours(s), 0)
+                        // What they have this week, not what they have today.
+                        // Today is written on the shift beside it, and a number
+                        // that repeats the one next to it is a number nobody
+                        // reads. The week is the one you are trying not to
+                        // overshoot while you place another shift.
+                        const theirWeek = weekHours?.[employee.id] || 0
+                        // Finished after closing time yesterday. Said so you
+                        // are not handing somebody an opening shift blind, and
+                        // it stops there: no warning, no block, nothing harder.
+                        const closedLate = closedLastNight?.[employee.id]
                         const dragging = drag?.employeeId === employee.id
                         const dragFrom = dragging ? Math.min(drag.from, drag.to) : -1
                         const dragTo = dragging ? Math.max(drag.from, drag.to) + 1 : -1
                         const colour = positionOf(employee.position_id)?.colour || NO_COLOUR
-                        const away = dayState(employee.availability, date)
-                        const awaySpans = unavailableSpans(employee.availability, date, from, to)
-                        const canWork = windowsFor(employee.availability, date)
+                        // Nothing at all on a week that has gone. There is one
+                        // availability per person with no date on it, so what
+                        // somebody tells you today would otherwise rewrite what
+                        // the app claims about every Sunday they ever worked.
+                        const theirs = availabilityOn(employee, date)
+                        const away = dayState(theirs, date)
+                        const awaySpans = unavailableSpans(theirs, date, from, to)
+                        const canWork = windowsFor(theirs, date)
                         const off = wholeDayOn(absences, employee.id, date)
                         const offKind = off ? kindOf(off.kind) : null
                         // Part of a day is not a day gone. Somebody who can
@@ -471,7 +491,12 @@ export default function RosterDay({
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
-                                <div className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border">
+                                <div
+                                    className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border"
+                                    title={closedLate
+                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. Closed last night, finished at ${shortTime(closedLate)}.`
+                                        : employee.full_name}
+                                >
                                     <span
                                         className="w-1.5 h-7 rounded-full flex-shrink-0"
                                         style={{ backgroundColor: colour }}
@@ -480,14 +505,31 @@ export default function RosterDay({
                                         <span className="block text-sm font-medium text-gray-900 truncate">
                                             {employee.full_name}
                                         </span>
-                                        <span className={`block text-[0.625rem] truncate ${part ? 'text-amber-700 font-semibold' : 'text-muted'}`}>
+                                        {/* One line, saying whichever of these
+                                            is worth knowing today. Closed last
+                                            night comes above the position
+                                            because the position is the same
+                                            every day and is already in the
+                                            colour down the left, and this is
+                                            only ever true on the day it
+                                            matters. It says nothing else: no
+                                            warning, no block, and putting
+                                            somebody on anyway is exactly as
+                                            easy as it was. */}
+                                        <span className={`block text-[0.625rem] truncate ${
+                                            part ? 'text-amber-700 font-semibold'
+                                                : closedLate && !offKind && away !== 'none' ? 'text-slate-600 font-semibold'
+                                                    : 'text-muted'
+                                        }`}>
                                             {offKind
                                                 ? offKind.label
                                                 : part
                                                     ? partWords(part).replace('can work ', 'Can work ')
                                                     : away === 'none'
                                                         ? 'Not available today'
-                                                        : positionOf(employee.position_id)?.name || 'No position'}
+                                                        : closedLate
+                                                            ? `Closed ${shortTime(closedLate)} last night`
+                                                            : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
                                     </span>
                                     {/* Beside the name, where the eye already
@@ -690,8 +732,8 @@ export default function RosterDay({
                                 </div>
 
                                 <div className="w-20 flex-shrink-0 px-2 flex items-center justify-center border-l border-border">
-                                    <span className={`text-sm font-semibold ${dayTotal ? 'text-gray-900' : 'text-gray-300'}`}>
-                                        {dayTotal ? fmtHours(dayTotal) : '—'}
+                                    <span className={`text-sm font-semibold ${theirWeek ? 'text-gray-900' : 'text-gray-300'}`}>
+                                        {theirWeek ? fmtHours(theirWeek) : '—'}
                                     </span>
                                 </div>
                             </div>
