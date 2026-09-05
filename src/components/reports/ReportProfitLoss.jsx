@@ -174,7 +174,7 @@ export default function ReportProfitLoss({
         <div>
             {/* DELIVERY */}
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                Third party delivery
+                Third party delivery costs
             </p>
             <p className="text-xs text-muted mb-2">
                 A euro figure each week, not a rate, because promotions and penalties move it. There is nowhere
