@@ -10,6 +10,7 @@ import { friendlyError } from '../../lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
 import { reportFigures } from '../../lib/weeklyReport'
 import ReportComments from '../../components/reports/ReportComments'
+import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
 
 // One week's report.
 //
@@ -81,6 +82,11 @@ export default function ReportPage() {
     const [sections, setSections] = useState([])
     const [figures, setFigures] = useState(null)
     const [targets, setTargets] = useState({})
+    // The online platforms and what each took this week. The takings are
+    // the tracking rows from weekly sales, the ones filled by hand beside
+    // the till, since that is what a platform statement is reconciled to.
+    const [platforms, setPlatforms] = useState([])
+    const [taken, setTaken] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     // Bumped after every write. The page reloads rather than each section
@@ -150,6 +156,33 @@ export default function ReportPage() {
                 }))
             }
 
+            // The online platforms, and what each took. platform_sales is keyed
+            // by platform name rather than id, which is a known weakness of that
+            // table, so the name is what has to be matched on. Everything the
+            // report itself stores is keyed by id instead.
+            const [plats, days2] = await Promise.all([
+                supabase.from('sales_platforms')
+                    .select('id, name, bucket, is_active, sort_order')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .eq('bucket', 'online_platform')
+                    .eq('is_active', true)
+                    .order('sort_order'),
+                supabase.from('sales_records')
+                    .select('platform_sales')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('sale_date', weekStart).lte('sale_date', end),
+            ])
+
+            const online = plats.data || []
+            setPlatforms(online)
+
+            const totals = {}
+            for (const p of online) {
+                totals[p.id] = (days2.data || []).reduce(
+                    (t, d) => t + num(d.platform_sales?.[p.name]), 0)
+            }
+            setTaken(totals)
+
             // Targets are looked up for the week being reported on rather than
             // taken from today's settings, so a target changed in September
             // does not change how an August week is judged.
@@ -189,6 +222,46 @@ export default function ReportPage() {
 
     async function removeComment(itemId) {
         const { error: err } = await supabase.from('report_items').delete().eq('id', itemId)
+        if (err) return setError(friendlyError(err))
+        setRefresh(n => n + 1)
+    }
+
+    // An overhead keeps its carried_from, so the report can always say what it
+    // was before somebody opened it. Only the amount moves.
+    async function saveOverhead(itemId, amount) {
+        const { error: err } = await supabase.from('report_items')
+            .update({ amount }).eq('id', itemId)
+        if (err) return setError(friendlyError(err))
+        setRefresh(n => n + 1)
+    }
+
+    async function addOverhead(label) {
+        const pl = sections.find(s => s.key === 'profit_loss')
+        if (!pl) return
+        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'line'
+        const order = pl.items.filter(i => i.kind === 'overhead').length
+        const { error: err } = await supabase.from('report_items').insert({
+            section_id: pl.id, kind: 'overhead', key, label, amount: 0, sort_order: order,
+        })
+        if (err) return setError(friendlyError(err))
+        setRefresh(n => n + 1)
+    }
+
+    // A delivery line is written the first time a figure is typed into it,
+    // rather than fourteen empty rows being created for every week whether the
+    // platform traded or not.
+    async function saveDelivery(platform, amount) {
+        const pl = sections.find(s => s.key === 'profit_loss')
+        if (!pl) return
+        const existing = pl.items.find(i => i.kind === 'delivery' && i.key === platform.id)
+
+        const { error: err } = existing
+            ? await supabase.from('report_items').update({ amount }).eq('id', existing.id)
+            : await supabase.from('report_items').insert({
+                section_id: pl.id, kind: 'delivery', key: platform.id,
+                label: platform.name, amount, sort_order: platform.sort_order || 0,
+            })
+
         if (err) return setError(friendlyError(err))
         setRefresh(n => n + 1)
     }
@@ -323,17 +396,42 @@ export default function ReportPage() {
                 </div>
             </div>
 
-            {/* The rest of the sections are still to come. They are listed
-                rather than hidden, so the shape of the report is visible while
-                it is being built out. */}
-            {sections.filter(s => s.key !== 'sales_costs').map(section => (
-                <div key={section.id} className={`${card} opacity-60`}>
-                    <div className={`${cardHeader} rounded-t-xl`}>{section.title}</div>
-                    <div className="p-4 sm:p-5">
-                        <p className="text-sm text-muted">Still being built.</p>
+            {/* The rest, in the order they are read. The ones with nothing
+                built yet say so rather than being hidden, so the shape of the
+                report is visible while it fills in. */}
+            {sections.filter(s => s.key !== 'sales_costs').map(section => {
+                const built = section.key === 'profit_loss'
+                return (
+                    <div key={section.id} className={`${card} ${built ? '' : 'opacity-60'}`}>
+                        <div className={`${cardHeader} rounded-t-xl`}>{section.title}</div>
+                        <div className="p-4 sm:p-5">
+                            {built ? (
+                                <>
+                                    <ReportProfitLoss
+                                        section={section}
+                                        figures={figures}
+                                        platforms={platforms}
+                                        taken={taken}
+                                        canEdit={canEdit}
+                                        onSaveOverhead={saveOverhead}
+                                        onSaveDelivery={saveDelivery}
+                                        onAddOverhead={addOverhead}
+                                    />
+                                    <ReportComments
+                                        items={commentsOf(section)}
+                                        canEdit={canEdit}
+                                        onAdd={note => addComment(section.id, note)}
+                                        onSave={saveComment}
+                                        onRemove={removeComment}
+                                    />
+                                </>
+                            ) : (
+                                <p className="text-sm text-muted">Still being built.</p>
+                            )}
+                        </div>
                     </div>
-                </div>
-            ))}
+                )
+            })}
         </div>
     )
 }
