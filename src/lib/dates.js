@@ -112,3 +112,31 @@ export function monthLabel(dateStr) {
     const d = new Date(dateStr + 'T00:00:00')
     return d.toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
 }
+// Which week of the year a week is, counting the way the reports always have.
+//
+// Not the ISO week number. ISO weeks run Monday to Sunday and this system runs
+// Sunday to Saturday, so the two are off by a day all year and would disagree
+// about the number on most weeks. The weekly report has been calling 9 August
+// 2026 week 32 since long before any of this was in a database, and a screen
+// that renumbered it would be wrong no matter how defensible the arithmetic.
+//
+// Week 1 is the one starting on the first Sunday of the year. A week that
+// starts in late December and runs into January belongs to the year it started
+// in, and keeps counting from there, which is why 2026 can have a week 53.
+export function weekNumber(weekStart) {
+    const start = new Date(weekStart + 'T00:00:00')
+    const year = start.getFullYear()
+
+    const firstSunday = new Date(year, 0, 1)
+    firstSunday.setDate(firstSunday.getDate() + ((7 - firstSunday.getDay()) % 7))
+
+    if (start < firstSunday) {
+        // A week that began before this year had its first Sunday is the last
+        // week of the year before, so ask that year instead.
+        const previous = new Date(year - 1, 0, 1)
+        previous.setDate(previous.getDate() + ((7 - previous.getDay()) % 7))
+        return Math.round((start - previous) / 604800000) + 1
+    }
+
+    return Math.round((start - firstSunday) / 604800000) + 1
+}
