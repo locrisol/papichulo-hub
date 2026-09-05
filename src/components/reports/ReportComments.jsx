@@ -8,9 +8,13 @@ import { useState } from 'react'
 // each one arrives on its own line and can be dropped without editing around
 // it.
 //
-// Editing is in place and saves when you leave the box. There is no save
-// button, because a comment is a sentence and a sentence does not need
-// ceremony. Leaving it empty removes it, which is what emptying a note means.
+// Nothing here has a save button. Editing is in place and writes when you
+// leave the box, and so does the empty box at the bottom: type into it, click
+// away, and it becomes a card. A comment is a sentence and a sentence does not
+// need ceremony, and more to the point an Add button is a paragraph waiting to
+// be lost by whoever forgets to press it.
+//
+// Leaving a card empty removes it, which is what emptying a note means.
 
 export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove, label = 'Comments' }) {
     const [adding, setAdding] = useState('')
@@ -18,10 +22,13 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
 
     async function add() {
         const text = adding.trim()
-        if (!text) return
+        if (!text || busy) return
         setBusy(true)
-        await onAdd(text)
+        // Cleared first. The write reloads the page's data and the new card
+        // arrives from there, so leaving the text in the box until it returns
+        // shows the same comment twice for as long as the round trip takes.
         setAdding('')
+        await onAdd(text)
         setBusy(false)
     }
 
@@ -71,19 +78,11 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                     <textarea
                         value={adding}
                         onChange={e => setAdding(e.target.value)}
+                        onBlur={add}
                         placeholder="Add a comment"
                         rows={2}
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
-                    {adding.trim() && (
-                        <button
-                            onClick={add}
-                            disabled={busy}
-                            className="mt-2 px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50"
-                        >
-                            {busy ? 'Adding' : 'Add comment'}
-                        </button>
-                    )}
                 </div>
             )}
         </div>

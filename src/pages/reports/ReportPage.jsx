@@ -11,6 +11,7 @@ import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyle
 import { reportFigures } from '../../lib/weeklyReport'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
+import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
 
 // One week's report.
 //
@@ -93,6 +94,11 @@ export default function ReportPage() {
     // keeping its own copy of the truth, which is how two parts of a screen
     // end up disagreeing about what was just saved.
     const [refresh, setRefresh] = useState(0)
+    // There is no save button anywhere on this page. Every box writes when you
+    // leave it, so this is the only thing telling you it happened. Without it
+    // autosave asks somebody to take it on trust, and nobody does with figures.
+    const [saving, setSaving] = useState(false)
+    const [savedAt, setSavedAt] = useState(null)
 
     const isStoreManager = ['super_admin', 'store_manager'].includes(user?.role)
     const canEdit = isStoreManager && report?.status === 'draft'
@@ -203,36 +209,47 @@ export default function ReportPage() {
         load()
     }, [id, activeRestaurant, refresh])
 
-    // Comments, one card each. Every write goes through here and then reloads,
-    // rather than each section keeping its own copy of the truth.
+    // Every write on this page goes through here.
+    //
+    // One place that sets the saving flag, reports the failure and reloads, so
+    // no handler can be written later that saves without saying so. The reload
+    // is deliberate: the alternative is each section keeping its own copy of
+    // the truth, which is how two halves of a screen end up disagreeing about
+    // what was just typed.
+    async function write(run) {
+        setSaving(true)
+        const { error: err } = await run()
+        setSaving(false)
+
+        if (err) { setError(friendlyError(err)); return false }
+        setError('')
+        setSavedAt(new Date())
+        setRefresh(n => n + 1)
+        return true
+    }
+
+    // Comments, one card each.
     async function addComment(sectionId, note) {
         const section = sections.find(s => s.id === sectionId)
         const order = (section?.items.filter(i => i.kind === 'comment').length) || 0
-        const { error: err } = await supabase.from('report_items')
-            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order })
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+        return write(() => supabase.from('report_items')
+            .insert({ section_id: sectionId, kind: 'comment', note, sort_order: order }))
     }
 
-    async function saveComment(itemId, note) {
-        const { error: err } = await supabase.from('report_items').update({ note }).eq('id', itemId)
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+    async function saveItem(itemId, patch) {
+        return write(() => supabase.from('report_items').update(patch).eq('id', itemId))
     }
 
-    async function removeComment(itemId) {
-        const { error: err } = await supabase.from('report_items').delete().eq('id', itemId)
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+    async function removeItem(itemId) {
+        return write(() => supabase.from('report_items').delete().eq('id', itemId))
     }
+
+    const saveComment = (itemId, note) => saveItem(itemId, { note })
 
     // An overhead keeps its carried_from, so the report can always say what it
     // was before somebody opened it. Only the amount moves.
     async function saveOverhead(itemId, amount) {
-        const { error: err } = await supabase.from('report_items')
-            .update({ amount }).eq('id', itemId)
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+        return write(() => supabase.from('report_items').update({ amount }).eq('id', itemId))
     }
 
     async function addOverhead(label) {
@@ -240,11 +257,9 @@ export default function ReportPage() {
         if (!pl) return
         const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'line'
         const order = pl.items.filter(i => i.kind === 'overhead').length
-        const { error: err } = await supabase.from('report_items').insert({
+        return write(() => supabase.from('report_items').insert({
             section_id: pl.id, kind: 'overhead', key, label, amount: 0, sort_order: order,
-        })
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+        }))
     }
 
     // A delivery line is written the first time a figure is typed into it,
@@ -255,15 +270,52 @@ export default function ReportPage() {
         if (!pl) return
         const existing = pl.items.find(i => i.kind === 'delivery' && i.key === platform.id)
 
-        const { error: err } = existing
-            ? await supabase.from('report_items').update({ amount }).eq('id', existing.id)
-            : await supabase.from('report_items').insert({
+        return write(() => existing
+            ? supabase.from('report_items').update({ amount }).eq('id', existing.id)
+            : supabase.from('report_items').insert({
                 section_id: pl.id, kind: 'delivery', key: platform.id,
                 label: platform.name, amount, sort_order: platform.sort_order || 0,
-            })
+            }))
+    }
 
-        if (err) return setError(friendlyError(err))
-        setRefresh(n => n + 1)
+    // ---- online sales ----
+    //
+    // A rating, a review and a refund all hang off a platform by its id rather
+    // than its name, so renaming a platform in settings does not orphan a
+    // week's notes the way platform_sales does.
+    const online = () => sections.find(s => s.key === 'online_sales')
+
+    async function saveRating(platform, value) {
+        const section = online()
+        if (!section) return
+        const existing = section.items.find(i => i.kind === 'rating' && i.key === platform.id)
+
+        return write(() => existing
+            ? supabase.from('report_items').update({ amount: value }).eq('id', existing.id)
+            : supabase.from('report_items').insert({
+                section_id: section.id, kind: 'rating', key: platform.id,
+                label: platform.name, amount: value, sort_order: platform.sort_order || 0,
+            }))
+    }
+
+    async function addReview(platform, stars, count) {
+        const section = online()
+        if (!section) return
+        return write(() => supabase.from('report_items').insert({
+            section_id: section.id, kind: 'review', key: platform.id,
+            label: platform.name, meta: { stars, count },
+            sort_order: section.items.filter(i => i.kind === 'review').length,
+        }))
+    }
+
+    async function addRefund(platform) {
+        const section = online()
+        if (!section) return
+        return write(() => supabase.from('report_items').insert({
+            section_id: section.id, kind: 'refund', key: platform.id,
+            label: platform.name, amount: 0,
+            sort_order: section.items.filter(i => i.kind === 'refund').length,
+        }))
     }
 
     function commentsOf(section) {
@@ -308,13 +360,24 @@ export default function ReportPage() {
                     </p>
                 </div>
 
-                <span className={`${badge} flex-shrink-0 self-start ${report.status === 'draft'
-                    ? 'bg-accent-light text-accent-ink'
-                    : 'bg-green-50 text-green-700'}`}>
-                    {report.status === 'draft'
-                        ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
-                        : 'Sent'}
-                </span>
+                <div className="flex flex-wrap items-center gap-3 flex-shrink-0 self-start">
+                    {canEdit && (
+                        <span className="text-xs text-muted" aria-live="polite">
+                            {saving
+                                ? 'Saving'
+                                : savedAt
+                                    ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Saves as you type'}
+                        </span>
+                    )}
+                    <span className={`${badge} ${report.status === 'draft'
+                        ? 'bg-accent-light text-accent-ink'
+                        : 'bg-green-50 text-green-700'}`}>
+                        {report.status === 'draft'
+                            ? (report.send_count > 0 ? 'Re-opened' : 'Draft')
+                            : 'Sent'}
+                    </span>
+                </div>
             </div>
 
             {error && (
@@ -390,7 +453,7 @@ export default function ReportPage() {
                             canEdit={canEdit}
                             onAdd={note => addComment(salesCosts.id, note)}
                             onSave={saveComment}
-                            onRemove={removeComment}
+                            onRemove={removeItem}
                         />
                     )}
                 </div>
@@ -400,29 +463,46 @@ export default function ReportPage() {
                 built yet say so rather than being hidden, so the shape of the
                 report is visible while it fills in. */}
             {sections.filter(s => s.key !== 'sales_costs').map(section => {
-                const built = section.key === 'profit_loss'
+                const built = ['profit_loss', 'online_sales'].includes(section.key)
                 return (
                     <div key={section.id} className={`${card} ${built ? '' : 'opacity-60'}`}>
                         <div className={`${cardHeader} rounded-t-xl`}>{section.title}</div>
                         <div className="p-4 sm:p-5">
                             {built ? (
                                 <>
-                                    <ReportProfitLoss
-                                        section={section}
-                                        figures={figures}
-                                        platforms={platforms}
-                                        taken={taken}
-                                        canEdit={canEdit}
-                                        onSaveOverhead={saveOverhead}
-                                        onSaveDelivery={saveDelivery}
-                                        onAddOverhead={addOverhead}
-                                    />
+                                    {section.key === 'profit_loss' && (
+                                        <ReportProfitLoss
+                                            section={section}
+                                            figures={figures}
+                                            platforms={platforms}
+                                            taken={taken}
+                                            canEdit={canEdit}
+                                            onSaveOverhead={saveOverhead}
+                                            onSaveDelivery={saveDelivery}
+                                            onAddOverhead={addOverhead}
+                                        />
+                                    )}
+                                    {section.key === 'online_sales' && (
+                                        <ReportOnlineSales
+                                            section={section}
+                                            platforms={platforms}
+                                            taken={taken}
+                                            canEdit={canEdit}
+                                            handlers={{
+                                                onSaveRating: saveRating,
+                                                onAddReview: addReview,
+                                                onAddRefund: addRefund,
+                                                onSaveItem: saveItem,
+                                                onRemoveItem: removeItem,
+                                            }}
+                                        />
+                                    )}
                                     <ReportComments
                                         items={commentsOf(section)}
                                         canEdit={canEdit}
                                         onAdd={note => addComment(section.id, note)}
                                         onSave={saveComment}
-                                        onRemove={removeComment}
+                                        onRemove={removeItem}
                                     />
                                 </>
                             ) : (
