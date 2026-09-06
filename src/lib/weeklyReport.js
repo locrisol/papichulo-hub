@@ -41,6 +41,21 @@ export const DEFAULT_OVERHEADS = [
     { key: 'finance', label: 'Finance charges' },
 ]
 
+// Can this section be dropped?
+//
+// Only one somebody added themselves. The seven the report comes with are its
+// shape, and a report missing its profit and loss is not a shorter report, it
+// is a broken one. Two of them read figures out of the rest of the Hub and
+// could not be rebuilt by adding a section back with the same name anyway,
+// since a new one only ever holds writing.
+//
+// A week with nothing to say under a heading leaves it empty, which is what a
+// quiet week looks like and is easier to read than a report whose shape changes
+// from one week to the next.
+export function canDropSection(section) {
+    return !DEFAULT_SECTIONS.some(d => d.key === section?.key)
+}
+
 // A key for a section somebody typed the title of.
 //
 // Made once, when the section is created, and never again. The title is free

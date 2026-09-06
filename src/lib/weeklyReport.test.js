@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     sectionKey,
+    canDropSection,
     weekReadiness,
     weekIsOver,
     reportableWeeks,
@@ -51,6 +52,23 @@ describe('sectionKey', () => {
     it('always returns something, even for a title with nothing in it', () => {
         expect(sectionKey('!!!')).toBe('section')
         expect(sectionKey('')).toBe('section')
+    })
+})
+
+describe('canDropSection', () => {
+    it('will not drop any of the seven the report comes with', () => {
+        for (const key of ['sales_costs', 'profit_loss', 'online_sales', 'corporate_sales',
+            'people_ops', 'marketing', 'support_actions']) {
+            expect(canDropSection({ key })).toBe(false)
+        }
+    })
+
+    it('drops one somebody added', () => {
+        expect(canDropSection({ key: 'priorities_follow_up' })).toBe(true)
+    })
+
+    it('is not fooled by a section merely titled like a built in one', () => {
+        expect(canDropSection({ key: 'marketing_2', title: 'Marketing' })).toBe(true)
     })
 })
 

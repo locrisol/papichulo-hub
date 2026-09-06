@@ -3,6 +3,7 @@ import { fmtMoney } from '../../lib/format'
 import { numberField } from '../../lib/numberInput'
 import { brandFor } from '../../lib/platformBrand'
 import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
+import { useRemoveCard } from './useRemoveCard'
 
 // Online sales, one block per platform.
 //
@@ -125,6 +126,7 @@ function PlatformBlock({
     onSaveRating, onAddReview, onAddRefund, onSaveItem, onRemoveItem,
 }) {
     const brand = brandFor(platform.name)
+    const removeCard = useRemoveCard()
     const [stars, setStars] = useState(5)
     const [count, setCount] = useState('1')
 
@@ -157,7 +159,15 @@ function PlatformBlock({
                 {reviews.map(item => {
                     const needs = reviewNeedsNote(item)
                     return (
-                        <LineCard key={item.id} warn={needs} onRemove={canEdit ? () => onRemoveItem(item.id) : null}>
+                        <LineCard
+                            key={item.id}
+                            warn={needs}
+                            onRemove={canEdit ? () => removeCard({
+                                what: 'review',
+                                holds: item.note,
+                                onRemove: () => onRemoveItem(item.id),
+                            }) : null}
+                        >
                             <Stars value={Number(item.meta?.stars) || 0} readOnly />
                             <span className="text-sm tabular-nums text-gray-700 whitespace-nowrap">
                                 &times; {item.meta?.count || 1}
@@ -217,7 +227,11 @@ function PlatformBlock({
                     <LineCard
                         key={item.id}
                         warn={!String(item.note || '').trim()}
-                        onRemove={canEdit ? () => onRemoveItem(item.id) : null}
+                        onRemove={canEdit ? () => removeCard({
+                            what: 'refund',
+                            holds: item.note,
+                            onRemove: () => onRemoveItem(item.id),
+                        }) : null}
                     >
                         {canEdit ? (
                             <input

@@ -3,6 +3,7 @@ import { fmtMoney } from '../../lib/format'
 import { numberField } from '../../lib/numberInput'
 import { wasChanged, platformShare, startsOpen } from '../../lib/weeklyReport'
 import { secondaryButton } from '../../lib/controlStyles'
+import { useConfirm } from '../../context/ConfirmContext'
 
 // The weekly profit and loss.
 //
@@ -48,12 +49,36 @@ function pctText(v) {
 // One standing cost. Locked until somebody opens it, unless it has never been
 // set, in which case it is open from the start and stays open. On the first
 // report every line is like that, and so is any line added afterwards.
-function OverheadLine({ item, net, canEdit, onSave }) {
+function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
+    const confirm = useConfirm()
     const never = startsOpen(item)
     const [open, setOpen] = useState(false)
+    const [renaming, setRenaming] = useState(false)
     const [draft, setDraft] = useState(String(item.amount ?? ''))
+    const [label, setLabel] = useState(item.label || '')
 
     const editing = canEdit && (never || open)
+
+    // Every overhead line can be renamed and dropped. The list the Hub offers
+    // on a first report is a starting point, not a rule: a restaurant with no
+    // equipment lease should not carry an empty line for it every week, and one
+    // paying an alarm company should be able to say so.
+    async function drop() {
+        const ok = await confirm({
+            title: `Remove ${item.label}?`,
+            message: 'It goes from this week and stops carrying into the weeks after. Reports already sent '
+                + 'keep their own copy and do not change.',
+            confirmLabel: 'Remove it',
+        })
+        if (ok) onRemove(item.id)
+    }
+
+    async function commitLabel() {
+        setRenaming(false)
+        const next = label.trim()
+        if (!next || next === item.label) { setLabel(item.label || ''); return }
+        await onRename(item.id, next)
+    }
 
     const amount = Number(item.amount) || 0
     const share = net > 0 ? (amount / net) * 100 : null
@@ -71,7 +96,30 @@ function OverheadLine({ item, net, canEdit, onSave }) {
 
     return (
         <Row tint={changed ? 'bg-accent-light/40' : ''}>
-            <span className="flex-1 min-w-[8rem] text-sm text-gray-800">{item.label}</span>
+            {renaming ? (
+                <input
+                    value={label}
+                    onChange={e => setLabel(e.target.value)}
+                    onBlur={commitLabel}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') { setLabel(item.label || ''); setRenaming(false) }
+                    }}
+                    autoFocus
+                    aria-label="What this line is called"
+                    className="flex-1 min-w-[8rem] bg-white border border-accent rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+            ) : canEdit ? (
+                <button
+                    onClick={() => { setLabel(item.label || ''); setRenaming(true) }}
+                    title="Rename this line"
+                    className="flex-1 min-w-[8rem] text-left text-sm text-gray-800 hover:text-accent-ink transition-colors"
+                >
+                    {item.label}
+                </button>
+            ) : (
+                <span className="flex-1 min-w-[8rem] text-sm text-gray-800">{item.label}</span>
+            )}
 
             {editing ? (
                 <input
@@ -104,6 +152,16 @@ function OverheadLine({ item, net, canEdit, onSave }) {
                         <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                     </svg>
                     Open
+                </button>
+            )}
+
+            {canEdit && (
+                <button
+                    onClick={drop}
+                    aria-label={`Remove ${item.label}`}
+                    className="text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
+                >
+                    &times;
                 </button>
             )}
 
@@ -160,7 +218,7 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
 
 export default function ReportProfitLoss({
     section, figures, platforms, taken, canEdit,
-    onSaveOverhead, onSaveDelivery, onAddOverhead,
+    onSaveOverhead, onSaveDelivery, onAddOverhead, onRenameOverhead, onRemoveOverhead,
 }) {
     const [adding, setAdding] = useState(false)
     const [name, setName] = useState('')
@@ -218,8 +276,8 @@ export default function ReportProfitLoss({
             </p>
             <p className="text-xs text-muted mb-2">
                 {firstTime
-                    ? 'Nothing has been set for this restaurant yet, so every line is open. Fill in what you know and leave the rest at nothing. From next week they carry and lock.'
-                    : 'Locked at what each was last week. Open one to change it, and it carries forward from then on.'}
+                    ? 'Nothing has been set for this restaurant yet, so every line is open. Fill in what you know, and remove any that will never apply. From next week they carry and lock.'
+                    : 'Locked at what each was last week. Open one to change it, and it carries forward from then on. Press a name to rename it.'}
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">
@@ -230,6 +288,8 @@ export default function ReportProfitLoss({
                         net={net}
                         canEdit={canEdit}
                         onSave={onSaveOverhead}
+                        onRename={onRenameOverhead}
+                        onRemove={onRemoveOverhead}
                     />
                 ))}
 

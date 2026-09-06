@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { weeksOpen } from '../../lib/weeklyReport'
+import { useRemoveCard } from './useRemoveCard'
 
 // Support and actions needed: the running list.
 //
@@ -16,6 +17,11 @@ import { weeksOpen } from '../../lib/weeklyReport'
 // Ticking one off does not delete it. It stays on this week's report, struck
 // through, so the week it was finished is on the record, and then it stops
 // carrying.
+//
+// Removing is the other thing, and both are needed. Ticked means it was done.
+// Removed means it should never have been on the list, and it goes without
+// leaving a trace. Only from this week: an earlier report holds its own copy
+// and is not touched, which is what makes removing safe to offer.
 
 function weeksWords(n) {
     if (n === 0) return 'raised this week'
@@ -24,7 +30,10 @@ function weeksWords(n) {
 }
 
 export default function ReportActions({ section, weekStart, canEdit, onAdd, onSave, onRemove }) {
+    const removeCard = useRemoveCard()
     const [adding, setAdding] = useState('')
+    const [busy, setBusy] = useState(false)
+    const pending = useRef(false)
 
     const actions = section.items.filter(i => i.kind === 'action')
     // Longest open first. The one that has been waiting since July is the one
@@ -35,18 +44,26 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
         return weeksOpen(b, weekStart) - weeksOpen(a, weekStart)
     })
 
+    // Saves when you leave the box, and offers a button as well. On a phone
+    // there has to be something to press: tapping away from a box is not an
+    // obvious act, and dismissing the keyboard may not blur it at all.
     async function add() {
         const text = adding.trim()
-        if (!text) return
+        if (!text || pending.current) return
+        pending.current = true
+        setBusy(true)
         setAdding('')
         await onAdd(text, weekStart)
+        setBusy(false)
+        pending.current = false
     }
 
     return (
         <div>
             <p className="text-sm text-muted mb-3">
                 These carry from week to week on their own until they are ticked off. Nothing has to be retyped,
-                and nothing quietly disappears because somebody forgot to mention it again.
+                and nothing quietly disappears because somebody forgot to mention it again. Tick one that is
+                done; remove one that should never have been here.
             </p>
 
             <div className="space-y-2">
@@ -98,6 +115,21 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                             <span className="flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
                                 {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
                             </span>
+
+                            {canEdit && (
+                                <button
+                                    onClick={() => removeCard({
+                                        what: 'task',
+                                        holds: item.label,
+                                        onRemove: () => onRemove(item.id),
+                                    })}
+                                    aria-label={`Remove: ${item.label}`}
+                                    title="Remove this. Tick it instead if it was done."
+                                    className="flex-shrink-0 text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
+                                >
+                                    &times;
+                                </button>
+                            )}
                         </div>
                     )
                 })}
@@ -108,14 +140,26 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
             </div>
 
             {canEdit && (
-                <textarea
-                    value={adding}
-                    onChange={e => setAdding(e.target.value)}
-                    onBlur={add}
-                    placeholder="Add something that needs doing"
-                    rows={2}
-                    className="mt-3 w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                />
+                <div className="mt-3">
+                    <textarea
+                        value={adding}
+                        onChange={e => setAdding(e.target.value)}
+                        onBlur={add}
+                        placeholder="Add something that needs doing"
+                        rows={2}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                    />
+                    {adding.trim() && (
+                        <button
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={add}
+                            disabled={busy}
+                            className="mt-2 w-full sm:w-auto px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50"
+                        >
+                            {busy ? 'Adding' : 'Add task'}
+                        </button>
+                    )}
+                </div>
             )}
         </div>
     )

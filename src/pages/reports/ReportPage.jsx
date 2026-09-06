@@ -8,7 +8,8 @@ import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
-import { reportFigures } from '../../lib/weeklyReport'
+import { useState as useLocalState } from 'react'
+import { reportFigures, sectionKey } from '../../lib/weeklyReport'
 import { workingThatWeek } from '../../lib/reportPeople'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
@@ -16,6 +17,7 @@ import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
 import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
 import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
+import ReportSectionHead from '../../components/reports/ReportSectionHead'
 
 // One week's report.
 //
@@ -344,6 +346,29 @@ export default function ReportPage() {
             }))
     }
 
+    // ---- the sections themselves ----
+    //
+    // A section belongs to a report, not to a restaurant, and a new report
+    // copies the list from the one before it. So adding one here is what makes
+    // it appear every week from now on, and dropping one is what stops it,
+    // with no template anywhere for somebody to keep in step.
+    //
+    // Every earlier report keeps its own copy either way, so nothing already
+    // sent changes.
+    async function addSection(title) {
+        const taken = sections.map(s => s.key)
+        return write(() => supabase.from('report_sections').insert({
+            report_id: report.id,
+            key: sectionKey(title, taken),
+            title,
+            sort_order: sections.length,
+        }))
+    }
+
+    async function removeSection(sectionId) {
+        return write(() => supabase.from('report_sections').delete().eq('id', sectionId))
+    }
+
     // ---- support and actions ----
     //
     // An action is raised against the week it first appears in and carries the
@@ -443,12 +468,16 @@ export default function ReportPage() {
 
             {/* SALES AND COSTS */}
             <div className={card}>
-                <div className={`${cardHeader} rounded-t-xl flex items-center justify-between gap-3`}>
-                    <span>{salesCosts?.title || 'Sales and costs'}</span>
-                    <span className="normal-case tracking-normal font-semibold text-[11px] opacity-75">
-                        From the Hub
-                    </span>
-                </div>
+                {salesCosts ? (
+                    <ReportSectionHead
+                        section={salesCosts}
+                        canEdit={canEdit}
+                        onRemove={removeSection}
+                        note="From the Hub"
+                    />
+                ) : (
+                    <div className={`${cardHeader} rounded-t-xl`}>Sales and costs</div>
+                )}
 
                 <div className="p-4 sm:p-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -523,8 +552,12 @@ export default function ReportPage() {
                     'people_ops', 'marketing', 'support_actions',
                 ].includes(section.key)
                 return (
-                    <div key={section.id} className={`${card} ${built ? '' : 'opacity-60'}`}>
-                        <div className={`${cardHeader} rounded-t-xl`}>{section.title}</div>
+                    <div key={section.id} className={card}>
+                        <ReportSectionHead
+                            section={section}
+                            canEdit={canEdit}
+                            onRemove={removeSection}
+                        />
                         <div className="p-4 sm:p-5">
                             {built ? (
                                 <>
@@ -538,6 +571,8 @@ export default function ReportPage() {
                                             onSaveOverhead={saveOverhead}
                                             onSaveDelivery={saveDelivery}
                                             onAddOverhead={addOverhead}
+                                            onRenameOverhead={(id, label) => saveItem(id, { label })}
+                                            onRemoveOverhead={removeItem}
                                         />
                                     )}
                                     {section.key === 'people_ops' && (
@@ -598,12 +633,80 @@ export default function ReportPage() {
                                     )}
                                 </>
                             ) : (
-                                <p className="text-sm text-muted">Still being built.</p>
+                                <ReportComments
+                                    items={commentsOf(section)}
+                                    canEdit={canEdit}
+                                    onAdd={note => addComment(section.id, note)}
+                                    onSave={saveComment}
+                                    onRemove={removeItem}
+                                    label="Notes"
+                                />
                             )}
                         </div>
                     </div>
                 )
             })}
+
+            {canEdit && <AddSection onAdd={addSection} />}
+        </div>
+    )
+}
+
+// Adding a section of your own.
+//
+// It appears on every week from now on, because the next report copies its
+// section list from this one. That is worth saying on the button, since it is
+// not what "add" usually means and it is the reason the feature exists: a
+// restaurant that wants a priorities follow-up every week should type that once
+// and never again.
+function AddSection({ onAdd }) {
+    const [open, setOpen] = useLocalState(false)
+    const [title, setTitle] = useLocalState('')
+
+    if (!open) {
+        return (
+            <button
+                onClick={() => setOpen(true)}
+                className="text-sm font-semibold text-accent-ink hover:underline px-1"
+            >
+                + Add a section
+            </button>
+        )
+    }
+
+    return (
+        <div className={`${card} p-4`}>
+            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">A section of your own</p>
+            <div className="flex flex-wrap gap-2">
+                <input
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') { setTitle(''); setOpen(false) } }}
+                    autoFocus
+                    placeholder="What is it called"
+                    className="flex-1 min-w-[12rem] bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                />
+                <button
+                    onClick={async () => {
+                        if (!title.trim()) return
+                        await onAdd(title.trim())
+                        setTitle('')
+                        setOpen(false)
+                    }}
+                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors"
+                >
+                    Add
+                </button>
+                <button
+                    onClick={() => { setTitle(''); setOpen(false) }}
+                    className={secondaryButton}
+                >
+                    Cancel
+                </button>
+            </div>
+            <p className="text-xs text-muted mt-2">
+                It appears on every week from now on, and can be dropped again whenever you like.
+            </p>
         </div>
     )
 }
