@@ -7,17 +7,22 @@ import { weekStartOf, addDays } from './dates'
 
 // How far back a chart can be asked to look.
 //
-// It opens on the year, because the thing worth seeing on a weekly report is
+// It opens on the longest, because the thing worth seeing on a weekly report is
 // the trend, and four points do not have one. The shorter ranges are for when
 // something has just moved and the question is what it did this month.
+//
+// Twelve months rather than the calendar year. A chart that resets every
+// January would be at its least useful in the weeks it is most needed, and
+// "how have we done against this time last year" is the question a rolling year
+// answers and a calendar one cannot.
 export const RANGES = [
     { key: '1m', label: '1 month', weeks: 5 },
     { key: '3m', label: '3 months', weeks: 13 },
     { key: '6m', label: '6 months', weeks: 26 },
-    { key: 'year', label: 'This year', weeks: null },
+    { key: '12m', label: '12 months', weeks: 52 },
 ]
 
-export const DEFAULT_RANGE = 'year'
+export const DEFAULT_RANGE = '12m'
 
 function num(v) {
     if (v == null) return 0
@@ -25,24 +30,16 @@ function num(v) {
     return isNaN(n) ? 0 : n
 }
 
-// Every week start from the first of the year up to and including `upTo`.
+// The last `count` weeks up to and including the week `upTo` falls in.
 //
-// From the first Sunday of that year rather than a fixed count back, so "this
-// year" means the year and not the last fifty two weeks. In January that is a
-// short chart, which is honest: there is not a year of it yet.
-export function weeksOfYear(upTo) {
+// A rolling window rather than the calendar year, so a chart carries on across
+// New Year instead of emptying itself. Weeks at the front with nothing in them
+// are dropped when it is drawn, so a restaurant with four months of figures
+// gets a chart of four months rather than eight months of floor.
+export function weeksBack(upTo, count = 52) {
     const end = weekStartOf(upTo)
-    const year = new Date(end + 'T00:00:00').getFullYear()
-
-    const first = new Date(year, 0, 1)
-    first.setDate(first.getDate() + ((7 - first.getDay()) % 7))
-
     const out = []
-    let week = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(first.getDate()).padStart(2, '0')}`
-    while (week <= end) {
-        out.push(week)
-        week = addDays(week, 7)
-    }
+    for (let i = count - 1; i >= 0; i--) out.push(addDays(end, -7 * i))
     return out
 }
 
@@ -123,6 +120,16 @@ export function niceMin(low, { zero = true } = {}) {
     return Math.max(0, Math.floor((low * 0.94) / step) * step)
 }
 
+// A week with no figure at all, as against a week whose figure is nought.
+//
+// Net earnings and delivery costs only exist for a week somebody wrote a report
+// for. Reading a week without one as zero would draw a line diving to the floor
+// and climbing back, which is a story about the business rather than about the
+// records. Null means no answer, and the chart leaves a gap.
+export function isMissing(value) {
+    return value == null || value === '' || Number.isNaN(Number(value))
+}
+
 // The scale for a set of series: what the axis runs between.
 export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
     let peak = 0
@@ -132,6 +139,7 @@ export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
         const stack = stacked.reduce((t, key) => t + num(row[key]), 0)
         if (stacked.length) peak = Math.max(peak, stack)
         for (const key of lines) {
+            if (isMissing(row[key])) continue
             peak = Math.max(peak, num(row[key]))
             low = Math.min(low, num(row[key]))
         }
@@ -140,6 +148,28 @@ export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
 
     if (low === Infinity) low = 0
     return { min: niceMin(low, { zero }), max: niceMax(peak * 1.06) }
+}
+
+// One line broken into the runs of weeks that actually have a figure.
+//
+// Returns a list of point runs. A single week sitting on its own between two
+// gaps comes back as a run of one, which the chart draws as a dot, because a
+// path of one point draws nothing at all and the week would vanish.
+export function segments(rows, key) {
+    const out = []
+    let run = []
+
+    rows.forEach((row, i) => {
+        if (isMissing(row[key])) {
+            if (run.length) out.push(run)
+            run = []
+            return
+        }
+        run.push({ i, value: Number(row[key]) })
+    })
+
+    if (run.length) out.push(run)
+    return out
 }
 
 // Four labels up the side, evenly spaced.

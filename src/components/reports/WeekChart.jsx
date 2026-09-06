@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { shortDate } from '../../lib/dates'
-import { RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside } from '../../lib/reportChart'
+import {
+    RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside, segments, isMissing,
+} from '../../lib/reportChart'
 import { segmentTrack, segmentButton } from '../../lib/controlStyles'
 
 // A week by week chart for the report.
@@ -60,7 +62,8 @@ export default function WeekChart({
     const shown = inRange(fromFirstFigure(rows, series.map(s => s.key)), range)
     const lines = series.filter(s => !stacked.includes(s.key))
 
-    if (shown.length === 0) {
+    const anything = shown.some(row => series.some(s => !isMissing(row[s.key])))
+    if (shown.length === 0 || !anything) {
         return <p className="text-sm text-muted italic">{empty || 'Nothing to draw yet.'}</p>
     }
 
@@ -124,7 +127,7 @@ export default function WeekChart({
                     {series.map(s => (
                         <span key={s.key} className="inline-flex items-center gap-1.5">
                             <span
-                                className="w-4 h-[3px] rounded-full flex-shrink-0"
+                                className={`rounded-full flex-shrink-0 ${s.heavy ? 'w-5 h-[3.5px]' : 'w-4 h-[2px]'}`}
                                 style={{ background: s.colour }}
                                 aria-hidden="true"
                             />
@@ -194,22 +197,44 @@ export default function WeekChart({
                         </g>
                     ))}
 
-                    {lines.map(s => (
-                        <g key={s.key}>
-                            <path
-                                d={`M${shown.map((r, i) => `${x(i).toFixed(1)},${y(num(r[s.key])).toFixed(1)}`).join(' L')}`}
-                                fill="none"
-                                stroke={s.colour}
-                                strokeWidth={s.heavy ? 2.25 : 1.75}
-                                strokeLinejoin="round"
-                                strokeLinecap="round"
-                            />
-                            <circle
-                                cx={x(shown.length - 1)} cy={y(num(shown[shown.length - 1][s.key]))}
-                                r="3" fill={s.colour} stroke="#fff" strokeWidth="1.5"
-                            />
-                        </g>
-                    ))}
+                    {lines.map(s => {
+                        const runs = segments(shown, s.key)
+                        const last = runs[runs.length - 1]
+                        const tip = last && last[last.length - 1]
+                        return (
+                            <g key={s.key}>
+                                {runs.map(run => (
+                                    run.length === 1 ? (
+                                        // A week on its own between two gaps. A
+                                        // path of one point draws nothing, so it
+                                        // gets a dot or it disappears.
+                                        <circle
+                                            key={run[0].i}
+                                            cx={x(run[0].i)} cy={y(run[0].value)}
+                                            r={s.heavy ? 3 : 2.5} fill={s.colour}
+                                        />
+                                    ) : (
+                                        <path
+                                            key={run[0].i}
+                                            d={`M${run.map(pt => `${x(pt.i).toFixed(1)},${y(pt.value).toFixed(1)}`).join(' L')}`}
+                                            fill="none"
+                                            stroke={s.colour}
+                                            strokeWidth={s.heavy ? 3.25 : 1.6}
+                                            strokeLinejoin="round"
+                                            strokeLinecap="round"
+                                        />
+                                    )
+                                ))}
+                                {tip && (
+                                    <circle
+                                        cx={x(tip.i)} cy={y(tip.value)}
+                                        r={s.heavy ? 4 : 3} fill={s.colour}
+                                        stroke="#fff" strokeWidth="1.5"
+                                    />
+                                )}
+                            </g>
+                        )
+                    })}
 
                     {shown.map((r, i) => (
                         (i % every === 0 || i === shown.length - 1) && (
@@ -252,11 +277,17 @@ export default function WeekChart({
                                     {s.label}
                                 </span>
                                 <span className="font-bold tabular-nums">
-                                    {format(num(hovered[s.key]))}
-                                    {shareOf && (
-                                        <span className="font-normal opacity-70 ml-1">
-                                            {aside(shown, at, s.key, shareOf)}
-                                        </span>
+                                    {isMissing(hovered[s.key]) ? (
+                                        <span className="font-normal opacity-60">not written up</span>
+                                    ) : (
+                                        <>
+                                            {format(num(hovered[s.key]))}
+                                            {shareOf && (
+                                                <span className="font-normal opacity-70 ml-1">
+                                                    {aside(shown, at, s.key, shareOf)}
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </span>
                             </p>

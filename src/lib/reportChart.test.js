@@ -1,26 +1,34 @@
 import { describe, it, expect } from 'vitest'
 import {
-    RANGES, weeksOfYear, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
+    RANGES, weeksBack, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
+    segments, isMissing,
 } from './reportChart'
 
-describe('weeksOfYear', () => {
-    it('starts on the first Sunday of the year', () => {
-        expect(weeksOfYear('2026-08-12')[0]).toBe('2026-01-04')
-    })
-
+describe('weeksBack', () => {
     it('ends on the week the date is in, and includes it', () => {
-        const weeks = weeksOfYear('2026-08-12')
+        const weeks = weeksBack('2026-08-12')
         expect(weeks[weeks.length - 1]).toBe('2026-08-09')
     })
 
-    it('every entry is a Sunday, seven days apart', () => {
-        const weeks = weeksOfYear('2026-08-12')
-        for (const w of weeks) expect(new Date(w + 'T00:00:00').getDay()).toBe(0)
-        expect(weeks.length).toBe(32)
+    it('gives fifty two of them by default', () => {
+        expect(weeksBack('2026-08-12')).toHaveLength(52)
     })
 
-    it('is short in January rather than reaching back into last year', () => {
-        expect(weeksOfYear('2026-01-20')).toEqual(['2026-01-04', '2026-01-11', '2026-01-18'])
+    it('every entry is a Sunday, seven days apart, in order', () => {
+        const weeks = weeksBack('2026-08-12', 6)
+        for (const w of weeks) expect(new Date(w + 'T00:00:00').getDay()).toBe(0)
+        expect(weeks).toEqual([
+            '2026-07-05', '2026-07-12', '2026-07-19',
+            '2026-07-26', '2026-08-02', '2026-08-09',
+        ])
+    })
+
+    // The reason it is not the calendar year: a chart that emptied itself every
+    // January would be at its least useful in the weeks it is most needed.
+    it('reaches back into last year rather than starting again', () => {
+        const weeks = weeksBack('2026-01-20', 5)
+        expect(weeks[0]).toBe('2025-12-21')
+        expect(weeks[weeks.length - 1]).toBe('2026-01-18')
     })
 })
 
@@ -187,5 +195,53 @@ describe('fromFirstFigure', () => {
     it('gives back nothing rather than everything when there is no figure at all', () => {
         const empty = [{ week: '2026-01-04', net: 0 }]
         expect(fromFirstFigure(empty, ['net'])).toEqual(empty)
+    })
+})
+
+describe('weeks with no figure at all', () => {
+    // Net earnings and delivery costs only exist for a week somebody wrote a
+    // report for. Reading a week without one as nought would draw a line diving
+    // to the floor and back, which is a story about the business rather than
+    // about the records.
+    const rows = [
+        { week: 'a', earn: 100 },
+        { week: 'b', earn: 200 },
+        { week: 'c', earn: null },
+        { week: 'd', earn: null },
+        { week: 'e', earn: 300 },
+        { week: 'f' },
+        { week: 'g', earn: 0 },
+    ]
+
+    it('knows nothing written from a figure of nought', () => {
+        expect(isMissing(null)).toBe(true)
+        expect(isMissing(undefined)).toBe(true)
+        expect(isMissing(0)).toBe(false)
+        expect(isMissing('12.5')).toBe(false)
+    })
+
+    it('breaks the line into the runs that have figures', () => {
+        const runs = segments(rows, 'earn')
+        expect(runs).toHaveLength(3)
+        expect(runs[0].map(p => p.value)).toEqual([100, 200])
+        expect(runs[1].map(p => p.value)).toEqual([300])
+        expect(runs[2].map(p => p.value)).toEqual([0])
+    })
+
+    it('keeps each point on its own week, so a gap does not shift the line left', () => {
+        const runs = segments(rows, 'earn')
+        expect(runs[1][0].i).toBe(4)
+        expect(runs[2][0].i).toBe(6)
+    })
+
+    it('leaves a missing week out of the scale rather than dragging it to nought', () => {
+        const { min, max } = scaleFor(
+            [{ v: 900 }, { v: null }, { v: 1000 }], { lines: ['v'], zero: false })
+        expect(min).toBeGreaterThan(0)
+        expect(max).toBeGreaterThanOrEqual(1000)
+    })
+
+    it('has nothing to draw when no week has a figure', () => {
+        expect(segments([{ v: null }, { v: null }], 'v')).toEqual([])
     })
 })

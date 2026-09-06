@@ -11,7 +11,7 @@ import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyle
 import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey } from '../../lib/weeklyReport'
 import { workingThatWeek } from '../../lib/reportPeople'
-import { weeksOfYear, byWeek } from '../../lib/reportChart'
+import { weeksBack, byWeek } from '../../lib/reportChart'
 import { brandFor } from '../../lib/platformBrand'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
@@ -202,16 +202,16 @@ export default function ReportPage() {
             }
             setTaken(totals)
 
-            // Every week of the year up to this one, for the charts.
+            // The last twelve months up to this week, for the charts.
             //
             // One read over the whole range and folded into weeks here, rather
             // than fifty two round trips. A year of days is under four hundred
             // rows, which is nothing, and the alternative is a page that takes
             // a second to draw a line.
-            const weekStarts = weeksOfYear(weekStart)
+            const weekStarts = weeksBack(weekStart)
             const yearFrom = weekStarts[0]
 
-            const [hDays, hInvoices, hLabour] = await Promise.all([
+            const [hDays, hInvoices, hLabour, hReports] = await Promise.all([
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
@@ -224,6 +224,12 @@ export default function ReportPage() {
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('entry_date', yearFrom).lte('entry_date', end),
+                // Overheads and delivery costs live on each week's own report,
+                // so a week nobody wrote up has no answer rather than a nought.
+                supabase.from('weekly_reports')
+                    .select('week_start, report_sections(report_items(kind, key, amount))')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('week_start', yearFrom).lte('week_start', weekStart),
             ])
 
             const trading = (hDays.data || []).filter(d => !d.is_closed)
@@ -243,6 +249,22 @@ export default function ReportPage() {
             // chart keys are prefixed rather than used raw: a platform called
             // "net" or "food" would otherwise collide with a column on the same
             // row and quietly draw the wrong line.
+            // What each past report typed into its profit and loss.
+            const reported = new Map()
+            for (const r of hReports.data || []) {
+                const items = (r.report_sections || []).flatMap(sec => sec.report_items || [])
+                const standing = items
+                    .filter(i => i.kind === 'overhead')
+                    .reduce((t, i) => t + num(i.amount), 0)
+                const delivery = {}
+                let deliveryTotal = 0
+                for (const i of items.filter(i => i.kind === 'delivery')) {
+                    delivery[i.key] = num(i.amount)
+                    deliveryTotal += num(i.amount)
+                }
+                reported.set(r.week_start, { standing, delivery, deliveryTotal })
+            }
+
             const platWeeks = {}
             for (const p of activePlatforms) {
                 platWeeks[p.id] = byWeek(hDays.data || [], 'sale_date',
@@ -266,6 +288,22 @@ export default function ReportPage() {
                     row[`p_${p.id}`] = amount
                     if (p.bucket === 'online_platform') row.onlineTotal += amount
                     else row.corporateTotal += amount
+                }
+
+                // Null, not nought, for a week nobody wrote up. The chart
+                // leaves a gap where there is no answer.
+                const pl = reported.get(week)
+                row.earnings = null
+                row.deliveryTotal = null
+                for (const p of activePlatforms) row[`d_${p.id}`] = null
+
+                if (pl) {
+                    row.deliveryTotal = pl.deliveryTotal
+                    for (const p of activePlatforms) {
+                        if (p.id in pl.delivery) row[`d_${p.id}`] = pl.delivery[p.id]
+                    }
+                    row.earnings = row.net - row.food - row.packaging - row.labour
+                        - pl.standing - pl.deliveryTotal
                 }
 
                 return row
@@ -662,6 +700,7 @@ export default function ReportPage() {
                             {built ? (
                                 <>
                                     {section.key === 'profit_loss' && (
+                                        <>
                                         <ReportProfitLoss
                                             section={section}
                                             figures={figures}
@@ -674,6 +713,56 @@ export default function ReportPage() {
                                             onRenameOverhead={(id, label) => saveItem(id, { label })}
                                             onRemoveOverhead={removeItem}
                                         />
+                                        <div className="mt-6">
+                                            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
+                                                What each platform has cost
+                                            </p>
+                                            <WeekChart
+                                                rows={history}
+                                                height={210}
+                                                format={fmtMoney}
+                                                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
+                                                shareOf="deliveryTotal"
+                                                empty="No week has had its delivery costs entered yet. This fills in as reports are written."
+                                                series={[
+                                                    { key: 'deliveryTotal', label: 'All platforms', colour: '#182F24', heavy: true },
+                                                    ...onlinePlatforms.map(p => ({
+                                                        key: `d_${p.id}`,
+                                                        label: p.name,
+                                                        colour: brandFor(p.name).mark,
+                                                    })),
+                                                ]}
+                                            />
+                                            <p className="text-xs text-muted mt-2">
+                                                Forty three percent is only alarming once you can see it was
+                                                thirty eight in May. Weeks with no report are left as gaps
+                                                rather than drawn as nothing.
+                                            </p>
+                                        </div>
+
+                                        <div className="mt-6">
+                                            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
+                                                Net earnings, week by week
+                                            </p>
+                                            <WeekChart
+                                                rows={history}
+                                                height={210}
+                                                zero={false}
+                                                format={fmtMoney}
+                                                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
+                                                shareOf="net"
+                                                empty="No week has been written up yet, so there is nothing to compare this one against."
+                                                series={[
+                                                    { key: 'earnings', label: 'Net earnings', colour: '#2E7D52', heavy: true },
+                                                ]}
+                                            />
+                                            <p className="text-xs text-muted mt-2">
+                                                Hovering gives the euro and the share of that week's net sales,
+                                                so both figures are on one chart rather than two scales on one
+                                                axis.
+                                            </p>
+                                        </div>
+                                        </>
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
