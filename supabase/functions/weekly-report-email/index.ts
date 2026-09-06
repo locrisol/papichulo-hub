@@ -280,7 +280,12 @@ Deno.serve(async (req) => {
 
         return json({ sent: to.length, to: test ? to : undefined })
     } catch (err) {
+        // Said out loud, because a key that has expired should be findable in
+        // the logs. Unlike the time off mail this reason also goes back to the
+        // page, since somebody who pressed publish needs to know whether it
+        // went out.
         console.error('weekly-report-email', err)
-        return json({ error: String(err?.message || err) }, 500)
+        const why = err instanceof Error ? err.message : String(err)
+        return json({ error: why }, 500)
     }
 })
