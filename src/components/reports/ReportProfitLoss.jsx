@@ -153,9 +153,20 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                     className={`${moneyBox} bg-white border border-accent`}
                 />
             ) : (
-                <span className="flex-1 sm:flex-none sm:w-28 text-right text-sm tabular-nums font-semibold text-gray-900">
-                    {fmtMoney(amount)}
-                </span>
+                // The same box, disabled and greyed, rather than the figure as
+                // loose text. A field that turns into a line of writing when it
+                // is locked reads as a different thing from the one you typed
+                // into, and the eye has to find the column again every time one
+                // is opened and shut.
+                <input
+                    type="text"
+                    value={fmtMoney(amount)}
+                    disabled
+                    readOnly
+                    aria-label={item.label}
+                    className={`${moneyBox} bg-app-bg border border-border text-muted
+                        font-semibold cursor-not-allowed`}
+                />
             )}
 
             <span className="w-12 text-right text-xs tabular-nums text-muted">{pctText(share)}</span>
@@ -164,13 +175,13 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                 <button
                     onClick={() => { setDraft(String(item.amount ?? '')); setOpen(true) }}
                     className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
-                    aria-label={`Open ${item.label} to change it`}
+                    aria-label={`Edit ${item.label}`}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-3.5 h-3.5">
                         <rect x="4" y="10" width="16" height="11" rx="2" />
                         <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                     </svg>
-                    Open
+                    Edit
                 </button>
             )}
 
@@ -337,7 +348,7 @@ export default function ReportProfitLoss({
             <p className="text-xs text-muted mb-2">
                 {firstTime
                     ? 'Nothing has been set for this restaurant yet, so every line is open. Fill in what you know, and remove any that will never apply. From next week they carry and lock.'
-                    : 'Locked at what each was last week. Open one to change it, and it carries forward from then on. Press a name to rename it.'}
+                    : 'Locked at what each was last week. Edit one to change it, and it carries forward from then on. Press a name to rename it.'}
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">
