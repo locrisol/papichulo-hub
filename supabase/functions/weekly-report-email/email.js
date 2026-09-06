@@ -32,27 +32,24 @@ const CREAM = '#F7F5F0'
 const INK = '#282828'
 const MUTED = '#6B6459'
 const BORDER = '#E8E3DB'
-// One step down from the cream, for a heading inside a card that has a cream
-// header of its own. Two the same colour would read as one block.
+// One step down from the cream, for a heading inside a card whose own header is
+// already cream. Two the same colour read as one block.
 const BAND = '#EDE7DC'
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 // How wide the mail is allowed to get, and it is a maximum rather than a size.
 //
-// **Never put this number in a width attribute.** width="760" tells a phone to
-// lay the whole message out at 760 and then scale it down to fit, which on a
-// 412 point screen is a little over half size. Gmail then decides the type is
-// too small to read and inflates it back up, but the columns underneath were
-// still worked out at 760, so a label with room for twenty characters gets ten.
+// **Never put this in a width attribute.** width="760" tells a phone to lay the
+// whole message out at 760 and then scale it down to fit, which on a 412 point
+// screen is a little over half size. Gmail then decides the type is too small
+// to read and inflates it back up, but the columns underneath it were still
+// worked out at 760, so a label with room for twenty characters gets ten and
+// "Gas and electric" comes out on two lines. That is why widening the desktop
+// broke the phone: the two were the same number doing two different jobs.
 //
-// The attribute still has to be there, as width="100%". Taking it away
-// altogether does not leave the table filling its parent, it leaves the table
-// shrinking to fit its own contents, which is how the whole mail ended up in a
-// column two thirds of the screen wide with a margin either side of it.
-//
-// So: width="100%" as the attribute, this as a max-width in the style. A phone
-// gets its own width at its own type size, a laptop gets 760, nothing scaled.
+// As a max-width in the style it is a ceiling and nothing else. A laptop gets
+// 760, a phone gets its own width at its own type size, and nothing is scaled.
 export const WIDTH = 760
 
 // The gap down either side of the words.
@@ -95,25 +92,6 @@ export function escapeHtml(value) {
 }
 
 const num = v => (v == null || isNaN(Number(v)) ? 0 : Number(v))
-
-// Keep a figure together, and nothing else.
-//
-// **This is the only thing in the mail allowed not to wrap, and only ever one
-// figure at a time.** A cell that cannot wrap sets a floor under the width of
-// the table it is in, and a table wider than the phone makes Gmail scale the
-// whole message down and then inflate the type back up to keep it readable,
-// with every column still worked out at the old width. The result is labels
-// breaking in half three sections away from the cell that caused it.
-//
-// That is exactly what happened: "€292.47 (39.00% of its own sales)" was one
-// unbreakable run of thirty three characters in the delivery rows, and it was
-// wrapping "Gas and electric" at the top of the section.
-//
-// So a figure is wrapped and its share is wrapped, separately, and the space
-// between them is a place the line may break.
-function nw(text) {
-    return `<span style="white-space:nowrap;">${text}</span>`
-}
 
 export function money(value) {
     const n = num(value)
@@ -161,15 +139,9 @@ export function costTone(share, target) {
 // sitting above its own percentage reads as two facts instead of one.
 export function withShare(amount, share, tone) {
     const rate = pct(share)
-    if (!rate) return nw(money(amount))
-    const shown = tone
-        ? `<span style="color:${tone};white-space:nowrap;">(${rate})</span>`
-        : nw(`(${rate})`)
-    // The gap is written as an entity, not typed as a space. tidy() strips
-    // whitespace between two tags, which is the whole reason it exists, and a
-    // plain space here would be swallowed on the way out: the figure and its
-    // share would run together with no gap and, worse, no place to break.
-    return `${nw(money(amount))}&#32;${shown}`
+    if (!rate) return money(amount)
+    const shown = tone ? `<span style="color:${tone};">(${rate})</span>` : `(${rate})`
+    return `${money(amount)}&nbsp;${shown}`
 }
 
 export function fmtDate(iso) {
@@ -238,17 +210,13 @@ function band(colour, background, title, body) {
 //
 // A filled bar rather than small grey lettering over a short rule. Seven
 // sections deep in a mail read on a phone, the old one carried the same weight
-// as the figures around it and the whole report read as one long list.
-//
-// Edge to edge, unlike everything under it. A heading inset to the same width
-// as the cards it introduces reads as one more card, and the eye has nothing
-// to tell "this is a new part of the report" from "this is another platform".
-// Running it out to both sides is what makes it a divider.
+// as the figures around it and the whole report read as one long list. This one
+// you can find by scrolling.
 function heading(title) {
-    return `<tr><td style="padding:30px 0 0;">
+    return `<tr><td style="padding:28px ${SIDE}px 12px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};padding:13px ${SIDE}px;font-family:${FONT};">
-                <div style="font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</div>
+            <tr><td style="background:${DARK};border-radius:8px;padding:12px 15px;font-family:${FONT};">
+                <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</div>
             </td></tr>
         </table>
     </td></tr>`
@@ -256,33 +224,39 @@ function heading(title) {
 
 // A heading inside a card: New reviews, Refunds.
 //
-// A band across the card rather than small grey lettering above a row. Inside a
-// platform block everything is already indented and already quiet, so a label
-// set the same way as the muted second line of a refund is a label nobody sees.
-// This one has a ground of its own and a rule under it, so a refund cannot be
-// read as a review.
+// A band across the card, with a ground of its own and a rule under it, rather
+// than a line of small grey lettering. Inside a platform block everything is
+// already indented and already quiet, so a label set the same way as the muted
+// second line of a refund is a label nobody sees, and a refund gets read as a
+// review.
+//
+// It spans the card because the rows either side of it carry their own side
+// padding and this one does not.
 function subHeading(title) {
     return `<tr><td colspan="2" style="background:${BAND};border-bottom:1px solid ${BORDER};
-        padding:9px 14px;font-family:${FONT};font-size:11.5px;font-weight:700;
-        letter-spacing:.1em;text-transform:uppercase;color:${DARK};">${escapeHtml(title)}</td></tr>`
+        padding:9px 14px;font-family:${FONT};font-size:11.5px;font-weight:700;letter-spacing:.1em;
+        text-transform:uppercase;color:${DARK};">${escapeHtml(title)}</td></tr>`
 }
 
 // One row: what it is on the left, what it came to on the right.
 //
-// No width on either cell. The figure column cannot wrap, so it takes exactly
-// what it needs and the label gets everything else, which is the behaviour
-// wanted at both ends: a short label does not squeeze the figure and a long one
-// is not squeezed by it.
+// **The label carries width="100%" and that is what stops it wrapping.**
 //
-// It was width="42%" once, which wrapped "Gas and electric" onto two lines to
-// leave room for a figure needing a third of that. Then it was width="1%"
-// without nowrap, which is worse: width="1%" means as narrow as possible, so
-// with breakable contents the column shrinks to its longest word and every
-// figure stacks above its own percentage. The two have to go together or
-// neither works.
+// width="1%" and nowrap on the figure is the old trick for "as narrow as your
+// contents and not one point wider", and it is right, but on its own it is only
+// half the instruction. A table laying itself out shares the width left over
+// between its columns in proportion to what is in them. It does not hand the
+// lot to the other column just because this one asked to be small. So the label
+// column got a share of the slack rather than all of it, and "Gas and electric"
+// broke in two with an inch of nothing sitting between it and €346.00. The gap
+// in the middle of every one of those rows was the tell.
 //
-// A padding on the figure's left rather than nothing between them, because with
-// no width set at all they touch, which is what "Deliveroo€750.00" was.
+// width="100%" on the label says: this is the column that absorbs everything.
+// The figure takes what it needs, the label takes the rest, and neither has to
+// be told a number.
+//
+// A padding on the figure's left rather than nothing between them, because
+// with no width set at all they touch, which is what "Deliveroo€750.00" was.
 //
 // `weight` says how much a row matters. An ordinary row is plain, a total is
 // heavier on a tinted ground with a rule above it, so a column of thirteen
@@ -296,14 +270,12 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
         ? `border-top:2px solid ${DARK};border-bottom:1px solid ${BORDER};`
         : `border-bottom:1px solid ${BORDER};`
     const pad = total ? '11px' : '9px'
-    const left = inset + (indent ? 14 : (total ? 10 : 0))
-    const right = inset + (total ? 10 : 0)
 
     return `<tr>
-        <td style="padding:${pad} 0 ${pad} ${left}px;${rule}${ground}
+        <td width="100%" style="padding:${pad} 0 ${pad} ${inset + (indent ? 14 : (total ? 10 : 0))}px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
             color:${colour || INK};">${label}</td>
-        <td align="right" style="padding:${pad} ${right}px ${pad} 14px;${rule}${ground}
+        <td width="1%" align="right" style="padding:${pad} ${inset + (total ? 10 : 0)}px ${pad} 14px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
             color:${tone || INK};white-space:nowrap;">${value || ''}</td>
     </tr>`
@@ -395,8 +367,8 @@ function salesAndCosts(section, f, charts) {
     ].filter(Boolean).join(', ')
 
     return heading(section.title) + figures([
-        line({ label: 'Net sales', value: nw(money(f.net)), total: true }),
-        line({ label: 'Gross sales', value: nw(money(f.gross)), tone: MUTED }),
+        line({ label: 'Net sales', value: money(f.net), total: true }),
+        line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
         line({ label: 'Food', value: withShare(f.food, f.foodPct, costTone(f.foodPct, t.food)) }),
         line({ label: 'Labour', value: withShare(f.labour, f.labourPct, costTone(f.labourPct, t.labour)) }),
         line({
@@ -421,11 +393,11 @@ function profitAndLoss(section, f, charts) {
     const rows = []
     for (const item of overheads) {
         rows.push(line({
-            label: escapeHtml(item.label || 'Overhead'), value: nw(money(item.amount)), indent: true,
+            label: escapeHtml(item.label || 'Overhead'), value: money(item.amount), indent: true,
         }))
     }
     if (overheads.length > 0) {
-        rows.push(line({ label: 'Fixed overheads', value: nw(money(f.standing)), total: true }))
+        rows.push(line({ label: 'Fixed overheads', value: money(f.standing), total: true }))
     }
 
     for (const item of delivery) {
@@ -434,23 +406,18 @@ function profitAndLoss(section, f, charts) {
         // small on every platform and say nothing about any of them.
         const platform = platforms.find(p => p.id === item.key)
         const sales = num(platform?.taken)
-        // What the platform kept goes under its name rather than beside the
-        // figure. As part of the figure it was one unbreakable run of thirty
-        // three characters, which was setting the width of the whole mail.
         rows.push(line({
-            label: escapeHtml(item.label || 'Platform')
-                + (sales > 0
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">`
-                        + `${pct((num(item.amount) / sales) * 100)} of what it took</span>`
-                    : ''),
+            label: escapeHtml(item.label || 'Platform'),
             colour: platform?.colour,
-            value: nw(money(item.amount)),
+            value: sales > 0
+                ? `${money(item.amount)}&nbsp;(${pct((num(item.amount) / sales) * 100)}&nbsp;of its own sales)`
+                : money(item.amount),
             indent: true,
         }))
     }
     if (delivery.length > 0) {
         rows.push(line({
-            label: 'Third party delivery costs', value: nw(money(f.deliveryTotal)), total: true,
+            label: 'Third party delivery costs', value: money(f.deliveryTotal), total: true,
         }))
     }
 
@@ -513,23 +480,16 @@ function platformBlock(section, platform, rated) {
         && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
     const up = moved && num(rating.amount) > num(rating.carried_from)
 
-    // Which way it went goes under the label, not beside the score. Together
-    // they read "4.6 out of 5 (up from 4.4)", twenty six characters that could
-    // not break, inside a card already inset three times over.
-    const ratingMoveWords = !rating || rating.amount == null ? ''
-        : moved
-            ? `<span style="color:${up ? GREEN : AMBER};">${up ? 'Up' : 'Down'} from ${num(rating.carried_from).toFixed(1)}</span>`
-            : (rating.carried_from != null ? 'No change since last week' : 'Carries to next week')
-
-    if (rated) rows.push(line({
-        inset: 14,
-        label: 'Overall rating'
-            + (ratingMoveWords
-                ? `<br /><span style="color:${MUTED};font-size:13px;">${ratingMoveWords}</span>`
-                : ''),
+    if (rated) rows.push(line({ inset: 14,
+        label: 'Overall rating',
         value: rating?.amount == null
-            ? `<span style="color:${MUTED};">not recorded</span>`
-            : nw(`${num(rating.amount).toFixed(1)} out of 5`),
+            ? '<span style="color:' + MUTED + ';">not recorded</span>'
+            : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
+                + (moved
+                    ? ` <span style="color:${up ? GREEN : AMBER};">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
+                    : (rating.carried_from != null
+                        ? ` <span style="color:${MUTED};">(no change)</span>`
+                        : '')),
     }))
 
     const reviews = rated ? of(section, 'review').filter(r => r.key === platform.id) : []
@@ -555,7 +515,7 @@ function platformBlock(section, platform, rated) {
                     + `<br /><span style="color:${MUTED};">`
                     + (refund.meta?.claimed ? 'Claimed back' : 'Not claimed')
                     + '</span>',
-                value: nw(negative(refund.amount)),
+                value: negative(refund.amount),
                 tone: RED,
             }))
         }
@@ -570,9 +530,9 @@ function platformBlock(section, platform, rated) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td style="font-family:${FONT};font-size:17px;font-weight:700;
+                        <td width="100%" style="font-family:${FONT};font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td align="right" style="font-family:${FONT};font-size:17px;
+                        <td width="1%" align="right" style="font-family:${FONT};font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -636,8 +596,8 @@ function paperwork(state, title) {
             <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td align="right" style="font-family:${FONT};font-size:15px;
+                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
                     </tr>
                 </table>
