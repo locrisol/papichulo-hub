@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { shortDate } from '../../lib/dates'
-import { RANGES, DEFAULT_RANGE, inRange, scaleFor, ticks, aside } from '../../lib/reportChart'
+import { RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside } from '../../lib/reportChart'
 import { segmentTrack, segmentButton } from '../../lib/controlStyles'
 
 // A week by week chart for the report.
@@ -14,22 +14,50 @@ import { segmentTrack, segmentButton } from '../../lib/controlStyles'
 // range buttons, the key and the tooltip are all ordinary elements, so they
 // wrap and reflow on a phone without any arithmetic.
 //
-// Drawn against a fixed viewBox and scaled by the browser, so it is the same
-// chart at any width. That is also why the hover has to convert back through
-// the rendered size to find which week the pointer is over.
+// It draws at the size it is actually shown at, rather than into a fixed
+// viewBox stretched to fit.
+//
+// A stretched viewBox scales everything in it, lettering and line widths
+// included. At 760 wide on a page 1500 wide that is a factor of two: ten pixel
+// labels arriving as twenty, a two pixel line as four, and a packaging band
+// four hundred euro tall disappearing underneath the white edge that was
+// supposed to separate it from labour. On a phone the same chart scaled the
+// other way and the labels went to five pixels.
+//
+// So the width is measured and the viewBox matches it. One pixel is one pixel
+// at any width, and the chart is short on a phone and wide on a laptop rather
+// than the same picture blown up.
 
-const W = 760
 const PAD = { left: 58, right: 14, top: 12, bottom: 30 }
+// Narrow enough that a laptop does not get a chart half a screen tall, and the
+// least a phone can show without the weeks running together.
+const MIN_W = 300
 
 // One series: a key into the rows, what to call it, what colour, and whether it
 // is drawn as a line on top or an area in the stack.
 export default function WeekChart({
-    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, height = 260, empty,
+    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, height = 240, empty,
 }) {
     const [range, setRange] = useState(DEFAULT_RANGE)
     const [at, setAt] = useState(null)
+    const box = useRef(null)
+    const [W, setW] = useState(MIN_W)
 
-    const shown = inRange(rows, range)
+    // Measured rather than assumed. The sidebar, the restaurant switcher and
+    // the phone all give this a different width, and a chart is the one thing
+    // on the page that cannot lay itself out without knowing which.
+    useEffect(() => {
+        const el = box.current
+        if (!el || typeof ResizeObserver === 'undefined') return
+
+        const watch = new ResizeObserver(([entry]) => {
+            setW(Math.max(MIN_W, Math.round(entry.contentRect.width)))
+        })
+        watch.observe(el)
+        return () => watch.disconnect()
+    }, [])
+
+    const shown = inRange(fromFirstFigure(rows, series.map(s => s.key)), range)
     const lines = series.filter(s => !stacked.includes(s.key))
 
     if (shown.length === 0) {
@@ -67,13 +95,14 @@ export default function WeekChart({
     }
 
     // A label every so often, so they never collide however many weeks are on.
-    const every = shown.length <= 8 ? 1 : Math.ceil(shown.length / 8)
+    const fits = Math.max(2, Math.floor(iw / 62))
+    const every = shown.length <= fits ? 1 : Math.ceil(shown.length / fits)
 
     function pointerWeek(event) {
         const svg = event.currentTarget.querySelector('svg')
         if (!svg) return
-        const box = svg.getBoundingClientRect()
-        const mx = ((event.clientX - box.left) * W) / box.width
+        const rect = svg.getBoundingClientRect()
+        const mx = event.clientX - rect.left
         const i = Math.round(((mx - PAD.left) / iw) * (shown.length - 1))
         setAt(Math.max(0, Math.min(shown.length - 1, i)))
     }
@@ -112,6 +141,7 @@ export default function WeekChart({
             </div>
 
             <div
+                ref={box}
                 className="relative"
                 onMouseMove={pointerWeek}
                 onMouseLeave={() => setAt(null)}
@@ -121,7 +151,9 @@ export default function WeekChart({
             >
                 <svg
                     viewBox={`0 0 ${W} ${H}`}
-                    className="block w-full h-auto"
+                    width={W}
+                    height={H}
+                    className="block max-w-full"
                     role="img"
                     aria-label={`${series.map(s => s.label).join(', ')}, week by week`}
                 >
@@ -141,7 +173,7 @@ export default function WeekChart({
                     ))}
 
                     {bands.map(b => (
-                        <path key={b.key} d={b.d} fill={b.colour} stroke="#FFFFFF" strokeWidth="2" strokeLinejoin="round" />
+                        <path key={b.key} d={b.d} fill={b.colour} stroke="#FFFFFF" strokeWidth="1.25" strokeLinejoin="round" />
                     ))}
 
                     {lines.map(s => (
@@ -150,13 +182,13 @@ export default function WeekChart({
                                 d={`M${shown.map((r, i) => `${x(i).toFixed(1)},${y(num(r[s.key])).toFixed(1)}`).join(' L')}`}
                                 fill="none"
                                 stroke={s.colour}
-                                strokeWidth={s.heavy ? 3 : 2.2}
+                                strokeWidth={s.heavy ? 2.25 : 1.75}
                                 strokeLinejoin="round"
                                 strokeLinecap="round"
                             />
                             <circle
                                 cx={x(shown.length - 1)} cy={y(num(shown[shown.length - 1][s.key]))}
-                                r="4" fill={s.colour} stroke="#fff" strokeWidth="2"
+                                r="3" fill={s.colour} stroke="#fff" strokeWidth="1.5"
                             />
                         </g>
                     ))}

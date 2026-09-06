@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    RANGES, weeksOfYear, byWeek, inRange, niceMax, niceMin, scaleFor, ticks, aside,
+    RANGES, weeksOfYear, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
 } from './reportChart'
 
 describe('weeksOfYear', () => {
@@ -72,8 +72,26 @@ describe('inRange', () => {
 
 describe('the axis', () => {
     it('rounds the top up to something readable', () => {
-        expect(niceMax(13485)).toBe(15000)
-        expect(niceMax(4.2)).toBe(4.5)
+        expect(niceMax(13485)).toBe(14000)
+        expect(niceMax(4.2)).toBe(4.8)
+    })
+
+    // The reason for the ladder. On powers of five alone a peak of fifteen
+    // thousand gets an axis of twenty, and the chart draws in three quarters of
+    // its own box.
+    it('does not leave a quarter of the chart empty above the tallest week', () => {
+        for (const peak of [4.2, 96, 1350, 13485, 15688, 27400, 156000]) {
+            const top = niceMax(peak)
+            expect(top).toBeGreaterThanOrEqual(peak)
+            expect(top).toBeLessThan(peak * 1.34)
+        }
+    })
+
+    it('divides into four, so every grid line is a figure somebody would write', () => {
+        for (const peak of [4.2, 1350, 13485, 27400]) {
+            const step = niceMax(peak) / 4
+            expect(Number(step.toPrecision(3))).toBe(step)
+        }
     })
 
     it('never draws money from anything but nought', () => {
@@ -142,5 +160,32 @@ describe('aside', () => {
 
     it('does not divide by a week that took nothing', () => {
         expect(aside([{ net: 0, food: 10 }], 0, 'food', 'net')).toBe('')
+    })
+})
+
+describe('fromFirstFigure', () => {
+    const rows = [
+        { week: '2026-01-04', net: 0 },
+        { week: '2026-01-11', net: 0 },
+        { week: '2026-01-18', net: 5000 },
+        { week: '2026-01-25', net: 0 },
+        { week: '2026-02-01', net: 6000 },
+    ]
+
+    it('drops the weeks before anybody was entering anything', () => {
+        expect(fromFirstFigure(rows, ['net'])[0].week).toBe('2026-01-18')
+    })
+
+    it('keeps a nought in the middle, which is a real week that took nothing', () => {
+        expect(fromFirstFigure(rows, ['net'])).toHaveLength(3)
+    })
+
+    it('leaves a series that starts with a figure alone', () => {
+        expect(fromFirstFigure(rows.slice(2), ['net'])).toHaveLength(3)
+    })
+
+    it('gives back nothing rather than everything when there is no figure at all', () => {
+        const empty = [{ week: '2026-01-04', net: 0 }]
+        expect(fromFirstFigure(empty, ['net'])).toEqual(empty)
     })
 })

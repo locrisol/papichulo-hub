@@ -62,6 +62,20 @@ export function byWeek(rows, dateField, valueOf) {
     return out
 }
 
+// Drop the run of empty weeks at the front.
+//
+// A restaurant whose figures begin in March should not have a chart with ten
+// weeks of nought on the left of it. Those weeks are not a quiet trading
+// period, they are weeks before anybody was entering anything, and drawing
+// them as zero says something untrue about the business.
+//
+// Only from the front. A nought in the middle is a real week that took nothing
+// and belongs on the chart.
+export function fromFirstFigure(rows, keys) {
+    const first = rows.findIndex(row => keys.some(k => Number(row[k]) > 0))
+    return first <= 0 ? rows : rows.slice(first)
+}
+
 // The last `weeks` of a series, or all of it.
 export function inRange(rows, rangeKey) {
     const range = RANGES.find(r => r.key === rangeKey) || RANGES[RANGES.length - 1]
@@ -69,12 +83,30 @@ export function inRange(rows, rangeKey) {
     return rows.slice(-range.weeks)
 }
 
-// A round number at or above the peak, so the axis reads in fives and tens
-// rather than in whatever the biggest week happened to be.
-export function niceMax(value) {
+// A round number at or above the peak, and not much above it.
+//
+// It has to divide into four, since that is how many gaps the grid has, and it
+// has to be a figure somebody would write down. A ladder of steps rather than
+// one multiple of ten: with only powers of five, a peak of fifteen thousand
+// gets an axis of twenty, the chart draws in the bottom three quarters of its
+// own box, and every difference on it is a quarter smaller than it should be.
+// The ladder is for the gap between grid lines, not for the top.
+//
+// Choosing the top directly leaves the low end far too coarse: a peak of four
+// point two would jump to six, because the next rung up from four is a whole
+// half again. Choosing the step and multiplying gives 1.2 a line, a top of 4.8,
+// and an axis that fits.
+const STEPS = [1, 1.2, 1.25, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10]
+
+export function niceMax(value, gaps = 4) {
     if (!(value > 0)) return 1
-    const step = Math.pow(10, Math.floor(Math.log10(value))) / 2
-    return Math.ceil(value / step) * step
+
+    const wanted = value / gaps
+    const decade = Math.pow(10, Math.floor(Math.log10(wanted)))
+    for (const step of STEPS) {
+        if (step * decade >= wanted) return step * decade * gaps
+    }
+    return 10 * decade * gaps
 }
 
 // The bottom of the axis.
