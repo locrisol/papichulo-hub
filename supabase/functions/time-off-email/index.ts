@@ -101,8 +101,17 @@ async function byGmail(mail: Mail, user: string, password: string) {
 
     const client = new SMTPClient({
         connection: {
-            hostname: 'smtp.gmail.com',
-            port: 465,
+            // smtp.gmail.com sends only as the account that logged in.
+            // smtp-relay.gmail.com will send as any address on the domain,
+            // which is what lets a new restaurant have a sender of its own
+            // without anybody creating an alias for it in the admin console.
+            //
+            // A secret rather than a constant so that switch is a setting
+            // change and not a deploy. Both accept 465 with TLS from the
+            // first byte, so the port does not have to move and there is no
+            // STARTTLS to get wrong.
+            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+            port: Number(Deno.env.get('SMTP_PORT') || 465),
             tls: true,
             auth: { username: user, password },
         },

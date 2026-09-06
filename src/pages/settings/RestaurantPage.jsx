@@ -40,6 +40,7 @@ export default function RestaurantPage() {
     const [formData, setFormData] = useState({
         hourly_rate: '',
         forecasting_enabled: false,
+        mail_from: '',
     })
 
     const [loading, setLoading] = useState(false)
@@ -61,6 +62,7 @@ export default function RestaurantPage() {
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
+            mail_from: activeRestaurant.mail_from || '',
         })
     }, [activeRestaurant])
 
@@ -94,6 +96,11 @@ export default function RestaurantPage() {
             .update({
                 hourly_rate: parseFloat(formData.hourly_rate),
                 forecasting_enabled: formData.forecasting_enabled,
+                // Empty is null, not an empty string. Null means "no
+                // address of its own", which is what the mail falls back
+                // on; an empty string would read as an address that is
+                // blank.
+                mail_from: formData.mail_from.trim() || null,
             })
             .eq('id', activeRestaurant.id)
             .select()
@@ -243,6 +250,31 @@ export default function RestaurantPage() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                Sent from
+                            </label>
+                            <input
+                                type="email"
+                                inputMode="email"
+                                autoComplete="off"
+                                value={formData.mail_from}
+                                onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
+                                placeholder="dunlaoghaire@papichulo.ie"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                            {/* The address only. The name in front of it is this
+                                restaurant own name, so renaming it renames the sender
+                                and there is no second place to keep in step. */}
+                            <p className="text-xs text-gray-400 mt-1">
+                                The address weekly reports and time off emails come from for this
+                                restaurant. Leave it empty and they come from the account the Hub
+                                sends with. Replies never go here: they go to whoever wrote the
+                                report, with everyone else copied.
+                            </p>
                         </div>
 
                         {user?.role === 'super_admin' && (

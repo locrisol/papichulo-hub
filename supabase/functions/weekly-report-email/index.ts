@@ -22,6 +22,10 @@
 //   MAIL_FROM           who it comes from
 //   APP_URL             where the link points
 //   APP_URL_ALSO        optional, the other addresses the app may say it is on
+//   SMTP_HOST           optional, smtp.gmail.com unless set. Point it at
+//                       smtp-relay.gmail.com to send as any address on the
+//                       domain rather than only as the account that logged in
+//   SMTP_PORT           optional, 465
 //
 // **Reply-To is not a secret here.** The time off mail uses MAIL_REPLY_TO, one
 // address for everything. This one sets it per report, to whoever published it,
@@ -80,8 +84,17 @@ async function byGmail(mail: Mail, user: string, password: string) {
 
     const client = new SMTPClient({
         connection: {
-            hostname: 'smtp.gmail.com',
-            port: 465,
+            // smtp.gmail.com sends only as the account that logged in.
+            // smtp-relay.gmail.com will send as any address on the domain,
+            // which is what lets a new restaurant have a sender of its own
+            // without anybody creating an alias for it in the admin console.
+            //
+            // A secret rather than a constant so that switch is a setting
+            // change and not a deploy. Both accept 465 with TLS from the
+            // first byte, so the port does not have to move and there is no
+            // STARTTLS to get wrong.
+            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+            port: Number(Deno.env.get('SMTP_PORT') || 465),
             tls: true,
             auth: { username: user, password },
         },
