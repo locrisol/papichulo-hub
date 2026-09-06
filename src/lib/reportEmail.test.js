@@ -182,13 +182,15 @@ describe('reportEmail', () => {
         // It used to appear only when it moved, which left two platforms out
         // of three with no rating at all, and nobody can tell "held at 4.8"
         // from "nobody entered it" by being shown neither.
-        expect(mail.html).toContain('4.6&nbsp;out&nbsp;of&nbsp;5')
-        expect(mail.html).toContain('4.8&nbsp;out&nbsp;of&nbsp;5')
+        expect(mail.html).toContain('>4.6 out of 5</span>')
+        expect(mail.html).toContain('>4.8 out of 5</span>')
     })
 
     it('still calls out the one that moved, and says the other held', () => {
-        expect(mail.html).toContain('(up from 4.4)')
-        expect(mail.html).toContain('(no change)')
+        // Under the label, not beside the score: together they were a run of
+        // twenty six characters that could not break.
+        expect(mail.html).toContain('Up from 4.4')
+        expect(mail.html).toContain('No change since last week')
     })
 
     it('says so when a platform has no rating on file', () => {
@@ -406,10 +408,11 @@ describe('what the first send got wrong', () => {
     })
 
     it('lets the figure column be exactly as wide as the figure', () => {
-        // A fixed 42% made "Gas and electric" wrap onto two lines on a phone to
-        // leave room for a figure that needed a third of what it was given.
-        expect(mail.html).toContain('width="1%"')
+        // No width at all, and nowrap. A fixed 42% wrapped "Gas and electric"
+        // onto two lines to leave room for a figure that needed a third of it;
+        // width="1%" without nowrap collapsed the column to its longest word.
         expect(mail.html).not.toContain('width="42%"')
+        expect(mail.html).not.toContain('width="1%"')
     })
 
     it('wears each platform own colour', () => {
@@ -702,23 +705,50 @@ describe('people and operations', () => {
 // now too small, and inflate it back up with every column still worked out at
 // the old width. What you see is labels breaking in half in a section nowhere
 // near the cell that caused it.
-function longestUnbreakable(html) {
-    const re = /white-space:nowrap;?"[^>]*>([\s\S]*?)</g
-    let longest = ''
-    let m
-    while ((m = re.exec(html))) {
-        const text = m[1].replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/g, '?').trim()
-        if (text.length > longest.length) longest = text
+function unbreakableRuns(html) {
+    // Any element that cannot wrap, cell or span alike. A nowrap cell holds
+    // everything inside it on one line, so measuring only the spans would miss
+    // a figure and its share sitting together in a nowrap column, and that is
+    // the run that actually decides how wide the table has to be.
+    const runs = []
+    for (const tag of ['td', 'span']) {
+        // [^] rather than [\s\S], because this is a template literal: \s in one
+        // is just the letter s, and the regex quietly became [sS] and matched
+        // nothing at all. The measurement was passing on an empty list.
+        const re = new RegExp(`<${tag}[^>]*white-space:nowrap;[^>]*>([^]*?)</${tag}>`, 'g')
+        let m
+        while ((m = re.exec(html))) {
+            const text = m[1]
+                .replace(/<[^>]+>/g, '')
+                .replace(/&nbsp;|&#32;/g, ' ')
+                .replace(/&[a-z]+;/g, '?')
+                .trim()
+            if (text) runs.push(text)
+        }
     }
-    return longest
+    return runs.sort((a, b) => b.length - a.length)
 }
+
+const longestUnbreakable = html => unbreakableRuns(html)[0] || ''
 
 describe('nothing in the mail is a long unbreakable run', () => {
     const mail = reportEmail(base)
 
+    it('actually finds the runs, so the measurement is not passing on nothing', () => {
+        // A test that measures an empty list passes whatever the mail does.
+        const runs = unbreakableRuns(mail.html)
+        expect(runs.length).toBeGreaterThan(5)
+        expect(runs).toContain('€14,750.00 (32.00%)'.replace('32.00', '66.64')
+            .replace('€14,750.00', '€9,830.00'))
+    })
+
     it('keeps every one of them short enough to sit in a phone column', () => {
+        // Twenty characters is about 145 points at 14px. Beside the longest
+        // word a label can hold and the padding round both, that fits inside a
+        // phone with room to spare, which is what stops Gmail scaling the
+        // message and inflating the type.
         const longest = longestUnbreakable(mail.html)
-        expect(longest.length).toBeLessThanOrEqual(16)
+        expect(longest.length).toBeLessThanOrEqual(20)
     })
 
     it('puts what a platform kept under its name, not beside the figure', () => {
@@ -731,6 +761,21 @@ describe('nothing in the mail is a long unbreakable run', () => {
 
     it('holds a figure together even so', () => {
         expect(mail.html).toContain('<span style="white-space:nowrap;">€14,750.00</span>')
+    })
+
+    it('gives the figure column no width, so nowrap can decide it', () => {
+        // width="1%" means as narrow as possible. With contents that cannot
+        // wrap that is exactly right; with contents that can, the column
+        // shrinks to its longest word and every figure stacks above its own
+        // percentage. The two only work together.
+        expect(mail.html).not.toContain('width="1%"')
+    })
+
+    it('tells the card to fill the message', () => {
+        // Taking the width attribute off altogether does not leave a table
+        // filling its parent, it leaves it shrinking to its own contents.
+        expect(mail.html).toContain('<table role="presentation" width="100%"')
+        expect(mail.html).toContain(`max-width:${WIDTH}px`)
     })
 })
 

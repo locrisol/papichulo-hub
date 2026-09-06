@@ -40,16 +40,19 @@ const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, s
 
 // How wide the mail is allowed to get, and it is a maximum rather than a size.
 //
-// **Never put this in a width attribute.** width="760" tells a phone to lay the
-// whole message out at 760 and then scale it down to fit, which on a 412 point
-// screen is a little over half size. Gmail then decides the type is too small
-// to read and inflates it back up, but the columns underneath it were still
-// worked out at 760, so a label with room for twenty characters gets ten and
-// "Gas and electric" comes out on two lines. That is why widening the desktop
-// broke the phone: the two were the same number doing two different jobs.
+// **Never put this number in a width attribute.** width="760" tells a phone to
+// lay the whole message out at 760 and then scale it down to fit, which on a
+// 412 point screen is a little over half size. Gmail then decides the type is
+// too small to read and inflates it back up, but the columns underneath were
+// still worked out at 760, so a label with room for twenty characters gets ten.
 //
-// As a max-width in the style it is a ceiling and nothing else. A laptop gets
-// 760, a phone gets its own width at its own type size, and nothing is scaled.
+// The attribute still has to be there, as width="100%". Taking it away
+// altogether does not leave the table filling its parent, it leaves the table
+// shrinking to fit its own contents, which is how the whole mail ended up in a
+// column two thirds of the screen wide with a margin either side of it.
+//
+// So: width="100%" as the attribute, this as a max-width in the style. A phone
+// gets its own width at its own type size, a laptop gets 760, nothing scaled.
 export const WIDTH = 760
 
 // The gap down either side of the words.
@@ -266,15 +269,20 @@ function subHeading(title) {
 
 // One row: what it is on the left, what it came to on the right.
 //
-// The figure column is width="1%" and nowrap, which is the old trick for "as
-// narrow as your contents and not one point wider". It was 42% before, and a
-// fixed share of the width is wrong at both ends: on a phone "Gas and electric"
-// wrapped onto two lines to leave room for €346.00 that needed a third of what
-// it had been given, and a long label got squeezed while the figure sat in
-// space. Now the figure takes what it needs and the label has the rest.
+// No width on either cell. The figure column cannot wrap, so it takes exactly
+// what it needs and the label gets everything else, which is the behaviour
+// wanted at both ends: a short label does not squeeze the figure and a long one
+// is not squeezed by it.
 //
-// A padding on the figure's left rather than nothing between them, because
-// with no width set at all they touch, which is what "Deliveroo€750.00" was.
+// It was width="42%" once, which wrapped "Gas and electric" onto two lines to
+// leave room for a figure needing a third of that. Then it was width="1%"
+// without nowrap, which is worse: width="1%" means as narrow as possible, so
+// with breakable contents the column shrinks to its longest word and every
+// figure stacks above its own percentage. The two have to go together or
+// neither works.
+//
+// A padding on the figure's left rather than nothing between them, because with
+// no width set at all they touch, which is what "Deliveroo€750.00" was.
 //
 // `weight` says how much a row matters. An ordinary row is plain, a total is
 // heavier on a tinted ground with a rule above it, so a column of thirteen
@@ -295,9 +303,9 @@ function line({ label, value, tone, colour, indent, strong, total, inset = 0 }) 
         <td style="padding:${pad} 0 ${pad} ${left}px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
             color:${colour || INK};">${label}</td>
-        <td width="1%" align="right" style="padding:${pad} ${right}px ${pad} 14px;${rule}${ground}
+        <td align="right" style="padding:${pad} ${right}px ${pad} 14px;${rule}${ground}
             font-family:${FONT};font-size:${size}px;line-height:1.45;font-weight:${weight};
-            color:${tone || INK};">${value || ''}</td>
+            color:${tone || INK};white-space:nowrap;">${value || ''}</td>
     </tr>`
 }
 
@@ -505,16 +513,23 @@ function platformBlock(section, platform, rated) {
         && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
     const up = moved && num(rating.amount) > num(rating.carried_from)
 
-    if (rated) rows.push(line({ inset: 14,
-        label: 'Overall rating',
+    // Which way it went goes under the label, not beside the score. Together
+    // they read "4.6 out of 5 (up from 4.4)", twenty six characters that could
+    // not break, inside a card already inset three times over.
+    const ratingMoveWords = !rating || rating.amount == null ? ''
+        : moved
+            ? `<span style="color:${up ? GREEN : AMBER};">${up ? 'Up' : 'Down'} from ${num(rating.carried_from).toFixed(1)}</span>`
+            : (rating.carried_from != null ? 'No change since last week' : 'Carries to next week')
+
+    if (rated) rows.push(line({
+        inset: 14,
+        label: 'Overall rating'
+            + (ratingMoveWords
+                ? `<br /><span style="color:${MUTED};font-size:13px;">${ratingMoveWords}</span>`
+                : ''),
         value: rating?.amount == null
-            ? '<span style="color:' + MUTED + ';">not recorded</span>'
-            : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
-                + (moved
-                    ? ` <span style="color:${up ? GREEN : AMBER};">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
-                    : (rating.carried_from != null
-                        ? ` <span style="color:${MUTED};">(no change)</span>`
-                        : '')),
+            ? `<span style="color:${MUTED};">not recorded</span>`
+            : nw(`${num(rating.amount).toFixed(1)} out of 5`),
     }))
 
     const reviews = rated ? of(section, 'review').filter(r => r.key === platform.id) : []
@@ -557,7 +572,7 @@ function platformBlock(section, platform, rated) {
                     <tr>
                         <td style="font-family:${FONT};font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:17px;
+                        <td align="right" style="font-family:${FONT};font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -622,7 +637,7 @@ function paperwork(state, title) {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                         <td style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                        <td align="right" style="font-family:${FONT};font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
                     </tr>
                 </table>
@@ -759,7 +774,7 @@ export function reportEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="background:${CREAM};padding:24px 10px;">
 <tr><td align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0"
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="width:100%;max-width:${WIDTH}px;background:#ffffff;border-radius:14px;
     border:1px solid ${BORDER};overflow:hidden;">
 
