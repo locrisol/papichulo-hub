@@ -82,6 +82,14 @@ export default function WeekChart({
     // Stacked areas, bottom up. Each one is drawn from the top of the one below
     // it, so the bands read as parts of a whole rather than four charts on top
     // of each other.
+    //
+    // A pale fill with a solid line of its own colour along the top, rather
+    // than a solid fill with a white seam between bands. The seam was doing the
+    // separating, and a seam can only ever take room away from the band it is
+    // separating: a packaging week worth four hundred euro was thinner than its
+    // own edge and disappeared. An edge in the band's own colour adds to it
+    // instead, so the thinnest band on the chart is still a line you can follow
+    // across the year.
     const bands = []
     let floor = shown.map(() => 0)
     for (const key of stacked) {
@@ -90,7 +98,7 @@ export default function WeekChart({
         const tops = shown.map((r, i) => floor[i] + num(r[key]))
         const up = tops.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' L')
         const down = floor.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).reverse().join(' L')
-        bands.push({ key, colour: spec.colour, d: `M${up} L${down} Z` })
+        bands.push({ key, colour: spec.colour, area: `M${up} L${down} Z`, top: `M${up}` })
         floor = tops
     }
 
@@ -116,7 +124,7 @@ export default function WeekChart({
                     {series.map(s => (
                         <span key={s.key} className="inline-flex items-center gap-1.5">
                             <span
-                                className={stacked.includes(s.key) ? 'w-2.5 h-2.5 rounded-sm' : 'w-4 h-[3px] rounded-full'}
+                                className="w-4 h-[3px] rounded-full flex-shrink-0"
                                 style={{ background: s.colour }}
                                 aria-hidden="true"
                             />
@@ -173,7 +181,17 @@ export default function WeekChart({
                     ))}
 
                     {bands.map(b => (
-                        <path key={b.key} d={b.d} fill={b.colour} stroke="#FFFFFF" strokeWidth="1.25" strokeLinejoin="round" />
+                        <g key={b.key}>
+                            <path d={b.area} fill={b.colour} fillOpacity="0.3" stroke="none" />
+                            <path
+                                d={b.top}
+                                fill="none"
+                                stroke={b.colour}
+                                strokeWidth="1.75"
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                            />
+                        </g>
                     ))}
 
                     {lines.map(s => (

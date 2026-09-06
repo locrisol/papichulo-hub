@@ -586,11 +586,17 @@ export default function ReportPage() {
                         format={fmtMoney}
                         formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
                         empty="No sales have been entered this year yet, so there is nothing to draw."
+                        // The colours off the chart that has been going out
+                        // with this report for a year: net sales blue, food
+                        // red, labour amber, packaging green. Taken down a
+                        // little from the originals, which were picked for a
+                        // white spreadsheet rather than for cream, and which
+                        // were too light to read as a line.
                         series={[
-                            { key: 'net', label: 'Net sales', colour: '#182F24', heavy: true },
-                            { key: 'food', label: 'Food', colour: '#BC552B' },
-                            { key: 'labour', label: 'Labour', colour: '#E0B44C' },
-                            { key: 'packaging', label: 'Packaging', colour: '#1F4E5F' },
+                            { key: 'net', label: 'Net sales', colour: '#2C6FCF', heavy: true },
+                            { key: 'food', label: 'Food', colour: '#BE2F24' },
+                            { key: 'labour', label: 'Labour', colour: '#BE7C1B' },
+                            { key: 'packaging', label: 'Packaging', colour: '#2A8F52' },
                         ]}
                     />
                     <figcaption className="text-xs text-muted mt-2">
