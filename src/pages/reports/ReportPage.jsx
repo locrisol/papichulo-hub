@@ -4,14 +4,18 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
-import { addDays, weekNumber, weekRange } from '../../lib/dates'
+import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
 import { reportFigures } from '../../lib/weeklyReport'
+import { workingThatWeek } from '../../lib/reportPeople'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
 import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
+import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
+import ReportPaperwork from '../../components/reports/ReportPaperwork'
+import ReportActions from '../../components/reports/ReportActions'
 
 // One week's report.
 //
@@ -87,6 +91,7 @@ export default function ReportPage() {
     // the tracking rows from weekly sales, the ones filled by hand beside
     // the till, since that is what a platform statement is reconciled to.
     const [platforms, setPlatforms] = useState([])
+    const [employees, setEmployees] = useState([])
     const [taken, setTaken] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -162,15 +167,14 @@ export default function ReportPage() {
                 }))
             }
 
-            // The online platforms, and what each took. platform_sales is keyed
-            // by platform name rather than id, which is a known weakness of that
-            // table, so the name is what has to be matched on. Everything the
-            // report itself stores is keyed by id instead.
+            // Every active platform, both buckets, and what each took.
+            // platform_sales is keyed by platform name rather than id, which is
+            // a known weakness of that table, so the name is what has to be
+            // matched on. Everything the report itself stores is keyed by id.
             const [plats, days2] = await Promise.all([
                 supabase.from('sales_platforms')
                     .select('id, name, bucket, is_active, sort_order')
                     .eq('restaurant_id', head.restaurant_id)
-                    .eq('bucket', 'online_platform')
                     .eq('is_active', true)
                     .order('sort_order'),
                 supabase.from('sales_records')
@@ -179,15 +183,24 @@ export default function ReportPage() {
                     .gte('sale_date', weekStart).lte('sale_date', end),
             ])
 
-            const online = plats.data || []
-            setPlatforms(online)
+            const all2 = plats.data || []
+            setPlatforms(all2)
 
             const totals = {}
-            for (const p of online) {
+            for (const p of all2) {
                 totals[p.id] = (days2.data || []).reduce(
                     (t, d) => t + num(d.platform_sales?.[p.name]), 0)
             }
             setTaken(totals)
+
+            // The team, for the paperwork lines. Only the four fields the
+            // section reads, so a mail built from this cannot carry anything
+            // else about anybody.
+            const { data: team } = await supabase
+                .from('employees')
+                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission_expires')
+                .eq('restaurant_id', head.restaurant_id)
+            setEmployees(team || [])
 
             // Targets are looked up for the week being reported on rather than
             // taken from today's settings, so a target changed in September
@@ -308,6 +321,43 @@ export default function ReportPage() {
         }))
     }
 
+    // The note on a corporate platform, saying who the job was for.
+    //
+    // Stored as a comment carrying the platform's id, which is what keeps it on
+    // its own line rather than loose at the bottom of the section. A comment
+    // with no id is a section comment, and that one distinction is the whole
+    // difference between the two.
+    async function savePlatformNote(sectionId, platform, note) {
+        const section = sections.find(s => s.id === sectionId)
+        const existing = section?.items.find(
+            i => i.kind === 'comment' && i.key === platform.id)
+
+        if (!note) {
+            return existing ? removeItem(existing.id) : undefined
+        }
+
+        return write(() => existing
+            ? supabase.from('report_items').update({ note }).eq('id', existing.id)
+            : supabase.from('report_items').insert({
+                section_id: sectionId, kind: 'comment', key: platform.id,
+                label: platform.name, note, sort_order: platform.sort_order || 0,
+            }))
+    }
+
+    // ---- support and actions ----
+    //
+    // An action is raised against the week it first appears in and carries the
+    // date with it, so how long it has been open needs nothing else stored.
+    async function addAction(label, weekStart) {
+        const section = sections.find(s => s.key === 'support_actions')
+        if (!section) return
+        return write(() => supabase.from('report_items').insert({
+            section_id: section.id, kind: 'action', label,
+            opened_on: weekStart,
+            sort_order: section.items.filter(i => i.kind === 'action').length,
+        }))
+    }
+
     async function addRefund(platform) {
         const section = online()
         if (!section) return
@@ -318,8 +368,11 @@ export default function ReportPage() {
         }))
     }
 
+    // The comments on a section, which are the ones belonging to nothing
+    // narrower. A comment carrying a key belongs to a platform and is drawn on
+    // that platform's line instead.
     function commentsOf(section) {
-        return section.items.filter(i => i.kind === 'comment')
+        return section.items.filter(i => i.kind === 'comment' && !i.key)
     }
 
     if (loading) {
@@ -339,6 +392,8 @@ export default function ReportPage() {
 
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
+    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
+    const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
 
     return (
         <div className="space-y-4">
@@ -463,7 +518,10 @@ export default function ReportPage() {
                 built yet say so rather than being hidden, so the shape of the
                 report is visible while it fills in. */}
             {sections.filter(s => s.key !== 'sales_costs').map(section => {
-                const built = ['profit_loss', 'online_sales'].includes(section.key)
+                const built = [
+                    'profit_loss', 'online_sales', 'corporate_sales',
+                    'people_ops', 'marketing', 'support_actions',
+                ].includes(section.key)
                 return (
                     <div key={section.id} className={`${card} ${built ? '' : 'opacity-60'}`}>
                         <div className={`${cardHeader} rounded-t-xl`}>{section.title}</div>
@@ -474,7 +532,7 @@ export default function ReportPage() {
                                         <ReportProfitLoss
                                             section={section}
                                             figures={figures}
-                                            platforms={platforms}
+                                            platforms={onlinePlatforms}
                                             taken={taken}
                                             canEdit={canEdit}
                                             onSaveOverhead={saveOverhead}
@@ -482,10 +540,39 @@ export default function ReportPage() {
                                             onAddOverhead={addOverhead}
                                         />
                                     )}
+                                    {section.key === 'people_ops' && (
+                                        <ReportPaperwork
+                                            employees={workingThatWeek(employees, week)}
+                                            weekStart={week}
+                                            asOf={todayISO()}
+                                        />
+                                    )}
+                                    {section.key === 'support_actions' && (
+                                        <ReportActions
+                                            section={section}
+                                            weekStart={week}
+                                            canEdit={canEdit}
+                                            onAdd={addAction}
+                                            onSave={saveItem}
+                                            onRemove={removeItem}
+                                        />
+                                    )}
+                                    {section.key === 'corporate_sales' && (
+                                        <ReportCorporateSales
+                                            platforms={corporatePlatforms}
+                                            taken={taken}
+                                            notes={new Map(section.items
+                                                .filter(i => i.kind === 'comment' && i.key)
+                                                .map(i => [i.key, i]))}
+                                            canEdit={canEdit}
+                                            onSaveNote={(platform, note) =>
+                                                savePlatformNote(section.id, platform, note)}
+                                        />
+                                    )}
                                     {section.key === 'online_sales' && (
                                         <ReportOnlineSales
                                             section={section}
-                                            platforms={platforms}
+                                            platforms={onlinePlatforms}
                                             taken={taken}
                                             canEdit={canEdit}
                                             handlers={{
@@ -497,13 +584,18 @@ export default function ReportPage() {
                                             }}
                                         />
                                     )}
-                                    <ReportComments
-                                        items={commentsOf(section)}
-                                        canEdit={canEdit}
-                                        onAdd={note => addComment(section.id, note)}
-                                        onSave={saveComment}
-                                        onRemove={removeItem}
-                                    />
+                                    {section.key !== 'support_actions' && (
+                                        <ReportComments
+                                            items={commentsOf(section)}
+                                            canEdit={canEdit}
+                                            onAdd={note => addComment(section.id, note)}
+                                            onSave={saveComment}
+                                            onRemove={removeItem}
+                                            label={['people_ops', 'marketing'].includes(section.key)
+                                                ? 'Notes'
+                                                : 'Comments'}
+                                        />
+                                    )}
                                 </>
                             ) : (
                                 <p className="text-sm text-muted">Still being built.</p>

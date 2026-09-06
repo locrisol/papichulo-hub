@@ -1,0 +1,122 @@
+import { useState } from 'react'
+import { weeksOpen } from '../../lib/weeklyReport'
+
+// Support and actions needed: the running list.
+//
+// These do not belong to a week. An action raised in July that nobody has done
+// is still needed in September, so it carries from report to report until it is
+// ticked off, and it carries how long it has been open with it.
+//
+// That is the whole point of the section. In the old mail every item was
+// retyped each week from the week before, which meant one that was quietly
+// dropped looked exactly like one that was finished, and nothing anywhere said
+// a thing had been sitting there for two months. "4 weeks open" beside it is
+// what makes somebody act.
+//
+// Ticking one off does not delete it. It stays on this week's report, struck
+// through, so the week it was finished is on the record, and then it stops
+// carrying.
+
+function weeksWords(n) {
+    if (n === 0) return 'raised this week'
+    if (n === 1) return '1 week open'
+    return `${n} weeks open`
+}
+
+export default function ReportActions({ section, weekStart, canEdit, onAdd, onSave, onRemove }) {
+    const [adding, setAdding] = useState('')
+
+    const actions = section.items.filter(i => i.kind === 'action')
+    // Longest open first. The one that has been waiting since July is the one
+    // worth reading, and it is the one an ordinary list would bury at the top
+    // where nobody scrolls to.
+    const ordered = actions.slice().sort((a, b) => {
+        if (!!a.done_on !== !!b.done_on) return a.done_on ? 1 : -1
+        return weeksOpen(b, weekStart) - weeksOpen(a, weekStart)
+    })
+
+    async function add() {
+        const text = adding.trim()
+        if (!text) return
+        setAdding('')
+        await onAdd(text, weekStart)
+    }
+
+    return (
+        <div>
+            <p className="text-sm text-muted mb-3">
+                These carry from week to week on their own until they are ticked off. Nothing has to be retyped,
+                and nothing quietly disappears because somebody forgot to mention it again.
+            </p>
+
+            <div className="space-y-2">
+                {ordered.map(item => {
+                    const done = !!item.done_on
+                    return (
+                        <div
+                            key={item.id}
+                            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                                done ? 'border-border bg-app-bg' : 'border-border bg-white'}`}
+                        >
+                            <button
+                                onClick={() => canEdit && onSave(item.id, { done_on: done ? null : weekStart })}
+                                disabled={!canEdit}
+                                role="checkbox"
+                                aria-checked={done}
+                                aria-label={done ? 'Reopen this action' : 'Mark this action done'}
+                                // A real target rather than a 14px square. This
+                                // is the control the section exists for and it
+                                // gets pressed with a thumb.
+                                className={`flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                                    done
+                                        ? 'bg-green-700 border-green-700 text-white'
+                                        : 'border-gray-300 bg-white hover:border-accent'} ${
+                                    canEdit ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                                {done && <span className="text-sm leading-none">✓</span>}
+                            </button>
+
+                            <div className="flex-1 min-w-0">
+                                {canEdit && !done ? (
+                                    <textarea
+                                        defaultValue={item.label || ''}
+                                        rows={1}
+                                        onBlur={e => {
+                                            const text = e.target.value.trim()
+                                            if (!text) return onRemove(item.id)
+                                            if (text !== item.label) onSave(item.id, { label: text })
+                                        }}
+                                        className="w-full bg-transparent text-sm text-gray-800 resize-none focus:outline-none"
+                                    />
+                                ) : (
+                                    <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
+                                        {item.label}
+                                    </p>
+                                )}
+                            </div>
+
+                            <span className="flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
+                                {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                            </span>
+                        </div>
+                    )
+                })}
+
+                {actions.length === 0 && (
+                    <p className="text-sm text-muted">Nothing outstanding.</p>
+                )}
+            </div>
+
+            {canEdit && (
+                <textarea
+                    value={adding}
+                    onChange={e => setAdding(e.target.value)}
+                    onBlur={add}
+                    placeholder="Add something that needs doing"
+                    rows={2}
+                    className="mt-3 w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                />
+            )}
+        </div>
+    )
+}
