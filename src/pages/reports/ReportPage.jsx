@@ -722,21 +722,30 @@ export default function ReportPage() {
                                                 height={210}
                                                 format={fmtMoney}
                                                 formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
-                                                shareOf="deliveryTotal"
                                                 empty="No week has had its delivery costs entered yet. This fills in as reports are written."
+                                                // Each platform's cost is quoted
+                                                // against its own takings, so the
+                                                // figure on hover is the rate it
+                                                // charged that week.
                                                 series={[
-                                                    { key: 'deliveryTotal', label: 'All platforms', colour: '#182F24', heavy: true },
+                                                    {
+                                                        key: 'deliveryTotal', label: 'All platforms',
+                                                        colour: '#182F24', heavy: true,
+                                                        shareOf: 'onlineTotal',
+                                                    },
                                                     ...onlinePlatforms.map(p => ({
                                                         key: `d_${p.id}`,
                                                         label: p.name,
                                                         colour: brandFor(p.name).mark,
+                                                        shareOf: `p_${p.id}`,
                                                     })),
                                                 ]}
                                             />
                                             <p className="text-xs text-muted mt-2">
-                                                Forty three percent is only alarming once you can see it was
-                                                thirty eight in May. Weeks with no report are left as gaps
-                                                rather than drawn as nothing.
+                                                The percentage on hover is what that platform kept of its
+                                                own takings that week, so forty three percent is only
+                                                alarming once you can see it was thirty eight in May. Weeks
+                                                with no report are left as gaps rather than drawn as nothing.
                                             </p>
                                         </div>
 

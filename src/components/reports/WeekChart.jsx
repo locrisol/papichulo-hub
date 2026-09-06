@@ -37,6 +37,12 @@ const MIN_W = 300
 
 // One series: a key into the rows, what to call it, what colour, and whether it
 // is drawn as a line on top or an area in the stack.
+//
+// `shareOf` is what the figure is quoted against when somebody hovers, and a
+// series can carry its own. On most charts one base does for all of them, a
+// cost against net sales. On the delivery costs it cannot: what is worth
+// knowing about Deliveroo's bill is what share of Deliveroo's own takings it
+// was, not what share of the bill it was.
 export default function WeekChart({
     rows, series, stacked = [], shareOf, format, formatAxis, zero = true, height = 240, empty,
 }) {
@@ -282,9 +288,9 @@ export default function WeekChart({
                                     ) : (
                                         <>
                                             {format(num(hovered[s.key]))}
-                                            {shareOf && (
+                                            {(s.shareOf || shareOf) && (
                                                 <span className="font-normal opacity-70 ml-1">
-                                                    {aside(shown, at, s.key, shareOf)}
+                                                    {aside(shown, at, s.key, s.shareOf || shareOf)}
                                                 </span>
                                             )}
                                         </>
