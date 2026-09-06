@@ -299,10 +299,10 @@ export default function RestaurantPage() {
                                 restaurant own name, so renaming it renames the sender
                                 and there is no second place to keep in step. */}
                             <p className="text-xs text-gray-400 mt-1">
-                                The address weekly reports and time off emails come from for this
-                                restaurant. Leave it empty and they come from the account the Hub
-                                sends with. Replies never go here: they go to whoever wrote the
-                                report, with everyone else copied.
+                                The address Papi Chulo Hub emails come from for this restaurant.
+                                Leave it empty and they come from the account the Hub sends with.
+                                Replies never come back here: they go to whoever sent it, with
+                                everyone else copied.
                             </p>
                         </div>
 
