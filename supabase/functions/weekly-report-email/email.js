@@ -213,9 +213,14 @@ function band(colour, background, title, body) {
 // as the figures around it and the whole report read as one long list. This one
 // you can find by scrolling.
 function heading(title) {
-    return `<tr><td style="padding:28px ${SIDE}px 12px;">
+    // It runs wider than the figures under it, by the width of the gutter they
+    // pay and it does not. That step is what makes scrolling past one read as
+    // the start of something rather than as another row. The bar takes the
+    // gutter back as its own padding, so the title stays exactly where it was
+    // and only the dark ground gets wider.
+    return `<tr><td style="padding:28px 0 12px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};border-radius:8px;padding:12px 15px;font-family:${FONT};">
+            <tr><td style="background:${DARK};border-radius:8px;padding:12px ${SIDE + 15}px;font-family:${FONT};">
                 <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</div>
             </td></tr>
         </table>
@@ -400,6 +405,21 @@ function profitAndLoss(section, f, charts) {
         rows.push(line({ label: 'Fixed overheads', value: money(f.standing), total: true }))
     }
 
+    // The delivery platforms get a table of their own, and that is the whole of
+    // the overhead fix.
+    //
+    // A table gives every row in it the same columns, and a column comes out as
+    // wide as the widest thing anywhere in it. The share beside a platform is a
+    // line that cannot break, so in one table it was setting the figure column
+    // for the eleven overheads above it as well, and each of those labels got
+    // whatever was left of a phone screen. Two tables and the overheads are
+    // measured against their own money again.
+    //
+    // Nothing moves. Both tables fill the same cell and the figures are right
+    // aligned in both, so the money still reads as one column, and the rule
+    // under the last overhead meets the first platform with no gap.
+    const paidFrom = rows.length
+
     for (const item of delivery) {
         // What is worth knowing about a platform's bill is what share of that
         // platform's own takings it was. Against total sales it would look
@@ -421,7 +441,8 @@ function profitAndLoss(section, f, charts) {
         }))
     }
 
-    return heading(section.title) + figures(rows)
+    return heading(section.title) + figures(rows.slice(0, paidFrom))
+        + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
         + bigFigure({
             label: 'Net earnings',
             value: money(f.earnings),

@@ -724,3 +724,84 @@ describe('the headings inside a card', () => {
         expect(mail.html).not.toContain('padding:2px 14px 12px')
     })
 })
+
+// The two things that took five attempts. Both are pinned here because both
+// regressed every time something near them was tidied up.
+describe('the profit and loss section is two tables, not one', () => {
+    const OVERHEADS = [
+        'Gas and electric', 'Rates / service charge', 'IT fee / software support',
+        'Repairs and maintenance', 'Health and safety / training / uniforms',
+        'Marketing / sponsorship',
+    ]
+    const mail = reportEmail({
+        ...base,
+        sections: [{
+            key: 'profit_loss', title: 'Weekly profit and loss', sort_order: 0,
+            items: [
+                ...OVERHEADS.map((label, i) => ({ kind: 'overhead', label, amount: 100 + i, sort_order: i })),
+                { kind: 'delivery', key: 'p1', label: 'Deliveroo', amount: 800, sort_order: 0 },
+            ],
+        }],
+    })
+
+    const bodies = mail.html
+        .split('border-collapse:collapse;">').slice(1)
+        .map(t => t.split('</table>')[0])
+    const widestIn = body => [...body.matchAll(/white-space:nowrap;">([^<]*)</g)]
+        .map(m => m[1].replace(/&nbsp;/g, ' '))
+        .sort((a, b) => b.length - a.length)[0] || ''
+
+    it('gives the delivery platforms a table of their own', () => {
+        expect(bodies.length).toBe(2)
+    })
+
+    it('keeps the delivery share out of the overheads column', () => {
+        // A table gives every row the same columns, and a column is as wide as
+        // the widest thing anywhere in it. The share beside a platform cannot
+        // break, so in one table it was setting the figure column for every
+        // overhead above it, and each of those labels got whatever was left of
+        // a phone screen. The labels were being squeezed by a string three rows
+        // below them, which is why four attempts at the labels themselves all
+        // failed.
+        expect(widestIn(bodies[0]).length).toBeLessThan(12)
+        expect(widestIn(bodies[1])).toContain('of its own sales')
+    })
+
+    it('keeps the money in one column across both tables', () => {
+        // They read as one list because both fill the same padded cell and
+        // every figure is right aligned in both.
+        for (const body of bodies) {
+            expect(body).toContain('<td width="1%" align="right"')
+        }
+    })
+
+    it('draws one table when there are no delivery platforms', () => {
+        const quiet = reportEmail({
+            ...base,
+            sections: [{
+                key: 'profit_loss', title: 'Weekly profit and loss', sort_order: 0,
+                items: [{ kind: 'overhead', label: 'Rent', amount: 900 }],
+            }],
+        })
+        expect(quiet.html.split('border-collapse:collapse;">').length - 1).toBe(1)
+    })
+})
+
+describe('a section heading is wider than what is under it', () => {
+    const mail = reportEmail(base)
+
+    it('does not pay the gutter the rows below it pay', () => {
+        expect(mail.html).toContain('<tr><td style="padding:28px 0 12px;">')
+        expect(mail.html).toContain('<td style="padding:0 20px;">')
+    })
+
+    it('takes that gutter back inside the bar, so the title does not move', () => {
+        // Without this the heading text lands twenty points left of every label
+        // and the bar reads as belonging to nothing.
+        expect(mail.html).toContain('border-radius:8px;padding:12px 35px;')
+    })
+
+    it('keeps its corners, so the overhang reads as meant', () => {
+        expect(mail.html).toContain('border-radius:8px')
+    })
+})
