@@ -6,7 +6,7 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
-import { dateField, jumpButton, card, rowButton } from '../../lib/controlStyles'
+import { dateField, jumpButton, card, rowButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
@@ -344,7 +344,7 @@ export default function CostDashboardPage() {
                     >
                         <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
                             className={`${jumpButton(isThisWeek)} w-full sm:w-auto`}>
-                            This week
+                            {jumpLabel(isThisWeek)}
                         </button>
                     </DateStepper>
                     <input type="date" value={pickerDate}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { removeButton } from '../lib/controlStyles'
 
 // Starts a stock take session.
 //
@@ -91,7 +92,7 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl leading-none flex-shrink-0"
+            className={removeButton}
             aria-label="Close"
           >
             ×

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fmtMoney } from '../../lib/format'
 import { numberField } from '../../lib/numberInput'
 import { wasChanged, platformShare, startsOpen, figureGaps } from '../../lib/weeklyReport'
-import { secondaryButton } from '../../lib/controlStyles'
+import { removeButton, secondaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 
 // The weekly profit and loss.
@@ -177,7 +177,7 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                 <button
                     onClick={drop}
                     aria-label={`Remove ${item.label}`}
-                    className="text-gray-400 hover:text-red-600 transition-colors text-xl leading-none px-1"
+                    className={removeButton}
                 >
                     &times;
                 </button>

@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, card, dateField, jumpButton } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -287,7 +287,7 @@ export default function WasteLogPage() {
                                         onClick={() => setLogDate(todayISO())}
                                         className={jumpButton(logDate === todayISO())}
                                     >
-                                        Today
+                                        {jumpLabel(logDate === todayISO(), 'day')}
                                     </button>
                                 )}
                             >
@@ -415,7 +415,7 @@ export default function WasteLogPage() {
                                         </span>
                                         {!reviewing && (
                                             <button onClick={() => removeFromBasket(i.key)}
-                                                className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                                className={removeButton}
                                                 aria-label={`Remove ${i.product.name}`}>×</button>
                                         )}
                                     </div>
@@ -485,7 +485,7 @@ export default function WasteLogPage() {
                                     </span>
                                     {isManager && (
                                         <button onClick={() => handleDelete(e)}
-                                            className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                            className={removeButton}
                                             aria-label="Delete entry">×</button>
                                     )}
                                 </div>

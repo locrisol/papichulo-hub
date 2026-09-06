@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -836,7 +836,7 @@ export default function WeeklySalesPage() {
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
                                 className={jumpButton(weekStart === weekStartOf(todayISO()))}
                             >
-                                This week
+                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
                             </button>
                         )}
                     >

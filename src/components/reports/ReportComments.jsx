@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useRemoveCard } from './useRemoveCard'
+import { removeButton } from '../../lib/controlStyles'
 
 // The comments on a section: one card each, one thought each.
 //
@@ -78,7 +79,7 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                                     onRemove: () => onRemove(item.id),
                                 })}
                                 aria-label="Remove this comment"
-                                className="text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
+                                className={removeButton}
                             >
                                 &times;
                             </button>

@@ -8,7 +8,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { numberField } from '../lib/numberInput'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, removeButton } from '../lib/controlStyles'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -212,7 +212,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                             <button
                                                 type="button"
                                                 onClick={() => handleDelete(t)}
-                                                className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                                className={removeButton}
                                                 aria-label={`Delete the ${t.value}% target`}
                                             >
                                                 ×

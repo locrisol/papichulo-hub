@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost } from '../../lib/mixCost'
@@ -10,6 +10,7 @@ import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyle
 import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
+import BackButton from '../../components/BackButton'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -29,7 +30,6 @@ import { numberField } from '../../lib/numberInput'
 // that guard is in lib/mixCost.js rather than here.
 export default function RecipePage() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
   const confirm = useConfirm()
 
@@ -297,12 +297,7 @@ export default function RecipePage() {
 
   return (
     <div>
-      <button
-        onClick={() => navigate('/catalogue/products')}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-      >
-        <span>←</span> Back to products
-      </button>
+      <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>

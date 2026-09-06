@@ -11,6 +11,7 @@ import { bySection, summarise } from '../../lib/stockTakeSummary'
 import StockTakeValue from '../../components/StockTakeValue'
 import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
+import BackButton from '../../components/BackButton'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -214,7 +215,7 @@ export default function StockTakeSummaryPage() {
     return (
       <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent-ink">← Back</button>
+        <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
   }

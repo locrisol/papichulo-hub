@@ -13,6 +13,7 @@ import { orderFormats } from '../../lib/countUnits'
 import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
+import BackButton from '../../components/BackButton'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
@@ -529,13 +530,7 @@ export default function StockTakeCountPage() {
                 <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     {error}
                 </div>
-                <button
-                    type="button"
-                    onClick={() => navigate('/inventory/stock-takes')}
-                    className="mt-4 text-sm font-semibold text-accent-ink"
-                >
-                    ← Back to stock takes
-                </button>
+                <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
             </div>
         )
     }

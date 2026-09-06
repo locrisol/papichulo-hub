@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, jumpButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 
@@ -165,7 +165,7 @@ export default function WasteSummaryPage() {
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
                                 className={jumpButton(weekStart === weekStartOf(todayISO()))}
                             >
-                                This week
+                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
                             </button>
                         )}
                     >

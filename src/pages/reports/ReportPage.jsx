@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -18,6 +18,7 @@ import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
 import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
 import ReportSectionHead from '../../components/reports/ReportSectionHead'
+import BackButton from '../../components/BackButton'
 
 // One week's report.
 //
@@ -81,7 +82,6 @@ function CostCard({ label, figure, share, shareGross, target }) {
 
 export default function ReportPage() {
     const { id } = useParams()
-    const navigate = useNavigate()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
@@ -412,9 +412,7 @@ export default function ReportPage() {
         return (
             <div className="space-y-3">
                 <p className="text-sm text-red-700">{error || 'That report could not be found.'}</p>
-                <button onClick={() => navigate('/reports')} className={secondaryButton}>
-                    Back to reports
-                </button>
+                <BackButton to="/reports">Back to reports</BackButton>
             </div>
         )
     }
@@ -430,12 +428,7 @@ export default function ReportPage() {
                 thing you need to be sure of before typing anything into it. */}
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0">
-                    <button
-                        onClick={() => navigate('/reports')}
-                        className="text-sm font-semibold text-accent-ink hover:underline mb-1"
-                    >
-                        &larr; All reports
-                    </button>
+                    <BackButton to="/reports" className="mb-2">All reports</BackButton>
                     <h1 className="font-serif text-2xl font-bold text-sidebar leading-tight">
                         Week {weekNumber(week)}
                     </h1>

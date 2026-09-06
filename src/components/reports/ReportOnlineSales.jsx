@@ -4,6 +4,7 @@ import { numberField } from '../../lib/numberInput'
 import { brandFor } from '../../lib/platformBrand'
 import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
+import { removeButton } from '../../lib/controlStyles'
 
 // Online sales, one block per platform.
 //
@@ -76,7 +77,7 @@ function LineCard({ head, note, warn, onRemove }) {
                     <button
                         onClick={onRemove}
                         aria-label="Remove"
-                        className="ml-auto flex-shrink-0 text-gray-400 hover:text-red-600 transition-colors text-xl leading-none px-1"
+                        className={removeButton}
                     >
                         &times;
                     </button>

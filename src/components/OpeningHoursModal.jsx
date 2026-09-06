@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { DAY_NAMES } from '../lib/events'
 import { BANK_HOLIDAY } from '../lib/roster'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, removeButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // When the store is usually open.
@@ -131,7 +131,7 @@ export default function OpeningHoursModal({ onClose }) {
                             <button
                                 type="button"
                                 onClick={() => { set(i, 'open', ''); set(i, 'close', '') }}
-                                className="px-2 py-2 text-gray-400 hover:text-gray-700 text-sm"
+                                className={removeButton}
                                 aria-label={`Closed on ${day}`}
                                 title="Not open this day"
                             >
@@ -174,7 +174,7 @@ export default function OpeningHoursModal({ onClose }) {
                         <button
                             type="button"
                             onClick={() => setBank({ open: '', close: '' })}
-                            className="px-2 py-2 text-gray-400 hover:text-gray-700 text-sm"
+                            className={removeButton}
                             aria-label="Clear bank holiday hours"
                         >
                             ×

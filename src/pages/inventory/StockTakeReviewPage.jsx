@@ -8,6 +8,7 @@ import { friendlyError } from '../../lib/errors'
 import { countName } from '../../lib/products'
 import { sectionRank, sectionColour } from '../../lib/sections'
 import { card } from '../../lib/controlStyles'
+import BackButton from '../../components/BackButton'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -210,7 +211,7 @@ export default function StockTakeReviewPage() {
     return (
       <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent-ink">← Back</button>
+        <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
   }
@@ -221,7 +222,7 @@ export default function StockTakeReviewPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           Only managers can review and close a stock take.
         </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}`)} className="mt-4 text-sm font-semibold text-accent-ink">← Back to counting</button>
+        <BackButton to={`/inventory/stock-takes/${id}`} className="mt-4">Back to counting</BackButton>
       </div>
     )
   }

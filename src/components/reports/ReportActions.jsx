@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { weeksOpen } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
+import { removeButton } from '../../lib/controlStyles'
 
 // Support and actions needed: the running list.
 //
@@ -125,7 +126,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                                     })}
                                     aria-label={`Remove: ${item.label}`}
                                     title="Remove this. Tick it instead if it was done."
-                                    className="flex-shrink-0 text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
+                                    className={removeButton}
                                 >
                                     &times;
                                 </button>

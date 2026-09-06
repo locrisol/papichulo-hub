@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
-import { tableHeadRow, rowButton } from '../lib/controlStyles'
+import { modalFooter, rowButton, tableHeadRow } from '../lib/controlStyles'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
-import { modalFooter } from '../lib/controlStyles'
 
 // Manages the categories menu items are grouped under.
 //
