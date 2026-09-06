@@ -858,3 +858,33 @@ describe('senderFor', () => {
         expect(senderFor('', 'Point Campus')).toBe('')
     })
 })
+
+describe('senderFor, with a restaurant that has an address of its own', () => {
+    const FROM = 'Papi Chulo Point Campus <point@papichulo.ie>'
+
+    it('sends from the restaurant own address', () => {
+        expect(senderFor(FROM, 'Dun Laoghaire', 'dunlaoghaire@papichulo.ie'))
+            .toBe('Papi Chulo Dun Laoghaire <dunlaoghaire@papichulo.ie>')
+    })
+
+    it('falls back to MAIL_FROM when the restaurant has none', () => {
+        // A restaurant whose address was never set up still sends. It arrives
+        // from the other one, which is the same thing Google would do to it
+        // anyway if the address were not a verified sender.
+        expect(senderFor(FROM, 'Dun Laoghaire', null))
+            .toBe('Papi Chulo Dun Laoghaire <point@papichulo.ie>')
+        expect(senderFor(FROM, 'Dun Laoghaire', '   '))
+            .toBe('Papi Chulo Dun Laoghaire <point@papichulo.ie>')
+    })
+
+    it('ignores something in the column that is not an address', () => {
+        // Better the wrong restaurant name on a working address than a header
+        // no mail server will accept.
+        expect(senderFor(FROM, 'Dun Laoghaire', 'not-an-address')).toBe(FROM)
+    })
+
+    it('still uses the address when there is no restaurant name', () => {
+        expect(senderFor(FROM, '', 'dunlaoghaire@papichulo.ie'))
+            .toBe('dunlaoghaire@papichulo.ie')
+    })
+})

@@ -65,10 +65,11 @@ type Mail = { to: string[], from: string, replyTo?: string, subject: string, htm
 // name alone, so this is how one mailbox and one app password can still say
 // which restaurant a mail is about. It is also the only place the restaurant
 // appears in the header, since the address is the same for both.
-const from = (restaurantName?: string) =>
+const from = (restaurantName?: string, address?: string | null) =>
     senderFor(
         Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>',
         restaurantName,
+        address,
     )
 
 // Through the restaurant's own Workspace account. The domain is already set up
@@ -173,7 +174,7 @@ Deno.serve(async (req) => {
         }
 
         const { data: restaurant } = await admin
-            .from('restaurants').select('id, name, report_recipients')
+            .from('restaurants').select('id, name, report_recipients, mail_from')
             .eq('id', report.restaurant_id).maybeSingle()
 
         const { data: sections } = await admin
@@ -272,7 +273,7 @@ Deno.serve(async (req) => {
 
         await send({
             to,
-            from: from(restaurant?.name),
+            from: from(restaurant?.name, restaurant?.mail_from),
             // Owners reply to these. Sending from the restaurant account keeps
             // every mail coming from one place; the reply still reaches the
             // person who wrote the week up.

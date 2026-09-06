@@ -926,16 +926,26 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 // MAIL_FROM holds no address, or when the name is not plain ASCII. That last
 // one matters: a display name with an accent in it has to be encoded to travel
 // in a header, and a name that arrives as mojibake is worse than a generic one.
-export function senderFor(mailFrom, restaurantName) {
+export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
 
-    // The address is whatever sits in the angle brackets, or the whole string.
+    // The restaurant's own address when it has one, otherwise whatever sits in
+    // MAIL_FROM: the angle brackets, or the whole string when it is bare.
+    //
+    // Gmail only lets a mail carry an address other than the account that
+    // authenticated when that address is an alias of it, or a "Send mail as"
+    // verified on it. Anything else and Google rewrites From back to the
+    // sending account. It rewrites rather than refuses, so a restaurant whose
+    // address was never set up in Google does not fail, it just keeps arriving
+    // from the other one, and nothing here can tell.
     const bracketed = raw.match(/<([^>]+)>\s*$/)
-    const address = (bracketed ? bracketed[1] : raw).trim()
+    const fallback = (bracketed ? bracketed[1] : raw).trim()
+    const chosen = String(address || '').trim() || fallback
 
     const name = String(restaurantName || '').trim()
-    if (!name || !address.includes('@')) return raw
+    if (!chosen.includes('@')) return raw
+    if (!name) return chosen === fallback ? raw : chosen
     if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
@@ -947,5 +957,5 @@ export function senderFor(mailFrom, restaurantName) {
         ? '"' + shown.replace(/["\\]/g, '') + '"'
         : shown
 
-    return `${display} <${address}>`
+    return `${display} <${chosen}>`
 }

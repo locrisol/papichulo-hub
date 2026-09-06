@@ -81,10 +81,11 @@ type Mail = {
 // sender is not the account that authenticated, but it leaves the display name
 // alone, so this is how one mailbox and one app password can still say which
 // restaurant a mail is about.
-const from = (restaurantName?: string) =>
+const from = (restaurantName?: string, address?: string | null) =>
     senderFor(
         Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>',
         restaurantName,
+        address,
     )
 
 // Through the restaurant's own Workspace account.
@@ -222,8 +223,11 @@ Deno.serve(async (request) => {
     if (event === 'answered' && !isManager) return json({ error: 'Not yours' }, 403)
 
     const { data: restaurant } = await admin
-        .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
+        .from('restaurants').select('name, mail_from').eq('id', absence.restaurant_id).maybeSingle()
     const restaurantName = restaurant?.name || 'Papi Chulo'
+    // Null on a restaurant with no address of its own, which falls back to the
+    // MAIL_FROM secret.
+    const restaurantFrom = restaurant?.mail_from || null
     // Where the buttons point.
     //
     // APP_URL is the real site and the answer unless told otherwise. The app
@@ -300,7 +304,13 @@ Deno.serve(async (request) => {
                 askerIsManager,
                 now: new Date().toISOString(),
             })
-            await send({ to, from: from(restaurantName), subject: mail.subject, html: mail.html, text: mail.text })
+            await send({
+                to,
+                from: from(restaurantName, restaurantFrom),
+                subject: mail.subject,
+                html: mail.html,
+                text: mail.text,
+            })
             return json({ sent: to.length })
         }
 
@@ -330,7 +340,7 @@ Deno.serve(async (request) => {
 
         await send({
             to: [to],
-            from: from(restaurantName),
+            from: from(restaurantName, restaurantFrom),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
