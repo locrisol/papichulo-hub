@@ -12,6 +12,7 @@ import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey } from '../../lib/weeklyReport'
 import { workingThatWeek } from '../../lib/reportPeople'
 import { weeksOfYear, byWeek } from '../../lib/reportChart'
+import { brandFor } from '../../lib/platformBrand'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
 import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
@@ -191,11 +192,11 @@ export default function ReportPage() {
                     .gte('sale_date', weekStart).lte('sale_date', end),
             ])
 
-            const all2 = plats.data || []
-            setPlatforms(all2)
+            const activePlatforms = plats.data || []
+            setPlatforms(activePlatforms)
 
             const totals = {}
-            for (const p of all2) {
+            for (const p of activePlatforms) {
                 totals[p.id] = (days2.data || []).reduce(
                     (t, d) => t + num(d.platform_sales?.[p.name]), 0)
             }
@@ -212,7 +213,7 @@ export default function ReportPage() {
 
             const [hDays, hInvoices, hLabour] = await Promise.all([
                 supabase.from('sales_records')
-                    .select('sale_date, net_sales, gross_sales, is_closed')
+                    .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', yearFrom).lte('sale_date', end),
                 supabase.from('invoices')
@@ -236,14 +237,39 @@ export default function ReportPage() {
                 'invoice_date', i => i.total_amount)
             const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
 
-            setHistory(weekStarts.map(week => ({
-                week,
-                net: netWeeks.get(week) || 0,
-                gross: grossWeeks.get(week) || 0,
-                food: foodWeeks.get(week) || 0,
-                packaging: packWeeks.get(week) || 0,
-                labour: labourWeeks.get(week) || 0,
-            })))
+            // Each platform's own weekly line, and the two totals.
+            //
+            // Keyed by name, because that is what platform_sales stores. The
+            // chart keys are prefixed rather than used raw: a platform called
+            // "net" or "food" would otherwise collide with a column on the same
+            // row and quietly draw the wrong line.
+            const platWeeks = {}
+            for (const p of activePlatforms) {
+                platWeeks[p.id] = byWeek(hDays.data || [], 'sale_date',
+                    d => d.platform_sales?.[p.name])
+            }
+
+            setHistory(weekStarts.map(week => {
+                const row = {
+                    week,
+                    net: netWeeks.get(week) || 0,
+                    gross: grossWeeks.get(week) || 0,
+                    food: foodWeeks.get(week) || 0,
+                    packaging: packWeeks.get(week) || 0,
+                    labour: labourWeeks.get(week) || 0,
+                    onlineTotal: 0,
+                    corporateTotal: 0,
+                }
+
+                for (const p of activePlatforms) {
+                    const amount = platWeeks[p.id].get(week) || 0
+                    row[`p_${p.id}`] = amount
+                    if (p.bucket === 'online_platform') row.onlineTotal += amount
+                    else row.corporateTotal += amount
+                }
+
+                return row
+            }))
 
             // The team, for the paperwork lines. Only the four fields the
             // section reads, so a mail built from this cannot carry anything
@@ -667,7 +693,16 @@ export default function ReportPage() {
                                         />
                                     )}
                                     {section.key === 'corporate_sales' && (
-                                        <ReportCorporateSales
+                                        <>
+                                            <PlatformChart
+                                                rows={history}
+                                                platforms={corporatePlatforms}
+                                                totalKey="corporateTotal"
+                                                totalLabel="All corporate"
+                                                caption="Which of them is growing. Feedr arriving and passing Lunch
+                                                    Team is the sort of thing a single week cannot show."
+                                            />
+                                            <ReportCorporateSales
                                             platforms={corporatePlatforms}
                                             taken={taken}
                                             notes={new Map(section.items
@@ -676,10 +711,22 @@ export default function ReportPage() {
                                             canEdit={canEdit}
                                             onSaveNote={(platform, note) =>
                                                 savePlatformNote(section.id, platform, note)}
-                                        />
+                                            />
+                                        </>
                                     )}
                                     {section.key === 'online_sales' && (
-                                        <ReportOnlineSales
+                                        <>
+                                            <PlatformChart
+                                                rows={history}
+                                                platforms={onlinePlatforms}
+                                                totalKey="onlineTotal"
+                                                totalLabel="All online"
+                                                branded
+                                                caption="What each platform took, week by week. The tracking rows
+                                                    from weekly sales, not the till, since that is what a platform
+                                                    statement is reconciled against."
+                                            />
+                                            <ReportOnlineSales
                                             section={section}
                                             platforms={onlinePlatforms}
                                             taken={taken}
@@ -691,7 +738,8 @@ export default function ReportPage() {
                                                 onSaveItem: saveItem,
                                                 onRemoveItem: removeItem,
                                             }}
-                                        />
+                                            />
+                                        </>
                                     )}
                                     {section.key !== 'support_actions' && (
                                         <ReportComments
@@ -722,6 +770,45 @@ export default function ReportPage() {
             })}
 
             {canEdit && <AddSection onAdd={addSection} />}
+        </div>
+    )
+}
+
+// A line per platform, plus their total.
+//
+// Lines rather than a stack. A stack says the parts add up to something worth
+// seeing as a whole, and what you actually want here is which one is climbing
+// and which one is not. The total is on it as a heavy line so the whole is
+// still there to read.
+//
+// The online ones wear their own colours. The corporate ones have no brand of
+// their own, so they take a neutral set, ordered so the biggest is the darkest.
+const CORPORATE_COLOURS = ['#1F4E5F', '#BC552B', '#2A8F52', '#8AA9B4', '#96600A', '#6B6459']
+
+function PlatformChart({ rows, platforms, totalKey, totalLabel, branded, caption }) {
+    if (platforms.length === 0) return null
+
+    const series = [
+        { key: totalKey, label: totalLabel, colour: '#182F24', heavy: true },
+        ...platforms.map((p, i) => ({
+            key: `p_${p.id}`,
+            label: p.name,
+            colour: branded ? brandFor(p.name).mark : CORPORATE_COLOURS[i % CORPORATE_COLOURS.length],
+        })),
+    ]
+
+    return (
+        <div className="mb-5">
+            <WeekChart
+                rows={rows}
+                series={series}
+                shareOf={totalKey}
+                format={fmtMoney}
+                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
+                height={210}
+                empty="Nothing has been tracked against these platforms this year yet."
+            />
+            <p className="text-xs text-muted mt-2">{caption}</p>
         </div>
     )
 }
