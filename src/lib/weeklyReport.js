@@ -366,6 +366,47 @@ export function blockers(items = []) {
     return out
 }
 
+// ---------------------------------------------------------------------------
+// Publishing
+// ---------------------------------------------------------------------------
+
+// What stands between a report and being sent, split into two kinds.
+//
+// A blocker is something the report would be wrong to send: a poor review with
+// nothing said about it, a refund with no reason. Those are refused, because
+// the whole point of a card each was that somebody says what it was about, and
+// a report that quietly drops the reason is worse than one that never mentioned
+// the review.
+//
+// A warning is something the report may be wrong about: a week with no hours
+// entered, no invoices. Those are said and not enforced, the same rule the list
+// page uses for a day out against the till. Somebody who knows the week was
+// genuinely like that should not be argued with.
+export function publishCheck(sections = [], figures = null) {
+    const items = sections.flatMap(s => s.items || [])
+    return {
+        blockers: blockers(items),
+        warnings: figures ? figureGaps(figures) : [],
+    }
+}
+
+// The version stamped onto figures frozen into a report.
+//
+// A stored figure has to be readable years later by code that has moved on. If
+// how any of this is worked out ever changes, this goes up and the reader can
+// tell which rules a stored set was written under, rather than quietly
+// showing a July report through September's arithmetic.
+export const FIGURES_VERSION = 1
+
+export function figuresToStore(figures, at = new Date()) {
+    return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }
+}
+
+// Is this report the first time it has gone out, or a correction?
+export function isCorrection(report) {
+    return (report?.send_count || 0) > 0
+}
+
 // Only a rating that moved is worth a sentence. One that held is noise.
 export function ratingMove(item) {
     if (!item || item.amount == null || item.carried_from == null) return null

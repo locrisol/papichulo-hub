@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
@@ -9,7 +10,7 @@ import { resolveTarget } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
 import { useState as useLocalState } from 'react'
-import { reportFigures, sectionKey } from '../../lib/weeklyReport'
+import { reportFigures, sectionKey, publishCheck, figuresToStore } from '../../lib/weeklyReport'
 import { workingThatWeek } from '../../lib/reportPeople'
 import { weeksBack, byWeek } from '../../lib/reportChart'
 import { brandFor } from '../../lib/platformBrand'
@@ -20,6 +21,7 @@ import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
 import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
 import ReportSectionHead from '../../components/reports/ReportSectionHead'
+import PublishBar from '../../components/reports/PublishBar'
 import WeekChart from '../../components/reports/WeekChart'
 import BackButton from '../../components/BackButton'
 import AddButton from '../../components/AddButton'
@@ -88,6 +90,7 @@ export default function ReportPage() {
     const { id } = useParams()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
+    const confirm = useConfirm()
 
     const [report, setReport] = useState(null)
     const [sections, setSections] = useState([])
@@ -460,6 +463,53 @@ export default function ReportPage() {
             }))
     }
 
+    // ---- publishing ----
+    //
+    // The figures are frozen onto the report here and nowhere else. Up to this
+    // moment a draft reads them live so it is always current; from this moment
+    // it reads what was stored, because an invoice entered next week must not
+    // change what five people were already sent.
+    async function publish() {
+        const check = publishCheck(sections, figures)
+        if (check.blockers.length > 0) return
+
+        const first = (report.send_count || 0) === 0
+        const ok = await confirm({
+            title: first ? 'Send this report?' : 'Send a correction?',
+            message: first
+                ? 'The figures are frozen as they stand and the report goes out. You can re-open it afterwards '
+                    + 'if something needs changing.'
+                : 'Everyone who got the first one gets this, marked as a correction saying what changed.',
+            confirmLabel: first ? 'Send it' : 'Send the correction',
+        })
+        if (!ok) return
+
+        await write(() => supabase.from('weekly_reports').update({
+            status: 'published',
+            figures: figuresToStore(figures),
+            published_at: new Date().toISOString(),
+            published_by: user.id,
+            send_count: (report.send_count || 0) + 1,
+        }).eq('id', report.id))
+    }
+
+    // Re-opening does not clear published_at or send_count. What went out went
+    // out, and the next mail has to know it is the second.
+    async function reopen() {
+        const ok = await confirm({
+            title: 'Re-open this report?',
+            message: 'It goes back to a draft and the figures go live again. Nothing is unsent: publishing it '
+                + 'a second time mails a correction to everyone who got the first.',
+            confirmLabel: 'Re-open it',
+        })
+        if (!ok) return
+
+        await write(() => supabase.from('weekly_reports').update({
+            status: 'draft',
+            reopened_at: new Date().toISOString(),
+        }).eq('id', report.id))
+    }
+
     // ---- the sections themselves ----
     //
     // A section belongs to a report, not to a restaurant, and a new report
@@ -533,6 +583,7 @@ export default function ReportPage() {
 
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
+    const check = publishCheck(sections, figures)
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
     const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
 
@@ -576,6 +627,16 @@ export default function ReportPage() {
                     {error}
                 </div>
             )}
+
+            <PublishBar
+                report={report}
+                blockers={check.blockers}
+                warnings={check.warnings}
+                canWrite={isStoreManager}
+                busy={saving}
+                onPublish={publish}
+                onReopen={reopen}
+            />
 
             {/* SALES AND COSTS */}
             <div className={card}>

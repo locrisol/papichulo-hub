@@ -15,6 +15,10 @@ import {
     reviewNeedsNote,
     blockers,
     ratingMove,
+    publishCheck,
+    figuresToStore,
+    FIGURES_VERSION,
+    isCorrection,
 } from './weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -417,5 +421,80 @@ describe('ratingMove', () => {
 
     it('says nothing about the first week, which has nothing to compare against', () => {
         expect(ratingMove({ amount: 4.6, carried_from: null })).toBe(null)
+    })
+})
+
+describe('publishCheck', () => {
+    const clean = [{
+        items: [
+            { kind: 'review', label: 'Deliveroo', meta: { stars: 5 }, note: '' },
+            { kind: 'refund', label: 'Uber Eats', amount: 4.5, note: 'Late' },
+        ],
+    }]
+    const full = reportFigures({
+        days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
+        invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+        labour: [{ labour_cost: 500 }],
+    })
+
+    it('lets a finished week through', () => {
+        const out = publishCheck(clean, full)
+        expect(out.blockers).toEqual([])
+        expect(out.warnings).toEqual([])
+    })
+
+    it('refuses a poor review with nothing said about it', () => {
+        const out = publishCheck([{
+            items: [{ kind: 'review', label: 'Deliveroo', meta: { stars: 1 }, note: '' }],
+        }], full)
+        expect(out.blockers).toHaveLength(1)
+    })
+
+    it('warns about a week with no hours rather than refusing it', () => {
+        const out = publishCheck(clean, reportFigures({
+            days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
+            invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+            labour: [],
+        }))
+        expect(out.blockers).toEqual([])
+        expect(out.warnings.length).toBeGreaterThan(0)
+    })
+
+    it('looks across every section, not just the first', () => {
+        const out = publishCheck([
+            { items: [{ kind: 'comment', note: 'fine' }] },
+            { items: [{ kind: 'refund', label: 'Just Eat', amount: 2, note: '' }] },
+        ], full)
+        expect(out.blockers).toHaveLength(1)
+    })
+
+    it('says nothing about figures it was not given', () => {
+        expect(publishCheck(clean).warnings).toEqual([])
+    })
+})
+
+describe('freezing the figures', () => {
+    it('stamps a version, so a stored set can be read years later', () => {
+        const stored = figuresToStore({ net: 100 }, new Date('2026-08-17T09:00:00Z'))
+        expect(stored.version).toBe(FIGURES_VERSION)
+        expect(stored.frozen_at).toBe('2026-08-17T09:00:00.000Z')
+        expect(stored.net).toBe(100)
+    })
+
+    it('does not touch what it was given', () => {
+        const figures = { net: 100 }
+        figuresToStore(figures)
+        expect(figures.version).toBeUndefined()
+    })
+})
+
+describe('isCorrection', () => {
+    it('is the first time out when nothing has been sent', () => {
+        expect(isCorrection({ send_count: 0 })).toBe(false)
+        expect(isCorrection({})).toBe(false)
+    })
+
+    it('is a correction once it has gone out before', () => {
+        expect(isCorrection({ send_count: 1 })).toBe(true)
     })
 })
