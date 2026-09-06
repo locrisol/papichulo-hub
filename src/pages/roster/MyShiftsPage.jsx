@@ -4,9 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '../../lib/dates'
 import { DAY_NAMES, dayName } from '../../lib/events'
-import {
-    card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton,
-} from '../../lib/controlStyles'
+import { card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '../../lib/roster'
@@ -325,7 +323,7 @@ export default function MyShiftsPage() {
                             onClick={() => setWeekStart(weekStartOf(today))}
                             className={jumpButton(weekStart === weekStartOf(today))}
                         >
-                            This week
+                            {jumpLabel(weekStart === weekStartOf(today))}
                         </button>
                     )}
                 >

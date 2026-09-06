@@ -4,7 +4,7 @@ import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
 import { cleanExtras, sortExtras, usualProblem } from '../lib/dayExtras'
 
 // The two things that are the same every week.
@@ -103,7 +103,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                                     type="button"
                                     onClick={() => setExtras(list => list.filter((_, n) => n !== i))}
                                     aria-label={`Take ${extra.name} off the list`}
-                                    className="text-gray-400 hover:text-red-600 px-1"
+                                    className={removeButton}
                                 >
                                     &times;
                                 </button>

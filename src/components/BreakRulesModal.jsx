@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, removeButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // The break ladder.
@@ -125,7 +125,7 @@ export default function BreakRulesModal({ onClose }) {
                             <button
                                 type="button"
                                 onClick={() => removeRung(i)}
-                                className="px-2 py-2 text-gray-400 hover:text-red-600"
+                                className={removeButton}
                                 aria-label="Remove this rung"
                             >
                                 ×

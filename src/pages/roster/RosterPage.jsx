@@ -7,7 +7,7 @@ import { friendlyError } from '../../lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
 import { DAY_NAMES, dayName } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '../../lib/controlStyles'
+import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
 import {
@@ -610,7 +610,7 @@ export default function RosterPage() {
                     nextLabel="Next week"
                     jump={(
                         <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
-                            This week
+                            {jumpLabel(weekStart === weekStartOf(today))}
                         </button>
                     )}
                 >

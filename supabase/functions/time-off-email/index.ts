@@ -34,6 +34,9 @@
 //                    as, or Google quietly rewrites it to the account address.
 //   MAIL_REPLY_TO    optional, a real address replies should go to.
 //   APP_URL          where the buttons point, https://papichulo-hub.vercel.app
+//   MAIL_REDIRECT_TO    optional. While it is set, every mail goes to that
+//                       one address instead of the people it was for, with a
+//                       band across the top naming them. Clear it to go live.
 //   APP_URL_ALSO     optional, comma separated, the other addresses the app is
 //                    allowed to say it is being used from: a preview build, a
 //                    laptop running the dev server
@@ -42,7 +45,7 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay } from './email.js'
+import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice } from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -69,13 +72,24 @@ const json = (body: unknown, status = 200) =>
 
 type Mail = {
     to: string[]
+    from: string
     subject: string
     html: string
     text: string
     attachment?: { filename: string, content: string }
 }
 
-const from = () => Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>'
+// One Workspace account sends for both restaurants and the restaurant's own
+// name goes in front of the address. Google rewrites the ADDRESS on a mail whose
+// sender is not the account that authenticated, but it leaves the display name
+// alone, so this is how one mailbox and one app password can still say which
+// restaurant a mail is about.
+const from = (restaurantName?: string, address?: string | null) =>
+    senderFor(
+        Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>',
+        restaurantName,
+        address,
+    )
 
 // Through the restaurant's own Workspace account.
 //
@@ -85,21 +99,38 @@ const from = () => Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'P
 //
 // The library is loaded here rather than at the top so the Resend way does not
 // pay for it.
+
+// 465 by default, which is TLS from the first byte. See the connection below.
+const smtpPort = Number(Deno.env.get('SMTP_PORT') || 465)
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
     const client = new SMTPClient({
         connection: {
-            hostname: 'smtp.gmail.com',
-            port: 465,
-            tls: true,
+            // smtp.gmail.com sends only as the account that logged in.
+            // smtp-relay.gmail.com will send as any address on the domain,
+            // which is what lets a new restaurant have a sender of its own
+            // without anybody creating an alias for it in the admin console.
+            //
+            // A secret rather than a constant so that switch is a setting
+            // change and not a deploy.
+            //
+            // The port decides how the connection is encrypted, because
+            // getting those two out of step is a hang rather than an error.
+            // 465 is TLS from the first byte. Anything else, 587 in
+            // practice, starts in the clear and upgrades with STARTTLS,
+            // which is what tls:false means here.
+            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+            port: smtpPort,
+            tls: smtpPort === 465,
             auth: { username: user, password },
         },
     })
 
     try {
         await client.send({
-            from: from(),
+            from: mail.from,
             to: mail.to,
             replyTo: Deno.env.get('MAIL_REPLY_TO') || undefined,
             subject: mail.subject,
@@ -115,8 +146,17 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 : undefined,
         })
     } finally {
-        // Left open, the function is held until it times out.
-        await client.close()
+        // Left open, the function is held until it times out. But closing a
+        // connection the far end already dropped throws BadResource, and a
+        // throw in here replaces whatever went wrong with a useless one: the
+        // isolate dies and the app is told only "failed to send a request to
+        // the edge function", which is how a plain SMTP refusal came back
+        // with no reason attached.
+        try {
+            await client.close()
+        } catch (closing) {
+            console.warn('the SMTP connection was already gone', closing)
+        }
     }
 
     return { by: 'gmail' }
@@ -127,7 +167,7 @@ async function byResend(mail: Mail) {
     if (!key) throw new Error('Nothing is set up to send. Set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY.')
 
     const body: Record<string, unknown> = {
-        from: from(),
+        from: mail.from,
         to: mail.to,
         subject: mail.subject,
         html: mail.html,
@@ -152,7 +192,19 @@ async function byResend(mail: Mail) {
 }
 
 // Whichever one is set up, Google first.
+// Held while the mail is being set up.
+//
+// This function has no test button of its own and fires on somebody else
+// pressing something, so there is no safe way to try it. While
+// MAIL_REDIRECT_TO is set every mail goes to that one address instead,
+// with a band naming who it was for.
 async function send(mail: Mail) {
+    const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
+    if (redirect) {
+        const held = heldNotice(mail, mail.to)
+        mail = { ...mail, ...held, to: [redirect] }
+    }
+
     const user = Deno.env.get('GMAIL_USER')
     const password = Deno.env.get('GMAIL_APP_PASSWORD')
     if (user && password) return await byGmail(mail, user, password)
@@ -211,9 +263,25 @@ Deno.serve(async (request) => {
     if (event === 'asked' && !isTheirs && !isManager) return json({ error: 'Not yours' }, 403)
     if (event === 'answered' && !isManager) return json({ error: 'Not yours' }, 403)
 
-    const { data: restaurant } = await admin
-        .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
+    // mail_from arrived in migration 051, and a function can be deployed
+    // before a migration is run. Asking for a column that is not there
+    // does not throw, it returns an error and a null row, and an
+    // unchecked null here would have quietly sent a report headed "The
+    // restaurant" to every owner. So the error IS checked, and it falls
+    // back to the columns that have always existed.
+    let { data: restaurant, error: restaurantError } = await admin
+        .from('restaurants').select('name, mail_from').eq('id', absence.restaurant_id).maybeSingle()
+
+    if (restaurantError) {
+        console.warn('restaurants.mail_from is missing, run migration 051', restaurantError)
+        const again = await admin
+            .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
+        restaurant = again.data
+    }
     const restaurantName = restaurant?.name || 'Papi Chulo'
+    // Null on a restaurant with no address of its own, which falls back to the
+    // MAIL_FROM secret.
+    const restaurantFrom = restaurant?.mail_from || null
     // Where the buttons point.
     //
     // APP_URL is the real site and the answer unless told otherwise. The app
@@ -290,7 +358,13 @@ Deno.serve(async (request) => {
                 askerIsManager,
                 now: new Date().toISOString(),
             })
-            await send({ to, subject: mail.subject, html: mail.html, text: mail.text })
+            await send({
+                to,
+                from: from(restaurantName, restaurantFrom),
+                subject: mail.subject,
+                html: mail.html,
+                text: mail.text,
+            })
             return json({ sent: to.length })
         }
 
@@ -320,6 +394,7 @@ Deno.serve(async (request) => {
 
         await send({
             to: [to],
+            from: from(restaurantName, restaurantFrom),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,

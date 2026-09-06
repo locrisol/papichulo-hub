@@ -5,10 +5,9 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
-import { secondaryButton } from '../lib/controlStyles'
 import {
     cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
 } from '../lib/dayExtras'
@@ -290,7 +289,7 @@ export default function DayNoteDialog({
                                         type="button"
                                         onClick={() => set('extras', removeExtra(form.extras, extra.name))}
                                         aria-label={'Take ' + extra.name + ' off this day'}
-                                        className="text-gray-400 hover:text-red-600 px-1"
+                                        className={removeButton}
                                     >
                                         &times;
                                     </button>

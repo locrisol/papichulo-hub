@@ -40,6 +40,7 @@ export default function RestaurantPage() {
     const [formData, setFormData] = useState({
         hourly_rate: '',
         forecasting_enabled: false,
+        mail_from: '',
     })
 
     const [loading, setLoading] = useState(false)
@@ -53,6 +54,8 @@ export default function RestaurantPage() {
     const [showRulesModal, setShowRulesModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
     const [refresh, setRefresh] = useState(0)
+    // The sending address shows locked once it has one. This opens it.
+    const [editingMailFrom, setEditingMailFrom] = useState(false)
 
     const week = weekStartOf(todayISO())
 
@@ -61,6 +64,7 @@ export default function RestaurantPage() {
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
+            mail_from: activeRestaurant.mail_from || '',
         })
     }, [activeRestaurant])
 
@@ -94,6 +98,11 @@ export default function RestaurantPage() {
             .update({
                 hourly_rate: parseFloat(formData.hourly_rate),
                 forecasting_enabled: formData.forecasting_enabled,
+                // Empty is null, not an empty string. Null means "no
+                // address of its own", which is what the mail falls back
+                // on; an empty string would read as an address that is
+                // blank.
+                mail_from: formData.mail_from.trim() || null,
             })
             .eq('id', activeRestaurant.id)
             .select()
@@ -102,6 +111,7 @@ export default function RestaurantPage() {
         setLoading(false)
         if (e1) setError(friendlyError(e1))
         else {
+            setEditingMailFrom(false)
             setActiveRestaurant(data)
             setSuccess('Settings saved.')
         }
@@ -243,6 +253,72 @@ export default function RestaurantPage() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                Sent from
+                            </label>
+                            {/* Locked once it is set, like an overhead line on the
+                                report. An address that is already working is not
+                                something to leave a cursor sitting in: changing it
+                                needs a matching alias or relay rule in Google, and a
+                                stray keystroke here would send the next report from
+                                an address that Google quietly rewrites, which looks
+                                like nothing at all going wrong. */}
+                            {formData.mail_from && !editingMailFrom ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* The same box, greyed and disabled, rather than the
+                                        value as loose text. A field that turns into a line
+                                        of writing when it is locked reads as a different
+                                        thing from the one you typed into, and a bare
+                                        address sitting in a span gets linkified blue by
+                                        the browser, which makes it look like something to
+                                        click. */}
+                                    <input
+                                        type="text"
+                                        value={formData.mail_from}
+                                        disabled
+                                        readOnly
+                                        aria-label="Sending address, locked"
+                                        className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm
+                                            bg-app-bg text-muted cursor-not-allowed"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingMailFrom(true)}
+                                        aria-label="Edit the sending address"
+                                        className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-3.5 h-3.5">
+                                            <rect x="4" y="10" width="16" height="11" rx="2" />
+                                            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                                        </svg>
+                                        Edit
+                                    </button>
+                                </div>
+                            ) : (
+                                <input
+                                    type="email"
+                                    inputMode="email"
+                                    autoComplete="off"
+                                    value={formData.mail_from}
+                                    onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
+                                    placeholder="restaurant_name@papichulo.ie"
+                                    autoFocus={editingMailFrom}
+                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                />
+                            )}
+                            {/* The address only. The name in front of it is this
+                                restaurant own name, so renaming it renames the sender
+                                and there is no second place to keep in step. */}
+                            <p className="text-xs text-gray-400 mt-1">
+                                The address Papi Chulo Hub emails come from for this restaurant.
+                                Leave it empty and they come from the account the Hub sends with.
+                                Replies never come back here: they go to whoever sent it, with
+                                everyone else copied.
+                            </p>
                         </div>
 
                         {user?.role === 'super_admin' && (

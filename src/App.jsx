@@ -45,6 +45,8 @@ import LabourPage from './pages/costs/LabourPage'
 import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
+import ReportsListPage from './pages/reports/ReportsListPage'
+import ReportPage from './pages/reports/ReportPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
 import EmployeesPage from './pages/team/EmployeesPage'
 import RosterPage from './pages/roster/RosterPage'
@@ -69,6 +71,12 @@ export default function App() {
                 <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
                 <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
                 <Route path="/costs/labour" element={<RequireRole allowed={MANAGERS}><LabourPage /></RequireRole>} />
+
+                {/* The weekly report. Managers read it, store managers write it,
+                    and which of those you are is settled in the database rather
+                    than by which page you reached. */}
+                <Route path="/reports" element={<RequireRole allowed={MANAGERS}><ReportsListPage /></RequireRole>} />
+                <Route path="/reports/:id" element={<RequireRole allowed={MANAGERS}><ReportPage /></RequireRole>} />
 
                 {/* Anyone logs waste; only managers see the week. */}
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />

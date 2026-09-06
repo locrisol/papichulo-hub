@@ -54,6 +54,17 @@ function validate(f) {
     return null
 }
 
+// Is this the same invoice somebody already entered?
+//
+// Same supplier, same day, same amount to the cent. That is a strong enough
+// match to be worth stopping over and a weak enough one that it does happen for
+// real: two deliveries in a day from the same place, or a standing charge that
+// genuinely repeats. So it asks rather than refuses.
+//
+// The check is a query rather than a look through what is on screen, because
+// the form's date can be in a week the page is not showing, and a duplicate
+// entered into last week while looking at this one is exactly the one nobody
+// would spot.
 // week_start is worked back out from the date every time rather than kept as it
 // was, so moving an invoice to a different day moves it into the right week too
 // instead of leaving it filed under the old one and wrong on the cost dashboard.
@@ -167,12 +178,45 @@ export default function InvoicesPage() {
         setEditForm(emptyForm())
     }
 
+    // Asks about a duplicate, and returns whether to carry on.
+    //
+    // A miss here costs nothing to check and a hit is worth the interruption:
+    // an invoice entered twice moves the food cost on the dashboard and in the
+    // week's report, and nothing anywhere would ever say why.
+    async function pastDuplicate(f, exceptId) {
+        const payload = invoicePayload(f)
+
+        const { data } = await supabase
+            .from('invoices')
+            .select('id, notes')
+            .eq('restaurant_id', restaurantId)
+            .eq('supplier_id', payload.supplier_id)
+            .eq('invoice_date', payload.invoice_date)
+            .eq('total_amount', payload.total_amount)
+
+        // Itself does not count as a duplicate of itself.
+        const match = (data || []).find(row => row.id !== exceptId)
+        if (!match) return true
+
+        const supplier = suppliers.find(sup => sup.id === payload.supplier_id)
+        return confirm({
+            title: 'This looks like one already entered',
+            message: `There is already a ${fmtMoney(payload.total_amount)} invoice from `
+                + `${supplier?.name || 'that supplier'} dated ${fullDate(payload.invoice_date)}`
+                + `${match.notes ? ` ("${match.notes}")` : ''}. `
+                + 'Two on one day does happen, so this is only a check.',
+            confirmLabel: 'Save it anyway',
+        })
+    }
+
     async function handleSave(e) {
         e.preventDefault()
         setError(''); setSuccess('')
 
         const problem = validate(form)
         if (problem) { setError(problem); return }
+
+        if (!await pastDuplicate(form)) return
 
         setSaving(true)
         const { error: e1 } = await supabase.from('invoices').insert({
@@ -185,14 +229,23 @@ export default function InvoicesPage() {
 
         if (e1) { setError(friendlyError(e1)); return }
 
-        // Everything clears, including the supplier and the category.
+        // Everything clears except the date.
         //
-        // It used to keep them, on the grounds that invoices arrive in batches
-        // from the same place. They do, but a form that comes back already
-        // filled in is a form nobody reads, and the cost of getting it wrong is
-        // an invoice filed under the wrong target. The date stays, since that
-        // is the one thing a batch really does share.
-        setForm(emptyForm())
+        // The supplier and the category used to stay too, on the grounds that
+        // invoices arrive in batches from the same place. They do, but a form
+        // that comes back already filled in is a form nobody reads, and the
+        // cost of getting that wrong is an invoice filed under the wrong target.
+        //
+        // The date is different. It is the one thing a batch really does share,
+        // and it is the one field where coming back to today is not a neutral
+        // default but a wrong answer: somebody entering Tuesday's delivery
+        // sets the date once and then has every invoice after it silently
+        // filed under today. Which week an invoice lands in is the whole basis
+        // of the cost dashboard and the weekly report.
+        //
+        // It goes back to today when the page is next opened, which is where a
+        // fresh default belongs.
+        setForm({ ...emptyForm(), invoiceDate: form.invoiceDate })
         setSuccess('Invoice saved.')
         setRefresh(n => n + 1)
     }
@@ -209,6 +262,11 @@ export default function InvoicesPage() {
 
         const problem = validate(editForm)
         if (problem) { setError(problem); return }
+
+        // The same check on the way through. Correcting a date or an amount can
+        // land an invoice exactly on top of another one, and itself does not
+        // count, which is what editingId is for.
+        if (!await pastDuplicate(editForm, editingId)) return
 
         setSaving(true)
         const { error: e1 } = await supabase

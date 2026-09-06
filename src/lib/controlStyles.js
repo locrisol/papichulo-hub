@@ -158,6 +158,21 @@ export const badge =
 
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.
+// What that button should say.
+//
+// It read "This week" wherever you were, which is a label for a place rather
+// than for a button. Standing on week 31 and being offered "This week" tells
+// you nothing about what pressing it does, and the only thing separating the
+// two states was the orange, which is a colour somebody has to already know
+// the meaning of.
+//
+// So it names the action when there is one, and names where you are when there
+// is not. The orange still marks being there, and now agrees with the words.
+export function jumpLabel(isCurrent, unit = 'week') {
+    if (unit === 'day') return isCurrent ? 'Today' : 'Go to today'
+    return isCurrent ? 'This week' : 'Go to current week'
+}
+
 export function jumpButton(isCurrent) {
     return isCurrent
         ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent shadow-sm whitespace-nowrap'
@@ -178,3 +193,30 @@ export function segmentButton(isOn) {
     return 'px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize '
         + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
 }
+
+// The small × that removes a line or closes a dialog.
+//
+// These were all written by hand and all came out as an eleven pixel glyph with
+// px-1 either side, which is a target about sixteen pixels across. A thumb is
+// nearer forty five, so on a phone every one of them was a guess, and the thing
+// beside it was usually a text box you did not want to be in.
+//
+// The glyph stays small because a huge × is shouting. What changes is the space
+// around it: the button is a real target with the mark centred in it. Nothing
+// moves visually on a laptop, and on a phone it becomes something you can
+// actually hit.
+//
+// -m-1.5 pulls the padding back out of the layout, so a row does not grow by
+// twelve pixels in every direction to hold a control that looks the same size
+// as it did before.
+export const removeButton =
+    'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
+    + 'rounded-lg text-lg leading-none text-gray-400 transition-colors hover:text-red-600 hover:bg-red-50 '
+    + 'focus:outline-none focus:ring-2 focus:ring-accent'
+
+// The same control on a dark heading bar, which is only ever the close on a
+// dialog. Same size, different colours.
+export const closeButton =
+    'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
+    + 'rounded-lg text-lg leading-none text-white/70 transition-colors hover:text-white hover:bg-white/15 '
+    + 'focus:outline-none focus:ring-2 focus:ring-white/60'

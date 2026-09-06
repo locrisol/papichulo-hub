@@ -3,7 +3,7 @@ import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END,
@@ -216,7 +216,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => removeWindow(row.key, i)}
-                                                    className="text-gray-400 hover:text-red-600 text-sm px-1"
+                                                    className={removeButton}
                                                     aria-label={`Remove that stretch from ${row.name}`}
                                                 >
                                                     ×

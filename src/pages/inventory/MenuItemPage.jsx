@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
@@ -12,6 +12,7 @@ import Modal from '../../components/Modal'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
+import BackButton from '../../components/BackButton'
 
 // One dish: what it is made of, what it costs, and what it contains.
 //
@@ -55,7 +56,6 @@ function emptyHeaderForm(item) {
 
 export default function MenuItemPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
   const confirm = useConfirm()
 
@@ -353,12 +353,7 @@ export default function MenuItemPage() {
 
   return (
     <div>
-      <button
-        onClick={() => navigate('/catalogue/menu-items')}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-      >
-        <span>←</span> Back to menu items
-      </button>
+      <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
 
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-900">Menu Item: {item?.name}</h2>

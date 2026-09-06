@@ -20,6 +20,7 @@ import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 // link that goes nowhere is worse than no link.
 const navItems = [
     { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
+    { path: '/reports', label: 'Reports', icon: 'weekly', section: 'Overview', roles: MANAGERS },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.

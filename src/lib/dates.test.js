@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange } from './dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -210,5 +210,30 @@ describe('weekMonthLabel', () => {
     it('uses the end year when the week crosses a month but not a year', () => {
         // Sunday 29 November 2026 to Saturday 5 December 2026
         expect(weekMonthLabel('2026-11-29')).toBe('November to December 2026')
+    })
+})
+
+describe('weekNumber', () => {
+    it('numbers the week the reports have always numbered it', () => {
+        expect(weekNumber('2026-08-09')).toBe(32)
+    })
+
+    it('starts at one on the first Sunday of the year', () => {
+        expect(weekNumber('2026-01-04')).toBe(1)
+        expect(weekNumber('2026-01-11')).toBe(2)
+    })
+
+    it('gives a week that began in the old year that year, not this one', () => {
+        expect(weekNumber('2025-12-28')).toBe(52)
+    })
+})
+
+describe('weekRange', () => {
+    it('puts the year on the week', () => {
+        expect(weekRange('2026-08-09')).toBe('9 Aug to 15 Aug 2026')
+    })
+
+    it('shows both years on a week that crosses into a new one', () => {
+        expect(weekRange('2025-12-28')).toBe('28 Dec 2025 to 3 Jan 2026')
     })
 })

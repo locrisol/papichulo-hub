@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
 import { ALLERGENS, emptyAllergens } from '../../lib/allergens'
 import AllergenPicker from '../../components/AllergenPicker'
+import BackButton from '../../components/BackButton'
 
 // Tagging the 14 allergens on one product.
 //
@@ -20,7 +21,6 @@ import AllergenPicker from '../../components/AllergenPicker'
 
 export default function AllergenPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
 
   const [product, setProduct] = useState(null)
   const [values, setValues] = useState(emptyAllergens())
@@ -118,12 +118,7 @@ export default function AllergenPage() {
 
   return (
     <div>
-      <button
-        onClick={() => navigate('/catalogue/products')}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-      >
-        <span>←</span> Back to products
-      </button>
+      <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-900">

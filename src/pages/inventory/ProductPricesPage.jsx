@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { priceProblem, pricePayload } from '../../lib/productPrice'
@@ -9,6 +9,7 @@ import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
+import BackButton from '../../components/BackButton'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -27,7 +28,6 @@ import { useConfirm } from '../../context/ConfirmContext'
 // and the margin differ by restaurant while the selling price does not.
 export default function ProductPricesPage() {
     const { id } = useParams()
-    const navigate = useNavigate()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
@@ -256,12 +256,7 @@ export default function ProductPricesPage() {
 
     return (
         <div>
-            <button
-                onClick={() => navigate('/catalogue/products')}
-                className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-            >
-                <span>←</span> Back to products
-            </button>
+            <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>

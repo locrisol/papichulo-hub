@@ -259,3 +259,85 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         employeeName,
     }
 }
+
+// Who the mail comes from.
+//
+// One Workspace account sends for every restaurant, and the restaurant's own
+// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
+// SMTP when it is not the account that authenticated, but it leaves the display
+// name alone, so this is how one mailbox and one app password can still say
+// which restaurant a mail is about.
+//
+// It is the display name people actually read in a list of mail, and it is the
+// only place the restaurant appears in the header: the address is the same for
+// both, so anybody sorting by sender sorts on this.
+//
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
+// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
+// one matters: a display name with an accent in it has to be encoded to travel
+// in a header, and a name that arrives as mojibake is worse than a generic one.
+export function senderFor(mailFrom, restaurantName, address) {
+    const raw = String(mailFrom || '').trim()
+    if (!raw) return ''
+
+    // The restaurant's own address when it has one, otherwise whatever sits in
+    // MAIL_FROM: the angle brackets, or the whole string when it is bare.
+    //
+    // Gmail only lets a mail carry an address other than the account that
+    // authenticated when that address is an alias of it, or a "Send mail as"
+    // verified on it. Anything else and Google rewrites From back to the
+    // sending account. It rewrites rather than refuses, so a restaurant whose
+    // address was never set up in Google does not fail, it just keeps arriving
+    // from the other one, and nothing here can tell.
+    const bracketed = raw.match(/<([^>]+)>\s*$/)
+    const fallback = (bracketed ? bracketed[1] : raw).trim()
+    const chosen = String(address || '').trim() || fallback
+
+    const name = String(restaurantName || '').trim()
+    if (!chosen.includes('@')) return raw
+    if (!name) return chosen === fallback ? raw : chosen
+    if (!/^[ -~]+$/.test(name)) return raw
+
+    // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
+    // somebody renames a restaurant to include the brand.
+    const shown = /^papi\s*chulo/i.test(name) ? name : `Papi Chulo ${name}`
+
+    // Quoted when it holds anything a header parser treats as punctuation.
+    const display = /[",;:<>@[\]]/.test(shown)
+        ? '"' + shown.replace(/["\\]/g, '') + '"'
+        : shown
+
+    return `${display} <${chosen}>`
+}
+
+// Holding the mail back while it is being set up.
+//
+// When MAIL_REDIRECT_TO is set, every mail goes to that one address instead
+// of the people it was for, with a band across the top naming them. Unset the
+// secret and it goes live. No deploy either way.
+//
+// A redirect rather than a switch that swallows the mail. Swallowing it would
+// keep it quiet, which is the easy half; this also lets somebody read what
+// would have gone out, which is the half that matters for a function that has
+// no test button of its own and fires on somebody else pressing something.
+//
+// The band is deliberately loud and deliberately at the very top. A held mail
+// that looks like a real one is how a held mail gets forwarded to the person
+// it names.
+export function heldNotice(mail, intendedFor = []) {
+    const who = (intendedFor || []).filter(Boolean).join(", ") || "nobody"
+
+    const band = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"'
+        + ' border="0" style="background:#7C2D12;"><tr><td style="padding:14px 18px;'
+        + ' font-family:' + FONT + ';font-size:14px;line-height:1.5;color:#ffffff;">'
+        + '<strong>Held. This did not go to anyone else.</strong><br />'
+        + 'It was for ' + escapeHtml(who)
+        + '. The Hub is set to send every mail here until somebody clears'
+        + ' MAIL_REDIRECT_TO.</td></tr></table>'
+
+    return {
+        subject: "[Held] " + mail.subject,
+        html: String(mail.html).replace(/(<body[^>]*>)/i, "$1" + band),
+        text: "HELD. This did not go to anyone else. It was for " + who + ".\n\n" + mail.text,
+    }
+}

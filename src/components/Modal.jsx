@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { cardEdge, modalHeader } from '../lib/controlStyles'
+import { cardEdge, closeButton, modalHeader } from '../lib/controlStyles'
 
 // The shell every dialog in the app sits in.
 //
@@ -56,7 +56,7 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-white/70 hover:text-white text-lg leading-none"
+                        className={closeButton}
                         aria-label="Close"
                     >
                         ×
