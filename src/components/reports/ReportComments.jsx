@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
 import AutoTextarea from '../AutoTextarea'
+import AddButton from '../AddButton'
 
 // The comments on a section: one card each, one thought each.
 //
@@ -99,14 +100,14 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (
-                        <button
-                            onMouseDown={e => e.preventDefault()}
-                            onClick={add}
+                        <AddButton
+                            className="mt-2 w-full sm:w-auto justify-center"
                             disabled={busy}
-                            className="mt-2 w-full sm:w-auto px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50"
+                            keepFocus
+                            onClick={add}
                         >
                             {busy ? 'Adding' : 'Add comment'}
-                        </button>
+                        </AddButton>
                     )}
                 </div>
             )}

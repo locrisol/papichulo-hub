@@ -6,6 +6,7 @@ import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
 import AutoTextarea from '../AutoTextarea'
+import AddButton from '../AddButton'
 
 // Online sales, one block per platform.
 //
@@ -320,16 +321,16 @@ function PlatformBlock({
                             className="w-14 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                     </div>
-                    <button
+                    <AddButton
+                        className="mt-2 w-full sm:w-auto justify-center"
                         onClick={async () => {
                             await onAddReview(platform, stars, Math.max(1, Number(count) || 1))
                             setStars(5)
                             setCount('1')
                         }}
-                        className="mt-2 w-full sm:w-auto px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 transition-colors"
                     >
                         Add review
-                    </button>
+                    </AddButton>
                 </div>
             )}
 
@@ -381,12 +382,9 @@ function PlatformBlock({
             </div>
 
             {canEdit && (
-                <button
-                    onClick={() => onAddRefund(platform)}
-                    className="mt-2 text-sm font-semibold text-accent-ink hover:underline"
-                >
-                    + Add a refund
-                </button>
+                <AddButton onClick={() => onAddRefund(platform)} className="mt-2">
+                    Add a refund
+                </AddButton>
             )}
         </div>
     )

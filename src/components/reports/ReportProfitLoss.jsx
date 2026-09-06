@@ -4,6 +4,7 @@ import { numberField } from '../../lib/numberInput'
 import { wasChanged, platformShare, startsOpen, figureGaps } from '../../lib/weeklyReport'
 import { removeButton, secondaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
+import AddButton from '../AddButton'
 
 // The weekly profit and loss.
 //
@@ -388,12 +389,7 @@ export default function ReportProfitLoss({
                             </button>
                         </div>
                     ) : (
-                        <button
-                            onClick={() => setAdding(true)}
-                            className="text-sm font-semibold text-accent-ink hover:underline"
-                        >
-                            + Add a line
-                        </button>
+                        <AddButton onClick={() => setAdding(true)}>Add a line</AddButton>
                     )}
                 </div>
             )}

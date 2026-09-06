@@ -3,6 +3,7 @@ import { weeksOpen } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
 import AutoTextarea from '../AutoTextarea'
+import AddButton from '../AddButton'
 
 // Support and actions needed: the running list.
 //
@@ -151,14 +152,14 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (
-                        <button
-                            onMouseDown={e => e.preventDefault()}
-                            onClick={add}
+                        <AddButton
+                            className="mt-2 w-full sm:w-auto justify-center"
                             disabled={busy}
-                            className="mt-2 w-full sm:w-auto px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50"
+                            keepFocus
+                            onClick={add}
                         >
                             {busy ? 'Adding' : 'Add task'}
-                        </button>
+                        </AddButton>
                     )}
                 </div>
             )}

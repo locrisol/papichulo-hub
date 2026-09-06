@@ -19,6 +19,7 @@ import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
 import ReportSectionHead from '../../components/reports/ReportSectionHead'
 import BackButton from '../../components/BackButton'
+import AddButton from '../../components/AddButton'
 
 // One week's report.
 //
@@ -664,12 +665,7 @@ function AddSection({ onAdd }) {
 
     if (!open) {
         return (
-            <button
-                onClick={() => setOpen(true)}
-                className="text-sm font-semibold text-accent-ink hover:underline px-1"
-            >
-                + Add a section
-            </button>
+            <AddButton onClick={() => setOpen(true)}>Add a section</AddButton>
         )
     }
 
