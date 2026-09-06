@@ -1,5 +1,5 @@
 import { shortDate } from '../../lib/dates'
-import { paperworkState, daysUntil, WARN_DAYS } from '../../lib/reportPeople'
+import { paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '../../lib/reportPeople'
 
 // The team's paperwork, read straight off the employee records.
 //
@@ -65,7 +65,10 @@ function Summary({ title, state, asOf, noun }) {
 
 export default function ReportPaperwork({ employees, weekStart, asOf }) {
     const food = paperworkState(employees, 'food_safety_expires', asOf)
-    const permits = paperworkState(employees, 'work_permission_expires', asOf)
+    // A citizen has no permit to expire, so a blank date on one is the right
+    // answer rather than a gap in the records.
+    const permits = paperworkState(
+        employees, 'work_permission_expires', asOf, permissionNeedsExpiry)
 
     if (employees.length === 0) {
         return (
@@ -88,8 +91,9 @@ export default function ReportPaperwork({ employees, weekStart, asOf }) {
 
             <p className="text-xs text-muted mt-2">
                 {employees.length} on the books in the week of {shortDate(weekStart)}, checked as things stand
-                today. Anything inside {WARN_DAYS} days counts as running out. Names are on the team page rather
-                than in here, since this section goes out in a mail.
+                today. Anything inside {WARN_DAYS} days counts as running out, and anybody with no permit to
+                expire counts as in date. Names are on the team page rather than in here, since this section
+                goes out in a mail.
             </p>
         </div>
     )

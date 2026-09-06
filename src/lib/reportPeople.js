@@ -27,13 +27,37 @@ export function workingThatWeek(employees, weekStart) {
         && (!e.ended_on || e.ended_on >= weekStart))
 }
 
+// The permissions that have nothing to expire.
+//
+// An Irish or EU citizen has no permit and never will, so a blank expiry on one
+// is not a gap in the records, it is the correct answer. Everything else needs
+// a date: a student stamp runs out, and so does an employment permit.
+//
+// Stamp 4 is lumped in with citizens on the employee form, and a Stamp 4 does
+// expire. That is why a date is still checked whenever one has been entered,
+// whatever the permission says. This list only decides whether a MISSING date
+// is a problem.
+const NOTHING_TO_EXPIRE = ['unrestricted']
+
+// Does this person need a right to work expiry date on file?
+//
+// A permission nobody has recorded at all counts as needing one. We do not know
+// what they hold, and not knowing is the thing worth saying.
+export function permissionNeedsExpiry(person) {
+    return !NOTHING_TO_EXPIRE.includes(person?.work_permission || '')
+}
+
 // One kind of paperwork, counted.
 //
-// Three states, and they are deliberately not two. In date is fine. Running out
-// soon still needs doing. Missing altogether is the one nobody thinks to look
-// for, because there is no date to sort by, and for anybody handling food that
-// is worth knowing on its own.
-export function paperworkState(people, expiryField, asOf) {
+// Four states, and they are deliberately not two. In date is fine. Running out
+// soon still needs doing. Out of date is already a problem. Missing altogether
+// is the one nobody thinks to look for, because there is no date to sort by.
+//
+// `needsDate` decides whether a blank counts as missing at all. Without it this
+// read two citizens with nothing to expire as two people with no paperwork,
+// which is both wrong and the kind of wrong that trains somebody to ignore the
+// line.
+export function paperworkState(people, expiryField, asOf, needsDate = () => true) {
     const soon = addDays(asOf, WARN_DAYS)
 
     const missing = []
@@ -43,7 +67,17 @@ export function paperworkState(people, expiryField, asOf) {
 
     for (const person of people) {
         const on = person[expiryField]
-        if (!on) { missing.push(person); continue }
+
+        // No date. Either there is nothing to expire, which is fine, or there
+        // is and nobody has entered it.
+        if (!on) {
+            if (needsDate(person)) missing.push(person)
+            else fine++
+            continue
+        }
+
+        // A date that has been entered is always checked, whatever kind of
+        // permission it sits against.
         if (on < asOf) { expired.push({ person, on }); continue }
         if (on <= soon) { expiring.push({ person, on }); continue }
         fine++

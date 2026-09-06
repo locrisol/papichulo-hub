@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workingThatWeek, paperworkState, daysUntil, WARN_DAYS } from './reportPeople'
+import { workingThatWeek, paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from './reportPeople'
 
 const WEEK = '2026-08-09'
 
@@ -95,5 +95,52 @@ describe('daysUntil', () => {
 
     it('counts backward as a negative', () => {
         expect(daysUntil('2026-08-02', WEEK)).toBe(-7)
+    })
+})
+
+// The bug this was written for: two people with no restriction on their right
+// to work were being read as two people with no paperwork on file.
+describe('right to work', () => {
+    const team = [
+        person('citizen', { work_permission: 'unrestricted' }),
+        person('also a citizen', { work_permission: 'unrestricted' }),
+        person('student, no date', { work_permission: 'stamp2' }),
+        person('nobody asked', { work_permission: '' }),
+        person('student, in date', { work_permission: 'stamp2', work_permission_expires: '2027-06-01' }),
+    ]
+
+    it('does not ask for an expiry from somebody who has nothing to expire', () => {
+        expect(permissionNeedsExpiry({ work_permission: 'unrestricted' })).toBe(false)
+    })
+
+    it('asks for one from every stamp that runs out', () => {
+        for (const stamp of ['stamp1', 'stamp1g', 'stamp2', 'stamp2a']) {
+            expect(permissionNeedsExpiry({ work_permission: stamp })).toBe(true)
+        }
+    })
+
+    it('treats a permission nobody recorded as needing one, because we do not know', () => {
+        expect(permissionNeedsExpiry({ work_permission: '' })).toBe(true)
+        expect(permissionNeedsExpiry({})).toBe(true)
+    })
+
+    it('counts the citizens as in date rather than as gaps', () => {
+        const out = paperworkState(team, 'work_permission_expires', WEEK, permissionNeedsExpiry)
+        expect(out.fine).toBe(3)
+        expect(out.missing.map(p => p.full_name)).toEqual(['student, no date', 'nobody asked'])
+    })
+
+    it('still checks a date entered against a permission that usually has none', () => {
+        const stampFour = [person('stamp 4', {
+            work_permission: 'unrestricted', work_permission_expires: '2026-07-01',
+        })]
+        const out = paperworkState(stampFour, 'work_permission_expires', WEEK, permissionNeedsExpiry)
+        expect(out.expired).toHaveLength(1)
+        expect(out.fine).toBe(0)
+    })
+
+    it('leaves food safety asking everybody, since anybody handling food needs it', () => {
+        const out = paperworkState(team, 'food_safety_expires', WEEK)
+        expect(out.missing).toHaveLength(5)
     })
 })

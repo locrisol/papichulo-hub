@@ -200,7 +200,7 @@ export default function ReportPage() {
             // else about anybody.
             const { data: team } = await supabase
                 .from('employees')
-                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission_expires')
+                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission, work_permission_expires')
                 .eq('restaurant_id', head.restaurant_id)
             setEmployees(team || [])
 
