@@ -227,12 +227,24 @@ function comments(items) {
     </td></tr>`).join('')
 }
 
+// A chart, in a white box of its own.
+//
+// The box is for dark mode. Gmail on a phone inverts the whole message, and a
+// picture cannot be inverted: the chart stays white paper on a page that has
+// gone black, floating with nothing round it. Sitting it in a white card with
+// a border and some padding makes that look meant rather than broken, and
+// costs nothing in the light.
 function chart(url, caption) {
     if (!url) return ''
-    return `<tr><td style="padding:16px 0 0;">
-        <img src="${escapeHtml(url)}" width="${WIDTH}" alt="${escapeHtml(caption)}"
-            style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;background:#ffffff;" />
-        <div style="margin-top:6px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>
+    return `<tr><td style="padding:18px 0 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff;border:1px solid ${BORDER};border-radius:10px;">
+            <tr><td style="padding:10px;">
+                <img src="${escapeHtml(url)}" width="${WIDTH}" alt="${escapeHtml(caption)}"
+                    style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;" />
+            </td></tr>
+        </table>
+        <div style="margin-top:7px;font-family:${FONT};font-size:12px;color:${MUTED};">${escapeHtml(caption)}</div>
     </td></tr>`
 }
 
@@ -578,7 +590,9 @@ export function reportEmail({
         : ''
 
     const html = tidy(`<!doctype html>
-<html><body style="margin:0;padding:0;background:${CREAM};">
+<html><head><meta name="color-scheme" content="light dark" />
+<meta name="supported-color-schemes" content="light dark" /></head>
+<body style="margin:0;padding:0;background:${CREAM};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="background:${CREAM};padding:24px 10px;">
 <tr><td align="center">
