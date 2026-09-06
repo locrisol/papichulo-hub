@@ -11,9 +11,11 @@ import { friendlyError } from '../../lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
 import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey, publishCheck, figuresToStore } from '../../lib/weeklyReport'
-import { workingThatWeek } from '../../lib/reportPeople'
+import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpiry }
+    from '../../lib/reportPeople'
 import { weeksBack, byWeek } from '../../lib/reportChart'
-import { brandFor } from '../../lib/platformBrand'
+import { chartSpecs } from '../../lib/reportCharts'
+import { uploadCharts, sendReport } from '../../lib/reportMail'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
 import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
@@ -21,6 +23,7 @@ import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
 import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
 import ReportSectionHead from '../../components/reports/ReportSectionHead'
+import Recipients from '../../components/reports/Recipients'
 import PublishBar from '../../components/reports/PublishBar'
 import WeekChart from '../../components/reports/WeekChart'
 import BackButton from '../../components/BackButton'
@@ -120,6 +123,24 @@ export default function ReportPage() {
     const isStoreManager = ['super_admin', 'store_manager'].includes(user?.role)
     const canEdit = isStoreManager && report?.status === 'draft'
 
+    // Up here rather than beside the charts, because publishing needs them to
+    // draw the pictures and publishing is defined before the page is.
+    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
+    // Called catering in the database since 015, corporate everywhere a person
+    // reads it.
+    const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
+    const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
+
+    // How the last send went, so somebody who presses publish is told whether
+    // five people have the week or nobody does.
+    const [mailed, setMailed] = useState(null)
+
+    // Who the report goes to. The owners are worked out from the accounts, so
+    // they are read rather than kept; the extras are the restaurant's standing
+    // list, the same one every week until somebody changes it.
+    const [owners, setOwners] = useState([])
+    const [extras, setExtras] = useState([])
+
     useEffect(() => {
         if (!id) return
 
@@ -197,6 +218,19 @@ export default function ReportPage() {
 
             const activePlatforms = plats.data || []
             setPlatforms(activePlatforms)
+
+            const [ownerRows, place] = await Promise.all([
+                supabase.from('users')
+                    .select('id, full_name')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .eq('role', 'owner').eq('is_active', true)
+                    .order('full_name'),
+                supabase.from('restaurants')
+                    .select('report_recipients')
+                    .eq('id', head.restaurant_id).maybeSingle(),
+            ])
+            setOwners(ownerRows.data || [])
+            setExtras(place.data?.report_recipients || [])
 
             const totals = {}
             for (const p of activePlatforms) {
@@ -469,6 +503,31 @@ export default function ReportPage() {
     // moment a draft reads them live so it is always current; from this moment
     // it reads what was stored, because an invoice entered next week must not
     // change what five people were already sent.
+    // Everything the mail says, frozen as one lump.
+    //
+    // The money is only half of it. The platform takings and the paperwork are
+    // read live on the screen, which is right for a draft and wrong for a
+    // report that has gone out: somebody's permit renewed in October must not
+    // change what a report sent in September said. So they are frozen here
+    // beside the figures, and the mail reads the frozen copy.
+    function frozenFigures() {
+        const week = report.week_start
+        const onTheBooks = workingThatWeek(employees, week)
+        const asOf = todayISO()
+
+        return figuresToStore({
+            ...figures,
+            platforms: platforms.map(p => ({
+                id: p.id, name: p.name, bucket: p.bucket, taken: taken[p.id] || 0,
+            })),
+            paperwork: {
+                food: paperworkSummary(paperworkState(onTheBooks, 'food_safety_expires', asOf)),
+                permits: paperworkSummary(paperworkState(
+                    onTheBooks, 'work_permission_expires', asOf, permissionNeedsExpiry)),
+            },
+        })
+    }
+
     async function publish() {
         const check = publishCheck(sections, figures)
         if (check.blockers.length > 0) return
@@ -484,13 +543,108 @@ export default function ReportPage() {
         })
         if (!ok) return
 
-        await write(() => supabase.from('weekly_reports').update({
-            status: 'published',
-            figures: figuresToStore(figures),
-            published_at: new Date().toISOString(),
-            published_by: user.id,
-            send_count: (report.send_count || 0) + 1,
-        }).eq('id', report.id))
+        setMailed(null)
+        setSaving(true)
+        try {
+            // The pictures first. They have to exist before the mail can point
+            // at them, and a chart that will not draw is left out rather than
+            // stopping the report.
+            const charts = await uploadCharts({
+                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms,
+            })
+
+            // What the last mail said, kept so the next one can say what
+            // changed. Only from the second send on: the first has nothing to
+            // be a correction of.
+            const previous = (report.send_count || 0) > 0 ? report.figures : null
+
+            const { error: saveError } = await supabase.from('weekly_reports').update({
+                status: 'published',
+                figures: frozenFigures(),
+                previous_figures: previous,
+                charts,
+                published_at: new Date().toISOString(),
+                published_by: user.id,
+                send_count: (report.send_count || 0) + 1,
+            }).eq('id', report.id)
+            if (saveError) throw saveError
+
+            // Frozen first, sent second, and deliberately in that order. A
+            // report that was frozen but not mailed can be sent again by
+            // re-opening it. One that was mailed off figures nothing kept is a
+            // week nobody can ever look up again.
+            try {
+                const result = await sendReport({ reportId: report.id })
+                setMailed(result.sent === 0
+                    ? 'Published. Nobody is on the recipient list, so no mail went out.'
+                    : `Published and sent to ${result.sent} ${result.sent === 1 ? 'person' : 'people'}.`)
+            } catch (err) {
+                setMailed(`Published, but the mail did not go out: ${err.message}`)
+            }
+
+            setRefresh(n => n + 1)
+        } catch (err) {
+            setError(friendlyError(err))
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Changing who gets it.
+    //
+    // The list lives on the restaurant rather than on the report, so this is
+    // the same list next week and the week after. Taking somebody off is
+    // confirmed, since it is silent otherwise: nothing happens until Monday,
+    // and by Monday nobody remembers doing it.
+    async function changeRecipients(list) {
+        const gone = extras.filter(a => !list.includes(a))
+        if (gone.length > 0) {
+            const ok = await confirm({
+                title: 'Take them off the list?',
+                message: `${gone.join(', ')} will stop getting the weekly report, this week and `
+                    + 'every week after, until somebody adds them back.',
+                confirmLabel: 'Take them off',
+            })
+            if (!ok) return
+        }
+
+        const before = extras
+        setExtras(list)
+        const { error: saveError } = await supabase.from('restaurants')
+            .update({ report_recipients: list })
+            .eq('id', report.restaurant_id)
+
+        if (saveError) {
+            setExtras(before)
+            setError(friendlyError(saveError))
+        }
+    }
+
+    // A test send.
+    //
+    // The report exactly as it would go out, to the person asking and nobody
+    // else. Nothing is frozen and nothing is counted as a send, so a draft can
+    // be tried as many times as it takes to look right.
+    //
+    // Who it goes to is not decided here or posted from here. The function
+    // sends a test to whoever is logged in, which is a rule a browser cannot
+    // talk it out of.
+    async function testSend() {
+        setMailed(null)
+        setSaving(true)
+        try {
+            const charts = await uploadCharts({
+                reportId: report.id, rows: history, onlinePlatforms, corporatePlatforms, test: true,
+            })
+            const result = await sendReport({
+                reportId: report.id, test: true, figures: frozenFigures(), charts,
+            })
+            setMailed(`Test sent to ${result.to?.[0] || 'you'}. Nobody else got it.`)
+        } catch (err) {
+            setMailed(`The test did not go out: ${err.message}`)
+        } finally {
+            setSaving(false)
+        }
     }
 
     // Re-opening does not clear published_at or send_count. What went out went
@@ -584,8 +738,6 @@ export default function ReportPage() {
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
     const check = publishCheck(sections, figures)
-    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
 
     return (
         <div className="space-y-4">
@@ -634,8 +786,18 @@ export default function ReportPage() {
                 warnings={check.warnings}
                 canWrite={isStoreManager}
                 busy={saving}
+                mailed={mailed}
                 onPublish={publish}
                 onReopen={reopen}
+                onTest={testSend}
+            />
+
+            <Recipients
+                owners={owners}
+                extras={extras}
+                canEdit={isStoreManager}
+                busy={saving}
+                onChange={changeRecipients}
             />
 
             {/* SALES AND COSTS */}
@@ -704,30 +866,8 @@ export default function ReportPage() {
                         dashboard.
                     </p>
 
-                    <WeekChart
-                        rows={history}
-                        stacked={['food', 'labour', 'packaging']}
-                        shareOf="net"
-                        format={fmtMoney}
-                        formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
-                        empty="No sales have been entered this year yet, so there is nothing to draw."
-                        // The colours off the chart that has been going out
-                        // with this report for a year: net sales blue, food
-                        // red, labour amber, packaging green. Taken down a
-                        // little from the originals, which were picked for a
-                        // white spreadsheet rather than for cream, and which
-                        // were too light to read as a line.
-                        series={[
-                            { key: 'net', label: 'Net sales', colour: '#2C6FCF', heavy: true },
-                            { key: 'food', label: 'Food', colour: '#BE2F24' },
-                            { key: 'labour', label: 'Labour', colour: '#BE7C1B' },
-                            { key: 'packaging', label: 'Packaging', colour: '#2A8F52' },
-                        ]}
-                    />
-                    <figcaption className="text-xs text-muted mt-2">
-                        Net sales against what it cost to make. Hover any week for its figures and what share of
-                        that week each cost was.
-                    </figcaption>
+                    <WeekChart rows={history} {...specs.sales} />
+                    <figcaption className="text-xs text-muted mt-2">{specs.sales.caption}</figcaption>
 
                     {salesCosts && (
                         <ReportComments
@@ -774,64 +914,8 @@ export default function ReportPage() {
                                             onRenameOverhead={(id, label) => saveItem(id, { label })}
                                             onRemoveOverhead={removeItem}
                                         />
-                                        <div className="mt-6">
-                                            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
-                                                What each platform has cost
-                                            </p>
-                                            <WeekChart
-                                                rows={history}
-                                                height={210}
-                                                format={fmtMoney}
-                                                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
-                                                empty="No week has had its delivery costs entered yet. This fills in as reports are written."
-                                                // Each platform's cost is quoted
-                                                // against its own takings, so the
-                                                // figure on hover is the rate it
-                                                // charged that week.
-                                                series={[
-                                                    {
-                                                        key: 'deliveryTotal', label: 'All platforms',
-                                                        colour: '#182F24', heavy: true,
-                                                        shareOf: 'onlineTotal',
-                                                    },
-                                                    ...onlinePlatforms.map(p => ({
-                                                        key: `d_${p.id}`,
-                                                        label: p.name,
-                                                        colour: brandFor(p.name).mark,
-                                                        shareOf: `p_${p.id}`,
-                                                    })),
-                                                ]}
-                                            />
-                                            <p className="text-xs text-muted mt-2">
-                                                The percentage on hover is what that platform kept of its
-                                                own takings that week, so forty three percent is only
-                                                alarming once you can see it was thirty eight in May. Weeks
-                                                with no report are left as gaps rather than drawn as nothing.
-                                            </p>
-                                        </div>
-
-                                        <div className="mt-6">
-                                            <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
-                                                Net earnings, week by week
-                                            </p>
-                                            <WeekChart
-                                                rows={history}
-                                                height={210}
-                                                zero={false}
-                                                format={fmtMoney}
-                                                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
-                                                shareOf="net"
-                                                empty="No week has been written up yet, so there is nothing to compare this one against."
-                                                series={[
-                                                    { key: 'earnings', label: 'Net earnings', colour: '#2E7D52', heavy: true },
-                                                ]}
-                                            />
-                                            <p className="text-xs text-muted mt-2">
-                                                Hovering gives the euro and the share of that week's net sales,
-                                                so both figures are on one chart rather than two scales on one
-                                                axis.
-                                            </p>
-                                        </div>
+                                        <PageChart spec={specs.delivery} rows={history} />
+                                        <PageChart spec={specs.earnings} rows={history} />
                                         </>
                                     )}
                                     {section.key === 'people_ops' && (
@@ -853,14 +937,7 @@ export default function ReportPage() {
                                     )}
                                     {section.key === 'corporate_sales' && (
                                         <>
-                                            <PlatformChart
-                                                rows={history}
-                                                platforms={corporatePlatforms}
-                                                totalKey="corporateTotal"
-                                                totalLabel="All corporate"
-                                                caption="Which of them is growing. Feedr arriving and passing Lunch
-                                                    Team is the sort of thing a single week cannot show."
-                                            />
+                                            <PageChart spec={specs.corporate} rows={history} />
                                             <ReportCorporateSales
                                             platforms={corporatePlatforms}
                                             taken={taken}
@@ -875,16 +952,7 @@ export default function ReportPage() {
                                     )}
                                     {section.key === 'online_sales' && (
                                         <>
-                                            <PlatformChart
-                                                rows={history}
-                                                platforms={onlinePlatforms}
-                                                totalKey="onlineTotal"
-                                                totalLabel="All online"
-                                                branded
-                                                caption="What each platform took, week by week. The tracking rows
-                                                    from weekly sales, not the till, since that is what a platform
-                                                    statement is reconciled against."
-                                            />
+                                            <PageChart spec={specs.online} rows={history} />
                                             <ReportOnlineSales
                                             section={section}
                                             platforms={onlinePlatforms}
@@ -933,41 +1001,24 @@ export default function ReportPage() {
     )
 }
 
-// A line per platform, plus their total.
+// One chart on the page, from the spec that also draws it into the mail.
 //
-// Lines rather than a stack. A stack says the parts add up to something worth
-// seeing as a whole, and what you actually want here is which one is climbing
-// and which one is not. The total is on it as a heavy line so the whole is
-// still there to read.
-//
-// The online ones wear their own colours. The corporate ones have no brand of
-// their own, so they take a neutral set, ordered so the biggest is the darkest.
-const CORPORATE_COLOURS = ['#1F4E5F', '#BC552B', '#2A8F52', '#8AA9B4', '#96600A', '#6B6459']
-
-function PlatformChart({ rows, platforms, totalKey, totalLabel, branded, caption }) {
-    if (platforms.length === 0) return null
-
-    const series = [
-        { key: totalKey, label: totalLabel, colour: '#182F24', heavy: true },
-        ...platforms.map((p, i) => ({
-            key: `p_${p.id}`,
-            label: p.name,
-            colour: branded ? brandFor(p.name).mark : CORPORATE_COLOURS[i % CORPORATE_COLOURS.length],
-        })),
-    ]
+// The spec carries the series, the scale and the words; this carries where it
+// sits. Spreading it into WeekChart means a chart that gains a series gains it
+// in both places, which is the whole reason the specs left this file.
+function PageChart({ spec, rows }) {
+    if (!spec || spec.series.length === 0) return null
+    if (spec.platforms && spec.platforms.length === 0) return null
 
     return (
-        <div className="mb-5">
-            <WeekChart
-                rows={rows}
-                series={series}
-                shareOf={totalKey}
-                format={fmtMoney}
-                formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
-                height={210}
-                empty="Nothing has been tracked against these platforms this year yet."
-            />
-            <p className="text-xs text-muted mt-2">{caption}</p>
+        <div className="mt-6 mb-5">
+            {spec.pageHeading && (
+                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">
+                    {spec.title}
+                </p>
+            )}
+            <WeekChart rows={rows} {...spec} />
+            <p className="text-xs text-muted mt-2">{spec.caption}</p>
         </div>
     )
 }

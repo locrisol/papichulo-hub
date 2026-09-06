@@ -24,6 +24,20 @@ export const RANGES = [
 
 export const DEFAULT_RANGE = '12m'
 
+// The heavy line on every chart in the report is the total, and it is always
+// this blue.
+//
+// It came off the sales chart that has been going out with this report for a
+// year, where net sales was blue and the three costs under it had their own
+// colours. The later charts each picked their own dark line for the total, and
+// four charts down the page that meant the same shape meaning something
+// different every time.
+//
+// One colour for one idea. Blue on any of these charts is the whole of
+// something and the thinner lines are its parts, so the eye does not have to
+// re-read the key at every chart.
+export const CHART_TOTAL = '#2C6FCF'
+
 function num(v) {
     if (v == null) return 0
     const n = Number(v)
@@ -197,4 +211,34 @@ export function aside(rows, index, key, base) {
     const move = ((num(row[key]) - num(before[key])) / Math.abs(num(before[key]))) * 100
     if (Math.abs(move) < 0.05) return 'level'
     return `${move > 0 ? '↑' : '↓'} ${Math.abs(move).toFixed(1)}%`
+}
+
+// Which weeks get a label along the bottom.
+//
+// One every so often, so they never run together however many weeks are on.
+// `fits` is how many the width can hold, measured by whoever is drawing.
+//
+// The last week always gets one. It is the week the report is about, and a
+// chart whose right hand end is unlabelled makes somebody count backwards to
+// find out what they are looking at.
+//
+// That is the whole difficulty. Taking every fourth week and then adding the
+// last one puts two labels a single week apart whenever the count does not
+// divide evenly, which is most of the time: with thirty weeks and every fourth,
+// the twenty ninth lands right on top of the twenty eighth. So when the last
+// one crowds the one before it, the one before it goes. The end of the chart is
+// worth more than an evenly spaced tick.
+export function labelIndices(count, fits) {
+    if (count <= 0) return []
+    const every = count <= fits ? 1 : Math.ceil(count / fits)
+
+    const out = []
+    for (let i = 0; i < count; i += every) out.push(i)
+
+    const last = count - 1
+    if (out[out.length - 1] !== last) {
+        if (last - out[out.length - 1] < every) out.pop()
+        out.push(last)
+    }
+    return out
 }

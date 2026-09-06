@@ -14,7 +14,23 @@ import { fullDate } from '../../lib/dates'
 // might be a week nobody entered, or a week the place was shut, and the person
 // looking at it knows which.
 
-export default function PublishBar({ report, blockers, warnings, canWrite, busy, onPublish, onReopen }) {
+// What happened to the last mail, said plainly.
+//
+// Unlike the time off mails, this one is awaited and its answer is shown. That
+// mail is a side effect of an answer that has already been given; this one is
+// the point of pressing the button, and somebody told nothing has no way of
+// knowing whether five people have the week or nobody does.
+function Outcome({ children }) {
+    return (
+        <p className="w-full text-sm text-sidebar bg-cream border border-border rounded-lg px-3 py-2 mt-3">
+            {children}
+        </p>
+    )
+}
+
+export default function PublishBar({
+    report, blockers, warnings, canWrite, busy, mailed, onPublish, onReopen, onTest,
+}) {
     const sent = report.status === 'published'
     const correction = (report.send_count || 0) > 0
 
@@ -35,6 +51,12 @@ export default function PublishBar({ report, blockers, warnings, canWrite, busy,
                     <button onClick={onReopen} disabled={busy} className={secondaryButton}>
                         {busy ? 'Re-opening' : 'Re-open to correct it'}
                     </button>
+                )}
+                {mailed && <Outcome>{mailed}</Outcome>}
+                {report.sent_to?.length > 0 && (
+                    <p className="w-full text-xs text-green-800/80">
+                        It went to {report.sent_to.join(', ')}.
+                    </p>
                 )}
             </div>
         )
@@ -58,16 +80,42 @@ export default function PublishBar({ report, blockers, warnings, canWrite, busy,
                     </p>
                 </div>
 
-                <button
-                    onClick={onPublish}
-                    disabled={busy || stopped}
-                    className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {busy
-                        ? 'Publishing'
-                        : correction ? 'Publish again and re-send' : 'Publish and send'}
-                </button>
+                {/* Both buttons wrap onto their own line on a phone rather
+                    than shrinking, since either one sends mail and neither is
+                    a thing to press by accident. */}
+                <div className="flex flex-wrap gap-2">
+                    {onTest && (
+                        <button
+                            type="button"
+                            onClick={onTest}
+                            disabled={busy}
+                            className={secondaryButton}
+                        >
+                            {busy ? 'Working' : 'Send a test to me'}
+                        </button>
+                    )}
+                    <button
+                        onClick={onPublish}
+                        disabled={busy || stopped}
+                        className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {busy
+                            ? 'Publishing'
+                            : correction ? 'Publish again and re-send' : 'Publish and send'}
+                    </button>
+                </div>
             </div>
+
+            {mailed && <Outcome>{mailed}</Outcome>}
+
+            {/* A test can be sent on a report that is not ready, because
+                looking at it is how you find out what is missing. */}
+            {!stopped && onTest && (
+                <p className="text-xs text-muted mt-2">
+                    A test goes to you and nobody else. Nothing is frozen and it does not count as
+                    a send, so try it as many times as it takes.
+                </p>
+            )}
 
             {stopped && (
                 <div className="mt-3 pt-3 border-t border-accent/30">

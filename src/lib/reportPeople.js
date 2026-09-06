@@ -100,3 +100,34 @@ export function paperworkState(people, expiryField, asOf, needsDate = () => true
 export function daysUntil(on, from) {
     return Math.round((new Date(on + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000)
 }
+
+// The paperwork boiled down to something a mail can carry, and something the
+// report can be frozen with.
+//
+// The section on screen reads the employee list live, which is right for a
+// draft and wrong for a report that has gone out: somebody's permit renewed in
+// October must not change what a report sent in September said. So on publish
+// this shape is frozen into the figures alongside the money, and the mail reads
+// the frozen copy rather than the staff table.
+//
+// Names, not just counts. "Two certificates run out this month" sends somebody
+// to the Hub to find out who; the names are the whole reason the line is worth
+// sending.
+function names(list, field) {
+    return list.map(entry => {
+        const person = field ? entry.person : entry
+        return { name: person.full_name || person.name || 'Somebody', on: field ? entry.on : null }
+    })
+}
+
+export function paperworkSummary(state) {
+    if (!state) return null
+    return {
+        total: state.total,
+        fine: state.fine,
+        ok: state.ok,
+        missing: names(state.missing),
+        expired: names(state.expired, 'on'),
+        expiring: names(state.expiring, 'on'),
+    }
+}

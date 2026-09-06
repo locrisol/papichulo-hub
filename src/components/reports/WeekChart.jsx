@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { shortDate } from '../../lib/dates'
 import {
     RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside, segments, isMissing,
+    labelIndices,
 } from '../../lib/reportChart'
 import { segmentTrack, segmentButton } from '../../lib/controlStyles'
 
@@ -113,7 +114,7 @@ export default function WeekChart({
 
     // A label every so often, so they never collide however many weeks are on.
     const fits = Math.max(2, Math.floor(iw / 62))
-    const every = shown.length <= fits ? 1 : Math.ceil(shown.length / fits)
+    const labelled = new Set(labelIndices(shown.length, fits))
 
     function pointerWeek(event) {
         const svg = event.currentTarget.querySelector('svg')
@@ -243,7 +244,7 @@ export default function WeekChart({
                     })}
 
                     {shown.map((r, i) => (
-                        (i % every === 0 || i === shown.length - 1) && (
+                        labelled.has(i) && (
                             <text
                                 key={r.week} x={x(i)} y={H - 10}
                                 textAnchor="middle" fontSize="9.5" fill="#6B6459"

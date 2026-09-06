@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     RANGES, weeksBack, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
     segments, isMissing,
+    labelIndices,
 } from './reportChart'
 
 describe('weeksBack', () => {
@@ -243,5 +244,51 @@ describe('weeks with no figure at all', () => {
 
     it('has nothing to draw when no week has a figure', () => {
         expect(segments([{ v: null }, { v: null }], 'v')).toEqual([])
+    })
+})
+
+describe('labelIndices', () => {
+    it('labels every week when they all fit', () => {
+        expect(labelIndices(5, 9)).toEqual([0, 1, 2, 3, 4])
+    })
+
+    it('thins them out when they do not', () => {
+        expect(labelIndices(30, 9)).toContain(0)
+        expect(labelIndices(30, 9).length).toBeLessThanOrEqual(9)
+    })
+
+    it('always labels the last week, because that is the one being reported on', () => {
+        for (const count of [7, 13, 26, 29, 30, 52]) {
+            const out = labelIndices(count, 9)
+            expect(out[out.length - 1]).toBe(count - 1)
+        }
+    })
+
+    it('drops the one before rather than crowding it against the last', () => {
+        // Thirty weeks every fourth ends at 28, one step from 29. Two labels a
+        // single week apart overlap, and the end of the chart is worth more
+        // than an evenly spaced tick.
+        const out = labelIndices(30, 9)
+        expect(out).not.toContain(28)
+        expect(out[out.length - 1]).toBe(29)
+        expect(out[out.length - 2]).toBe(24)
+    })
+
+    it('never puts two labels closer than the spacing it chose', () => {
+        for (const count of [8, 11, 17, 23, 29, 31, 44, 52]) {
+            const out = labelIndices(count, 9)
+            const every = count <= 9 ? 1 : Math.ceil(count / 9)
+            for (let i = 1; i < out.length; i++) {
+                expect(out[i] - out[i - 1]).toBeGreaterThanOrEqual(every)
+            }
+        }
+    })
+
+    it('gives nothing for no weeks', () => {
+        expect(labelIndices(0, 9)).toEqual([])
+    })
+
+    it('labels a single week', () => {
+        expect(labelIndices(1, 9)).toEqual([0])
     })
 })
