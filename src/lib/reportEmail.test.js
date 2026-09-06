@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
-    escapeHtml, tidy, stars, starColour, WIDTH,
+    escapeHtml, tidy, stars, starColour, costTone, WIDTH,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from './reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
@@ -12,11 +12,12 @@ const figures = {
     packaging: 610, packagingPct: 4.14,
     labour: 4500, labourPct: 30.5,
     costOfSales: 9830, costOfSalesPct: 66.64,
+    targets: { food: 30, labour: 30, packaging: 4 },
     deliveryTotal: 1180, standing: 1900,
     earnings: 1840, earningsPct: 12.47,
     platforms: [
-        { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', taken: 3200, colour: '#134E6F' },
-        { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100, colour: '#1B6B43' },
+        { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', taken: 3200, colour: '#145C86', mark: '#1A6E9E' },
+        { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100, colour: '#1B6B43', mark: '#248C58' },
         { id: 'p3', name: 'Corporate Ltd', bucket: 'catering', taken: 900 },
     ],
     paperwork: {
@@ -156,8 +157,10 @@ describe('reportEmail', () => {
     })
 
     it('puts the share in brackets after the money, on the same line', () => {
-        expect(mail.html).toContain('&euro;4,720.00&nbsp;(32.00%)'.replace('&euro;', '€'))
-        expect(mail.html).toContain('€4,500.00&nbsp;(30.50%)')
+        // The share is wrapped in its own span now, because it carries the
+        // target colour and the money does not.
+        expect(mail.html).toContain('€4,720.00&nbsp;<span')
+        expect(mail.html).toContain('(32.00%)</span>')
     })
 
     it('shows a platform cost against that platform own takings', () => {
@@ -173,9 +176,33 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('€1,180.00')
     })
 
-    it('mentions a rating that moved and stays quiet about one that held', () => {
-        expect(mail.html).toContain('4.60, up from 4.40')
-        expect(mail.html).not.toContain('4.80')
+    it('shows a rating for every platform, moved or not', () => {
+        // It used to appear only when it moved, which left two platforms out
+        // of three with no rating at all, and nobody can tell "held at 4.8"
+        // from "nobody entered it" by being shown neither.
+        expect(mail.html).toContain('4.6&nbsp;out&nbsp;of&nbsp;5')
+        expect(mail.html).toContain('4.8&nbsp;out&nbsp;of&nbsp;5')
+    })
+
+    it('still calls out the one that moved, and says the other held', () => {
+        expect(mail.html).toContain('(up from 4.4)')
+        expect(mail.html).toContain('(no change)')
+    })
+
+    it('says so when a platform has no rating on file', () => {
+        const mail2 = reportEmail({
+            ...base,
+            sections: sections.map(s => (s.key === 'online_sales'
+                ? { ...s, items: s.items.filter(i => i.kind !== 'rating') }
+                : s)),
+        })
+        expect(mail2.html).toContain('not recorded')
+    })
+
+    it('counts every review, including a single one', () => {
+        // The page shows "x 1" and the mail was hiding it, which read as
+        // information missing rather than as a count of one.
+        expect(mail.html).toContain('&times;&nbsp;1')
     })
 
     it('writes a refund as a negative, with whether it was claimed', () => {
@@ -376,20 +403,28 @@ describe('what the first send got wrong', () => {
         expect(mail.html).not.toMatch(/\s\s/)
     })
 
-    it('gives the label and the figure a column each, so they cannot touch', () => {
-        // "Deliveroo€750.00" is what it looks like when they do not.
-        expect(mail.html).toContain('width="58%"')
-        expect(mail.html).toContain('width="42%"')
+    it('lets the figure column be exactly as wide as the figure', () => {
+        // A fixed 42% made "Gas and electric" wrap onto two lines on a phone to
+        // leave room for a figure that needed a third of what it was given.
+        expect(mail.html).toContain('width="1%"')
+        expect(mail.html).not.toContain('width="42%"')
     })
 
     it('wears each platform own colour', () => {
-        expect(mail.html).toContain('#134E6F')
+        expect(mail.html).toContain('#145C86')
         expect(mail.html).toContain('#1B6B43')
     })
 
     it('names the reviews and the refunds under each platform', () => {
-        expect(mail.html).toContain('>Reviews<')
+        expect(mail.html).toContain('>New reviews<')
         expect(mail.html).toContain('>Refunds<')
+    })
+
+    it('gives each platform its own block, edged in its own colour', () => {
+        // Three platforms running together down one table meant a review told
+        // you nothing about which of them it belonged to.
+        expect(mail.html).toContain('border-left:5px solid #1A6E9E')
+        expect(mail.html).toContain('border-left:5px solid #248C58')
     })
 
     it('gives the Hub a real button rather than a line of blue text', () => {
@@ -477,5 +512,75 @@ describe('the chart width', () => {
         // Written in both files rather than imported, because importing it
         // would pull the whole mail template into the browser bundle.
         expect(MAIL_WIDTH).toBe(WIDTH)
+    })
+})
+
+describe('costTone', () => {
+    // The same steps as statusFor on the report page and the cost dashboard. A
+    // figure that is amber on the screen and plain in the mail is a figure
+    // nobody trusts in either place.
+    it('is green at or under target', () => {
+        expect(costTone(30, 30)).toBe(costTone(28, 30))
+        expect(costTone(30, 30)).not.toBeNull()
+    })
+
+    it('is amber within two points over, and red past that', () => {
+        expect(costTone(31.9, 30)).not.toBe(costTone(30, 30))
+        expect(costTone(32.1, 30)).not.toBe(costTone(31.9, 30))
+    })
+
+    it('gives nothing when no target was set, rather than judging it', () => {
+        expect(costTone(34, null)).toBeNull()
+        expect(costTone(34, 0)).toBeNull()
+        expect(costTone(null, 30)).toBeNull()
+    })
+})
+
+describe('the cost colours in the mail', () => {
+    it('colours the share by the target the week was judged against', () => {
+        // Food is 32.00% against a 30% target: two points over, so amber.
+        // Labour is 30.50%, also amber. Packaging is 4.14% against 4%, amber.
+        const mail = reportEmail(base)
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">(32.00%)</span>`)
+    })
+
+    it('goes red once it is more than two points over', () => {
+        const mail = reportEmail({
+            ...base, figures: { ...figures, foodPct: 34.5 },
+        })
+        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};">(34.50%)</span>`)
+        expect(costTone(34.5, 30)).not.toBe(costTone(32, 30))
+    })
+
+    it('says which targets the week was judged against', () => {
+        expect(reportEmail(base).html).toContain('food 30%, labour 30%, packaging 4%')
+    })
+
+    it('leaves the shares uncoloured when no target was ever set', () => {
+        const mail = reportEmail({ ...base, figures: { ...figures, targets: {} } })
+        expect(mail.html).toContain('(32.00%)')
+        expect(mail.html).not.toContain('judged against')
+    })
+})
+
+describe('the rows that matter more than the others', () => {
+    const mail = reportEmail(base)
+
+    it('sets net sales, cost of sales and the totals apart from the ordinary rows', () => {
+        // A column of thirteen overheads needs a visible bottom, not a
+        // fourteenth line that happens to be bold.
+        expect(mail.html).toContain(`border-top:2px solid ${'#182F24'}`)
+    })
+
+    it('gives net earnings a box of its own rather than a heavier row', () => {
+        expect(mail.html).toContain('>Net earnings<')
+        expect(mail.html).toContain('of net sales</div>')
+    })
+
+    it('shows a loss in red', () => {
+        const bad = reportEmail({
+            ...base, figures: { ...figures, earnings: -400, earningsPct: -2.71 },
+        })
+        expect(bad.html).toContain('border:2px solid #B91C1C')
     })
 })

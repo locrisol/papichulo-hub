@@ -29,7 +29,7 @@ import {
 // imported, because importing it would pull the whole mail template into the
 // browser bundle to read one integer. A test holds the two together, which is
 // what stops them drifting.
-export const MAIL_WIDTH = 680
+export const MAIL_WIDTH = 760
 const HEIGHT = 260
 
 // Two device pixels to the point. The picture is shown at the size it says it

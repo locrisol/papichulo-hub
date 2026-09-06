@@ -526,8 +526,21 @@ export default function ReportPage() {
             platforms: platforms.map(p => ({
                 id: p.id, name: p.name, bucket: p.bucket,
                 taken: taken[p.id] || 0,
+                // Both shades. `mark` paints the edge of the platform's block,
+                // `ink` is the same colour taken down until it reads as
+                // lettering. The mail cannot work them out for itself: only
+                // what is inside a function's own folder gets deployed with
+                // it, so the alternative was writing the brand colours down a
+                // second time where nobody would think to change them.
+                mark: brandFor(p.name).mark,
                 colour: brandFor(p.name).ink,
             })),
+
+            // The targets this week was judged against, frozen with everything
+            // else. resolveTarget already picked the one in force for the week
+            // rather than the one set today; freezing it means a target changed
+            // in October cannot repaint a report sent in September.
+            targets,
             paperwork: {
                 food: paperworkSummary(paperworkState(onTheBooks, 'food_safety_expires', asOf)),
                 permits: paperworkSummary(paperworkState(
