@@ -365,6 +365,10 @@ export default function ReportPage() {
         }))
     }
 
+    async function renameSection(sectionId, title) {
+        return write(() => supabase.from('report_sections').update({ title }).eq('id', sectionId))
+    }
+
     async function removeSection(sectionId) {
         return write(() => supabase.from('report_sections').delete().eq('id', sectionId))
     }
@@ -472,6 +476,7 @@ export default function ReportPage() {
                     <ReportSectionHead
                         section={salesCosts}
                         canEdit={canEdit}
+                        onRename={renameSection}
                         onRemove={removeSection}
                         note="From the Hub"
                     />
@@ -556,6 +561,7 @@ export default function ReportPage() {
                         <ReportSectionHead
                             section={section}
                             canEdit={canEdit}
+                            onRename={renameSection}
                             onRemove={removeSection}
                         />
                         <div className="p-4 sm:p-5">

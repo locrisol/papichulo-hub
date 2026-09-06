@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     sectionKey,
-    canDropSection,
+    isOwnSection,
     weekReadiness,
     weekIsOver,
     reportableWeeks,
@@ -55,20 +55,21 @@ describe('sectionKey', () => {
     })
 })
 
-describe('canDropSection', () => {
-    it('will not drop any of the seven the report comes with', () => {
+describe('isOwnSection', () => {
+    it('says no to every one of the seven the report comes with', () => {
         for (const key of ['sales_costs', 'profit_loss', 'online_sales', 'corporate_sales',
             'people_ops', 'marketing', 'support_actions']) {
-            expect(canDropSection({ key })).toBe(false)
+            expect(isOwnSection({ key })).toBe(false)
         }
     })
 
-    it('drops one somebody added', () => {
-        expect(canDropSection({ key: 'priorities_follow_up' })).toBe(true)
+    it('says yes to one somebody added', () => {
+        expect(isOwnSection({ key: 'priorities_follow_up' })).toBe(true)
     })
 
-    it('is not fooled by a section merely titled like a built in one', () => {
-        expect(canDropSection({ key: 'marketing_2', title: 'Marketing' })).toBe(true)
+    it('goes on the key, not the title, so a rename cannot change the answer', () => {
+        expect(isOwnSection({ key: 'marketing_2', title: 'Marketing' })).toBe(true)
+        expect(isOwnSection({ key: 'marketing', title: 'Anything at all' })).toBe(false)
     })
 })
 

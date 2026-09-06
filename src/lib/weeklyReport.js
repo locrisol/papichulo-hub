@@ -41,18 +41,18 @@ export const DEFAULT_OVERHEADS = [
     { key: 'finance', label: 'Finance charges' },
 ]
 
-// Can this section be dropped?
+// Is this section the restaurant's own, rather than one the report comes with?
 //
-// Only one somebody added themselves. The seven the report comes with are its
-// shape, and a report missing its profit and loss is not a shorter report, it
-// is a broken one. Two of them read figures out of the rest of the Hub and
-// could not be rebuilt by adding a section back with the same name anyway,
-// since a new one only ever holds writing.
+// One question, because the answer settles both of the things that can be done
+// to a section. Its own can be renamed and dropped, since a heading somebody
+// typed is theirs to change or be rid of. The seven built in can be neither: a
+// report missing its profit and loss is not a shorter report, it is a broken
+// one, and a heading that says one thing in August and another in September
+// makes two weeks harder to read rather than one easier.
 //
-// A week with nothing to say under a heading leaves it empty, which is what a
-// quiet week looks like and is easier to read than a report whose shape changes
-// from one week to the next.
-export function canDropSection(section) {
+// A week with nothing to say under a built in heading leaves it empty, which is
+// what a quiet week looks like.
+export function isOwnSection(section) {
     return !DEFAULT_SECTIONS.some(d => d.key === section?.key)
 }
 
