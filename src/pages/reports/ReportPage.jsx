@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmContext'
@@ -92,6 +92,7 @@ function CostCard({ label, figure, share, shareGross, target }) {
 
 export default function ReportPage() {
     const { id } = useParams()
+    const navigate = useNavigate()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
@@ -155,6 +156,24 @@ export default function ReportPage() {
                 .single()
 
             if (hErr) { setError(friendlyError(hErr)); setLoading(false); return }
+
+            // Switching restaurant while a report is open leaves the page
+            // for the list rather than staying put.
+            //
+            // Staying put looked harmless: the report is still the one
+            // asked for, and it kept showing the right week. But the
+            // switcher now says one restaurant while the page shows
+            // another, and the cost targets below are read from whichever
+            // restaurant is active, so a Point Campus week was being
+            // graded green and red against Dun Laoghaire numbers.
+            //
+            // Checked here rather than after the state is set, so there
+            // is no render in between with a report from one restaurant
+            // and targets from the other.
+            if (activeRestaurant && head.restaurant_id !== activeRestaurant.id) {
+                navigate('/reports', { replace: true })
+                return
+            }
 
             setReport(head)
             setSections((head.report_sections || []).slice()
@@ -374,7 +393,7 @@ export default function ReportPage() {
         }
 
         load()
-    }, [id, activeRestaurant, refresh])
+    }, [id, activeRestaurant, refresh, navigate])
 
     // Every write on this page goes through here.
     //

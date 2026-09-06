@@ -263,7 +263,7 @@ export default function RestaurantPage() {
                                 autoComplete="off"
                                 value={formData.mail_from}
                                 onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
-                                placeholder="dunlaoghaire@papichulo.ie"
+                                placeholder="restaurant_name@papichulo.ie"
                                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                             />
                             {/* The address only. The name in front of it is this
