@@ -892,6 +892,7 @@ export default function StockTakeCountPage() {
                                                                             <input
                                                                                 type="text"
                                                                                 inputMode="decimal"
+                                                                                onFocus={e => e.target.select()}
                                                                                 value={draftCounts[fmt.id] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, [fmt.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"
@@ -907,6 +908,7 @@ export default function StockTakeCountPage() {
                                                                             <input
                                                                                 type="text"
                                                                                 inputMode="decimal"
+                                                                                onFocus={e => e.target.select()}
                                                                                 value={draftCounts['loose'] || ''}
                                                                                 onChange={e => setDraftCounts(prev => ({ ...prev, loose: e.target.value.replace(/[^0-9.]/g, '') }))}
                                                                                 placeholder="0"

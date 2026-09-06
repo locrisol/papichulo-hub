@@ -175,6 +175,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     <input
                         type="text"
                         inputMode="decimal"
+                        onFocus={e => e.target.select()}
                         value={factor}
                         onChange={e => setFactor(e.target.value.replace(/[^0-9.]/g, ''))}
                         placeholder="e.g. 6"

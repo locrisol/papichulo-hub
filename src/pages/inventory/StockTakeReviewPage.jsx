@@ -402,7 +402,7 @@ export default function StockTakeReviewPage() {
                           <div className="flex-1">
                             <label className="block text-xs font-medium text-muted mb-1">Quantity ({product.unit})</label>
                             <input
-                              type="text" inputMode="decimal" value={draftQty}
+                              type="text" inputMode="decimal" onFocus={e => e.target.select()} value={draftQty}
                               onChange={e => setDraftQty(e.target.value.replace(/[^0-9.]/g, ''))}
                               placeholder="0"
                               className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"

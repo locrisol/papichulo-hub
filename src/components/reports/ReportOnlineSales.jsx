@@ -123,15 +123,15 @@ function RefundAmount({ item, canEdit, onSave }) {
         <>
             <span className="text-sm text-muted">&euro;</span>
             <input
-                {...numberField({ value: draft, onChange: setDraft })}
+                {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
                 onBlur={commit}
                 onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 placeholder="0.00"
                 aria-label="How much was refunded"
-                className="w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-20 min-w-0 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
             {amount > 0 && (
-                <span className="text-sm font-semibold tabular-nums text-red-700">
+                <span className="text-sm font-semibold tabular-nums text-red-700 whitespace-nowrap">
                     {fmtMoney(-Math.abs(amount))}
                 </span>
             )}
@@ -154,7 +154,7 @@ function RatingLine({ platform, item, canEdit, onSave }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {canEdit ? (
                 <input
-                    {...numberField({ value: draft, onChange: setDraft })}
+                    {...numberField({ value: draft, onChange: setDraft, decimals: 1 })}
                     onBlur={commit}
                     onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                     placeholder="4.6"
@@ -236,7 +236,7 @@ function PlatformBlock({
                                         &times; {item.meta?.count || 1}
                                     </span>
                                     {needs && (
-                                        <span className="text-xs font-semibold text-accent-ink">
+                                        <span className="text-xs font-semibold text-accent-ink whitespace-nowrap">
                                             needs a comment
                                         </span>
                                     )}
@@ -307,14 +307,7 @@ function PlatformBlock({
                             holds: item.note,
                             onRemove: () => onRemoveItem(item.id),
                         }) : null}
-                        head={
-                            <>
-                                <RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />
-                                {canEdit && !String(item.note || '').trim() && (
-                                    <span className="text-xs font-semibold text-accent-ink">needs a note</span>
-                                )}
-                            </>
-                        }
+                        head={<RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />}
                         note={canEdit ? (
                             <AutoTextarea
                                 defaultValue={item.note || ''}
@@ -323,7 +316,10 @@ function PlatformBlock({
                                     if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                 }}
                                 placeholder="What it was about"
-                                className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${
+                                    String(item.note || '').trim()
+                                        ? 'border-gray-300'
+                                        : 'border-accent placeholder:text-accent-ink'}`}
                             />
                         ) : item.note ? (
                             <span className="text-sm text-gray-700">{item.note}</span>

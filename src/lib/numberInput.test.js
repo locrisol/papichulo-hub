@@ -68,3 +68,42 @@ describe('numberField', () => {
         expect(numberField({ value: undefined, onChange: () => {} }).value).toBe('')
     })
 })
+
+describe('capping the decimal places', () => {
+    it('lets a money box take two and no more', () => {
+        expect(cleanNumberInput('8.450', { decimals: 2 })).toBe('8.45')
+        expect(cleanNumberInput('2.47', { decimals: 2 })).toBe('2.47')
+    })
+
+    it('does not get in the way while the number is still being typed', () => {
+        expect(cleanNumberInput('8', { decimals: 2 })).toBe('8')
+        expect(cleanNumberInput('8.', { decimals: 2 })).toBe('8.')
+        expect(cleanNumberInput('8.4', { decimals: 2 })).toBe('8.4')
+    })
+
+    it('caps a rating at one place', () => {
+        expect(cleanNumberInput('4.65', { decimals: 1 })).toBe('4.6')
+    })
+
+    it('leaves a box with no cap alone, for a price held to four places', () => {
+        expect(cleanNumberInput('1.2345')).toBe('1.2345')
+    })
+})
+
+describe('numberField', () => {
+    it('selects what is in the box when it is focused', () => {
+        const field = numberField({ value: '0', onChange: () => {} })
+        let selected = false
+        field.onFocus({ target: { select: () => { selected = true } } })
+        expect(selected).toBe(true)
+    })
+
+    // The bug this exists for: a box reading 0, clicked into, typed 25, and
+    // saved as 250.
+    it('passes the cap through to the cleaning', () => {
+        let got = null
+        const field = numberField({ value: '', onChange: v => { got = v }, decimals: 2 })
+        field.onChange({ target: { value: '8.450' } })
+        expect(got).toBe('8.45')
+    })
+})

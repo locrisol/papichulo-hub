@@ -140,7 +140,7 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
         <>
             {editing ? (
                 <input
-                    {...numberField({ value: draft, onChange: setDraft })}
+                    {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
                     autoFocus={open}
                     placeholder="0.00"
                     onBlur={commit}
@@ -226,7 +226,7 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
                 <>
                     {canEdit ? (
                         <input
-                            {...numberField({ value: draft, onChange: setDraft })}
+                            {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
                             onBlur={commit}
                             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                             placeholder="0.00"
