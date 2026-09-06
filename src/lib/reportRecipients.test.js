@@ -108,18 +108,22 @@ describe('mergeForSend', () => {
 })
 
 describe('recipientSummary', () => {
-    it('says nobody is on it, and that publishing still works', () => {
+    it('says it will still go somewhere when nobody is on it', () => {
+        // Whoever publishes it is always a recipient, so an empty list is
+        // not a report that goes nowhere.
         expect(recipientSummary({ owners: [], extras: [] }))
-            .toContain('without mailing it')
+            .toBe('Nobody is on this list, so it will only go to you.')
     })
 
-    it('counts the two kinds separately', () => {
+    it('counts the two kinds separately, and says you get it too', () => {
+        // The publisher is not counted: it is not a choice made on this
+        // card and it is a different person week to week.
         expect(recipientSummary({ owners: ['a'], extras: ['b', 'c'] }))
-            .toBe('Goes to 1 owner and 2 added.')
+            .toBe('Goes to 1 owner and 2 added, and to you.')
     })
 
     it('leaves out the half that is empty', () => {
         expect(recipientSummary({ owners: ['a', 'b'], extras: [] }))
-            .toBe('Goes to 2 owners.')
+            .toBe('Goes to 2 owners, and to you.')
     })
 })

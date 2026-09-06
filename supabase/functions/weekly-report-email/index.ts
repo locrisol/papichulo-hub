@@ -244,8 +244,29 @@ Deno.serve(async (req) => {
                 if (address) found.push(address)
             }
 
+            // The manager who wrote it up goes on the list too.
+            //
+            // Two reasons, and the second is the one that is not obvious.
+            // They need to see it arrive, because a report that was
+            // published but never sent looks identical from the Hub.
+            //
+            // And it is what makes a reply land in the right place. Every
+            // recipient is in To, and Reply-To is the manager, so a client
+            // asked to reply to all puts the manager in To and demotes the
+            // owners to Cc: the reply goes to the person who wrote the week
+            // up, with everybody who read it copied. If the manager were not
+            // a recipient they would drop out of the thread the moment an
+            // owner replied to all.
+            //
+            // hub@ is in none of it. Reply-To does not add to From, it
+            // replaces it, so the sending address is out of both Reply and
+            // Reply All without being asked.
             const seen = new Set<string>()
-            for (const address of [...found, ...(restaurant?.report_recipients || [])]) {
+            for (const address of [
+                publisherAddress,
+                ...found,
+                ...(restaurant?.report_recipients || []),
+            ]) {
                 const key = String(address || '').trim().toLowerCase()
                 if (!key || seen.has(key)) continue
                 seen.add(key)

@@ -88,13 +88,21 @@ export function mergeForSend(ownerAddresses = [], extras = []) {
 // An empty list does not stop a report being published. The report is the point
 // and the mail is how it travels; a week written up and frozen with nobody to
 // send it to is still a week written up. It says so rather than failing.
+// Whoever publishes it is always a recipient as well, which is why it is not
+// counted here: it is not a choice anybody makes on this card, and it is a
+// different person week to week.
+//
+// They are on it so they see the report arrive, since a week that was
+// published but never sent looks the same from the Hub, and so that replying
+// to all reaches them: every recipient is in To and Reply-To is the manager,
+// so a reply-to-all puts them in To and copies everybody else.
 export function recipientSummary({ owners = [], extras = [] }) {
     const count = owners.length + extras.length
     if (count === 0) {
-        return 'Nobody is on this list, so publishing will freeze the report without mailing it.'
+        return 'Nobody is on this list, so it will only go to you.'
     }
     const parts = []
     if (owners.length) parts.push(`${owners.length} owner${owners.length === 1 ? '' : 's'}`)
     if (extras.length) parts.push(`${extras.length} added`)
-    return `Goes to ${parts.join(' and ')}.`
+    return `Goes to ${parts.join(' and ')}, and to you.`
 }

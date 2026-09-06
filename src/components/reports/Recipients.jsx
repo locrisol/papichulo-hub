@@ -72,12 +72,12 @@ export default function Recipients({ owners = [], extras = [], canEdit, onChange
                 ))}
             </div>
 
-            {owners.length === 0 && (
-                <p className="text-xs text-muted mt-3">
-                    Nobody here has an owner account, so the report will only go to the addresses
-                    added below.
-                </p>
-            )}
+            <p className="text-xs text-muted mt-3">
+                Whoever publishes it gets a copy too, so you can see it arrive. Replies come back
+                to them with everyone else copied.
+                {owners.length === 0 && ' Nobody here has an owner account, so apart from that it '
+                    + 'will only go to the addresses added below.'}
+            </p>
 
             {canEdit && (open ? (
                 <div className="mt-3">
