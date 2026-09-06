@@ -6,6 +6,7 @@ import {
     weekIsOver,
     reportableWeeks,
     reportFigures,
+    figureGaps,
     platformShare,
     carriedItems,
     startsOpen,
@@ -189,6 +190,12 @@ describe('reportFigures', () => {
         expect(f.overhead).toBeCloseTo(2379.37, 2)
     })
 
+    it('gives the total cost of sales the spreadsheet quotes', () => {
+        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        expect(f.costOfSales).toBeCloseTo(9059.70, 2)
+        expect(f.costOfSalesPct).toBeCloseTo(63.89, 2)
+    })
+
     it('works down to net earnings', () => {
         const f = reportFigures({ days, invoices, labour, overheads, delivery })
         expect(f.grossMargin).toBeCloseTo(9085.75, 2)
@@ -210,6 +217,55 @@ describe('reportFigures', () => {
         expect(f.net).toBe(0)
         expect(f.foodPct).toBe(null)
         expect(f.earningsPct).toBe(null)
+    })
+})
+
+describe('figureGaps', () => {
+    const week = {
+        days: [
+            { sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false },
+            { sale_date: '2026-08-10', net_sales: 2000, gross_sales: 2185, is_closed: false },
+        ],
+        invoices: [
+            { category: 'food', total_amount: 1000 },
+            { category: 'packaging', total_amount: 300 },
+        ],
+        labour: [{ labour_cost: 500 }, { labour_cost: 500 }],
+    }
+
+    it('has nothing to say about a week with everything entered', () => {
+        expect(figureGaps(reportFigures(week))).toEqual([])
+    })
+
+    // The bug this was written for. A week with no hours entered reported a
+    // profit of sixty six percent, which is arithmetic done on an empty week.
+    it('says so when no hours have been entered at all', () => {
+        const out = figureGaps(reportFigures({ ...week, labour: [] }))
+        expect(out.some(g => g.includes('No hours have been entered'))).toBe(true)
+    })
+
+    it('says how far short the hours are when only some days were entered', () => {
+        const out = figureGaps(reportFigures({ ...week, labour: [{ labour_cost: 500 }] }))
+        expect(out.some(g => g.includes('1 of the 2 days'))).toBe(true)
+    })
+
+    it('does not count a day entered as nothing as a day entered', () => {
+        const out = figureGaps(reportFigures({ ...week, labour: [{ labour_cost: 500 }, { labour_cost: 0 }] }))
+        expect(out.some(g => g.includes('1 of the 2 days'))).toBe(true)
+    })
+
+    it('names each kind of invoice that is missing', () => {
+        const out = figureGaps(reportFigures({ ...week, invoices: [] }))
+        expect(out.some(g => g.includes('food invoices'))).toBe(true)
+        expect(out.some(g => g.includes('packaging or cleaning'))).toBe(true)
+    })
+
+    it('is quiet about a closed day, which was never going to have hours', () => {
+        const out = figureGaps(reportFigures({
+            ...week,
+            days: [...week.days, { sale_date: '2026-08-11', net_sales: 0, gross_sales: 0, is_closed: true }],
+        }))
+        expect(out).toEqual([])
     })
 })
 

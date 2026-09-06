@@ -146,6 +146,10 @@ export function reportableWeeks(count = 12, today = todayISO()) {
 // drag the denominator down.
 export function reportFigures({ days = [], invoices = [], labour = [], overheads = [], delivery = [] }) {
     const trading = days.filter(d => !d.is_closed)
+    // How many days of labour were entered, not just what they came to. Nought
+    // and nought are the same number and mean completely different things: a
+    // week nobody worked, which never happens, or a week nobody typed in.
+    const labourDays = labour.filter(l => num(l.labour_cost) > 0).length
 
     const net = trading.reduce((t, d) => t + num(d.net_sales), 0)
     const gross = trading.reduce((t, d) => t + num(d.gross_sales), 0)
@@ -169,8 +173,13 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
     const standing = overheads.reduce((t, o) => t + num(o.amount), 0)
     const overhead = standing + deliveryTotal
 
+    // What it cost to sell what was sold: the food, what it was wrapped in, and
+    // the people who made it. Everything below this line is a standing cost
+    // that would have been paid whether anybody came in or not.
+    const costOfSales = food + packaging + labourCost
+
     const grossMargin = net - food - packaging
-    const grossProfit = grossMargin - labourCost
+    const grossProfit = net - costOfSales
     const earnings = grossProfit - overhead
 
     const share = amount => (net > 0 ? (amount / net) * 100 : null)
@@ -185,8 +194,50 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
         grossMargin, grossMarginPct: share(grossMargin),
         grossProfit, grossProfitPct: share(grossProfit),
         earnings, earningsPct: share(earnings), earningsPctGross: shareGross(earnings),
+
+        // The cost of making the food and paying the people who made it. On the
+        // spreadsheet this line is what the two costs above are read against,
+        // so it belongs here rather than being left for anybody to add up.
+        costOfSales, costOfSalesPct: share(costOfSales),
+
         tradingDays: trading.length,
+        labourDays,
+        foodInvoices: invoices.filter(i => i.category === 'food').length,
+        packagingInvoices: invoices.filter(
+            i => i.category === 'packaging' || i.category === 'cleaning').length,
     }
+}
+
+// What is missing before this week can be believed.
+//
+// The list page already refuses a week with a day of sales nobody entered. This
+// is the same rule for the other side of the report: a week showing no wages is
+// not a week that cost nothing to run, it is a week nobody has done the labour
+// on yet, and it will quietly report a profit twice what it should be.
+//
+// Sentences rather than a flag, because "these figures are wrong" helps nobody
+// who cannot see which ones.
+export function figureGaps(figures) {
+    const out = []
+    const days = figures.tradingDays
+
+    if (figures.labourDays === 0) {
+        out.push('No hours have been entered for this week, so labour is counting as nothing '
+            + 'and the profit below is far higher than it really is.')
+    } else if (days > 0 && figures.labourDays < days) {
+        out.push(`Hours are entered for ${figures.labourDays} of the ${days} days traded, `
+            + 'so labour is lower than it really was.')
+    }
+
+    if (figures.foodInvoices === 0) {
+        out.push('No food invoices are dated in this week.')
+    }
+
+    if (figures.packagingInvoices === 0) {
+        out.push('No packaging or cleaning invoices are dated in this week.')
+    }
+
+    return out
 }
 
 // What one platform's own takings went on.

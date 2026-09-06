@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { fmtMoney } from '../../lib/format'
 import { numberField } from '../../lib/numberInput'
-import { wasChanged, platformShare, startsOpen } from '../../lib/weeklyReport'
+import { wasChanged, platformShare, startsOpen, figureGaps } from '../../lib/weeklyReport'
 import { secondaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 
@@ -231,6 +231,7 @@ export default function ReportProfitLoss({
     const byKey = new Map(delivery.map(d => [d.key, d]))
 
     const net = figures.net
+    const gaps = figureGaps(figures)
 
     return (
         <div>
@@ -344,16 +345,33 @@ export default function ReportProfitLoss({
             )}
 
             {/* WHAT IS LEFT */}
-            <div className="mt-6 rounded-lg border border-border bg-white overflow-hidden">
+            <p className="text-xs font-bold text-muted uppercase tracking-wider mt-6 mb-2">
+                What is left
+            </p>
+
+            <div className="rounded-lg border border-border bg-white overflow-hidden">
                 <Row>
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Gross margin</span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.grossMargin)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.grossMarginPct)}</span>
+                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Net sales</span>
+                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.net)}</span>
+                    <span className="w-14 text-right text-xs tabular-nums text-muted"></span>
                 </Row>
                 <Row>
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Gross profit, after wages</span>
+                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">
+                        Total cost of sales
+                        <span className="block text-xs text-muted">food, packaging and wages</span>
+                    </span>
+                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.costOfSales)}</span>
+                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.costOfSalesPct)}</span>
+                </Row>
+                <Row tint="bg-app-bg font-semibold">
+                    <span className="flex-1 min-w-[8rem] text-sm text-gray-900">Gross profit</span>
                     <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.grossProfit)}</span>
                     <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.grossProfitPct)}</span>
+                </Row>
+                <Row>
+                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Less total fixed overhead</span>
+                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.overhead)}</span>
+                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.overheadPct)}</span>
                 </Row>
             </div>
 
@@ -372,6 +390,21 @@ export default function ReportProfitLoss({
                 Both are shown because the mail has always quoted the gross figure while every other percentage
                 on the report is against net. Say which one you want as the headline and the other can go.
             </p>
+
+            {gaps.length > 0 && (
+                <div className="mt-4 rounded-lg border border-accent/50 bg-accent-light/50 p-4">
+                    <p className="text-sm font-bold text-accent-ink mb-1">
+                        These figures are not finished
+                    </p>
+                    <ul className="text-sm text-accent-ink space-y-1 list-disc pl-5">
+                        {gaps.map(gap => <li key={gap}>{gap}</li>)}
+                    </ul>
+                    <p className="text-xs text-accent-ink/80 mt-2">
+                        The arithmetic above is right; what it is being given is not. Enter the missing hours and
+                        invoices and this section fills itself in.
+                    </p>
+                </div>
+            )}
         </div>
     )
 }
