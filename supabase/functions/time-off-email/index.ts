@@ -42,7 +42,7 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay } from './email.js'
+import { requestEmail, answerEmail, isPartDay, senderFor } from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -69,13 +69,23 @@ const json = (body: unknown, status = 200) =>
 
 type Mail = {
     to: string[]
+    from: string
     subject: string
     html: string
     text: string
     attachment?: { filename: string, content: string }
 }
 
-const from = () => Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>'
+// One Workspace account sends for both restaurants and the restaurant's own
+// name goes in front of the address. Google rewrites the ADDRESS on a mail whose
+// sender is not the account that authenticated, but it leaves the display name
+// alone, so this is how one mailbox and one app password can still say which
+// restaurant a mail is about.
+const from = (restaurantName?: string) =>
+    senderFor(
+        Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>',
+        restaurantName,
+    )
 
 // Through the restaurant's own Workspace account.
 //
@@ -99,7 +109,7 @@ async function byGmail(mail: Mail, user: string, password: string) {
 
     try {
         await client.send({
-            from: from(),
+            from: mail.from,
             to: mail.to,
             replyTo: Deno.env.get('MAIL_REPLY_TO') || undefined,
             subject: mail.subject,
@@ -127,7 +137,7 @@ async function byResend(mail: Mail) {
     if (!key) throw new Error('Nothing is set up to send. Set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY.')
 
     const body: Record<string, unknown> = {
-        from: from(),
+        from: mail.from,
         to: mail.to,
         subject: mail.subject,
         html: mail.html,
@@ -290,7 +300,7 @@ Deno.serve(async (request) => {
                 askerIsManager,
                 now: new Date().toISOString(),
             })
-            await send({ to, subject: mail.subject, html: mail.html, text: mail.text })
+            await send({ to, from: from(restaurantName), subject: mail.subject, html: mail.html, text: mail.text })
             return json({ sent: to.length })
         }
 
@@ -320,6 +330,7 @@ Deno.serve(async (request) => {
 
         await send({
             to: [to],
+            from: from(restaurantName),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,

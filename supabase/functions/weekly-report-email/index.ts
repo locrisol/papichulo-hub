@@ -35,6 +35,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
+import { senderFor } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -56,10 +57,19 @@ const json = (body: unknown, status = 200) =>
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
-type Mail = { to: string[], replyTo?: string, subject: string, html: string, text: string }
+type Mail = { to: string[], from: string, replyTo?: string, subject: string, html: string, text: string }
 
-const from = () =>
-    Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>'
+// One Workspace account sends for both restaurants and the restaurant's own
+// name goes in front of the address. Google rewrites the ADDRESS on a mail
+// whose sender is not the account that authenticated, but it leaves the display
+// name alone, so this is how one mailbox and one app password can still say
+// which restaurant a mail is about. It is also the only place the restaurant
+// appears in the header, since the address is the same for both.
+const from = (restaurantName?: string) =>
+    senderFor(
+        Deno.env.get('MAIL_FROM') || Deno.env.get('GMAIL_USER') || 'Papi Chulo Hub <onboarding@resend.dev>',
+        restaurantName,
+    )
 
 // Through the restaurant's own Workspace account. The domain is already set up
 // for Google, so this needs nothing added to DNS and no third party holding a
@@ -78,7 +88,7 @@ async function byGmail(mail: Mail, user: string, password: string) {
 
     try {
         await client.send({
-            from: from(),
+            from: mail.from,
             to: mail.to,
             replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
             subject: mail.subject,
@@ -96,7 +106,7 @@ async function byResend(mail: Mail, key: string) {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            from: from(),
+            from: mail.from,
             to: mail.to,
             reply_to: mail.replyTo || undefined,
             subject: mail.subject,
@@ -262,6 +272,7 @@ Deno.serve(async (req) => {
 
         await send({
             to,
+            from: from(restaurant?.name),
             // Owners reply to these. Sending from the restaurant account keeps
             // every mail coming from one place; the reply still reaches the
             // person who wrote the week up.

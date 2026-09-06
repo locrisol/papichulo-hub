@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
-    escapeHtml, tidy, stars, starColour, costTone, WIDTH,
+    escapeHtml, tidy, stars, starColour, costTone, senderFor, WIDTH,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from './reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
@@ -810,5 +810,51 @@ describe('a section heading is wider than what is under it', () => {
 
     it('keeps its corners, so the overhang reads as meant', () => {
         expect(mail.html).toContain('border-radius:8px')
+    })
+})
+
+describe('senderFor', () => {
+    const FROM = 'Papi Chulo Point Campus <point@papichulo.ie>'
+
+    it('puts the restaurant name in front of the one address', () => {
+        // One Workspace account sends for both restaurants. Google rewrites the
+        // ADDRESS on a mail whose sender is not the account that
+        // authenticated, but it leaves the display name alone, so the name is
+        // how one mailbox says which restaurant a mail is about.
+        expect(senderFor(FROM, 'Dun Laoghaire'))
+            .toBe('Papi Chulo Dun Laoghaire <point@papichulo.ie>')
+    })
+
+    it('does not care how MAIL_FROM was written', () => {
+        expect(senderFor('point@papichulo.ie', 'Dun Laoghaire'))
+            .toBe('Papi Chulo Dun Laoghaire <point@papichulo.ie>')
+        expect(senderFor('Anything At All <point@papichulo.ie>', 'Point Campus'))
+            .toBe('Papi Chulo Point Campus <point@papichulo.ie>')
+    })
+
+    it('does not say the brand twice', () => {
+        expect(senderFor(FROM, 'Papi Chulo Point Campus'))
+            .toBe('Papi Chulo Point Campus <point@papichulo.ie>')
+    })
+
+    it('keeps MAIL_FROM as it is when there is no restaurant in hand', () => {
+        expect(senderFor(FROM, '')).toBe(FROM)
+        expect(senderFor(FROM, null)).toBe(FROM)
+    })
+
+    it('keeps MAIL_FROM as it is rather than send a name that needs encoding', () => {
+        // A display name with an accent has to be encoded to travel in a
+        // header, and a name that arrives as mojibake is worse than a
+        // generic one.
+        expect(senderFor(FROM, 'D\u00fan Laoghaire')).toBe(FROM)
+    })
+
+    it('quotes a name a header parser would read as punctuation', () => {
+        expect(senderFor(FROM, 'Smith, Jones and Co'))
+            .toBe('"Papi Chulo Smith, Jones and Co" <point@papichulo.ie>')
+    })
+
+    it('gives nothing back for nothing, rather than a broken header', () => {
+        expect(senderFor('', 'Point Campus')).toBe('')
     })
 })

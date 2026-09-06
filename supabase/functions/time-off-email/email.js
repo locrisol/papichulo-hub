@@ -259,3 +259,43 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         employeeName,
     }
 }
+
+// Who the mail comes from.
+//
+// One Workspace account sends for every restaurant, and the restaurant's own
+// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
+// SMTP when it is not the account that authenticated, but it leaves the display
+// name alone, so this is how one mailbox and one app password can still say
+// which restaurant a mail is about.
+//
+// It is the display name people actually read in a list of mail, and it is the
+// only place the restaurant appears in the header: the address is the same for
+// both, so anybody sorting by sender sorts on this.
+//
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
+// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
+// one matters: a display name with an accent in it has to be encoded to travel
+// in a header, and a name that arrives as mojibake is worse than a generic one.
+export function senderFor(mailFrom, restaurantName) {
+    const raw = String(mailFrom || '').trim()
+    if (!raw) return ''
+
+    // The address is whatever sits in the angle brackets, or the whole string.
+    const bracketed = raw.match(/<([^>]+)>\s*$/)
+    const address = (bracketed ? bracketed[1] : raw).trim()
+
+    const name = String(restaurantName || '').trim()
+    if (!name || !address.includes('@')) return raw
+    if (!/^[ -~]+$/.test(name)) return raw
+
+    // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
+    // somebody renames a restaurant to include the brand.
+    const shown = /^papi\s*chulo/i.test(name) ? name : `Papi Chulo ${name}`
+
+    // Quoted when it holds anything a header parser treats as punctuation.
+    const display = /[",;:<>@[\]]/.test(shown)
+        ? '"' + shown.replace(/["\\]/g, '') + '"'
+        : shown
+
+    return `${display} <${address}>`
+}
