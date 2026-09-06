@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-    reportEmail, money, negative, pct, weekWords, escapeHtml,
+    reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
+    escapeHtml, tidy, stars, starColour, WIDTH,
 } from '../../supabase/functions/weekly-report-email/email'
+import { MAIL_WIDTH } from './reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 
 const figures = {
@@ -13,8 +15,8 @@ const figures = {
     deliveryTotal: 1180, standing: 1900,
     earnings: 1840, earningsPct: 12.47,
     platforms: [
-        { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', taken: 3200 },
-        { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100 },
+        { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', taken: 3200, colour: '#134E6F' },
+        { id: 'p2', name: 'Uber Eats', bucket: 'online_platform', taken: 2100, colour: '#1B6B43' },
         { id: 'p3', name: 'Corporate Ltd', bucket: 'catering', taken: 900 },
     ],
     paperwork: {
@@ -101,8 +103,8 @@ describe('negative', () => {
 })
 
 describe('pct', () => {
-    it('gives one place', () => {
-        expect(pct(32.04)).toBe('32.0%')
+    it('gives two places, because one cannot tell 2.10 from 2.14', () => {
+        expect(pct(32.04)).toBe('32.04%')
     })
 
     it('gives nothing at all for nothing, rather than 0%', () => {
@@ -131,8 +133,13 @@ describe('escapeHtml', () => {
 describe('reportEmail', () => {
     const mail = reportEmail(base)
 
-    it('names the restaurant and the week in the subject', () => {
-        expect(mail.subject).toBe('Point Campus weekly report, 30 Aug 2026 to 5 Sept 2026')
+    it('gives the week number and both dates in the subject', () => {
+        expect(mail.subject).toBe('Weekly Summary Report Week 35 (30/08/2026 to 05/09/2026)')
+    })
+
+    it('leaves the restaurant out of the subject, since the sender name carries it', () => {
+        expect(mail.subject).not.toContain('Point Campus')
+        expect(mail.html).toContain('Point Campus')
     })
 
     it('does not call a first send a correction', () => {
@@ -148,16 +155,16 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('€16,450.00')
     })
 
-    it('quotes every cost against net sales', () => {
-        expect(mail.html).toContain('32.0%')
-        expect(mail.html).toContain('30.5%')
+    it('puts the share in brackets after the money, on the same line', () => {
+        expect(mail.html).toContain('&euro;4,720.00&nbsp;(32.00%)'.replace('&euro;', '€'))
+        expect(mail.html).toContain('€4,500.00&nbsp;(30.50%)')
     })
 
     it('shows a platform cost against that platform own takings', () => {
         // Deliveroo cost 800 of the 3200 it took, which is 25%, not 5.4% of
         // total sales. The share against the whole week would look small on
         // every platform and say nothing about any of them.
-        expect(mail.html).toContain('25.0% of its own sales')
+        expect(mail.html).toContain('25.00%&nbsp;of its own sales')
     })
 
     it('never prints a total for the three delivery platforms that was typed', () => {
@@ -167,13 +174,13 @@ describe('reportEmail', () => {
     })
 
     it('mentions a rating that moved and stays quiet about one that held', () => {
-        expect(mail.html).toContain('up from 4.40')
+        expect(mail.html).toContain('4.60, up from 4.40')
         expect(mail.html).not.toContain('4.80')
     })
 
     it('writes a refund as a negative, with whether it was claimed', () => {
         expect(mail.html).toContain('−€12.50')
-        expect(mail.html).toContain('claimed back')
+        expect(mail.html).toContain('Claimed back')
     })
 
     it('says how long an action has been open', () => {
@@ -190,8 +197,20 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('Ana Rocha')
     })
 
-    it('says all in date rather than naming nobody', () => {
-        expect(mail.html).toContain('all 8 in date')
+    it('leads each kind of paperwork with how many are fine', () => {
+        expect(mail.html).toContain('8 of 8 fine')
+        expect(mail.html).toContain('6 of 8 fine')
+    })
+
+    it('puts the names under a heading rather than in a sentence', () => {
+        expect(mail.html).toContain('Nothing on file:')
+        expect(mail.html).toContain('Runs out soon:')
+    })
+
+    it('never uses an em dash', () => {
+        // They read as somebody else's writing, and they wrap badly on a phone.
+        expect(mail.html).not.toContain('—')
+        expect(mail.text).not.toContain('—')
     })
 
     it('puts all five charts in', () => {
@@ -205,10 +224,12 @@ describe('reportEmail', () => {
     })
 
     it('gives the same report in plain text', () => {
-        expect(mail.text).toContain('Point Campus weekly report')
+        expect(mail.text).toContain('Point Campus weekly summary report')
+        expect(mail.text).toContain('Week 35 (30/08/2026 to 05/09/2026)')
         expect(mail.text).toContain('Net sales: €14,750.00')
-        expect(mail.text).toContain('Net earnings: €1,840.00 (12.5%)')
+        expect(mail.text).toContain('Net earnings: €1,840.00 (12.47%)')
         expect(mail.text).toContain('Fryer thermostat')
+        expect(mail.text).toContain('    - Joao Silva')
     })
 })
 
@@ -248,7 +269,7 @@ describe('reportEmail, as a correction', () => {
     it('says what changed rather than making everybody read it again', () => {
         expect(mail.html).toContain('What changed')
         expect(mail.html).toContain('€5,100.00 to €4,720.00')
-        expect(mail.html).toContain('34.6% to 32.0%')
+        expect(mail.html).toContain('34.58% to 32.00%')
     })
 
     it('still says it is a correction when nothing measurable moved', () => {
@@ -330,5 +351,131 @@ describe('changesSince', () => {
     it('gives nothing when there is no first send to compare against', () => {
         expect(changesSince(null, sent)).toEqual([])
         expect(changesSince(sent, null)).toEqual([])
+    })
+})
+
+// The bugs the first real send showed up, each with the reason it happened, so
+// nobody reintroduces one by tidying the template.
+describe('what the first send got wrong', () => {
+    const mail = reportEmail(base)
+
+    it('never leaves a space at the end of a line', () => {
+        // denomailer encodes a trailing space as "=20" BEFORE the pass that
+        // escapes "=", so its own equals sign is escaped again and the reader
+        // gets the literal text =20. It was on nearly every row of the first
+        // mail that went out.
+        expect(mail.html).not.toMatch(/ \r?\n/)
+        expect(mail.text).not.toMatch(/ \r?\n/)
+    })
+
+    it('sends the HTML as a single line, which is what guarantees that', () => {
+        expect(mail.html).not.toContain('\n')
+    })
+
+    it('has no run of whitespace anywhere in the HTML', () => {
+        expect(mail.html).not.toMatch(/\s\s/)
+    })
+
+    it('gives the label and the figure a column each, so they cannot touch', () => {
+        // "Deliveroo€750.00" is what it looks like when they do not.
+        expect(mail.html).toContain('width="58%"')
+        expect(mail.html).toContain('width="42%"')
+    })
+
+    it('wears each platform own colour', () => {
+        expect(mail.html).toContain('#134E6F')
+        expect(mail.html).toContain('#1B6B43')
+    })
+
+    it('names the reviews and the refunds under each platform', () => {
+        expect(mail.html).toContain('>Reviews<')
+        expect(mail.html).toContain('>Refunds<')
+    })
+
+    it('gives the Hub a real button rather than a line of blue text', () => {
+        expect(mail.html).toContain('Open this report in the Hub')
+        expect(mail.html).toContain(`background:${'#2C6FCF'};border-radius:10px`)
+    })
+
+    it('draws the section headings as a filled bar', () => {
+        expect(mail.html).toContain('background:#182F24;border-radius:8px')
+    })
+})
+
+describe('tidy', () => {
+    it('takes the whitespace out from between tags', () => {
+        expect(tidy('<td>\n    <p>Hi</p>\n</td>')).toBe('<td><p>Hi</p></td>')
+    })
+
+    it('keeps a single space between words', () => {
+        expect(tidy('<p>Net  sales\n  this week</p>')).toBe('<p>Net sales this week</p>')
+    })
+
+    it('leaves nothing that could become an =20', () => {
+        expect(tidy('<td>Food \n</td>')).not.toMatch(/ \n/)
+    })
+})
+
+describe('stars', () => {
+    it('draws five of them, filled up to the score', () => {
+        expect(stars(4)).toBe('★★★★☆')
+        expect(stars(0)).toBe('☆☆☆☆☆')
+    })
+
+    it('cannot go past five or below nought', () => {
+        expect(stars(9)).toBe('★★★★★')
+        expect(stars(-3)).toBe('☆☆☆☆☆')
+    })
+})
+
+describe('starColour', () => {
+    it('is green for the ones worth being pleased about', () => {
+        expect(starColour(5)).toBe(starColour(4))
+    })
+
+    it('gives three its own colour, and two or one another', () => {
+        expect(starColour(3)).not.toBe(starColour(4))
+        expect(starColour(2)).not.toBe(starColour(3))
+        expect(starColour(1)).toBe(starColour(2))
+    })
+})
+
+describe('withShare', () => {
+    it('puts the share in brackets, on the same line', () => {
+        // A non breaking space, so the share never wraps away from its figure.
+        expect(withShare(284, 1.54)).toBe('€284.00&nbsp;(1.54%)')
+    })
+
+    it('gives the money alone when there is no share to give', () => {
+        expect(withShare(284, null)).toBe('€284.00')
+    })
+})
+
+describe('weekNumber', () => {
+    it('counts from the year first Sunday, the way the Hub does', () => {
+        // 2026 opens on a Thursday, so its first Sunday is 4 January and that
+        // is week one. The charts label that week 4 Jan.
+        expect(weekNumber('2026-01-04')).toBe(1)
+        expect(weekNumber('2026-08-23')).toBe(34)
+        expect(weekNumber('2026-08-30')).toBe(35)
+    })
+
+    it('gives a week that started before the first Sunday to the year before', () => {
+        expect(weekNumber('2026-12-27')).toBe(52)
+        expect(weekNumber('2027-01-03')).toBe(1)
+    })
+})
+
+describe('slashDate', () => {
+    it('pads to two figures, so a column of them lines up', () => {
+        expect(slashDate('2026-09-05')).toBe('05/09/2026')
+    })
+})
+
+describe('the chart width', () => {
+    it('matches the mail, so a chart is never scaled to fit', () => {
+        // Written in both files rather than imported, because importing it
+        // would pull the whole mail template into the browser bundle.
+        expect(MAIL_WIDTH).toBe(WIDTH)
     })
 })

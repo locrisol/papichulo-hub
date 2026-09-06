@@ -15,6 +15,7 @@ import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpir
     from '../../lib/reportPeople'
 import { weeksBack, byWeek } from '../../lib/reportChart'
 import { chartSpecs } from '../../lib/reportCharts'
+import { brandFor } from '../../lib/platformBrand'
 import { uploadCharts, sendReport } from '../../lib/reportMail'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
@@ -517,8 +518,15 @@ export default function ReportPage() {
 
         return figuresToStore({
             ...figures,
+            // The colour travels with the platform rather than being worked
+            // out again in the mail. Only what is inside a function's own
+            // folder gets deployed with it, so the alternative was writing the
+            // brand colours down a second time where nobody would think to
+            // change them.
             platforms: platforms.map(p => ({
-                id: p.id, name: p.name, bucket: p.bucket, taken: taken[p.id] || 0,
+                id: p.id, name: p.name, bucket: p.bucket,
+                taken: taken[p.id] || 0,
+                colour: brandFor(p.name).ink,
             })),
             paperwork: {
                 food: paperworkSummary(paperworkState(onTheBooks, 'food_safety_expires', asOf)),

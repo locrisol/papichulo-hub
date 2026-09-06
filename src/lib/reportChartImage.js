@@ -22,10 +22,14 @@ import {
     inRange, fromFirstFigure, scaleFor, ticks, segments, isMissing, labelIndices, DEFAULT_RANGE,
 } from './reportChart'
 
-// Six hundred is the width mail clients have agreed on for twenty years, and
-// the width the report's own tables are built to. Anything wider gets scaled
-// down by Gmail on a phone, which is exactly the blur this is trying to avoid.
-export const MAIL_WIDTH = 600
+// The width the mail's own tables are built to, so a chart is exactly as wide
+// as the figures above it rather than being scaled down to fit and going soft.
+//
+// The same number lives in the mail as WIDTH. It is written twice rather than
+// imported, because importing it would pull the whole mail template into the
+// browser bundle to read one integer. A test holds the two together, which is
+// what stops them drifting.
+export const MAIL_WIDTH = 680
 const HEIGHT = 260
 
 // Two device pixels to the point. The picture is shown at the size it says it
