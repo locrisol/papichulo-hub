@@ -99,6 +99,10 @@ const from = (restaurantName?: string, address?: string | null) =>
 //
 // The library is loaded here rather than at the top so the Resend way does not
 // pay for it.
+
+// 465 by default, which is TLS from the first byte. See the connection below.
+const smtpPort = Number(Deno.env.get('SMTP_PORT') || 465)
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
@@ -110,12 +114,16 @@ async function byGmail(mail: Mail, user: string, password: string) {
             // without anybody creating an alias for it in the admin console.
             //
             // A secret rather than a constant so that switch is a setting
-            // change and not a deploy. Both accept 465 with TLS from the
-            // first byte, so the port does not have to move and there is no
-            // STARTTLS to get wrong.
+            // change and not a deploy.
+            //
+            // The port decides how the connection is encrypted, because
+            // getting those two out of step is a hang rather than an error.
+            // 465 is TLS from the first byte. Anything else, 587 in
+            // practice, starts in the clear and upgrades with STARTTLS,
+            // which is what tls:false means here.
             hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
-            port: Number(Deno.env.get('SMTP_PORT') || 465),
-            tls: true,
+            port: smtpPort,
+            tls: smtpPort === 465,
             auth: { username: user, password },
         },
     })
@@ -138,8 +146,17 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 : undefined,
         })
     } finally {
-        // Left open, the function is held until it times out.
-        await client.close()
+        // Left open, the function is held until it times out. But closing a
+        // connection the far end already dropped throws BadResource, and a
+        // throw in here replaces whatever went wrong with a useless one: the
+        // isolate dies and the app is told only "failed to send a request to
+        // the edge function", which is how a plain SMTP refusal came back
+        // with no reason attached.
+        try {
+            await client.close()
+        } catch (closing) {
+            console.warn('the SMTP connection was already gone', closing)
+        }
     }
 
     return { by: 'gmail' }
