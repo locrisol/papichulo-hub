@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
+import AutoTextarea from '../AutoTextarea'
 
 // The comments on a section: one card each, one thought each.
 //
@@ -56,16 +57,15 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                         className="flex items-start gap-2 rounded-lg border border-border border-l-[3px] border-l-accent bg-app-bg px-3 py-2"
                     >
                         {canEdit ? (
-                            <textarea
+                            <AutoTextarea
                                 defaultValue={item.note || ''}
-                                rows={Math.max(1, Math.ceil((item.note || '').length / 70))}
                                 onBlur={e => {
                                     const text = e.target.value.trim()
                                     if (text === (item.note || '')) return
                                     if (!text) return onRemove(item.id)
                                     onSave(item.id, text)
                                 }}
-                                className="flex-1 bg-transparent text-sm text-gray-800 resize-none focus:outline-none"
+                                className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
                             />
                         ) : (
                             <p className="flex-1 text-sm text-gray-800">{item.note}</p>
@@ -90,12 +90,12 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
 
             {canEdit && (
                 <div className="mt-2">
-                    <textarea
+                    <AutoTextarea
                         value={adding}
+                        minRows={2}
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="Add a comment"
-                        rows={2}
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (

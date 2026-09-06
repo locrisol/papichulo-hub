@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { weeksOpen } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
+import AutoTextarea from '../AutoTextarea'
 
 // Support and actions needed: the running list.
 //
@@ -96,15 +97,14 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
 
                             <div className="flex-1 min-w-0">
                                 {canEdit && !done ? (
-                                    <textarea
+                                    <AutoTextarea
                                         defaultValue={item.label || ''}
-                                        rows={1}
                                         onBlur={e => {
                                             const text = e.target.value.trim()
                                             if (!text) return onRemove(item.id)
                                             if (text !== item.label) onSave(item.id, { label: text })
                                         }}
-                                        className="w-full bg-transparent text-sm text-gray-800 resize-none focus:outline-none"
+                                        className="w-full bg-transparent text-sm text-gray-800 focus:outline-none"
                                     />
                                 ) : (
                                     <p className={`text-sm ${done ? 'text-muted line-through' : 'text-gray-800'}`}>
@@ -142,12 +142,12 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
 
             {canEdit && (
                 <div className="mt-3">
-                    <textarea
+                    <AutoTextarea
                         value={adding}
+                        minRows={2}
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="Add something that needs doing"
-                        rows={2}
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (

@@ -5,6 +5,7 @@ import { brandFor } from '../../lib/platformBrand'
 import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
 import { useRemoveCard } from './useRemoveCard'
 import { removeButton } from '../../lib/controlStyles'
+import AutoTextarea from '../AutoTextarea'
 
 // Online sales, one block per platform.
 //
@@ -88,6 +89,56 @@ function LineCard({ head, note, warn, onRemove }) {
     )
 }
 
+// What a refund cost, typed as a plain positive number and shown as money
+// going out.
+//
+// It has its own draft rather than saving on every keystroke. Saving as you
+// type looks harmless until somebody types a decimal: "2." is not a number, it
+// comes back as 2, the box redraws as "2", and the point is eaten before the
+// 4 and the 7 are typed. The result was a box that silently refused anything
+// but whole euro.
+//
+// You type 2.47 and it reads back as -€2.47. Nobody should have to type a
+// minus sign to say that money went back out, and a refund shown as a positive
+// figure beside three other positive figures reads as more money taken.
+function RefundAmount({ item, canEdit, onSave }) {
+    const [draft, setDraft] = useState(item.amount == null ? '' : String(item.amount))
+    const amount = Number(item.amount) || 0
+
+    async function commit() {
+        const next = draft === '' ? 0 : Number(draft)
+        if (Math.abs(next - amount) < 0.005) return
+        await onSave(item.id, { amount: next })
+    }
+
+    if (!canEdit) {
+        return (
+            <span className="text-sm font-semibold tabular-nums text-red-700">
+                {fmtMoney(-Math.abs(amount))}
+            </span>
+        )
+    }
+
+    return (
+        <>
+            <span className="text-sm text-muted">&euro;</span>
+            <input
+                {...numberField({ value: draft, onChange: setDraft })}
+                onBlur={commit}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                placeholder="0.00"
+                aria-label="How much was refunded"
+                className="w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {amount > 0 && (
+                <span className="text-sm font-semibold tabular-nums text-red-700">
+                    {fmtMoney(-Math.abs(amount))}
+                </span>
+            )}
+        </>
+    )
+}
+
 function RatingLine({ platform, item, canEdit, onSave }) {
     const [draft, setDraft] = useState(item?.amount == null ? '' : String(item.amount))
     const move = ratingMove(item)
@@ -135,6 +186,9 @@ function PlatformBlock({
 }) {
     const brand = brandFor(platform.name)
     const removeCard = useRemoveCard()
+    // Shown beside the heading, not typed anywhere. The cards are still the
+    // record of what each one was for.
+    const refundTotal = refunds.reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
     const [stars, setStars] = useState(5)
     const [count, setCount] = useState('1')
 
@@ -189,7 +243,7 @@ function PlatformBlock({
                                 </>
                             }
                             note={canEdit ? (
-                                <input
+                                <AutoTextarea
                                     defaultValue={item.note || ''}
                                     onBlur={e => {
                                         const note = e.target.value.trim()
@@ -240,7 +294,9 @@ function PlatformBlock({
                 good review needs no explaining.
             </p>
 
-            <SubLabel hint="one card each, never a total">Refunds</SubLabel>
+            <SubLabel hint={refundTotal > 0
+                ? `${fmtMoney(-refundTotal)} this week`
+                : 'one card each, never a total'}>Refunds</SubLabel>
             <div className="space-y-2">
                 {refunds.map(item => (
                     <LineCard
@@ -251,26 +307,16 @@ function PlatformBlock({
                             holds: item.note,
                             onRemove: () => onRemoveItem(item.id),
                         }) : null}
-                        head={canEdit ? (
+                        head={
                             <>
-                                <span className="text-sm text-muted">&euro;</span>
-                                <input
-                                    {...numberField({
-                                        value: item.amount == null ? '' : String(item.amount),
-                                        onChange: v => onSaveItem(item.id, { amount: v === '' ? 0 : Number(v) }),
-                                    })}
-                                    aria-label="How much was refunded"
-                                    className="w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                                {!String(item.note || '').trim() && (
+                                <RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />
+                                {canEdit && !String(item.note || '').trim() && (
                                     <span className="text-xs font-semibold text-accent-ink">needs a note</span>
                                 )}
                             </>
-                        ) : (
-                            <span className="text-sm font-semibold tabular-nums">{fmtMoney(item.amount)}</span>
-                        )}
+                        }
                         note={canEdit ? (
-                            <input
+                            <AutoTextarea
                                 defaultValue={item.note || ''}
                                 onBlur={e => {
                                     const note = e.target.value.trim()
