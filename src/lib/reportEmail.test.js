@@ -156,10 +156,13 @@ describe('reportEmail', () => {
         expect(mail.html).toContain('€16,450.00')
     })
 
-    it('puts the share in brackets after the money, on the same line', () => {
-        // The share is wrapped in its own span now, because it carries the
-        // target colour and the money does not.
-        expect(mail.html).toContain('€4,720.00&nbsp;<span')
+    it('puts the share on the line under the money', () => {
+        // Beside it, a figure and its share together were the widest thing
+        // in the column, and a column is as wide as its widest thing, so
+        // "Net sales" and "Cost of sales" broke in two to make room for a
+        // bracket. Stacked, the column is only as wide as the money and
+        // every label in the section gets those points back.
+        expect(mail.html).toContain('€4,720.00<br /><span')
         expect(mail.html).toContain('(32.00%)</span>')
     })
 
@@ -480,9 +483,9 @@ describe('starColour', () => {
 })
 
 describe('withShare', () => {
-    it('puts the share in brackets, on the same line', () => {
-        // A non breaking space, so the share never wraps away from its figure.
-        expect(withShare(284, 1.54)).toBe('€284.00&nbsp;(1.54%)')
+    it('puts the share under the money, in brackets', () => {
+        expect(withShare(284, 1.54)).toContain('€284.00<br />')
+        expect(withShare(284, 1.54)).toContain('(1.54%)')
     })
 
     it('gives the money alone when there is no share to give', () => {
@@ -545,14 +548,16 @@ describe('the cost colours in the mail', () => {
         // Food is 32.00% against a 30% target: two points over, so amber.
         // Labour is 30.50%, also amber. Packaging is 4.14% against 4%, amber.
         const mail = reportEmail(base)
-        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">(32.00%)</span>`)
+        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+        expect(mail.html).toContain('(32.00%)</span>')
     })
 
     it('goes red once it is more than two points over', () => {
         const mail = reportEmail({
             ...base, figures: { ...figures, foodPct: 34.5 },
         })
-        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};">(34.50%)</span>`)
+        expect(mail.html).toContain(`color:${costTone(34.5, 30)};`)
+        expect(mail.html).toContain('(34.50%)</span>')
         expect(costTone(34.5, 30)).not.toBe(costTone(32, 30))
     })
 
@@ -922,5 +927,19 @@ describe('heldNotice', () => {
 
     it('keeps the mail otherwise as it was', () => {
         expect(heldNotice(mail, ['a@b.ie']).html).toContain('<p>Hi</p>')
+    })
+})
+
+describe('the figure column is only as wide as the money', () => {
+    const mail = reportEmail(base)
+
+    it('never puts a share on the same line as its figure', () => {
+        // This is what stops "Net sales" and "Cost of sales" breaking in two.
+        expect(mail.html).not.toMatch(/€[\d,.]+&nbsp;\(/)
+    })
+
+    it('keeps the target colour on the share where there is one', () => {
+        expect(mail.html).toContain('(32.00%)</span>')
+        expect(mail.html).toContain(`color:${costTone(32, 30)};`)
     })
 })

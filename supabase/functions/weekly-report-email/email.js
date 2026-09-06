@@ -132,16 +132,26 @@ export function costTone(share, target) {
     return RED
 }
 
-// The money and its share, on one line and never split across two.
+// The money, with its share on the line below it.
 //
-// The share goes in brackets after the figure rather than in a column of its
-// own. Two columns meant that on a phone every row wrapped, and a figure
-// sitting above its own percentage reads as two facts instead of one.
+// Not a column of its own: two columns meant that on a phone every row
+// wrapped, because the table gave the share a share of the width whether the
+// label needed it or not.
+//
+// And not beside the money either, which is where it was. A figure and its
+// share side by side is the widest thing in the column, and the column is as
+// wide as its widest thing, so "Net sales" and "Cost of sales" were breaking
+// in two to make room for a bracket. Stacked, the column is only as wide as
+// the money, and every label in the section gets the fifty points back.
+//
+// The break is a <br />, so it happens in the same place every time rather
+// than wherever the width runs out.
 export function withShare(amount, share, tone) {
     const rate = pct(share)
     if (!rate) return money(amount)
-    const shown = tone ? `<span style="color:${tone};">(${rate})</span>` : `(${rate})`
-    return `${money(amount)}&nbsp;${shown}`
+    const colour = tone || MUTED
+    return `${money(amount)}<br /><span style="color:${colour};font-size:13px;
+        font-weight:400;">(${rate})</span>`
 }
 
 export function fmtDate(iso) {
