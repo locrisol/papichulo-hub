@@ -11,6 +11,7 @@ import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyle
 import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey } from '../../lib/weeklyReport'
 import { workingThatWeek } from '../../lib/reportPeople'
+import { weeksOfYear, byWeek } from '../../lib/reportChart'
 import ReportComments from '../../components/reports/ReportComments'
 import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
 import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
@@ -18,6 +19,7 @@ import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
 import ReportPaperwork from '../../components/reports/ReportPaperwork'
 import ReportActions from '../../components/reports/ReportActions'
 import ReportSectionHead from '../../components/reports/ReportSectionHead'
+import WeekChart from '../../components/reports/WeekChart'
 import BackButton from '../../components/BackButton'
 import AddButton from '../../components/AddButton'
 
@@ -96,6 +98,9 @@ export default function ReportPage() {
     const [platforms, setPlatforms] = useState([])
     const [employees, setEmployees] = useState([])
     const [taken, setTaken] = useState({})
+    // The weeks behind this one, for the charts. Read once, from the same
+    // tables the figures come from, so a line and a card can never differ.
+    const [history, setHistory] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     // Bumped after every write. The page reloads rather than each section
@@ -195,6 +200,50 @@ export default function ReportPage() {
                     (t, d) => t + num(d.platform_sales?.[p.name]), 0)
             }
             setTaken(totals)
+
+            // Every week of the year up to this one, for the charts.
+            //
+            // One read over the whole range and folded into weeks here, rather
+            // than fifty two round trips. A year of days is under four hundred
+            // rows, which is nothing, and the alternative is a page that takes
+            // a second to draw a line.
+            const weekStarts = weeksOfYear(weekStart)
+            const yearFrom = weekStarts[0]
+
+            const [hDays, hInvoices, hLabour] = await Promise.all([
+                supabase.from('sales_records')
+                    .select('sale_date, net_sales, gross_sales, is_closed')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('sale_date', yearFrom).lte('sale_date', end),
+                supabase.from('invoices')
+                    .select('invoice_date, total_amount, category')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('invoice_date', yearFrom).lte('invoice_date', end),
+                supabase.from('labour_entries')
+                    .select('entry_date, labour_cost')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('entry_date', yearFrom).lte('entry_date', end),
+            ])
+
+            const trading = (hDays.data || []).filter(d => !d.is_closed)
+            const netWeeks = byWeek(trading, 'sale_date', d => d.net_sales)
+            const grossWeeks = byWeek(trading, 'sale_date', d => d.gross_sales)
+            const foodWeeks = byWeek(
+                (hInvoices.data || []).filter(i => i.category === 'food'),
+                'invoice_date', i => i.total_amount)
+            const packWeeks = byWeek(
+                (hInvoices.data || []).filter(i => ['packaging', 'cleaning'].includes(i.category)),
+                'invoice_date', i => i.total_amount)
+            const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
+
+            setHistory(weekStarts.map(week => ({
+                week,
+                net: netWeeks.get(week) || 0,
+                gross: grossWeeks.get(week) || 0,
+                food: foodWeeks.get(week) || 0,
+                packaging: packWeeks.get(week) || 0,
+                labour: labourWeeks.get(week) || 0,
+            })))
 
             // The team, for the paperwork lines. Only the four fields the
             // section reads, so a mail built from this cannot carry anything
@@ -524,11 +573,30 @@ export default function ReportPage() {
                         />
                     </div>
 
-                    <p className="text-xs text-muted mt-4">
+                    <p className="text-xs text-muted mt-4 mb-4">
                         Food and packaging come from the invoices dated in this week, labour from the hours
                         entered against it. Nothing here is typed twice, so it cannot disagree with the cost
                         dashboard.
                     </p>
+
+                    <WeekChart
+                        rows={history}
+                        stacked={['food', 'labour', 'packaging']}
+                        shareOf="net"
+                        format={fmtMoney}
+                        formatAxis={v => fmtMoney(v).replace(/\.00$/, '')}
+                        empty="No sales have been entered this year yet, so there is nothing to draw."
+                        series={[
+                            { key: 'net', label: 'Net sales', colour: '#182F24', heavy: true },
+                            { key: 'food', label: 'Food', colour: '#BC552B' },
+                            { key: 'labour', label: 'Labour', colour: '#E0B44C' },
+                            { key: 'packaging', label: 'Packaging', colour: '#1F4E5F' },
+                        ]}
+                    />
+                    <figcaption className="text-xs text-muted mt-2">
+                        Net sales against what it cost to make. Hover any week for its figures and what share of
+                        that week each cost was.
+                    </figcaption>
 
                     {salesCosts && (
                         <ReportComments
