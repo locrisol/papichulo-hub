@@ -428,14 +428,16 @@ export default function ReportProfitLoss({
                 </p>
                 <p className="text-sm mt-2 tabular-nums opacity-85">
                     {pctText(figures.earningsPct)} of net sales
-                    <span className="opacity-70"> &middot; {pctText(figures.earningsPctGross)} of gross</span>
                 </p>
             </div>
 
-            <p className="text-xs text-muted mt-2">
-                Both are shown because the mail has always quoted the gross figure while every other percentage
-                on the report is against net. Say which one you want as the headline and the other can go.
-            </p>
+            {/* Against net, like every other percentage on the report.
+                The old spreadsheet printed this one line against gross while
+                working everything above it out against net, so a week reading
+                13.6% there reads 14.8% here. Nothing about the week changed:
+                the two rows had simply been measuring against different
+                things, and one denominator throughout is the only way the
+                report adds up when read down the page. */}
 
             {gaps.length > 0 && (
                 <div className="mt-4 rounded-lg border border-accent/50 bg-accent-light/50 p-4">
