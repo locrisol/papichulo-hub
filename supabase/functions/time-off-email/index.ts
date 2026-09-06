@@ -34,6 +34,9 @@
 //                    as, or Google quietly rewrites it to the account address.
 //   MAIL_REPLY_TO    optional, a real address replies should go to.
 //   APP_URL          where the buttons point, https://papichulo-hub.vercel.app
+//   MAIL_REDIRECT_TO    optional. While it is set, every mail goes to that
+//                       one address instead of the people it was for, with a
+//                       band across the top naming them. Clear it to go live.
 //   APP_URL_ALSO     optional, comma separated, the other addresses the app is
 //                    allowed to say it is being used from: a preview build, a
 //                    laptop running the dev server
@@ -42,7 +45,7 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay, senderFor } from './email.js'
+import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice } from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -172,7 +175,19 @@ async function byResend(mail: Mail) {
 }
 
 // Whichever one is set up, Google first.
+// Held while the mail is being set up.
+//
+// This function has no test button of its own and fires on somebody else
+// pressing something, so there is no safe way to try it. While
+// MAIL_REDIRECT_TO is set every mail goes to that one address instead,
+// with a band naming who it was for.
 async function send(mail: Mail) {
+    const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
+    if (redirect) {
+        const held = heldNotice(mail, mail.to)
+        mail = { ...mail, ...held, to: [redirect] }
+    }
+
     const user = Deno.env.get('GMAIL_USER')
     const password = Deno.env.get('GMAIL_APP_PASSWORD')
     if (user && password) return await byGmail(mail, user, password)

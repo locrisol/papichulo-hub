@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
-    escapeHtml, tidy, stars, starColour, costTone, senderFor, WIDTH,
+    escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from './reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
@@ -886,5 +886,41 @@ describe('senderFor, with a restaurant that has an address of its own', () => {
     it('still uses the address when there is no restaurant name', () => {
         expect(senderFor(FROM, '', 'dunlaoghaire@papichulo.ie'))
             .toBe('dunlaoghaire@papichulo.ie')
+    })
+})
+
+describe('heldNotice', () => {
+    const mail = {
+        subject: 'Weekly Summary Report Week 34',
+        html: '<!doctype html><html><body style="x"><p>Hi</p></body></html>',
+        text: 'Hi',
+    }
+
+    it('marks the subject so it cannot be mistaken for the real one', () => {
+        expect(heldNotice(mail, ['ana@p.ie']).subject).toBe('[Held] Weekly Summary Report Week 34')
+    })
+
+    it('names who it was for, so nobody has to guess', () => {
+        const held = heldNotice(mail, ['ana@p.ie', 'accounts@x.ie'])
+        expect(held.html).toContain('ana@p.ie, accounts@x.ie')
+        expect(held.text).toContain('It was for ana@p.ie, accounts@x.ie.')
+    })
+
+    it('puts the band at the very top of the body', () => {
+        // A held mail that looks like a real one is how a held mail gets
+        // forwarded to the person it names.
+        const held = heldNotice(mail, ['ana@p.ie'])
+        expect(held.html).toContain('<body style="x"><table')
+        expect(held.html).toContain('did not go to anyone else')
+        expect(held.text.startsWith('HELD.')).toBe(true)
+    })
+
+    it('says nobody rather than nothing when there was no list', () => {
+        expect(heldNotice(mail, []).html).toContain('It was for nobody')
+        expect(heldNotice(mail).html).toContain('It was for nobody')
+    })
+
+    it('keeps the mail otherwise as it was', () => {
+        expect(heldNotice(mail, ['a@b.ie']).html).toContain('<p>Hi</p>')
     })
 })

@@ -26,6 +26,9 @@
 //                       smtp-relay.gmail.com to send as any address on the
 //                       domain rather than only as the account that logged in
 //   SMTP_PORT           optional, 465
+//   MAIL_REDIRECT_TO    optional. While it is set, every mail goes to that
+//                       one address instead of the people it was for, with a
+//                       band across the top naming them. Clear it to go live.
 //
 // **Reply-To is not a secret here.** The time off mail uses MAIL_REPLY_TO, one
 // address for everything. This one sets it per report, to whoever published it,
@@ -39,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor } from './email.js'
+import { senderFor, heldNotice } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -314,13 +317,21 @@ Deno.serve(async (req) => {
         const asked = String(origin || '').trim().replace(/\/$/, '')
         const appUrl = asked && allowed.includes(asked) ? asked : (Deno.env.get('APP_URL') || '')
 
-        const mail = reportEmail({
+        let mail = reportEmail({
             report, restaurant, sections: shaped, figures, charts,
             publisher: publisherName, appUrl, changes, isTest: test,
         })
 
+        // Held while the mail is being set up. Everything above still
+        // happens: the figures are frozen, the charts are drawn, the
+        // recipients are worked out. Only the last step is diverted, so
+        // what lands is the mail those people would have had.
+        const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
+        const sentTo = redirect ? [redirect] : to
+        if (redirect) mail = heldNotice(mail, to)
+
         await send({
-            to,
+            to: sentTo,
             from: from(restaurant?.name, restaurant?.mail_from),
             // Owners reply to these. Sending from the restaurant account keeps
             // every mail coming from one place; the reply still reaches the
@@ -334,11 +345,19 @@ Deno.serve(async (req) => {
         // Who it actually went to, frozen onto the report. The standing list
         // answers who gets these from now on; this answers who got this one,
         // and stops being answerable the moment somebody edits the list.
+        // What it actually went to, which while it is held is the one
+        // address it was diverted to. Recording the people it was meant
+        // for would be a report claiming to have reached owners who never
+        // saw it.
         if (!test) {
-            await admin.from('weekly_reports').update({ sent_to: to }).eq('id', report.id)
+            await admin.from('weekly_reports').update({ sent_to: sentTo }).eq('id', report.id)
         }
 
-        return json({ sent: to.length, to: test ? to : undefined })
+        return json({
+            sent: sentTo.length,
+            to: test || redirect ? sentTo : undefined,
+            held: redirect ? to.length : undefined,
+        })
     } catch (err) {
         // Said out loud, because a key that has expired should be findable in
         // the logs. Unlike the time off mail this reason also goes back to the

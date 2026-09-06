@@ -959,3 +959,35 @@ export function senderFor(mailFrom, restaurantName, address) {
 
     return `${display} <${chosen}>`
 }
+
+// Holding the mail back while it is being set up.
+//
+// When MAIL_REDIRECT_TO is set, every mail goes to that one address instead
+// of the people it was for, with a band across the top naming them. Unset the
+// secret and it goes live. No deploy either way.
+//
+// A redirect rather than a switch that swallows the mail. Swallowing it would
+// keep it quiet, which is the easy half; this also lets somebody read what
+// would have gone out, which is the half that matters for a function that has
+// no test button of its own and fires on somebody else pressing something.
+//
+// The band is deliberately loud and deliberately at the very top. A held mail
+// that looks like a real one is how a held mail gets forwarded to the person
+// it names.
+export function heldNotice(mail, intendedFor = []) {
+    const who = (intendedFor || []).filter(Boolean).join(", ") || "nobody"
+
+    const band = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"'
+        + ' border="0" style="background:#7C2D12;"><tr><td style="padding:14px 18px;'
+        + ' font-family:' + FONT + ';font-size:14px;line-height:1.5;color:#ffffff;">'
+        + '<strong>Held. This did not go to anyone else.</strong><br />'
+        + 'It was for ' + escapeHtml(who)
+        + '. The Hub is set to send every mail here until somebody clears'
+        + ' MAIL_REDIRECT_TO.</td></tr></table>'
+
+    return {
+        subject: "[Held] " + mail.subject,
+        html: String(mail.html).replace(/(<body[^>]*>)/i, "$1" + band),
+        text: "HELD. This did not go to anyone else. It was for " + who + ".\n\n" + mail.text,
+    }
+}
