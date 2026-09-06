@@ -424,14 +424,23 @@ function profitAndLoss(section, f, charts) {
         // What is worth knowing about a platform's bill is what share of that
         // platform's own takings it was. Against total sales it would look
         // small on every platform and say nothing about any of them.
+        //
+        // It goes UNDER the name, not beside the figure. Beside it, the two
+        // together were a line of forty three characters that could not break,
+        // and in this table that is the widest thing in the figure column: it
+        // squeezed the platform names into two lines and "Third party delivery
+        // costs" into four. Splitting the tables took that string off the
+        // overheads; this takes it off the platforms as well.
         const platform = platforms.find(p => p.id === item.key)
         const sales = num(platform?.taken)
         rows.push(line({
-            label: escapeHtml(item.label || 'Platform'),
+            label: escapeHtml(item.label || 'Platform')
+                + (sales > 0
+                    ? `<br /><span style="color:${MUTED};font-size:13px;">`
+                        + `${pct((num(item.amount) / sales) * 100)} of what it took</span>`
+                    : ''),
             colour: platform?.colour,
-            value: sales > 0
-                ? `${money(item.amount)}&nbsp;(${pct((num(item.amount) / sales) * 100)}&nbsp;of its own sales)`
-                : money(item.amount),
+            value: money(item.amount),
             indent: true,
         }))
     }

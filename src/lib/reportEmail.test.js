@@ -167,7 +167,11 @@ describe('reportEmail', () => {
         // Deliveroo cost 800 of the 3200 it took, which is 25%, not 5.4% of
         // total sales. The share against the whole week would look small on
         // every platform and say nothing about any of them.
-        expect(mail.html).toContain('25.00%&nbsp;of its own sales')
+        //
+        // Under the name, not beside the figure. Beside it the two together
+        // were the widest unbreakable thing in that table, and it squeezed the
+        // platform names onto two lines and the total onto four.
+        expect(mail.html).toContain('25.00% of what it took')
     })
 
     it('never prints a total for the three delivery platforms that was typed', () => {
@@ -764,7 +768,10 @@ describe('the profit and loss section is two tables, not one', () => {
         // below them, which is why four attempts at the labels themselves all
         // failed.
         expect(widestIn(bodies[0]).length).toBeLessThan(12)
-        expect(widestIn(bodies[1])).toContain('of its own sales')
+        // And the platforms' own table is measured against its own money too,
+        // because the share sits under the name rather than beside the figure.
+        expect(widestIn(bodies[1]).length).toBeLessThan(12)
+        expect(bodies[1]).toContain('of what it took')
     })
 
     it('keeps the money in one column across both tables', () => {
