@@ -159,7 +159,9 @@ describe('reportEmail', () => {
     it('puts the share in brackets after the money, on the same line', () => {
         // The share is wrapped in its own span now, because it carries the
         // target colour and the money does not.
-        expect(mail.html).toContain('€4,720.00&nbsp;<span')
+        // The gap is an entity, because tidy() strips a plain space between
+        // two tags and the figure and its share would run together.
+        expect(mail.html).toContain('>€4,720.00</span>&#32;<span')
         expect(mail.html).toContain('(32.00%)</span>')
     })
 
@@ -167,7 +169,7 @@ describe('reportEmail', () => {
         // Deliveroo cost 800 of the 3200 it took, which is 25%, not 5.4% of
         // total sales. The share against the whole week would look small on
         // every platform and say nothing about any of them.
-        expect(mail.html).toContain('25.00%&nbsp;of its own sales')
+        expect(mail.html).toContain('25.00% of what it took')
     })
 
     it('never prints a total for the three delivery platforms that was typed', () => {
@@ -433,7 +435,7 @@ describe('what the first send got wrong', () => {
     })
 
     it('draws the section headings as a filled bar', () => {
-        expect(mail.html).toContain('background:#182F24;border-radius:8px')
+        expect(mail.html).toContain('background:#182F24;padding:13px')
     })
 })
 
@@ -477,12 +479,16 @@ describe('starColour', () => {
 
 describe('withShare', () => {
     it('puts the share in brackets, on the same line', () => {
-        // A non breaking space, so the share never wraps away from its figure.
-        expect(withShare(284, 1.54)).toBe('€284.00&nbsp;(1.54%)')
+        // The figure holds together and the share holds together, but the gap
+        // between them is a place the line may break. A single unbreakable run
+        // of both would set a floor under the width of the whole mail.
+        expect(withShare(284, 1.54)).toContain('>€284.00</span>')
+        expect(withShare(284, 1.54)).toContain('(1.54%)')
+        expect(withShare(284, 1.54)).toContain('</span>&#32;<span')
     })
 
     it('gives the money alone when there is no share to give', () => {
-        expect(withShare(284, null)).toBe('€284.00')
+        expect(withShare(284, null)).toBe('<span style="white-space:nowrap;">€284.00</span>')
     })
 })
 
@@ -541,14 +547,14 @@ describe('the cost colours in the mail', () => {
         // Food is 32.00% against a 30% target: two points over, so amber.
         // Labour is 30.50%, also amber. Packaging is 4.14% against 4%, amber.
         const mail = reportEmail(base)
-        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};">(32.00%)</span>`)
+        expect(mail.html).toContain(`<span style="color:${costTone(32, 30)};white-space:nowrap;">(32.00%)</span>`)
     })
 
     it('goes red once it is more than two points over', () => {
         const mail = reportEmail({
             ...base, figures: { ...figures, foodPct: 34.5 },
         })
-        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};">(34.50%)</span>`)
+        expect(mail.html).toContain(`<span style="color:${costTone(34.5, 30)};white-space:nowrap;">(34.50%)</span>`)
         expect(costTone(34.5, 30)).not.toBe(costTone(32, 30))
     })
 
@@ -685,5 +691,82 @@ describe('people and operations', () => {
         })
         expect(clean.html).toContain('>8 of 8 fine<')
         expect(clean.html).not.toContain('Nothing on file:')
+    })
+})
+
+// The longest run of text in the mail that cannot be broken across two lines.
+//
+// This is the measurement that matters, and it is not obvious why. A cell that
+// cannot wrap sets a floor under the width of the table it is in. A table wider
+// than the phone makes Gmail scale the whole message down, decide the type is
+// now too small, and inflate it back up with every column still worked out at
+// the old width. What you see is labels breaking in half in a section nowhere
+// near the cell that caused it.
+function longestUnbreakable(html) {
+    const re = /white-space:nowrap;?"[^>]*>([\s\S]*?)</g
+    let longest = ''
+    let m
+    while ((m = re.exec(html))) {
+        const text = m[1].replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/g, '?').trim()
+        if (text.length > longest.length) longest = text
+    }
+    return longest
+}
+
+describe('nothing in the mail is a long unbreakable run', () => {
+    const mail = reportEmail(base)
+
+    it('keeps every one of them short enough to sit in a phone column', () => {
+        const longest = longestUnbreakable(mail.html)
+        expect(longest.length).toBeLessThanOrEqual(16)
+    })
+
+    it('puts what a platform kept under its name, not beside the figure', () => {
+        // "€292.47 (39.00% of its own sales)" was thirty three characters that
+        // could not break, and it was wrapping "Gas and electric" three rows
+        // above it.
+        expect(mail.html).not.toContain('of its own sales')
+        expect(longestUnbreakable(mail.html)).not.toMatch(/took|sales/)
+    })
+
+    it('holds a figure together even so', () => {
+        expect(mail.html).toContain('<span style="white-space:nowrap;">€14,750.00</span>')
+    })
+})
+
+describe('the section headings', () => {
+    const mail = reportEmail(base)
+
+    it('run the full width, unlike the cards under them', () => {
+        // Inset to the same width as the cards they introduce, they read as one
+        // more card, and nothing tells a new part of the report from another
+        // platform.
+        expect(mail.html).toContain(`background:${'#182F24'};padding:13px 20px`)
+        expect(mail.html).toContain('padding:30px 0 0')
+    })
+})
+
+describe('the headings inside a card', () => {
+    const mail = reportEmail(base)
+
+    it('are a band across the card rather than a line of small grey text', () => {
+        expect(mail.html).toContain(`background:${'#EDE7DC'}`)
+        expect(mail.html).toContain('>New reviews<')
+        expect(mail.html).toContain('>Refunds<')
+    })
+
+    it('span the card, so the rows inside carry their own padding instead', () => {
+        expect(mail.html).toContain('padding:9px 14px')
+    })
+})
+
+describe('tidy and the gap between two tags', () => {
+    it('strips a plain space between tags, which is what it is for', () => {
+        expect(tidy('<span>a</span> <span>b</span>')).toBe('<span>a</span><span>b</span>')
+    })
+
+    it('leaves an entity alone, which is why the gap is written as one', () => {
+        expect(tidy('<span>a</span>&#32;<span>b</span>'))
+            .toBe('<span>a</span>&#32;<span>b</span>')
     })
 })
