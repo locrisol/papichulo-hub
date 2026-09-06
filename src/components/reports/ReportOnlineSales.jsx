@@ -139,6 +139,47 @@ function RefundAmount({ item, canEdit, onSave }) {
     )
 }
 
+// Whether the money came back off the platform.
+//
+// A refund and a refund you claimed back are two different amounts of money
+// lost, and the report was treating them as one. Not claimed is the default
+// because that is what a refund is until somebody does something about it, and
+// a default of claimed would quietly flatter the week.
+//
+// A button rather than a tick box: it is a real target on a phone, it says
+// which state it is in rather than making somebody read a mark, and it is the
+// one control on the card that is not typing.
+function ClaimedToggle({ item, canEdit, onSave }) {
+    const claimed = !!item.meta?.claimed
+
+    if (!canEdit) {
+        return (
+            <span className={`text-xs font-semibold whitespace-nowrap ${
+                claimed ? 'text-green-700' : 'text-muted'}`}>
+                {claimed ? 'Claimed' : 'Not claimed'}
+            </span>
+        )
+    }
+
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={claimed}
+            onClick={() => onSave(item.id, { meta: { ...(item.meta || {}), claimed: !claimed } })}
+            className={`flex-shrink-0 inline-flex items-center gap-1.5 min-h-[2.25rem] px-2.5 rounded-lg
+                text-xs font-semibold whitespace-nowrap border transition-colors
+                focus:outline-none focus:ring-2 focus:ring-accent ${
+                claimed
+                    ? 'border-green-700 bg-green-50 text-green-700'
+                    : 'border-gray-300 bg-white text-muted hover:border-gray-400'}`}
+        >
+            <span aria-hidden="true">{claimed ? '✓' : '○'}</span>
+            {claimed ? 'Claimed' : 'Not claimed'}
+        </button>
+    )
+}
+
 function RatingLine({ platform, item, canEdit, onSave }) {
     const [draft, setDraft] = useState(item?.amount == null ? '' : String(item.amount))
     const move = ratingMove(item)
@@ -189,6 +230,9 @@ function PlatformBlock({
     // Shown beside the heading, not typed anywhere. The cards are still the
     // record of what each one was for.
     const refundTotal = refunds.reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
+    const claimedBack = refunds
+        .filter(r => r.meta?.claimed)
+        .reduce((t, r) => t + Math.abs(Number(r.amount) || 0), 0)
     const [stars, setStars] = useState(5)
     const [count, setCount] = useState('1')
 
@@ -296,6 +340,7 @@ function PlatformBlock({
 
             <SubLabel hint={refundTotal > 0
                 ? `${fmtMoney(-refundTotal)} this week`
+                    + (claimedBack > 0 ? `, ${fmtMoney(claimedBack)} claimed back` : ', none claimed back')
                 : 'one card each, never a total'}>Refunds</SubLabel>
             <div className="space-y-2">
                 {refunds.map(item => (
@@ -307,7 +352,12 @@ function PlatformBlock({
                             holds: item.note,
                             onRemove: () => onRemoveItem(item.id),
                         }) : null}
-                        head={<RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />}
+                        head={
+                            <>
+                                <RefundAmount item={item} canEdit={canEdit} onSave={onSaveItem} />
+                                <ClaimedToggle item={item} canEdit={canEdit} onSave={onSaveItem} />
+                            </>
+                        }
                         note={canEdit ? (
                             <AutoTextarea
                                 defaultValue={item.note || ''}
