@@ -222,8 +222,21 @@ Deno.serve(async (request) => {
     if (event === 'asked' && !isTheirs && !isManager) return json({ error: 'Not yours' }, 403)
     if (event === 'answered' && !isManager) return json({ error: 'Not yours' }, 403)
 
-    const { data: restaurant } = await admin
+    // mail_from arrived in migration 051, and a function can be deployed
+    // before a migration is run. Asking for a column that is not there
+    // does not throw, it returns an error and a null row, and an
+    // unchecked null here would have quietly sent a report headed "The
+    // restaurant" to every owner. So the error IS checked, and it falls
+    // back to the columns that have always existed.
+    let { data: restaurant, error: restaurantError } = await admin
         .from('restaurants').select('name, mail_from').eq('id', absence.restaurant_id).maybeSingle()
+
+    if (restaurantError) {
+        console.warn('restaurants.mail_from is missing, run migration 051', restaurantError)
+        const again = await admin
+            .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
+        restaurant = again.data
+    }
     const restaurantName = restaurant?.name || 'Papi Chulo'
     // Null on a restaurant with no address of its own, which falls back to the
     // MAIL_FROM secret.
