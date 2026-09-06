@@ -185,14 +185,23 @@ export default function InvoicesPage() {
 
         if (e1) { setError(friendlyError(e1)); return }
 
-        // Everything clears, including the supplier and the category.
+        // Everything clears except the date.
         //
-        // It used to keep them, on the grounds that invoices arrive in batches
-        // from the same place. They do, but a form that comes back already
-        // filled in is a form nobody reads, and the cost of getting it wrong is
-        // an invoice filed under the wrong target. The date stays, since that
-        // is the one thing a batch really does share.
-        setForm(emptyForm())
+        // The supplier and the category used to stay too, on the grounds that
+        // invoices arrive in batches from the same place. They do, but a form
+        // that comes back already filled in is a form nobody reads, and the
+        // cost of getting that wrong is an invoice filed under the wrong target.
+        //
+        // The date is different. It is the one thing a batch really does share,
+        // and it is the one field where coming back to today is not a neutral
+        // default but a wrong answer: somebody entering Tuesday's delivery
+        // sets the date once and then has every invoice after it silently
+        // filed under today. Which week an invoice lands in is the whole basis
+        // of the cost dashboard and the weekly report.
+        //
+        // It goes back to today when the page is next opened, which is where a
+        // fresh default belongs.
+        setForm({ ...emptyForm(), invoiceDate: form.invoiceDate })
         setSuccess('Invoice saved.')
         setRefresh(n => n + 1)
     }
