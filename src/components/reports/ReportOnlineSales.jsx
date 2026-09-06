@@ -61,21 +61,28 @@ function SubLabel({ children, hint }) {
     )
 }
 
-// The line every card sits on: content, then a remove button that never moves.
-function LineCard({ children, warn, onRemove }) {
+// A card is two rows: what it is, then what was said about it.
+//
+// They were one wrapping row, and on a phone the note box came out about eight
+// characters wide, sharing a line with five stars, a count and a remove button.
+// A comment nobody can read back while typing it is a comment nobody writes.
+function LineCard({ head, note, warn, onRemove }) {
     return (
-        <div className={`flex flex-wrap items-center gap-2 rounded-lg border bg-white px-3 py-2 ${
+        <div className={`rounded-lg border bg-white px-3 py-2 ${
             warn ? 'border-accent/50' : 'border-border'}`}>
-            {children}
-            {onRemove && (
-                <button
-                    onClick={onRemove}
-                    aria-label="Remove"
-                    className="ml-auto text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
-                >
-                    &times;
-                </button>
-            )}
+            <div className="flex items-center gap-2">
+                {head}
+                {onRemove && (
+                    <button
+                        onClick={onRemove}
+                        aria-label="Remove"
+                        className="ml-auto flex-shrink-0 text-gray-400 hover:text-red-600 transition-colors text-xl leading-none px-1"
+                    >
+                        &times;
+                    </button>
+                )}
+            </div>
+            {note && <div className="mt-2">{note}</div>}
         </div>
     )
 }
@@ -167,12 +174,20 @@ function PlatformBlock({
                                 holds: item.note,
                                 onRemove: () => onRemoveItem(item.id),
                             }) : null}
-                        >
-                            <Stars value={Number(item.meta?.stars) || 0} readOnly />
-                            <span className="text-sm tabular-nums text-gray-700 whitespace-nowrap">
-                                &times; {item.meta?.count || 1}
-                            </span>
-                            {canEdit ? (
+                            head={
+                                <>
+                                    <Stars value={Number(item.meta?.stars) || 0} readOnly />
+                                    <span className="text-sm tabular-nums text-gray-700 whitespace-nowrap">
+                                        &times; {item.meta?.count || 1}
+                                    </span>
+                                    {needs && (
+                                        <span className="text-xs font-semibold text-accent-ink">
+                                            needs a comment
+                                        </span>
+                                    )}
+                                </>
+                            }
+                            note={canEdit ? (
                                 <input
                                     defaultValue={item.note || ''}
                                     onBlur={e => {
@@ -180,13 +195,13 @@ function PlatformBlock({
                                         if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                     }}
                                     placeholder={needs ? 'What did they say' : 'Anything worth saying'}
-                                    className={`flex-1 min-w-[10rem] bg-white border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${
+                                    className={`w-full bg-white border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${
                                         needs ? 'border-accent placeholder:text-accent-ink' : 'border-gray-300'}`}
                                 />
-                            ) : (
-                                <span className="flex-1 min-w-[10rem] text-sm text-gray-700">{item.note}</span>
-                            )}
-                        </LineCard>
+                            ) : item.note ? (
+                                <span className="text-sm text-gray-700">{item.note}</span>
+                            ) : null}
+                        />
                     )
                 })}
 
@@ -196,20 +211,23 @@ function PlatformBlock({
             </div>
 
             {canEdit && (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Stars value={stars} onChange={setStars} />
-                    <span className="text-sm text-muted">&times;</span>
-                    <input
-                        {...numberField({ value: count, onChange: setCount, whole: true })}
-                        className="w-14 text-right bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
+                <div className="mt-2">
+                    <div className="flex items-center gap-2">
+                        <Stars value={stars} onChange={setStars} />
+                        <span className="text-sm text-muted">&times;</span>
+                        <input
+                            {...numberField({ value: count, onChange: setCount, whole: true })}
+                            aria-label="How many of them"
+                            className="w-14 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                    </div>
                     <button
                         onClick={async () => {
                             await onAddReview(platform, stars, Math.max(1, Number(count) || 1))
                             setStars(5)
                             setCount('1')
                         }}
-                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 transition-colors"
+                        className="mt-2 w-full sm:w-auto px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 transition-colors"
                     >
                         Add review
                     </button>
@@ -232,19 +250,25 @@ function PlatformBlock({
                             holds: item.note,
                             onRemove: () => onRemoveItem(item.id),
                         }) : null}
-                    >
-                        {canEdit ? (
-                            <input
-                                {...numberField({
-                                    value: item.amount == null ? '' : String(item.amount),
-                                    onChange: v => onSaveItem(item.id, { amount: v === '' ? 0 : Number(v) }),
-                                })}
-                                className="w-20 text-right bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
+                        head={canEdit ? (
+                            <>
+                                <span className="text-sm text-muted">&euro;</span>
+                                <input
+                                    {...numberField({
+                                        value: item.amount == null ? '' : String(item.amount),
+                                        onChange: v => onSaveItem(item.id, { amount: v === '' ? 0 : Number(v) }),
+                                    })}
+                                    aria-label="How much was refunded"
+                                    className="w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                />
+                                {!String(item.note || '').trim() && (
+                                    <span className="text-xs font-semibold text-accent-ink">needs a note</span>
+                                )}
+                            </>
                         ) : (
                             <span className="text-sm font-semibold tabular-nums">{fmtMoney(item.amount)}</span>
                         )}
-                        {canEdit ? (
+                        note={canEdit ? (
                             <input
                                 defaultValue={item.note || ''}
                                 onBlur={e => {
@@ -252,12 +276,12 @@ function PlatformBlock({
                                     if (note !== (item.note || '')) onSaveItem(item.id, { note })
                                 }}
                                 placeholder="What it was about"
-                                className="flex-1 min-w-[10rem] bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                             />
-                        ) : (
-                            <span className="flex-1 min-w-[10rem] text-sm text-gray-700">{item.note}</span>
-                        )}
-                    </LineCard>
+                        ) : item.note ? (
+                            <span className="text-sm text-gray-700">{item.note}</span>
+                        ) : null}
+                    />
                 ))}
 
                 {refunds.length === 0 && <p className="text-sm text-muted">None this week.</p>}

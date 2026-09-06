@@ -32,12 +32,23 @@ import { useConfirm } from '../../context/ConfirmContext'
 // keeps can be watched week to week rather than read one week at a time. Forty
 // three percent is only alarming once you can see it was thirty eight in May.
 
-// A row that reads at any width. A table with four columns cannot do that, and
-// two layouts for one list is two places to change.
-function Row({ children, tint }) {
+// Every line in this section is the same shape: something on the left naming
+// it, figures and controls on the right, and occasionally a sentence
+// underneath. The two halves stack on a phone and sit on one line from sm up.
+//
+// This used to be a single wrapping flex row, which is not a layout, it is a
+// hope. Whether a row broke depended on how long the platform happened to be
+// called and how wide its figure was, so Deliveroo and Uber Eats wrapped
+// differently in the same list: the percentage ended up under the name on one
+// and beside the box on the other. Two blocks that stack cannot do that.
+function Row({ left, right, extra, tint }) {
     return (
-        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 px-3 border-b border-border last:border-b-0 ${tint || ''}`}>
-            {children}
+        <div className={`py-2.5 px-3 border-b border-border last:border-b-0 ${tint || ''}`}>
+            <div className="sm:flex sm:items-center sm:gap-3">
+                <div className="flex items-center gap-2 min-w-0 sm:flex-1">{left}</div>
+                <div className="flex items-center justify-end gap-3 mt-2 sm:mt-0">{right}</div>
+            </div>
+            {extra && <div className="mt-1.5">{extra}</div>}
         </div>
     )
 }
@@ -45,6 +56,12 @@ function Row({ children, tint }) {
 function pctText(v) {
     return v == null ? '—' : `${v.toFixed(1)}%`
 }
+
+// The money box on a row. Stretches on a phone, where nothing else is competing
+// for the line and a box you have to aim at is a box you mistype into. Natural
+// width above that.
+const moneyBox = 'flex-1 sm:flex-none sm:w-28 text-right rounded-lg px-2 py-1.5 text-sm tabular-nums '
+    + 'focus:outline-none focus:ring-2 focus:ring-accent'
 
 // One standing cost. Locked until somebody opens it, unless it has never been
 // set, in which case it is open from the start and stays open. On the first
@@ -58,6 +75,10 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
     const [label, setLabel] = useState(item.label || '')
 
     const editing = canEdit && (never || open)
+
+    const amount = Number(item.amount) || 0
+    const share = net > 0 ? (amount / net) * 100 : null
+    const changed = wasChanged(item)
 
     // Every overhead line can be renamed and dropped. The list the Hub offers
     // on a first report is a starting point, not a rule: a restaurant with no
@@ -80,10 +101,6 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
         await onRename(item.id, next)
     }
 
-    const amount = Number(item.amount) || 0
-    const share = net > 0 ? (amount / net) * 100 : null
-    const changed = wasChanged(item)
-
     async function commit() {
         // A line that has never been set stays open. Locking it the moment the
         // first figure is typed would mean pressing Open again to fix a typo,
@@ -94,33 +111,33 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
         await onSave(item.id, next)
     }
 
-    return (
-        <Row tint={changed ? 'bg-accent-light/40' : ''}>
-            {renaming ? (
-                <input
-                    value={label}
-                    onChange={e => setLabel(e.target.value)}
-                    onBlur={commitLabel}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') { setLabel(item.label || ''); setRenaming(false) }
-                    }}
-                    autoFocus
-                    aria-label="What this line is called"
-                    className="flex-1 min-w-[8rem] bg-white border border-accent rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-            ) : canEdit ? (
-                <button
-                    onClick={() => { setLabel(item.label || ''); setRenaming(true) }}
-                    title="Rename this line"
-                    className="flex-1 min-w-[8rem] text-left text-sm text-gray-800 hover:text-accent-ink transition-colors"
-                >
-                    {item.label}
-                </button>
-            ) : (
-                <span className="flex-1 min-w-[8rem] text-sm text-gray-800">{item.label}</span>
-            )}
+    const left = renaming ? (
+        <input
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') { setLabel(item.label || ''); setRenaming(false) }
+            }}
+            autoFocus
+            aria-label="What this line is called"
+            className="flex-1 min-w-0 bg-white border border-accent rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+    ) : canEdit ? (
+        <button
+            onClick={() => { setLabel(item.label || ''); setRenaming(true) }}
+            title="Rename this line"
+            className="flex-1 min-w-0 text-left text-sm text-gray-800 hover:text-accent-ink transition-colors"
+        >
+            {item.label}
+        </button>
+    ) : (
+        <span className="flex-1 min-w-0 text-sm text-gray-800">{item.label}</span>
+    )
 
+    const right = (
+        <>
             {editing ? (
                 <input
                     {...numberField({ value: draft, onChange: setDraft })}
@@ -131,15 +148,16 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                         if (e.key === 'Enter') e.currentTarget.blur()
                         if (e.key === 'Escape') { setDraft(String(item.amount ?? '')); setOpen(false) }
                     }}
-                    className="w-28 text-right bg-white border border-accent rounded-lg px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label={item.label}
+                    className={`${moneyBox} bg-white border border-accent`}
                 />
             ) : (
-                <span className="w-28 text-right text-sm tabular-nums font-semibold text-gray-900">
+                <span className="flex-1 sm:flex-none sm:w-28 text-right text-sm tabular-nums font-semibold text-gray-900">
                     {fmtMoney(amount)}
                 </span>
             )}
 
-            <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(share)}</span>
+            <span className="w-12 text-right text-xs tabular-nums text-muted">{pctText(share)}</span>
 
             {canEdit && !editing && (
                 <button
@@ -159,18 +177,25 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                 <button
                     onClick={drop}
                     aria-label={`Remove ${item.label}`}
-                    className="text-gray-400 hover:text-red-600 transition-colors text-lg leading-none px-1"
+                    className="text-gray-400 hover:text-red-600 transition-colors text-xl leading-none px-1"
                 >
                     &times;
                 </button>
             )}
+        </>
+    )
 
-            {changed && (
-                <span className="basis-full text-xs text-accent-ink">
+    return (
+        <Row
+            tint={changed ? 'bg-accent-light/40' : ''}
+            left={left}
+            right={right}
+            extra={changed && (
+                <span className="text-xs text-accent-ink">
                     Changed this week, was {fmtMoney(item.carried_from)}. The report will say so.
                 </span>
             )}
-        </Row>
+        />
     )
 }
 
@@ -188,31 +213,64 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
     }
 
     return (
-        <Row>
-            <span className="flex-1 min-w-[7rem] text-sm text-gray-800">{platform.name}</span>
+        <Row
+            left={
+                <>
+                    <span className="flex-1 min-w-0 text-sm text-gray-800">{platform.name}</span>
+                    <span className="text-xs tabular-nums text-muted whitespace-nowrap">
+                        {fmtMoney(taken)} taken
+                    </span>
+                </>
+            }
+            right={
+                <>
+                    {canEdit ? (
+                        <input
+                            {...numberField({ value: draft, onChange: setDraft })}
+                            onBlur={commit}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                            placeholder="0.00"
+                            aria-label={`What ${platform.name} cost this week`}
+                            className={`${moneyBox} sm:w-24 bg-white border border-gray-300 shadow-sm focus:border-accent`}
+                        />
+                    ) : (
+                        <span className="flex-1 sm:flex-none sm:w-24 text-right text-sm tabular-nums font-semibold text-gray-900">
+                            {fmtMoney(cost)}
+                        </span>
+                    )}
+                    <span className={`w-14 text-right text-sm tabular-nums font-bold ${
+                        share == null ? 'text-gray-400' : 'text-gray-900'}`}>
+                        {pctText(share)}
+                    </span>
+                </>
+            }
+        />
+    )
+}
 
-            <span className="text-xs tabular-nums text-muted whitespace-nowrap">
-                {fmtMoney(taken)} taken
-            </span>
-
-            {canEdit ? (
-                <input
-                    {...numberField({ value: draft, onChange: setDraft })}
-                    onBlur={commit}
-                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                    placeholder="0.00"
-                    className="w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
-                />
-            ) : (
-                <span className="w-24 text-right text-sm tabular-nums font-semibold text-gray-900">
-                    {fmtMoney(cost)}
+// A plain line of figures: a name, an amount, a share. The totals and the run
+// down to what was left.
+function FigureRow({ label, hint, amount, share, tint, strong }) {
+    return (
+        <Row
+            tint={tint}
+            left={
+                <span className={`flex-1 min-w-0 text-sm ${strong ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                    {label}
+                    {hint && <span className="block text-xs font-normal text-muted">{hint}</span>}
                 </span>
-            )}
-
-            <span className={`w-14 text-right text-sm tabular-nums font-bold ${share == null ? 'text-gray-400' : 'text-gray-900'}`}>
-                {pctText(share)}
-            </span>
-        </Row>
+            }
+            right={
+                <>
+                    <span className={`text-sm tabular-nums text-gray-900 ${strong ? 'font-semibold' : ''}`}>
+                        {fmtMoney(amount)}
+                    </span>
+                    <span className="w-12 text-right text-xs tabular-nums text-muted">
+                        {share == null ? '' : pctText(share)}
+                    </span>
+                </>
+            }
+        />
     )
 }
 
@@ -262,13 +320,13 @@ export default function ReportProfitLoss({
                     </p>
                 )}
 
-                <Row tint="bg-app-bg font-semibold">
-                    <span className="flex-1 min-w-[7rem] text-sm text-gray-900">Total</span>
-                    <span className="text-sm tabular-nums text-gray-900">{fmtMoney(figures.deliveryTotal)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">
-                        {pctText(net > 0 ? (figures.deliveryTotal / net) * 100 : null)}
-                    </span>
-                </Row>
+                <FigureRow
+                    strong
+                    tint="bg-app-bg"
+                    label="Total"
+                    amount={figures.deliveryTotal}
+                    share={net > 0 ? (figures.deliveryTotal / net) * 100 : null}
+                />
             </div>
 
             {/* OVERHEADS */}
@@ -294,17 +352,13 @@ export default function ReportProfitLoss({
                     />
                 ))}
 
-                <Row tint="bg-app-bg font-semibold">
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-900">
-                        Total fixed overhead
-                    </span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">
-                        {fmtMoney(figures.overhead)}
-                    </span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">
-                        {pctText(figures.overheadPct)}
-                    </span>
-                </Row>
+                <FigureRow
+                    strong
+                    tint="bg-app-bg"
+                    label="Total fixed overhead"
+                    amount={figures.overhead}
+                    share={figures.overheadPct}
+                />
             </div>
 
             {canEdit && (
@@ -350,29 +404,25 @@ export default function ReportProfitLoss({
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">
-                <Row>
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Net sales</span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.net)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted"></span>
-                </Row>
-                <Row>
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">
-                        Total cost of sales
-                        <span className="block text-xs text-muted">food, packaging and wages</span>
-                    </span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.costOfSales)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.costOfSalesPct)}</span>
-                </Row>
-                <Row tint="bg-app-bg font-semibold">
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-900">Gross profit</span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.grossProfit)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.grossProfitPct)}</span>
-                </Row>
-                <Row>
-                    <span className="flex-1 min-w-[8rem] text-sm text-gray-700">Less total fixed overhead</span>
-                    <span className="w-28 text-right text-sm tabular-nums text-gray-900">{fmtMoney(figures.overhead)}</span>
-                    <span className="w-14 text-right text-xs tabular-nums text-muted">{pctText(figures.overheadPct)}</span>
-                </Row>
+                <FigureRow label="Net sales" amount={figures.net} share={null} />
+                <FigureRow
+                    label="Total cost of sales"
+                    hint="food, packaging and wages"
+                    amount={figures.costOfSales}
+                    share={figures.costOfSalesPct}
+                />
+                <FigureRow
+                    strong
+                    tint="bg-app-bg"
+                    label="Gross profit"
+                    amount={figures.grossProfit}
+                    share={figures.grossProfitPct}
+                />
+                <FigureRow
+                    label="Less total fixed overhead"
+                    amount={figures.overhead}
+                    share={figures.overheadPct}
+                />
             </div>
 
             <div className="mt-3 rounded-lg bg-sidebar text-white p-4">
