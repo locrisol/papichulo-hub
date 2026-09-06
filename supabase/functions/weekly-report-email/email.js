@@ -35,10 +35,18 @@ const BORDER = '#E8E3DB'
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
-// Six hundred was the safe width for twenty years and is too mean on a laptop,
-// which is where this is mostly read. Every client worth naming gives a message
-// more than that now, and a phone scales the table down to fit either way, so
-// the narrow one was costing the desktop and buying nothing.
+// How wide the mail is allowed to get, and it is a maximum rather than a size.
+//
+// **Never put this in a width attribute.** width="760" tells a phone to lay the
+// whole message out at 760 and then scale it down to fit, which on a 412 point
+// screen is a little over half size. Gmail then decides the type is too small
+// to read and inflates it back up, but the columns underneath it were still
+// worked out at 760, so a label with room for twenty characters gets ten and
+// "Gas and electric" comes out on two lines. That is why widening the desktop
+// broke the phone: the two were the same number doing two different jobs.
+//
+// As a max-width in the style it is a ceiling and nothing else. A laptop gets
+// 760, a phone gets its own width at its own type size, and nothing is scaled.
 export const WIDTH = 760
 
 // The gap down either side of the words.
@@ -306,7 +314,7 @@ function chart(url, caption) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="background:#ffffff;border-top:1px solid ${BORDER};border-bottom:1px solid ${BORDER};">
             <tr><td style="padding:6px 0;">
-                <img src="${escapeHtml(url)}" width="${WIDTH}" alt="${escapeHtml(caption)}"
+                <img src="${escapeHtml(url)}" width="100%" alt="${escapeHtml(caption)}"
                     style="display:block;width:100%;max-width:${WIDTH}px;height:auto;border:0;" />
             </td></tr>
         </table>
@@ -438,15 +446,20 @@ export function stars(count) {
 // of three had no rating at all, and a reader cannot tell "held at 4.8" from
 // "nobody has entered it" by being shown neither. The move is still called out
 // when there is one, because that is the part that is news.
-function platformBlock(section, platform) {
+function platformBlock(section, platform, rated) {
     const rows = []
 
-    const rating = of(section, 'rating').find(r => r.key === platform.id)
+    // A corporate account gets none of what follows. Clockmeal has no star
+    // rating, nobody leaves it a review and nothing is refunded through it: the
+    // week is a set of orders and an invoice. Printing "overall rating: not
+    // recorded" against four of them says something is missing when there is
+    // nothing to miss.
+    const rating = rated ? of(section, 'rating').find(r => r.key === platform.id) : null
     const moved = rating && rating.amount != null && rating.carried_from != null
         && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
     const up = moved && num(rating.amount) > num(rating.carried_from)
 
-    rows.push(line({
+    if (rated) rows.push(line({
         label: 'Overall rating',
         value: rating?.amount == null
             ? '<span style="color:' + MUTED + ';">not recorded</span>'
@@ -458,8 +471,8 @@ function platformBlock(section, platform) {
                         : '')),
     }))
 
-    const reviews = of(section, 'review').filter(r => r.key === platform.id)
-    rows.push(subHeading(reviews.length ? 'New reviews' : 'New reviews: none'))
+    const reviews = rated ? of(section, 'review').filter(r => r.key === platform.id) : []
+    if (rated) rows.push(subHeading(reviews.length ? 'New reviews' : 'New reviews: none'))
     for (const review of reviews) {
         const count = num(review.meta?.count) || 1
         const mark = `<span style="color:${starColour(review.meta?.stars)};font-size:16px;">${stars(review.meta?.stars)}</span>`
@@ -472,7 +485,7 @@ function platformBlock(section, platform) {
         }))
     }
 
-    const refunds = of(section, 'refund').filter(r => r.key === platform.id)
+    const refunds = rated ? of(section, 'refund').filter(r => r.key === platform.id) : []
     if (refunds.length > 0) {
         rows.push(subHeading('Refunds'))
         for (const refund of refunds) {
@@ -493,7 +506,7 @@ function platformBlock(section, platform) {
     return `<tr><td style="padding:14px ${SIDE}px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
             style="border:1px solid ${BORDER};border-left:5px solid ${mark};border-radius:10px;">
-            <tr><td style="background:${CREAM};padding:12px 14px;border-radius:0 10px 0 0;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                         <td style="font-family:${FONT};font-size:17px;font-weight:700;
@@ -503,11 +516,11 @@ function platformBlock(section, platform) {
                     </tr>
                 </table>
             </td></tr>
-            <tr><td style="padding:2px 14px 12px;">
+            ${rows.length || remark ? `<tr><td style="padding:2px 14px 12px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-collapse:collapse;">${rows.join('')}</table>
                 ${remark ? `<div style="padding-top:10px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(remark)}</div>` : ''}
-            </td></tr>
+            </td></tr>` : ''}
         </table>
     </td></tr>`
 }
@@ -517,7 +530,7 @@ function platformSection(section, f, charts, bucket, chartKey) {
 
     const body = platforms.length === 0
         ? note('No platforms were tracked for this week.')
-        : platforms.map(p => platformBlock(section, p)).join('')
+        : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
 
     return heading(section.title) + body
         + chart(charts[chartKey], bucket === 'online_platform'
@@ -527,13 +540,17 @@ function platformSection(section, f, charts, bucket, chartKey) {
 }
 
 // The paperwork, from the copy frozen with the report rather than from the staff
-// table. Somebody's permit renewed in October must not change what a report sent
-// in September said.
+// table. Somebody's permit renewed in October must not change what a report
+// sent in September said.
 //
-// A block, not a row: the heading, then how many are fine, then the people who
-// need something doing, one to a line. It used to be a sentence with semicolons
-// in it, which on a phone wrapped into four lines of prose nobody was going to
-// read to the end of.
+// A card, built the same way a platform block is: a header carrying the name
+// and the count, then the people who need something doing, one to a line under
+// a heading that says what is wrong with them.
+//
+// It was loose text hard against the left edge of the message, which read as
+// the section having been forgotten rather than laid out. It was also a
+// sentence with semicolons in it before that, which on a phone wrapped into
+// four lines of prose nobody was going to finish.
 function paperwork(state, title) {
     if (!state) return ''
 
@@ -544,33 +561,36 @@ function paperwork(state, title) {
         const names = people
             .map(p => '&bull;&nbsp;' + escapeHtml(p.name) + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : ''))
             .join('<br />')
-        groups.push(`<div style="margin-top:10px;font-size:13px;color:${MUTED};">${label}</div>`
-            + `<div style="margin-top:3px;font-size:14px;line-height:1.65;color:${INK};">${names}</div>`)
+        groups.push(`<div style="margin-top:12px;font-family:${FONT};font-size:13px;color:${MUTED};">${label}</div>`
+            + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
     }
 
     group('Out of date:', state.expired, true)
     group('Runs out soon:', state.expiring, true)
     group('Nothing on file:', state.missing, false)
 
-    return `<tr><td style="padding:16px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};">
-        <div style="font-size:15px;font-weight:700;color:${INK};">${escapeHtml(title)}</div>
-        <div style="margin-top:4px;font-size:14px;font-weight:700;color:${tone};">${state.fine} of ${state.total} fine</div>
-        ${groups.join('')}
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                            font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
+                    </tr>
+                </table>
+            </td></tr>
+            ${groups.length ? `<tr><td style="padding:2px 14px 14px;">${groups.join('')}</td></tr>` : ''}
+        </table>
     </td></tr>`
 }
 
 function peopleAndOps(section, f) {
     const paper = f.paperwork || {}
-    const rows = [
-        paperwork(paper.food, 'Food safety certificates'),
-        paperwork(paper.permits, 'Right to work'),
-    ].filter(Boolean)
-
     return heading(section.title)
-        + (rows.length
-            ? `<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                border="0">${rows.join('')}</table></td></tr>`
-            : '')
+        + paperwork(paper.food, 'Food safety certificates')
+        + paperwork(paper.permits, 'Right to work')
         + comments(sectionComments(section))
 }
 
@@ -693,7 +713,7 @@ export function reportEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
     style="background:${CREAM};padding:24px 10px;">
 <tr><td align="center">
-<table role="presentation" width="${WIDTH}" cellpadding="0" cellspacing="0" border="0"
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"
     style="width:100%;max-width:${WIDTH}px;background:#ffffff;border-radius:14px;
     border:1px solid ${BORDER};overflow:hidden;">
 

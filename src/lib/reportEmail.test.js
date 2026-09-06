@@ -584,3 +584,106 @@ describe('the rows that matter more than the others', () => {
         expect(bad.html).toContain('border:2px solid #B91C1C')
     })
 })
+
+describe('the width, which is a ceiling and not a size', () => {
+    const mail = reportEmail(base)
+
+    it('never puts the width in an attribute', () => {
+        // width="760" tells a phone to lay the whole message out at 760 and
+        // scale it down, and Gmail then inflates the type back up inside
+        // columns worked out at 760. That is what put "Gas and electric" on
+        // two lines, and why widening the desktop broke the phone.
+        expect(mail.html).not.toContain(`width="${WIDTH}"`)
+        expect(mail.html).not.toMatch(/width="\d{3,}"/)
+    })
+
+    it('sets it as a maximum in the style instead', () => {
+        expect(mail.html).toContain(`max-width:${WIDTH}px`)
+    })
+
+    it('tells a chart to fill its column rather than to be a number of points wide', () => {
+        const withCharts = reportEmail({ ...base, charts: { sales: 'https://x.test/a.png' } })
+        expect(withCharts.html).toContain('width="100%"')
+    })
+})
+
+describe('corporate accounts', () => {
+    const sectionsWithCorporate = [
+        ...sections,
+        {
+            key: 'corporate_sales', title: 'Corporate sales', sort_order: 3,
+            items: [],
+        },
+    ].filter((s, i, all) => all.findIndex(x => x.key === s.key) === i)
+
+    const mail = reportEmail({ ...base, sections: sectionsWithCorporate })
+
+    it('gives a corporate account no rating and no reviews', () => {
+        // Clockmeal has no star rating and nobody leaves it a review. Printing
+        // "overall rating: not recorded" against four of them says something is
+        // missing when there is nothing to miss.
+        const corporate = mail.html.slice(mail.html.indexOf('Corporate sales'))
+        expect(corporate).toContain('Corporate Ltd')
+        expect(corporate).not.toContain('Overall rating')
+        expect(corporate).not.toContain('New reviews')
+    })
+
+    it('still gives it a block, a colour and what it took', () => {
+        const corporate = mail.html.slice(mail.html.indexOf('Corporate sales'))
+        expect(corporate).toContain('€900.00')
+    })
+
+    it('keeps the rating and the reviews on the online platforms', () => {
+        const online = mail.html.slice(
+            mail.html.indexOf('Online sales'), mail.html.indexOf('Corporate sales'))
+        expect(online).toContain('Overall rating')
+        expect(online).toContain('New reviews')
+    })
+})
+
+describe('people and operations', () => {
+    const mail = reportEmail(base)
+
+    it('is a card rather than text against the edge of the message', () => {
+        expect(mail.html).toContain(`padding:14px ${20}px 0`)
+        expect(mail.html).toContain('border-left:5px solid')
+    })
+
+    it('puts the count in the header beside the name', () => {
+        expect(mail.html).toContain('>Food safety certificates<')
+        expect(mail.html).toContain('>8 of 8 fine<')
+    })
+
+    it('edges the card by how bad it is', () => {
+        // Green when everything is in date, red once something has expired.
+        const bad = reportEmail({
+            ...base,
+            figures: {
+                ...figures,
+                paperwork: {
+                    ...figures.paperwork,
+                    food: {
+                        total: 8, fine: 7, ok: false, missing: [], expiring: [],
+                        expired: [{ name: 'Iliana', on: '2026-07-01' }],
+                    },
+                },
+            },
+        })
+        expect(bad.html).toContain('border-left:5px solid #B91C1C')
+    })
+
+    it('draws no empty body when there is nothing to list', () => {
+        const clean = reportEmail({
+            ...base,
+            figures: {
+                ...figures,
+                paperwork: {
+                    food: { total: 8, fine: 8, ok: true, missing: [], expired: [], expiring: [] },
+                    permits: { total: 8, fine: 8, ok: true, missing: [], expired: [], expiring: [] },
+                },
+            },
+        })
+        expect(clean.html).toContain('>8 of 8 fine<')
+        expect(clean.html).not.toContain('Nothing on file:')
+    })
+})
