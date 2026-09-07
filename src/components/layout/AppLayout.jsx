@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
 import BackToTop from './BackToTop'
 import { ScrollProvider } from '../../context/ScrollContext'
-import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
+import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '../../lib/access'
 
 // Sidebar navigation.
 //
@@ -53,7 +53,11 @@ const navItems = [
     { path: '/team', label: 'Team', icon: 'users', section: 'People', roles: MANAGERS },
 
 
-    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: MANAGERS },
+    // Accounts and the sign in record. Everything a manager needs to do with a
+    // person lives under Team; this page is only about who can get in, so it is
+    // Super Admin's. Team keeps working either way, it reads the users table
+    // itself and the policy decides what comes back.
+    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 ]
 

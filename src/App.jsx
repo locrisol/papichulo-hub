@@ -18,7 +18,7 @@ import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
 import RequireRole from './components/RequireRole'
-import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from './lib/access'
+import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from './lib/access'
 import { useAuth } from './context/AuthContext'
 import { homeFor } from './lib/access'
 
@@ -119,7 +119,7 @@ export default function App() {
                 <Route path="/my-shifts" element={<MyShiftsPage />} />
 
                 {/* Settings. Restaurant configuration excludes owners. */}
-                <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
+                <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />
