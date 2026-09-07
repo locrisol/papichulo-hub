@@ -133,7 +133,11 @@ select public.record_logins();
 -- Every ten minutes. Sessions survive far longer than that, so the
 -- window in which one could appear and be pruned unseen is not a real
 -- one, and the job costs a single insert that usually finds nothing.
-create extension if not exists pg_cron;
+--
+-- The schema has to be named. pg_cron pins itself to pg_catalog in its
+-- own control file and is not relocatable, so a bare create extension
+-- tries to put it wherever the search path points and is refused.
+create extension if not exists pg_cron with schema pg_catalog;
 
 select cron.unschedule('record-logins')
 where exists (select 1 from cron.job where jobname = 'record-logins');
