@@ -64,9 +64,18 @@ create index if not exists idx_login_events_when
 
 -- ---------- 2. who may read it, and nobody may change it ----------
 --
--- Owners and Super Admin read it. A store manager does not: this says
--- where people were and when, which is not something one manager needs
--- about another.
+-- Super Admin only. Not owners, and not managers.
+--
+-- This is a record of where people were and when, which is a different
+-- kind of thing from the money and the rosters an owner is meant to see.
+-- An owner reading it learns when a manager was at their computer at the
+-- weekend, which is not what it is for and not something anybody agreed
+-- to when they were given a login.
+--
+-- It exists to answer "did this account get used, and by what", after
+-- the fact and for a reason. Keeping it to the one role that already
+-- administers the accounts keeps it that, rather than something to
+-- browse.
 --
 -- There is no insert, update or delete policy, and that is on purpose.
 -- With RLS on and no policy, PostgREST refuses all three to everybody,
@@ -78,7 +87,7 @@ alter table public.login_events enable row level security;
 drop policy if exists login_events_select on public.login_events;
 create policy login_events_select on public.login_events
   for select
-  using (get_my_role() = any (array['owner', 'super_admin']));
+  using (get_my_role() = 'super_admin');
 
 -- ---------- 3. the copy ----------
 --
