@@ -51,15 +51,21 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
     const rows = []
 
     // ---- the dishes, merged by the name they go under ----
+    //
+    // Matched without regard to capitals or stray spaces. "Churros" and
+    // "churros" are one thing to anybody reading the sheet, and two rows saying
+    // the same fourteen answers is exactly what this is here to stop. The
+    // spelling shown is the first one seen.
     const byName = new Map()
     for (const item of menuItems || []) {
         const name = sheetName(item)
         if (!name) continue
-        if (!byName.has(name)) byName.set(name, [])
-        byName.get(name).push(item)
+        const key = name.toLowerCase()
+        if (!byName.has(key)) byName.set(key, { name, items: [] })
+        byName.get(key).items.push(item)
     }
 
-    for (const [name, items] of byName) {
+    for (const { name, items } of byName.values()) {
         const ids = new Set(items.map(i => i.id))
         const all = (allComponents || []).filter(c => ids.has(c.menu_item_id))
         const own = all.filter(c => !isChoice(c))

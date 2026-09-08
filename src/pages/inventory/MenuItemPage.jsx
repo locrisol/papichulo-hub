@@ -383,6 +383,33 @@ export default function MenuItemPage() {
     return parseFloat(component.quantity) * result.cost
   }
 
+  // The sheet names already in use in the category this item is in, and who is
+  // using each. Offered back so the second churros is picked off a list rather
+  // than typed again: Churros and Churos are two rows on the sheet and nothing
+  // would have said so.
+  //
+  // Only this category, because that is the only place a name can merge
+  // anything. A name typed into another category does nothing at all.
+  const sheetNamesHere = (() => {
+    const found = new Map()
+    for (const other of allMenuItems) {
+      if (other.id === id) continue
+      if (other.category_id !== headerForm.category_id) continue
+      const name = (other.sheet_name || '').trim()
+      if (!name) continue
+      // Keyed without capitals, to match how the sheet itself groups them.
+      const key = name.toLowerCase()
+      if (!found.has(key)) found.set(key, { name, items: [] })
+      found.get(key).items.push(other.name)
+    }
+    return found
+  })()
+
+  // Who this item is about to share a row with. Shown as it is typed, so the
+  // merge is confirmed before it is saved rather than found on the sheet.
+  const sharesWith =
+    sheetNamesHere.get((headerForm.sheet_name || '').trim().toLowerCase())?.items || []
+
   // The groups already used on this item, for the form to offer back.
   const existingGroups = [...new Set(
     components.map(c => c.choice_group).filter(Boolean),
@@ -453,15 +480,29 @@ export default function MenuItemPage() {
             <input
               id="sheet-name"
               type="text"
+              list="sheet-names"
               value={headerForm.sheet_name}
               onChange={e => handleHeaderChange('sheet_name', e.target.value)}
               placeholder={headerForm.name || 'Same as the name'}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave empty to use the name above. Give two sizes of the same dish the same
-              name here and they appear as one row.
-            </p>
+            <datalist id="sheet-names">
+              {[...sheetNamesHere.values()]
+                .map(v => v.name)
+                .sort()
+                .map(n => <option key={n} value={n} />)}
+            </datalist>
+
+            {sharesWith.length > 0 ? (
+              <p className="text-xs text-green-700 mt-1">
+                Shares a row with {sharesWith.join(', ')}.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-1">
+                Leave empty to use the name above. Give two sizes of the same dish the same
+                name here and they appear as one row.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>

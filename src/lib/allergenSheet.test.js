@@ -61,6 +61,27 @@ describe('sheetRows', () => {
             .toEqual(['Caramel Sauce', 'Chocolate Sauce', 'Churros'])
     })
 
+    it('does not mind capitals or a stray space', () => {
+        // Churros and churros are one thing to anybody reading the sheet, and
+        // the whole point of this field is to stop two rows saying the same
+        // fourteen answers.
+        const items = [
+            { id: 'm4', name: '4 Churros', sheet_name: 'Churros' },
+            { id: 'm7', name: '7 Churros', sheet_name: ' churros ' },
+        ]
+        const rows = sheetRows(items, components, products, [], allergens)
+        expect(rows.filter(r => r.name.toLowerCase() === 'churros')).toHaveLength(1)
+    })
+
+    it('shows the first spelling it was given', () => {
+        const items = [
+            { id: 'm4', name: '4 Churros', sheet_name: 'Churros' },
+            { id: 'm7', name: '7 Churros', sheet_name: 'CHURROS' },
+        ]
+        expect(sheetRows(items, components, products, [], allergens)
+            .find(r => r.name.toLowerCase() === 'churros').name).toBe('Churros')
+    })
+
     it('does not put the sauce allergens on the dish', () => {
         // The whole point. Somebody who took caramel is not being warned about
         // nuts because the chocolate might have them.
