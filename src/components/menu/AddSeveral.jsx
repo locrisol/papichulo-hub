@@ -31,7 +31,7 @@ export default function AddSeveral({
     const inCategory = categoryId
         ? menuItems.filter(i => i.category_id === categoryId)
         : []
-    const { offered, skipped } = offerable(inCategory, allComponents, products)
+    const { offered, skipped, packagingLeftOut } = offerable(inCategory, allComponents, products)
 
     const shown = offered.filter(({ product }) =>
         product.name.toLowerCase().includes(search.trim().toLowerCase()))
@@ -211,9 +211,15 @@ export default function AddSeveral({
                     </div>
                 )}
 
-                {/* Said out loud rather than left as a short list. Offering
-                    eight of eleven quietly is how a group ends up missing
-                    three options with no reason to go looking. */}
+                {/* Both of these are said out loud rather than left as a short
+                    list. Offering eight of eleven quietly is how a group ends
+                    up missing three options with no reason to go looking. */}
+                {packagingLeftOut > 0 && (
+                    <p className="text-xs text-gray-500 mt-3">
+                        Packaging is not included. A salsa sold on its own comes in a dip pot,
+                        but going into a dish it does not, so only the salsa is added.
+                    </p>
+                )}
                 {skipped > 0 && (
                     <p className="text-xs text-muted mt-3">
                         {skipped} {skipped === 1 ? 'item is' : 'items are'} made from more than one
