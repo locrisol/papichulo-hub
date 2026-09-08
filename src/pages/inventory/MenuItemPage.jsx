@@ -530,6 +530,25 @@ export default function MenuItemPage() {
                 .map(n => <option key={n} value={n} />)}
             </datalist>
 
+            {/* On the field rather than only in the dropdown behind it. A
+                datalist shows nothing until you click into the box, so there
+                was no way to tell a list of names from no names at all. */}
+            {sheetNamesHere.size > 0 && (
+              <div className="flex flex-wrap items-baseline gap-2 mt-2">
+                <span className="text-xs text-muted">Already used here:</span>
+                {[...sheetNamesHere.values()].map(v => v.name).sort().map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => handleHeaderChange('sheet_name', n)}
+                    className="px-2 py-0.5 rounded-full border border-border bg-white text-xs text-gray-700 hover:border-gray-400 transition-colors"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {sharesWith.length > 0 ? (
               <p className="text-xs text-green-700 mt-1">
                 Shares a row with {sharesWith.join(', ')}.

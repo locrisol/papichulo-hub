@@ -4,6 +4,7 @@ import ModalSection from '../ModalSection'
 import { modalFooter, secondaryButton } from '../../lib/controlStyles'
 import QuantityInUnit from '../QuantityInUnit'
 import { offerable } from '../../lib/menuChoices'
+import { canBeMenuComponent } from '../../lib/products'
 
 // Adding a whole choice at once.
 //
@@ -15,6 +16,10 @@ import { offerable } from '../../lib/menuChoices'
 // faster way of typing, not a different kind of thing, which matters: a group
 // that pointed at the category itself would quietly pull in a drink added next
 // month and raise the cost of every breakfast with nothing anywhere saying so.
+
+// The value the dropdown uses for "not a category at all". A uuid can never
+// collide with it.
+const PRODUCTS = 'products'
 
 export default function AddSeveral({
     menuCategories, menuItems, allComponents, products, existingGroups,
@@ -29,13 +34,29 @@ export default function AddSeveral({
     // something, filtering it away and filtering it back does not lose it.
     const [picked, setPicked] = useState({})
 
-    const inCategory = categoryId
-        ? menuItems.filter(i => i.category_id === categoryId)
-        : []
+    // Two ways to fill the list, because not everything you might choose
+    // between is sold on its own.
+    //
+    // A drink and a salsa are menu items, so a category gives them. Chocolate
+    // sauce is not sold separately and never will be, so it is only ever a
+    // product, and a recipe made in house is only ever a product too. Without
+    // this there was no way to offer either of them at all.
+    const fromProducts = categoryId === PRODUCTS
+
+    const inCategory = fromProducts || !categoryId
+        ? []
+        : menuItems.filter(i => i.category_id === categoryId)
     const { offered, skipped, packagingLeftOut } = offerable(inCategory, allComponents, products)
 
-    const shown = offered.filter(({ product }) =>
-        product.name.toLowerCase().includes(search.trim().toLowerCase()))
+    const asProducts = fromProducts
+        ? products
+            .filter(canBeMenuComponent)
+            .map(product => ({ item: product, product }))
+        : []
+
+    const wanted = search.trim().toLowerCase()
+    const shown = [...offered, ...asProducts].filter(({ product }) =>
+        product.name.toLowerCase().includes(wanted))
 
     // Already in the choice being typed, rather than already anywhere on the
     // item. A chicken quesadilla made with chipotle can still be served with a
@@ -157,9 +178,14 @@ export default function AddSeveral({
                         className="flex-1 min-w-[10rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                     >
                         <option value="">Choose a category...</option>
-                        {menuCategories.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
+                        <optgroup label="Menu categories">
+                            {menuCategories.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Anything else">
+                            <option value={PRODUCTS}>All products</option>
+                        </optgroup>
                     </select>
 
                     <input
@@ -209,7 +235,8 @@ export default function AddSeveral({
 
                 {!categoryId ? (
                     <p className="text-sm text-muted py-6 text-center">
-                        Choose a category to see its items.
+                        Choose a category to see its items, or All products for something
+                        that is not sold on its own.
                     </p>
                 ) : shown.length === 0 ? (
                     <p className="text-sm text-muted py-6 text-center">
@@ -269,6 +296,12 @@ export default function AddSeveral({
                 {/* Both of these are said out loud rather than left as a short
                     list. Offering eight of eleven quietly is how a group ends
                     up missing three options with no reason to go looking. */}
+                {fromProducts && shown.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-3">
+                        Every product, so search is the quick way through it. A recipe made
+                        in house is here the same as anything bought in.
+                    </p>
+                )}
                 {packagingLeftOut > 0 && (
                     <p className="text-xs text-gray-500 mt-3">
                         Packaging is not included. A salsa sold on its own comes in a dip pot,
