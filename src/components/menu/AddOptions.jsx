@@ -226,6 +226,44 @@ export default function AddOptions({
                     worth setting once you can see what you are setting it on,
                     and having to scroll back up to a box in another section to
                     do it was the wrong way round. */}
+                {/* Above the chosen ones rather than below them: it is the box
+                    that fills their quantities, so reaching it should not mean
+                    scrolling past the thing it acts on.
+
+                    Kept on the whole time there is a list, not only while
+                    something is left in it: ticking the last one must not take
+                    Clear all off the screen with it. */}
+                {categoryId && shown.length > 0 && (
+                    <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                        {commonUnit ? (
+                            <div className="w-56">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    Quantity for all
+                                </label>
+                                {/* The same control as the ordinary component
+                                    form, so a sauce is typed in grams here as
+                                    well. A plain box stored 1 as one whole kilo
+                                    with nothing on screen saying which unit it
+                                    meant. */}
+                                <QuantityInUnit
+                                    value={everyQuantity}
+                                    onChange={setAll}
+                                    unit={commonUnit}
+                                />
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-500 max-w-xs">
+                                These are measured in different units, so set the quantity on
+                                each one.
+                            </p>
+                        )}
+
+                        <button type="button" onClick={toggleAll} className={secondaryButton}>
+                            {allTicked ? 'Clear all' : 'Select all'}
+                        </button>
+                    </div>
+                )}
+
                 {/* Above the list and outside the search, because the whole
                     point of it is to be visible when what it names is not. */}
                 {chosenRows.length > 0 && (
@@ -257,40 +295,6 @@ export default function AddOptions({
                                 </div>
                             ))}
                         </div>
-                    </div>
-                )}
-
-                {/* Kept on the whole time there is a list, not only while
-                    something is left in it: ticking the last one must not
-                    take Clear all off the screen with it. */}
-                {categoryId && shown.length > 0 && (
-                    <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
-                        {commonUnit ? (
-                            <div className="w-56">
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                    Quantity for all
-                                </label>
-                                {/* The same control as the ordinary component
-                                    form, so a sauce is typed in grams here as
-                                    well. A plain box stored 1 as one whole kilo
-                                    with nothing on screen saying which unit it
-                                    meant. */}
-                                <QuantityInUnit
-                                    value={everyQuantity}
-                                    onChange={setAll}
-                                    unit={commonUnit}
-                                />
-                            </div>
-                        ) : (
-                            <p className="text-xs text-gray-500 max-w-xs">
-                                These are measured in different units, so set the quantity on
-                                each one.
-                            </p>
-                        )}
-
-                        <button type="button" onClick={toggleAll} className={secondaryButton}>
-                            {allTicked ? 'Clear all' : 'Select all'}
-                        </button>
                     </div>
                 )}
 
