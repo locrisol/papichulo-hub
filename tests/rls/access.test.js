@@ -324,4 +324,41 @@ maybe('what each role can see and do', () => {
             expect(count).toBe(0)
         })
     })
+
+    // ---- the change log ----
+    //
+    // The point of this one is the first test. Everything else here checks
+    // what is already built; that one checks what gets built next, and fails
+    // the day somebody adds a table without auditing it.
+    describe('the change log', () => {
+        it('is watching every table there is', async () => {
+            const { data, error } = await superadmin.rpc('unwatched_tables')
+            expect(error, 'could not ask which tables are unwatched').toBeNull()
+            expect(data, `these tables have no audit trigger: ${(data || []).join(', ')}`)
+                .toEqual([])
+        })
+
+        it('does not let the super admin edit it', async () => {
+            // A log its own administrator can quietly change is not evidence,
+            // so there is no write policy on it for anybody at all.
+            expect(await writeRefused(superadmin, 'change_log', {
+                table_name: 'users', action: 'update', via: 'test',
+            })).toBe(true)
+        })
+
+        it('does not show it to an owner', async () => {
+            const { count } = await countVisible(owner, 'change_log')
+            expect(count).toBe(0)
+        })
+
+        it('does not show it to a manager', async () => {
+            const { count } = await countVisible(manager, 'change_log')
+            expect(count).toBe(0)
+        })
+
+        it('does not let anybody but the super admin ask what is unwatched', async () => {
+            const { error } = await manager.rpc('unwatched_tables')
+            expect(error, 'a manager was allowed to call unwatched_tables').not.toBeNull()
+        })
+    })
 })

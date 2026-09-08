@@ -4,6 +4,9 @@ import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableCard, badge, rowButton } from '../../lib/controlStyles'
+import { latestByUser, lastUsed, agoWords } from '../../lib/loginEvents'
+import { fullDate } from '../../lib/dates'
+import SignInHistory from '../../components/settings/SignInHistory'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -21,6 +24,13 @@ export default function UsersPage() {
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // The sign in record. Super Admin only, and the table itself refuses
+  // everybody else, so this stays empty for them whatever the page does.
+  const [logins, setLogins] = useState([])
+  const [showFor, setShowFor] = useState(null)
+  const [showEvents, setShowEvents] = useState([])
+  const seesLogins = user?.role === 'super_admin'
 
   useEffect(() => {
     fetchData()
@@ -42,7 +52,39 @@ export default function UsersPage() {
 
     if (!restaurantsRes.error) setRestaurants(restaurantsRes.data)
 
+    // Asked for unconditionally, and the database decides. The policy on
+    // login_events returns nothing at all to anybody who is not Super Admin,
+    // so this comes back empty for them without the page checking. Reading the
+    // role here instead would mean this ran once on mount with whatever the
+    // context had at the time, and if the account had not resolved yet the
+    // column would have stayed empty for the rest of the session.
+    //
+    // Enough to fill the column, not everything ever recorded. Opening a
+    // person fetches theirs properly, so this limit costs nothing except that
+    // a name nobody has used in a very long time reads as Never until opened.
+    const { data: loginRes } = await supabase
+      .from('login_events')
+      .select('*')
+      .order('signed_in_at', { ascending: false })
+      .limit(500)
+    setLogins(loginRes || [])
+
     setLoading(false)
+  }
+
+  // Theirs, all of it, rather than whatever happened to be in the first
+  // five hundred.
+  async function openHistory(person) {
+    setShowFor(person)
+    setShowEvents([])
+    const { data, error: e } = await supabase
+      .from('login_events')
+      .select('*')
+      .eq('user_id', person.id)
+      .order('signed_in_at', { ascending: false })
+      .limit(200)
+    if (e) setError(friendlyError(e))
+    else setShowEvents(data || [])
   }
 
   async function toggleUserActive(userId, currentStatus) {
@@ -55,10 +97,21 @@ export default function UsersPage() {
     else fetchData()
   }
 
+  // Words for the column. Anything inside a week reads as how long ago,
+  // and past that a date: "used 34 days ago" is a figure nobody checks
+  // against a calendar.
+  function seenWords(person) {
+    const at = lastUsed(lastSeen.get(person.id))
+    if (!at) return 'Never'
+    return agoWords(at) || fullDate(at.slice(0, 10))
+  }
+
   function getRestaurantName(restaurantId) {
     if (!restaurantId) return '-'
     return restaurants.find(r => r.id === restaurantId)?.name || '-'
   }
+
+  const lastSeen = latestByUser(logins)
 
   return (
     <div>
@@ -113,6 +166,15 @@ export default function UsersPage() {
                 <span className="text-xs text-gray-500">{getRestaurantName(u.restaurant_id)}</span>
               </div>
 
+              {seesLogins && (
+                <button
+                  onClick={() => openHistory(u)}
+                  className="mt-2 text-xs text-gray-500 hover:text-accent-ink transition-colors"
+                >
+                  Last seen <span className="font-semibold">{seenWords(u)}</span>
+                </button>
+              )}
+
               {canManageUser(user, u) && (
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                   <button
@@ -135,6 +197,12 @@ export default function UsersPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Restaurant</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                {/* Only for Super Admin. The table itself returns nothing to
+                    anybody else, and a heading over an empty column is worse
+                    than no heading. */}
+                {seesLogins && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Last seen</th>
+                )}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -158,6 +226,16 @@ export default function UsersPage() {
                       {u.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  {seesLogins && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => openHistory(u)}
+                        className="text-sm text-gray-600 hover:text-accent-ink transition-colors text-left"
+                      >
+                        {seenWords(u)}
+                      </button>
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     {/* Only show the button if this person can actually use it.
                         Before, it showed on every row and did nothing on most of
@@ -177,6 +255,14 @@ export default function UsersPage() {
           </table>
         </div>
         </>
+      )}
+
+      {showFor && (
+        <SignInHistory
+          person={showFor}
+          events={showEvents}
+          onClose={() => { setShowFor(null); setShowEvents([]) }}
+        />
       )}
     </div>
   )
