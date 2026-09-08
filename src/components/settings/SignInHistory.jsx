@@ -56,8 +56,15 @@ export default function SignInHistory({ person, events, onClose }) {
                                             <span className="text-sm font-semibold text-gray-900">
                                                 {when(e.signed_in_at)}
                                             </span>
-                                            <span className="text-xs text-muted">
-                                                {ago || when(lastUsed(e))}
+                                            {/* Said in full, because this is a
+                                                different moment from the date
+                                                beside it. The date is when the
+                                                session started and this is when
+                                                it was last used, so a bare "14
+                                                minutes ago" next to the 5th of
+                                                September reads as a mistake. */}
+                                            <span className="text-xs text-muted whitespace-nowrap">
+                                                Last used {(ago || when(lastUsed(e))).toLowerCase()}
                                             </span>
                                         </div>
 
@@ -69,7 +76,13 @@ export default function SignInHistory({ person, events, onClose }) {
                                             {/* Null on every session Supabase pruned before the
                                                 job first ran. Saying nothing is the honest
                                                 version of not knowing. */}
-                                            {used && <span>used for {used}</span>}
+                                            {/* usedForWords says "Once" for a
+                                                session that never refreshed,
+                                                and "used for Once" is not
+                                                English. */}
+                                            {used && (
+                                                <span>{used === 'Once' ? 'Used once' : `Used for ${used}`}</span>
+                                            )}
                                         </div>
                                     </div>
                                 )
