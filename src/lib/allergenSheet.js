@@ -27,12 +27,6 @@ export function sheetName(item) {
     return given || item?.name || ''
 }
 
-// A component the customer chooses between rather than one that is always in
-// it. Kept out of the dish's own row: the plain version does not carry it.
-function isChoice(component) {
-    return Boolean(component?.choice_group)
-}
-
 // Whether everything this row is built from actually arrived.
 //
 // A customer is not signed in and only gets active products, so an ingredient
@@ -68,16 +62,19 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
     for (const { name, items } of byName.values()) {
         const ids = new Set(items.map(i => i.id))
         const all = (allComponents || []).filter(c => ids.has(c.menu_item_id))
-        const own = all.filter(c => !isChoice(c))
 
         rows.push({
             key: `item:${name}`,
             name,
             complete: everythingArrived(all, products),
+            // The choices are dropped by deriveMenuItemAllergens itself, so
+            // this hands it everything rather than filtering here as well. Two
+            // places doing the same job is two places to forget it.
+            //
             // Two sizes of the same dish should hold the same things, and if
             // they ever do not, the worst of the two is the safe answer and
             // the one this already gives.
-            allergens: deriveMenuItemAllergens(own, products, recipeLines, allergens),
+            allergens: deriveMenuItemAllergens(all, products, recipeLines, allergens),
         })
     }
 
