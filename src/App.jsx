@@ -23,6 +23,7 @@ import { useAuth } from './context/AuthContext'
 import { homeFor } from './lib/access'
 
 import UsersPage from './pages/settings/UsersPage'
+import ChangesPage from './pages/settings/ChangesPage'
 import RestaurantPage from './pages/settings/RestaurantPage'
 import SuppliersPage from './pages/inventory/SuppliersPage'
 import ProductsPage from './pages/inventory/ProductsPage'
@@ -120,6 +121,7 @@ export default function App() {
 
                 {/* Settings. Restaurant configuration excludes owners. */}
                 <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
+                <Route path="/settings/changes" element={<RequireRole allowed={ADMIN_ONLY}><ChangesPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />

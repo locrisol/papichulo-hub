@@ -58,6 +58,10 @@ const navItems = [
     // Super Admin's. Team keeps working either way, it reads the users table
     // itself and the policy decides what comes back.
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
+
+    // What the database recorded, which is a different question from who got
+    // in and belongs beside it rather than inside it.
+    { path: '/settings/changes', label: 'Changes', icon: 'weekly', section: 'Settings', roles: ADMIN_ONLY },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 ]
 
