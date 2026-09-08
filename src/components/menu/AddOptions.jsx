@@ -67,9 +67,24 @@ export default function AddOptions({
     // Already in the choice being typed, rather than already anywhere on the
     // item. A chicken quesadilla made with chipotle can still be served with a
     // dip pot of it, so the ingredient must not grey out the option.
+    // What has been ticked, whatever the search or the category is showing now.
+    //
+    // Ticking chocolate, then searching for caramel, took chocolate off the
+    // screen with nothing left saying it was still in. Resolved from the full
+    // product list rather than from what is on screen, so switching source does
+    // not lose it either.
+    const chosenRows = Object.keys(picked)
+        .map(pid => products.find(p => p.id === pid))
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name))
+
     const on = new Set((existing || [])
         .filter(c => (c.choice_group || '') === group.trim())
         .map(c => c.product_id))
+
+    // The list underneath, without the ones already shown above it. One thing
+    // in two places at once is a screen you have to read twice.
+    const rest = shown.filter(({ product }) => picked[product.id] === undefined)
     const chosen = Object.keys(picked)
 
     // Everything on screen measured the same way, or nothing. A box that sets
@@ -211,6 +226,43 @@ export default function AddOptions({
                     worth setting once you can see what you are setting it on,
                     and having to scroll back up to a box in another section to
                     do it was the wrong way round. */}
+                {/* Above the list and outside the search, because the whole
+                    point of it is to be visible when what it names is not. */}
+                {chosenRows.length > 0 && (
+                    <div className="rounded-lg border border-accent/40 bg-accent-light/40 p-3 mb-4">
+                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                            Chosen ({chosenRows.length})
+                        </p>
+                        <div className="space-y-2">
+                            {chosenRows.map(product => (
+                                <div key={product.id} className="flex flex-wrap items-center gap-2">
+                                    <span className="flex-1 min-w-[8rem] text-sm text-gray-900">
+                                        {product.name}
+                                    </span>
+                                    <span className="w-44">
+                                        <QuantityInUnit
+                                            value={picked[product.id]}
+                                            onChange={v => setPicked({ ...picked, [product.id]: v })}
+                                            unit={product.unit}
+                                        />
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggle(product.id)}
+                                        aria-label={`Remove ${product.name}`}
+                                        className="px-2 py-1 rounded-lg border border-border bg-white text-xs text-gray-600 hover:border-gray-400 transition-colors"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Kept on the whole time there is a list, not only while
+                    something is left in it: ticking the last one must not
+                    take Clear all off the screen with it. */}
                 {categoryId && shown.length > 0 && (
                     <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
                         {commonUnit ? (
@@ -247,13 +299,13 @@ export default function AddOptions({
                         Choose a category to see what is in it, or All products for something
                         that is not sold on its own.
                     </p>
-                ) : shown.length === 0 ? (
+                ) : rest.length === 0 ? (
                     <p className="text-sm text-muted py-6 text-center">
-                        No items match.
+                        {shown.length === 0 ? 'No items match.' : 'All of these are chosen already.'}
                     </p>
                 ) : (
                     <div className="rounded-lg border border-border divide-y divide-border max-h-72 overflow-y-auto">
-                        {shown.map(({ item, product }) => {
+                        {rest.map(({ item, product }) => {
                             const already = on.has(product.id)
                             const ticked = picked[product.id] !== undefined
                             return (
