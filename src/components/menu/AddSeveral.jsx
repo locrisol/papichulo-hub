@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Modal from '../Modal'
 import ModalSection from '../ModalSection'
 import { modalFooter, secondaryButton } from '../../lib/controlStyles'
+import QuantityInUnit from '../QuantityInUnit'
 import { offerable } from '../../lib/menuChoices'
 
 // Adding a whole choice at once.
@@ -23,7 +24,7 @@ export default function AddSeveral({
     const [categoryId, setCategoryId] = useState('')
     const [search, setSearch] = useState('')
     const [listSeparately, setListSeparately] = useState(false)
-    const [everyQuantity, setEveryQuantity] = useState('1')
+    const [everyQuantity, setEveryQuantity] = useState('')
     // Ticked, and how much of each. Kept apart from the list itself so ticking
     // something, filtering it away and filtering it back does not lose it.
     const [picked, setPicked] = useState({})
@@ -38,6 +39,12 @@ export default function AddSeveral({
 
     const on = new Set(alreadyOn || [])
     const chosen = Object.keys(picked)
+
+    // Everything on screen measured the same way, or nothing. A box that sets
+    // every row at once can only exist when one number means the same thing on
+    // all of them; a category holding both cans and sauces has no such number.
+    const units = new Set(shown.map(({ product }) => product.unit))
+    const commonUnit = units.size === 1 ? [...units][0] : null
 
     function toggle(productId) {
         setPicked(was => {
@@ -92,25 +99,29 @@ export default function AddSeveral({
                         </datalist>
                     </div>
 
-                    <div className="w-32">
-                        <label htmlFor="several-qty" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                            Quantity
-                        </label>
-                        <input
-                            id="several-qty"
-                            type="text"
-                            inputMode="decimal"
-                            value={everyQuantity}
-                            onChange={e => setAll(e.target.value)}
-                            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                        />
-                    </div>
+                    {commonUnit && (
+                        <div className="w-56">
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                Quantity for all
+                            </label>
+                            {/* The same control as the ordinary component form, so a
+                                sauce is typed in grams here as well. A plain box was
+                                storing 1 as one whole kilo with nothing on screen
+                                saying which unit it meant. */}
+                            <QuantityInUnit
+                                value={everyQuantity}
+                                onChange={setAll}
+                                unit={commonUnit}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <p className="text-xs text-gray-500 mt-2">
                     The customer gets one of these, so only the most expensive is counted in
-                    the cost. The quantity is applied to every item you tick, and you can
-                    change any of them afterwards.
+                    the cost.{commonUnit
+                        ? ' The quantity is applied to every item you tick, and you can change any of them afterwards.'
+                        : ' These items are measured in different units, so set the quantity on each one.'}
                 </p>
 
                 <label className="flex items-start gap-2 mt-3 cursor-pointer">
@@ -193,15 +204,16 @@ export default function AddSeveral({
                                     {already ? (
                                         <span className="text-xs text-muted">Already on this item</span>
                                     ) : ticked ? (
-                                        <input
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={picked[product.id]}
-                                            onChange={e => setPicked({ ...picked, [product.id]: e.target.value })}
+                                        <span
+                                            className="w-48"
                                             onClick={e => e.preventDefault()}
-                                            aria-label={`Quantity of ${product.name}`}
-                                            className="w-20 border border-border rounded-lg px-2 py-1 text-sm text-right bg-white"
-                                        />
+                                        >
+                                            <QuantityInUnit
+                                                value={picked[product.id]}
+                                                onChange={v => setPicked({ ...picked, [product.id]: v })}
+                                                unit={product.unit}
+                                            />
+                                        </span>
                                     ) : (
                                         <span className="text-xs text-muted">{product.unit}</span>
                                     )}

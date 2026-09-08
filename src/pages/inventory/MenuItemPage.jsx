@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, tableCard, card, rowButton, secondaryButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddSeveral from '../../components/menu/AddSeveral'
@@ -410,6 +410,18 @@ export default function MenuItemPage() {
   const sharesWith =
     sheetNamesHere.get((headerForm.sheet_name || '').trim().toLowerCase())?.items || []
 
+  // The two kinds of row, kept apart. What is always in the dish, and then one
+  // table for each choice the customer makes.
+  const alwaysIn = components.filter(c => !c.choice_group)
+  const choiceGroups = [...components
+    .filter(c => c.choice_group)
+    .reduce((groups, c) => {
+      if (!groups.has(c.choice_group)) groups.set(c.choice_group, [])
+      groups.get(c.choice_group).push(c)
+      return groups
+    }, new Map())]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+
   // The groups already used on this item, for the form to offer back.
   const existingGroups = [...new Set(
     components.map(c => c.choice_group).filter(Boolean),
@@ -619,89 +631,51 @@ export default function MenuItemPage() {
           <p className="text-sm text-gray-500">No components yet. Click "+ Add Component" to start building this menu item.</p>
         </div>
       ) : (
-        <div className={`${tableCard} mb-6`}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={tableHeadRow}>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Component</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {components.map((c, i) => {
-                const product = getProduct(c.product_id)
-                const unitCost = getIngredientUnitCost(product)
-                const lineCost = getLineCost(c)
-                return (
-                  <Fragment key={c.id}>
-                    <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {product ? (
-                          <>
-                            {product.name}
-                            {product.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
-                          </>
-                        ) : <span className="text-red-600">Missing product</span>}
-                        {c.choice_group && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                            {c.choice_group}
-                          </span>
-                        )}
-                        {c.list_separately && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
-                            Listed separately
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">
-                        {c.no_quantity
-                          ? <span className="text-muted italic">Used, not measured</span>
-                          : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {lineCost === null ? '—' : counting.has(c.id) ? (
-                          `€${lineCost.toFixed(2)}`
-                        ) : (
-                          // Shown rather than hidden. What the other options
-                          // come to is worth seeing, and a blank here would
-                          // read as a line that costs nothing.
-                          <span className="font-normal text-gray-400">
-                            €{lineCost.toFixed(2)}
-                            <span className="block text-xs">not the most expensive</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">{c.notes || '—'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => editingComponent?.id === c.id ? resetComponentForm() : startEditComponent(c)}
-                            className={rowButton('edit')}
-                          >
-                            {editingComponent?.id === c.id ? 'Cancel' : 'Edit'}
-                          </button>
-                          <button
-                            onClick={() => removeComponent(c)}
-                            className={rowButton('danger')}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* What is always in it. Anything the customer picks between is
+              below, in a table of its own: an option sitting in this list
+              reads as one more ingredient, which is the opposite of what it
+              is. */}
+          {alwaysIn.length > 0 && (
+            <div className={`${tableCard} mb-6`}>
+              <ComponentTable
+                rows={alwaysIn}
+                counting={counting}
+                getProduct={getProduct}
+                getIngredientUnitCost={getIngredientUnitCost}
+                getLineCost={getLineCost}
+                editingComponent={editingComponent}
+                onEdit={startEditComponent}
+                onCancelEdit={resetComponentForm}
+                onRemove={removeComponent}
+              />
+            </div>
+          )}
+
+          {choiceGroups.map(([groupName, rows]) => (
+            <div key={groupName} className={`${cardEdge} bg-white overflow-hidden mb-6`}>
+              <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
+                <span>{groupName}</span>
+                <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
+                  The customer picks one. Only the most expensive is counted.
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <ComponentTable
+                  rows={rows}
+                  counting={counting}
+                  getProduct={getProduct}
+                  getIngredientUnitCost={getIngredientUnitCost}
+                  getLineCost={getLineCost}
+                  editingComponent={editingComponent}
+                  onEdit={startEditComponent}
+                  onCancelEdit={resetComponentForm}
+                  onRemove={removeComponent}
+                />
+              </div>
+            </div>
+          ))}
+        </>
       )}
 
       {/* Summary */}
@@ -932,5 +906,98 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
         </button>
       </div>
     </form>
+  )
+}
+
+// The rows of one table: either the ingredients that are always in the dish,
+// or the options of one choice. The same six columns either way, because they
+// are the same six questions.
+function ComponentTable({
+  rows, counting, getProduct, getIngredientUnitCost, getLineCost,
+  editingComponent, onEdit, onCancelEdit, onRemove,
+}) {
+  return (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={tableHeadRow}>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Component</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c, i) => {
+                const product = getProduct(c.product_id)
+                const unitCost = getIngredientUnitCost(product)
+                const lineCost = getLineCost(c)
+                return (
+                  <Fragment key={c.id}>
+                    <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {product ? (
+                          <>
+                            {product.name}
+                            {product.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
+                          </>
+                        ) : <span className="text-red-600">Missing product</span>}
+                        {c.choice_group && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+                            {c.choice_group}
+                          </span>
+                        )}
+                        {c.list_separately && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                            Listed separately
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {c.no_quantity
+                          ? <span className="text-muted italic">Used, not measured</span>
+                          : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">
+                        {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {lineCost === null ? '—' : counting.has(c.id) ? (
+                          `€${lineCost.toFixed(2)}`
+                        ) : (
+                          // Shown rather than hidden. What the other options
+                          // come to is worth seeing, and a blank here would
+                          // read as a line that costs nothing.
+                          <span className="font-normal text-gray-400">
+                            €{lineCost.toFixed(2)}
+                            <span className="block text-xs">not the most expensive</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{c.notes || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => editingComponent?.id === c.id ? onCancelEdit() : onEdit(c)}
+                            className={rowButton('edit')}
+                          >
+                            {editingComponent?.id === c.id ? 'Cancel' : 'Edit'}
+                          </button>
+                          <button
+                            onClick={() => onRemove(c)}
+                            className={rowButton('danger')}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+
   )
 }
