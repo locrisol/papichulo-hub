@@ -182,6 +182,20 @@ export default function MenuItemsPage() {
     return components.filter(c => c.menu_item_id === itemId)
   }
 
+  // What is in it, and how many choices sit beside that.
+  //
+  // The options are not ingredients. A burrito with eleven ingredients and a
+  // choice of five salsas is not a sixteen ingredient burrito: only one of the
+  // five is ever in it. Counting them together made it read as far more of a
+  // job to build than it is.
+  function countsFor(itemId) {
+    const mine = getItemComponents(itemId)
+    return {
+      components: mine.filter(c => !c.choice_group).length,
+      choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+    }
+  }
+
   function getItemCost(item) {
     return menuItemCost(getItemComponents(item.id), products, recipeLines, prices)
   }
@@ -426,7 +440,7 @@ export default function MenuItemsPage() {
                     const cost = getItemCost(item)
                     const m = getMargin(item)
                     const allergens = allergenText(item)
-                    const componentCount = getItemComponents(item.id).length
+                    const counts = countsFor(item.id)
 
                     return (
                       <div
@@ -446,7 +460,9 @@ export default function MenuItemsPage() {
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {componentCount} {componentCount === 1 ? 'component' : 'components'}
+                          {counts.components} {counts.components === 1 ? 'component' : 'components'}
+                          {counts.choices > 0
+                            && `, ${counts.choices} ${counts.choices === 1 ? 'choice' : 'choices'}`}
                         </p>
 
                         <dl className="mt-3 space-y-1.5 text-sm">
@@ -532,7 +548,7 @@ export default function MenuItemsPage() {
                         const cost = getItemCost(item)
                         const m = getMargin(item)
                         const allergenSummary = summariseAllergens(getItemAllergens(item))
-                        const componentCount = getItemComponents(item.id).length
+                        const counts = countsFor(item.id)
 
                         return (
                           <tr
@@ -545,7 +561,12 @@ export default function MenuItemsPage() {
                               {item.name}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {componentCount}
+                              {counts.components}
+                              {counts.choices > 0 && (
+                                <span className="text-xs text-muted">
+                                  {' '}+ {counts.choices} {counts.choices === 1 ? 'choice' : 'choices'}
+                                </span>
+                              )}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
                               {cost !== null ? `€${cost.toFixed(2)}` : <span className="text-amber-600 text-xs">Incomplete</span>}

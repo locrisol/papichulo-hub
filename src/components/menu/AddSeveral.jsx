@@ -55,7 +55,28 @@ export default function AddSeveral({
         })
     }
 
-    // Typing in the box at the top moves every row that has not been given a
+    // Everything on the list at once, or none of it. "On the list" means what
+    // the search has narrowed it to, not the whole category, because a button
+    // that quietly ticks things you cannot see is worse than no button.
+    const tickable = shown.filter(({ product }) => !on.has(product.id))
+    const allTicked = tickable.length > 0
+        && tickable.every(({ product }) => picked[product.id] !== undefined)
+
+    function toggleAll() {
+        setPicked(was => {
+            const next = { ...was }
+            if (allTicked) {
+                for (const { product } of tickable) delete next[product.id]
+            } else {
+                for (const { product } of tickable) {
+                    if (next[product.id] === undefined) next[product.id] = everyQuantity
+                }
+            }
+            return next
+        })
+    }
+
+    // Typing in the box moves every row that has not been given a
     // number of its own. Retyping each of nine cans of a drink is the thing
     // this screen exists to avoid.
     function setAll(value) {
@@ -99,29 +120,11 @@ export default function AddSeveral({
                         </datalist>
                     </div>
 
-                    {commonUnit && (
-                        <div className="w-56">
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                Quantity for all
-                            </label>
-                            {/* The same control as the ordinary component form, so a
-                                sauce is typed in grams here as well. A plain box was
-                                storing 1 as one whole kilo with nothing on screen
-                                saying which unit it meant. */}
-                            <QuantityInUnit
-                                value={everyQuantity}
-                                onChange={setAll}
-                                unit={commonUnit}
-                            />
-                        </div>
-                    )}
                 </div>
 
                 <p className="text-xs text-gray-500 mt-2">
                     The customer gets one of these, so only the most expensive is counted in
-                    the cost.{commonUnit
-                        ? ' The quantity is applied to every item you tick, and you can change any of them afterwards.'
-                        : ' These items are measured in different units, so set the quantity on each one.'}
+                    the cost.
                 </p>
 
                 <label className="flex items-start gap-2 mt-3 cursor-pointer">
@@ -163,6 +166,41 @@ export default function AddSeveral({
                         className="flex-1 min-w-[9rem] border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                     />
                 </div>
+
+                {/* Under the list rather than above it. The quantity is only
+                    worth setting once you can see what you are setting it on,
+                    and having to scroll back up to a box in another section to
+                    do it was the wrong way round. */}
+                {categoryId && shown.length > 0 && (
+                    <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                        {commonUnit ? (
+                            <div className="w-56">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    Quantity for all
+                                </label>
+                                {/* The same control as the ordinary component
+                                    form, so a sauce is typed in grams here as
+                                    well. A plain box stored 1 as one whole kilo
+                                    with nothing on screen saying which unit it
+                                    meant. */}
+                                <QuantityInUnit
+                                    value={everyQuantity}
+                                    onChange={setAll}
+                                    unit={commonUnit}
+                                />
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-500 max-w-xs">
+                                These are measured in different units, so set the quantity on
+                                each one.
+                            </p>
+                        )}
+
+                        <button type="button" onClick={toggleAll} className={secondaryButton}>
+                            {allTicked ? 'Clear all' : 'Select all'}
+                        </button>
+                    </div>
+                )}
 
                 {!categoryId ? (
                     <p className="text-sm text-muted py-6 text-center">
