@@ -98,6 +98,20 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
     onChange()
   }
 
+  // Cans and bottled water carry none of the fourteen and fill the sheet with
+  // rows saying so. On by default, because a drink that does carry something,
+  // a coffee with milk or a beer with gluten, belongs on the sheet like
+  // anything else.
+  async function toggleSheet(category) {
+    const { error: e1 } = await supabase
+      .from('menu_categories')
+      .update({ on_allergen_sheet: !category.on_allergen_sheet })
+      .eq('id', category.id)
+
+    if (e1) setError(friendlyError(e1))
+    else onChange()
+  }
+
   async function toggleActive(category) {
     const { error: e1 } = await supabase
       .from('menu_categories')
@@ -126,6 +140,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Order</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Status</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Allergen sheet</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Actions</th>
               </tr>
             </thead>
@@ -150,6 +165,9 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       </td>
                       <td className={`px-3 py-2 ${c.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-400">
+                        {c.on_allergen_sheet === false ? 'Hidden' : 'Shown'}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">
@@ -178,6 +196,14 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       </td>
                       <td className={`px-3 py-2 text-xs ${c.is_active ? 'text-green-700' : 'text-gray-400'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => toggleSheet(c)}
+                          className={rowButton(c.on_allergen_sheet === false ? 'plain' : 'good')}
+                        >
+                          {c.on_allergen_sheet === false ? 'Hidden' : 'Shown'}
+                        </button>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-3">

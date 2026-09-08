@@ -6,9 +6,10 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton, secondaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
+import AddSeveral from '../../components/menu/AddSeveral'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
@@ -41,12 +42,16 @@ const ALLERGEN_LABELS = {
 }
 
 function emptyComponentForm() {
-  return { product_id: '', quantity: '', no_quantity: false, notes: '' }
+  return {
+    product_id: '', quantity: '', no_quantity: false, notes: '',
+    choice_group: '', list_separately: false,
+  }
 }
 
 function emptyHeaderForm(item) {
   return {
     name: item?.name || '',
+    sheet_name: item?.sheet_name || '',
     category_id: item?.category_id || '',
     selling_price: item?.selling_price ?? '',
     vat_rate: item?.vat_rate ?? '0',
@@ -61,6 +66,9 @@ export default function MenuItemPage() {
 
   const [item, setItem] = useState(null)
   const [categories, setCategories] = useState([])
+  const [allMenuItems, setAllMenuItems] = useState([])
+  const [allComponents, setAllComponents] = useState([])
+  const [showSeveral, setShowSeveral] = useState(false)
   const [products, setProducts] = useState([])
   const [components, setComponents] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
@@ -103,13 +111,21 @@ export default function MenuItemPage() {
 
   async function fetchAll() {
     setLoading(true)
-    const [itemRes, categoriesRes, productsRes, componentsRes, recipesRes, allergensRes] = await Promise.all([
+    const [
+      itemRes, categoriesRes, productsRes, componentsRes, recipesRes, allergensRes,
+      // Every menu item and every component, for the Add several picker: it
+      // fills its list from a category, and a category is menu items rather
+      // than products.
+      allItemsRes, allComponentsRes,
+    ] = await Promise.all([
       supabase.from('menu_items').select('*').eq('id', id).single(),
       supabase.from('menu_categories').select('*').order('sort_order'),
       supabase.from('products').select('*').eq('is_active', true).order('name'),
       supabase.from('menu_item_components').select('*').eq('menu_item_id', id),
       supabase.from('mix_recipes').select('*'),
       supabase.from('product_allergens').select('*'),
+      supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
+      supabase.from('menu_item_components').select('*'),
     ])
 
     if (itemRes.error) { setError(friendlyError(itemRes.error)); setLoading(false); return }
@@ -121,6 +137,8 @@ export default function MenuItemPage() {
     if (componentsRes.data) setComponents(componentsRes.data)
     if (recipesRes.data) setRecipeLines(recipesRes.data)
     if (allergensRes.data) setAllergens(allergensRes.data)
+    if (allItemsRes.data) setAllMenuItems(allItemsRes.data)
+    if (allComponentsRes.data) setAllComponents(allComponentsRes.data)
 
     setLoading(false)
   }
@@ -164,6 +182,8 @@ export default function MenuItemPage() {
       selling_price: parseFloat(headerForm.selling_price),
       vat_rate: parseFloat(headerForm.vat_rate),
       notes: headerForm.notes || null,
+      // Empty means it goes under its own name, so there is nothing to store.
+      sheet_name: headerForm.sheet_name?.trim() || null,
     }
 
     const { error: err } = await supabase
@@ -209,6 +229,10 @@ export default function MenuItemPage() {
       quantity: componentForm.no_quantity ? null : parseFloat(componentForm.quantity),
       no_quantity: !!componentForm.no_quantity,
       notes: componentForm.notes || null,
+      // Blank is not a group. Stored as null so "no group" is one value rather
+      // than two that have to be checked for separately everywhere.
+      choice_group: componentForm.choice_group?.trim() || null,
+      list_separately: !!componentForm.list_separately,
     }
 
     if (editingComponent) {
@@ -231,6 +255,20 @@ export default function MenuItemPage() {
         setComponentErrors({})
         // Form stays open for rapid bulk entry. Done button closes.
       }
+    }
+  }
+
+  // Everything ticked in the picker, in one insert. All or nothing: half a
+  // choice recorded is a cost that is wrong and looks fine.
+  async function addSeveral(rows) {
+    const { error: err } = await supabase
+      .from('menu_item_components')
+      .insert(rows.map(r => ({ ...r, menu_item_id: id, no_quantity: false, notes: null })))
+
+    if (err) handleSupabaseError(err)
+    else {
+      setShowSeveral(false)
+      fetchAll()
     }
   }
 
@@ -262,6 +300,8 @@ export default function MenuItemPage() {
       product_id: component.product_id,
       quantity: component.quantity ?? '',
       no_quantity: !!component.no_quantity,
+      choice_group: component.choice_group || '',
+      list_separately: !!component.list_separately,
       notes: component.notes || '',
     })
     setEditingComponent(component)
@@ -343,6 +383,34 @@ export default function MenuItemPage() {
     return parseFloat(component.quantity) * result.cost
   }
 
+  // The groups already used on this item, for the form to offer back.
+  const existingGroups = [...new Set(
+    components.map(c => c.choice_group).filter(Boolean),
+  )].sort()
+
+  // Which lines actually reach the total.
+  //
+  // Only the dearest of each group does, because only one of them is ever
+  // made. The others are shown with their cost so you can see what the
+  // alternatives come to, greyed so it is clear they are not being added on
+  // top of it.
+  const counting = (() => {
+    const keep = new Set()
+    const best = new Map()
+
+    for (const c of components) {
+      if (!c.choice_group) { keep.add(c.id); continue }
+      const cost = getLineCost(c)
+      // A line with no cost yet cannot win and cannot be ruled out.
+      if (cost === null) continue
+      const current = best.get(c.choice_group)
+      if (!current || cost > current.cost) best.set(c.choice_group, { id: c.id, cost })
+    }
+
+    for (const { id } of best.values()) keep.add(id)
+    return keep
+  })()
+
   function getIngredientUnitCost(product) {
     if (!product) return null
     const result = calculateMixCost(product, products, recipeLines, prices)
@@ -375,6 +443,25 @@ export default function MenuItemPage() {
               className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
             {headerErrors.name && <p className="text-xs text-red-600 mt-1">{headerErrors.name}</p>}
+
+            {/* Two portion sizes of one dish are one thing on an allergen
+                sheet. Giving both the same name here merges them into one row
+                rather than printing the same fourteen answers twice. */}
+            <label htmlFor="sheet-name" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">
+              Name on the allergen sheet
+            </label>
+            <input
+              id="sheet-name"
+              type="text"
+              value={headerForm.sheet_name}
+              onChange={e => handleHeaderChange('sheet_name', e.target.value)}
+              placeholder={headerForm.name || 'Same as the name'}
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave empty to use the name above. Give two sizes of the same dish the same
+              name here and they appear as one row.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
@@ -451,13 +538,22 @@ export default function MenuItemPage() {
       {/* Components section */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Components</h3>
-        <button
-          onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
-          disabled={availableProducts.length === 0}
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          + Add Component
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setShowSeveral(true)}
+            disabled={availableProducts.length === 0}
+            className={secondaryButton}
+          >
+            Add several
+          </button>
+          <button
+            onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
+            disabled={availableProducts.length === 0}
+            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            + Add Component
+          </button>
+        </div>
       </div>
 
       {showComponentForm && !editingComponent && (
@@ -472,6 +568,7 @@ export default function MenuItemPage() {
             errors={componentErrors}
             availableProducts={availableProducts}
             productSelectRef={productSelectRef}
+            existingGroups={existingGroups}
           />
         </div>
       )}
@@ -508,6 +605,16 @@ export default function MenuItemPage() {
                             {product.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
                           </>
                         ) : <span className="text-red-600">Missing product</span>}
+                        {c.choice_group && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+                            {c.choice_group}
+                          </span>
+                        )}
+                        {c.list_separately && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                            Listed separately
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {c.no_quantity
@@ -518,7 +625,17 @@ export default function MenuItemPage() {
                         {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {lineCost !== null ? `€${lineCost.toFixed(2)}` : '—'}
+                        {lineCost === null ? '—' : counting.has(c.id) ? (
+                          `€${lineCost.toFixed(2)}`
+                        ) : (
+                          // Shown rather than hidden. What the other options
+                          // come to is worth seeing, and a blank here would
+                          // read as a line that costs nothing.
+                          <span className="font-normal text-gray-400">
+                            €{lineCost.toFixed(2)}
+                            <span className="block text-xs">not the most expensive</span>
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-500">{c.notes || '—'}</td>
                       <td className="px-4 py-3">
@@ -629,15 +746,29 @@ export default function MenuItemPage() {
               errors={componentErrors}
               availableProducts={availableProducts}
               productSelectRef={null}
+              existingGroups={existingGroups}
             />
           </div>
         </Modal>
+      )}
+
+      {showSeveral && (
+        <AddSeveral
+          menuCategories={categories.filter(c => c.is_active)}
+          menuItems={allMenuItems}
+          allComponents={allComponents}
+          products={products}
+          existingGroups={existingGroups}
+          alreadyOn={components.map(c => c.product_id)}
+          onAdd={addSeveral}
+          onClose={() => setShowSeveral(false)}
+        />
       )}
     </div>
   )
 }
 
-function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts, productSelectRef }) {
+function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts, productSelectRef, existingGroups }) {
   const product = availableProducts.find(p => p.id === formData.product_id)
   const unit = product?.unit || 'unit'
 
@@ -686,6 +817,51 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
           </label>
           {errors.quantity && <p className="text-xs text-red-600 mt-1">{errors.quantity}</p>}
         </div>
+      </div>
+
+      {/* Something the customer picks one of, rather than something that is
+          always in it. Two things follow from a group and they are both said
+          here, because neither is guessable from the words "choice group". */}
+      <div className="mb-4 rounded-lg border border-border bg-gray-50 p-4">
+        <label htmlFor="choice-group" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Customer choice (optional)
+        </label>
+        <input
+          id="choice-group"
+          type="text"
+          list="choice-groups"
+          value={formData.choice_group || ''}
+          onChange={e => onChange('choice_group', e.target.value)}
+          placeholder="e.g. Sauce, Salsa, Free drink"
+          className="w-full sm:max-w-xs border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+        />
+        {/* The groups already on this item, so the second sauce does not end
+            up in a group called "sauce" beside one called "Sauce". */}
+        <datalist id="choice-groups">
+          {(existingGroups || []).map(g => <option key={g} value={g} />)}
+        </datalist>
+
+        <p className="text-xs text-gray-500 mt-2">
+          Components with the same choice name are alternatives, and the customer gets one of
+          them. Only the most expensive is counted in the cost, using current prices, and none
+          of them are added to this item's allergens.
+        </p>
+
+        <label className="flex items-start gap-2 mt-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!formData.list_separately}
+            onChange={e => onChange('list_separately', e.target.checked)}
+            className="w-4 h-4 accent-accent mt-0.5"
+          />
+          <span className="text-sm text-gray-700">
+            List it separately on the allergen sheet
+            <span className="block text-xs text-gray-400">
+              Use this for things that are not menu items, like a dessert sauce. Leave it off
+              if it already appears in its own category.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="mb-4">

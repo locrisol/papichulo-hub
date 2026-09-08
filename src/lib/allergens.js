@@ -112,6 +112,24 @@ export const ALLERGEN_STATES = [
 
 const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
 
+// The same fourteen names, keyed, for the screens that have an allergen and
+// want the word. Built from the list above rather than written out again: two
+// copies of the fourteen is two things to keep in step, and the law fixes both.
+export const ALLERGEN_LABELS = Object.fromEntries(ALLERGENS.map(a => [a.key, a.label]))
+
+// How a state looks wherever it is shown. Here rather than in a component so
+// the customer page and anything printed cannot colour the same word
+// differently.
+export function allergenLook(state) {
+  if (state === 'contains') {
+    return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
+  }
+  if (state === 'may_contain') {
+    return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
+  }
+  return null
+}
+
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
 // A product with no record yet is Not Present for all fourteen, which is why
