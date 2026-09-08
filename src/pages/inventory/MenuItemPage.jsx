@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, tableCard, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddSeveral from '../../components/menu/AddSeveral'
@@ -410,9 +410,25 @@ export default function MenuItemPage() {
   const sharesWith =
     sheetNamesHere.get((headerForm.sheet_name || '').trim().toLowerCase())?.items || []
 
-  // The two kinds of row, kept apart. What is always in the dish, and then one
-  // table for each choice the customer makes.
+  // Three kinds of row, kept apart, because they answer different questions.
+  //
+  // What is in the food. What it is handed over in. And what the customer picks
+  // between. All three are real cost and all three add up the same way; this is
+  // only about being able to see at a glance what is assigned to a dish,
+  // which a single list of fifteen rows does not let you do.
   const alwaysIn = components.filter(c => !c.choice_group)
+  const isPackaging = c => getProduct(c.product_id)?.section === 'Packaging'
+  const ingredients = alwaysIn.filter(c => !isPackaging(c))
+  const packaging = alwaysIn.filter(isPackaging)
+
+  // What the packaging comes to on its own. Null the moment one of them cannot
+  // be priced, the same rule as everywhere else: a partial total looks like a
+  // real one.
+  const packagingCost = packaging.reduce((total, c) => {
+    if (total === null) return null
+    const line = getLineCost(c)
+    return line === null ? null : total + line
+  }, 0)
   const choiceGroups = [...components
     .filter(c => c.choice_group)
     .reduce((groups, c) => {
@@ -632,14 +648,16 @@ export default function MenuItemPage() {
         </div>
       ) : (
         <>
-          {/* What is always in it. Anything the customer picks between is
-              below, in a table of its own: an option sitting in this list
-              reads as one more ingredient, which is the opposite of what it
-              is. */}
-          {alwaysIn.length > 0 && (
-            <div className={`${tableCard} mb-6`}>
+          {/* What goes in the food. Packaging and anything the customer picks
+              between are below, each in a table of its own: either of them
+              sitting in this list reads as one more ingredient, which is the
+              opposite of what they are. */}
+          {ingredients.length > 0 && (
+            <div className={`${cardEdge} bg-white overflow-hidden mb-6`}>
+              <div className={cardHeader}>Ingredients</div>
+              <div className="overflow-x-auto">
               <ComponentTable
-                rows={alwaysIn}
+                rows={ingredients}
                 counting={counting}
                 getProduct={getProduct}
                 getIngredientUnitCost={getIngredientUnitCost}
@@ -649,6 +667,36 @@ export default function MenuItemPage() {
                 onCancelEdit={resetComponentForm}
                 onRemove={removeComponent}
               />
+              </div>
+            </div>
+          )}
+
+          {/* Still counted in the cost exactly as before. This is about being
+              able to see what a dish is handed over in without reading down a
+              list of everything else. */}
+          {packaging.length > 0 && (
+            <div className={`${cardEdge} bg-white overflow-hidden mb-6`}>
+              <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
+                <span>Packaging</span>
+                <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
+                  {packagingCost === null
+                    ? 'Counted in the cost'
+                    : `€${packagingCost.toFixed(2)} of the cost`}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <ComponentTable
+                  rows={packaging}
+                  counting={counting}
+                  getProduct={getProduct}
+                  getIngredientUnitCost={getIngredientUnitCost}
+                  getLineCost={getLineCost}
+                  editingComponent={editingComponent}
+                  onEdit={startEditComponent}
+                  onCancelEdit={resetComponentForm}
+                  onRemove={removeComponent}
+                />
+              </div>
             </div>
           )}
 
