@@ -9,7 +9,7 @@ import { canBeMenuComponent } from '../../lib/products'
 import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
-import AddSeveral from '../../components/menu/AddSeveral'
+import AddOptions from '../../components/menu/AddOptions'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
@@ -641,7 +641,7 @@ export default function MenuItemPage() {
             disabled={availableProducts.length === 0}
             className={secondaryButton}
           >
-            Add several
+            Add options
           </button>
           <button
             onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
@@ -844,7 +844,7 @@ export default function MenuItemPage() {
       )}
 
       {showSeveral && (
-        <AddSeveral
+        <AddOptions
           menuCategories={categories.filter(c => c.is_active)}
           menuItems={allMenuItems}
           allComponents={allComponents}

@@ -10,7 +10,13 @@ import { canBeMenuComponent } from '../../lib/products'
 //
 // A breakfast that comes with any of nine drinks is nine components, and adding
 // them one at a time through the ordinary form is nine trips through a product
-// search. This fills the list from a menu category and you tick what is in.
+// search. This fills the list from a menu category or from the products, and
+// you tick what is in.
+//
+// It only ever makes options, and the choice has to be named. It used to allow
+// a blank one, which quietly turned it into a way of adding several ordinary
+// ingredients at once: the same screen doing two jobs, with nothing on it
+// saying which one you were doing.
 //
 // What it stores is plain components, the same as adding them by hand. It is a
 // faster way of typing, not a different kind of thing, which matters: a group
@@ -21,7 +27,7 @@ import { canBeMenuComponent } from '../../lib/products'
 // collide with it.
 const PRODUCTS = 'products'
 
-export default function AddSeveral({
+export default function AddOptions({
     menuCategories, menuItems, allComponents, products, existingGroups,
     existing, onAdd, onClose,
 }) {
@@ -116,21 +122,23 @@ export default function AddSeveral({
         onAdd(chosen.map(productId => ({
             product_id: productId,
             quantity: parseFloat(picked[productId]),
-            choice_group: group.trim() || null,
+            choice_group: group.trim(),
             list_separately: listSeparately,
         })))
     }
 
-    const ready = chosen.length > 0
+    const named = group.trim().length > 0
+    const ready = named
+        && chosen.length > 0
         && chosen.every(id => parseFloat(picked[id]) > 0)
 
     return (
-        <Modal title="Add several components" onClose={onClose} width="max-w-2xl">
+        <Modal title="Add options" onClose={onClose} width="max-w-2xl">
             <ModalSection title="Choice settings">
                 <div className="flex flex-wrap gap-4">
                     <div className="flex-1 min-w-[12rem]">
                         <label htmlFor="several-group" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                            Customer choice
+                            What the choice is called
                         </label>
                         <input
                             id="several-group"
@@ -150,7 +158,8 @@ export default function AddSeveral({
 
                 <p className="text-xs text-gray-500 mt-2">
                     The customer gets one of these, so only the most expensive is counted in
-                    the cost.
+                    the cost. Everything added here becomes an option, so the choice needs a
+                    name.
                 </p>
 
                 <label className="flex items-start gap-2 mt-3 cursor-pointer">
@@ -169,7 +178,7 @@ export default function AddSeveral({
                 </label>
             </ModalSection>
 
-            <ModalSection title="Items to add">
+            <ModalSection title="Options to add">
                 <div className="flex flex-wrap gap-3 mb-4">
                     <select
                         value={categoryId}
@@ -235,7 +244,7 @@ export default function AddSeveral({
 
                 {!categoryId ? (
                     <p className="text-sm text-muted py-6 text-center">
-                        Choose a category to see its items, or All products for something
+                        Choose a category to see what is in it, or All products for something
                         that is not sold on its own.
                     </p>
                 ) : shown.length === 0 ? (
@@ -318,6 +327,13 @@ export default function AddSeveral({
             </ModalSection>
 
             <div className={modalFooter}>
+                {/* Why the button is off, rather than a dead button and no
+                    reason for it. */}
+                {!named && chosen.length > 0 && (
+                    <p className="text-xs text-amber-800 mr-auto self-center">
+                        Name the choice above to add these.
+                    </p>
+                )}
                 <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
                 <button
                     type="button"
@@ -327,7 +343,7 @@ export default function AddSeveral({
                 >
                     {chosen.length === 0
                         ? 'Add them'
-                        : `Add ${chosen.length} component${chosen.length === 1 ? '' : 's'}`}
+                        : `Add ${chosen.length} option${chosen.length === 1 ? '' : 's'}`}
                 </button>
             </div>
         </Modal>
