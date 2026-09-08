@@ -24,19 +24,47 @@ function timeWords(at) {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// What moved, on one line. The table column already says which kind of thing it
-// was, so this only has to carry the change itself.
-function changeWords(entry) {
+// What moved.
+//
+// One line per field rather than a sentence with everything in it. The old
+// value is struck through and the new one is the only bold thing on the row, so
+// the answer to "what does it say now" is findable without reading.
+function Change({ entry }) {
     if (entry.action === 'truncate') {
         const gone = entry.changes?.rows_removed
-        return gone == null ? 'Emptied' : `${gone} rows removed`
+        return (
+            <span className="font-semibold text-red-800">
+                {gone == null ? 'Emptied' : `${gone} rows removed`}
+            </span>
+        )
     }
-    if (entry.action === 'delete') return 'The whole row, kept in the log'
-    if (entry.action === 'insert') return 'New'
+
+    if (entry.action === 'delete') {
+        return <span className="text-red-800">The whole row, kept in the log</span>
+    }
+
+    if (entry.action === 'insert') return <span className="text-muted">New</span>
 
     const fields = changedFields(entry)
-    if (fields.length === 0) return 'Nothing that is worth showing'
-    return fields.map(f => `${f.label}: ${f.was} to ${f.became}`).join(' · ')
+    if (fields.length === 0) return <span className="text-muted">Nothing worth showing</span>
+
+    return (
+        <div className="space-y-0.5">
+            {fields.map(f => (
+                <div key={f.field} className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-muted">{f.label}</span>
+                    <span className="text-gray-500 line-through decoration-gray-400">{f.was}</span>
+                    {/* The arrow and what it points at are one thing. Apart,
+                        a narrow screen leaves the arrow stranded at the end of
+                        a line with the new value alone underneath it. */}
+                    <span className="whitespace-nowrap">
+                        <span className="text-muted" aria-label="became">&rarr;</span>{' '}
+                        <span className="font-semibold text-gray-900">{f.became}</span>
+                    </span>
+                </div>
+            ))}
+        </div>
+    )
 }
 
 function ActionPill({ action }) {
@@ -46,8 +74,12 @@ function ActionPill({ action }) {
         plain: 'bg-gray-50 text-gray-700 border-gray-300',
     }[actionTone(action)]
 
+    // All four the same width, so the name beside them starts in the same
+    // place down the column instead of stepping in and out as the word
+    // changes. A minimum rather than a fixed size: the longest word today is
+    // CHANGED and a longer one later should push the box out, not be cut off.
     return (
-        <span className={`inline-block px-2 py-0.5 rounded-md border text-[0.65rem] font-bold uppercase tracking-wider ${look}`}>
+        <span className={`inline-block min-w-[4.75rem] text-center px-2 py-0.5 rounded-md border text-[0.65rem] font-bold uppercase tracking-wider ${look}`}>
             {actionWords(action)}
         </span>
     )
@@ -90,7 +122,10 @@ export default function ChangeLog({ entries }) {
                                 {shortDate(e.changed_at)}, {timeWords(e.changed_at)}
                             </span>
                         </div>
-                        <p className="text-sm text-gray-800">{changeWords(e)}</p>
+                        {e.label && (
+                            <p className="text-sm text-gray-900 font-medium mb-1">{e.label}</p>
+                        )}
+                        <div className="text-sm text-gray-800"><Change entry={e} /></div>
                         <p className="text-xs mt-1"><Who entry={e} /></p>
                     </div>
                 ))}
@@ -116,13 +151,20 @@ export default function ChangeLog({ entries }) {
                                     {shortDate(e.changed_at)}, {timeWords(e.changed_at)}
                                 </td>
                                 <td className="px-4 py-2.5 text-xs whitespace-nowrap"><Who entry={e} /></td>
-                                <td className="px-4 py-2.5 whitespace-nowrap">
-                                    <div className="flex items-center gap-2">
+                                <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-2 whitespace-nowrap">
                                         <ActionPill action={e.action} />
                                         <span className="text-sm text-gray-900">{tableWords(e.table_name)}</span>
                                     </div>
+                                    {/* Which one it was. Under the kind rather
+                                        than beside it, because a name can be
+                                        long and this column is already the
+                                        widest of the three fixed ones. */}
+                                    {e.label && (
+                                        <p className="text-xs text-muted mt-0.5 max-w-xs">{e.label}</p>
+                                    )}
                                 </td>
-                                <td className="px-4 py-2.5 text-sm text-gray-800">{changeWords(e)}</td>
+                                <td className="px-4 py-2.5 text-sm text-gray-800"><Change entry={e} /></td>
                             </tr>
                         ))}
                     </tbody>

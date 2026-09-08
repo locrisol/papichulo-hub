@@ -95,6 +95,57 @@ describe('changedFields', () => {
         expect(changedFields(entry).map(f => f.field)).not.toContain('updated_at')
     })
 
+    it('opens up a column that holds a set of values', () => {
+        // Without this the whole entry reads "Platform sales: a set of values
+        // to a set of values", which is the log keeping the numbers and then
+        // refusing to say them.
+        expect(changedFields({
+            changes: {
+                platform_sales: {
+                    from: { deliveroo: 120, just_eat: 80 },
+                    to: { deliveroo: 140, just_eat: 80 },
+                },
+            },
+        })).toEqual([{
+            field: 'platform_sales.deliveroo',
+            label: 'Platform sales, Deliveroo',
+            was: '€120.00',
+            became: '€140.00',
+        }])
+    })
+
+    it('names a key that appeared and one that went', () => {
+        const out = changedFields({
+            changes: {
+                tender_amounts: { from: { cash: 100 }, to: { kiosk: 50 } },
+            },
+        })
+        expect(out.map(f => [f.label, f.was, f.became])).toEqual([
+            ['Tender amounts, Cash', '€100.00', 'nothing'],
+            ['Tender amounts, Kiosk', 'nothing', '€50.00'],
+        ])
+    })
+
+    it('goes back to a count when the whole set was replaced', () => {
+        // Nine changed keys is a column being rewritten rather than edited, and
+        // nine lines of it is not something anybody reads.
+        const from = {}
+        const to = {}
+        for (let i = 0; i < 9; i++) { from[`k${i}`] = i; to[`k${i}`] = i + 1 }
+        expect(changedFields({ changes: { platform_sales: { from, to } } }))
+            .toEqual([{
+                field: 'platform_sales',
+                label: 'Platform sales',
+                was: 'a set of values',
+                became: 'a set of values',
+            }])
+    })
+
+    it('leaves a list alone, which is not the same shape', () => {
+        expect(changedFields({ changes: { sent_to: { from: null, to: ['a', 'b'] } } }))
+            .toEqual([{ field: 'sent_to', label: 'Sent to', was: 'nothing', became: '2 items' }])
+    })
+
     it('gives nothing for an insert, which carries no payload', () => {
         expect(changedFields({ action: 'insert' })).toEqual([])
         expect(changedFields(null)).toEqual([])

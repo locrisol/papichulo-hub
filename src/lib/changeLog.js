@@ -151,6 +151,42 @@ export function valueWords(field, v) {
     return Array.isArray(v) ? `${v.length} item${v.length === 1 ? '' : 's'}` : 'a set of values'
 }
 
+function isPlainObject(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+// Several columns hold an object rather than a value: platform_sales keeps the
+// day's takings per delivery platform, tender_amounts keeps them per till row.
+// Saying "a set of values to a set of values" about those is the log throwing
+// away the only part anybody wanted, so they are opened up and the keys that
+// moved are reported one by one.
+//
+// Past a handful it stops being readable and goes back to a count, which is
+// what an object being replaced wholesale looks like.
+const MOST_INSIDE = 8
+
+function inside(field, before, after) {
+    const keys = [...new Set([
+        ...Object.keys(isPlainObject(before) ? before : {}),
+        ...Object.keys(isPlainObject(after) ? after : {}),
+    ])].sort()
+
+    const moved = keys.filter(k =>
+        JSON.stringify(before?.[k] ?? null) !== JSON.stringify(after?.[k] ?? null))
+
+    if (moved.length === 0 || moved.length > MOST_INSIDE) return null
+
+    return moved.map(k => ({
+        field: `${field}.${k}`,
+        label: `${fieldWords(field)}, ${fieldWords(k)}`,
+        // The two names joined, so the inner key is judged as money by the
+        // company it keeps: "deliveroo" says nothing on its own but
+        // "platform_sales_deliveroo" is plainly a figure in euro.
+        was: valueWords(`${field}_${k}`, before?.[k] ?? null),
+        became: valueWords(`${field}_${k}`, after?.[k] ?? null),
+    }))
+}
+
 // The fields that moved, in a shape the screen can lay out.
 //
 // `was` and `became` are already words. Nothing downstream should have to know
@@ -159,15 +195,29 @@ export function changedFields(entry) {
     const changes = entry?.changes
     if (!changes || typeof changes !== 'object') return []
 
-    return Object.keys(changes)
-        .filter(f => !NOISE.has(f))
-        .sort()
-        .map(f => ({
+    const out = []
+
+    for (const f of Object.keys(changes).filter(k => !NOISE.has(k)).sort()) {
+        const before = changes[f]?.from ?? changes[f]?.was ?? null
+        const after = changes[f]?.to ?? changes[f]?.became ?? null
+
+        if (isPlainObject(before) || isPlainObject(after)) {
+            const parts = inside(f, before, after)
+            if (parts) {
+                out.push(...parts)
+                continue
+            }
+        }
+
+        out.push({
             field: f,
             label: fieldWords(f),
-            was: valueWords(f, changes[f]?.from ?? changes[f]?.was ?? null),
-            became: valueWords(f, changes[f]?.to ?? changes[f]?.became ?? null),
-        }))
+            was: valueWords(f, before),
+            became: valueWords(f, after),
+        })
+    }
+
+    return out
 }
 
 // A deleted row, worth showing but not all of it. The keys that are plainly
