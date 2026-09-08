@@ -18,7 +18,7 @@ import { offerable } from '../../lib/menuChoices'
 
 export default function AddSeveral({
     menuCategories, menuItems, allComponents, products, existingGroups,
-    alreadyOn, onAdd, onClose,
+    existing, onAdd, onClose,
 }) {
     const [group, setGroup] = useState(existingGroups?.[0] || '')
     const [categoryId, setCategoryId] = useState('')
@@ -37,7 +37,12 @@ export default function AddSeveral({
     const shown = offered.filter(({ product }) =>
         product.name.toLowerCase().includes(search.trim().toLowerCase()))
 
-    const on = new Set(alreadyOn || [])
+    // Already in the choice being typed, rather than already anywhere on the
+    // item. A chicken quesadilla made with chipotle can still be served with a
+    // dip pot of it, so the ingredient must not grey out the option.
+    const on = new Set((existing || [])
+        .filter(c => (c.choice_group || '') === group.trim())
+        .map(c => c.product_id))
     const chosen = Object.keys(picked)
 
     // Everything on screen measured the same way, or nothing. A box that sets
@@ -240,7 +245,7 @@ export default function AddSeveral({
                                     </span>
 
                                     {already ? (
-                                        <span className="text-xs text-muted">Already on this item</span>
+                                        <span className="text-xs text-muted">Already added</span>
                                     ) : ticked ? (
                                         <span
                                             className="w-48"

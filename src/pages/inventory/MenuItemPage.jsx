@@ -274,7 +274,9 @@ export default function MenuItemPage() {
 
   function handleSupabaseError(err) {
     if (err.code === '23505') {
-      setError('This product is already a component of this menu item. Edit the existing row instead.')
+      setError(componentForm.choice_group
+        ? `${getProduct(componentForm.product_id)?.name || 'That product'} is already an option in ${componentForm.choice_group}. Edit the existing row instead.`
+        : 'This product is already an ingredient of this menu item. Edit the existing row instead.')
     } else {
       setError(friendlyError(err))
     }
@@ -336,16 +338,23 @@ export default function MenuItemPage() {
   }
 
   // Available products in the dropdown: all active products except those
-  // already added (unless we're editing that specific component).
+  // already used in the place being added to.
+  //
+  // "The place" is the choice being typed, or the ingredients if none is. A
+  // chicken quesadilla is made with chipotle and is also served with a dip pot
+  // of whichever sauce was asked for. The same product, twice, meaning two
+  // different things, so the ingredient must not hide the option.
   //
   // Cleaning is left out. Nothing in that cupboard has ever been part of a
   // dish. Drinks and packaging stay: a can of Coke is a real line on a menu and
   // a container is a real cost on one, which is where this differs from a
   // recipe, where the question is only what goes into something we make.
+  const addingTo = (componentForm.choice_group || '').trim() || null
   const availableProducts = products.filter(p => {
     if (editingComponent && editingComponent.product_id === p.id) return true
     if (!canBeMenuComponent(p)) return false
-    return !components.some(c => c.product_id === p.id)
+    return !components.some(c =>
+      c.product_id === p.id && (c.choice_group || null) === addingTo)
   })
 
   // The category this item is in, if somebody has since turned it off.
@@ -822,7 +831,7 @@ export default function MenuItemPage() {
           allComponents={allComponents}
           products={products}
           existingGroups={existingGroups}
-          alreadyOn={components.map(c => c.product_id)}
+          existing={components}
           onAdd={addSeveral}
           onClose={() => setShowSeveral(false)}
         />
