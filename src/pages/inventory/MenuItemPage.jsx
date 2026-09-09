@@ -676,10 +676,9 @@ export default function MenuItemPage() {
         </div>
       ) : (
         <>
-          {/* What goes in the food. Packaging and anything the customer picks
-              between are below, each in a table of its own: either of them
-              sitting in this list reads as one more ingredient, which is the
-              opposite of what they are. */}
+          {/* Ingredients, then a table for each choice, then packaging. Either
+              a choice or a pot sitting in this first list reads as one more
+              ingredient, which is the opposite of what they are. */}
           {ingredients.length > 0 && (
             <div className={`${cardEdge} bg-white overflow-hidden mb-6`}>
               <div className={cardHeader}>Ingredients</div>
@@ -699,7 +698,34 @@ export default function MenuItemPage() {
             </div>
           )}
 
-          {/* Still counted in the cost exactly as before. This is about being
+          {choiceGroups.map(([groupName, rows]) => (
+            <div key={groupName} className={`${cardEdge} bg-white overflow-hidden mb-6`}>
+              <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
+                <span>{groupName}</span>
+                <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
+                  The customer picks one. Only the most expensive is counted.
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <ComponentTable
+                  rows={rows}
+                  counting={counting}
+                  getProduct={getProduct}
+                  getIngredientUnitCost={getIngredientUnitCost}
+                  getLineCost={getLineCost}
+                  editingComponent={editingComponent}
+                  onEdit={startEditComponent}
+                  onCancelEdit={resetComponentForm}
+                  onRemove={removeComponent}
+                />
+              </div>
+            </div>
+          ))}
+          {/* Last, because it is the part you look at least. On a burrito with
+              two choices this used to sit second and push the interesting
+              tables down the page.
+
+              Still counted in the cost exactly as before. This is about being
               able to see what a dish is handed over in without reading down a
               list of everything else. */}
           {packaging.length > 0 && (
@@ -728,29 +754,6 @@ export default function MenuItemPage() {
             </div>
           )}
 
-          {choiceGroups.map(([groupName, rows]) => (
-            <div key={groupName} className={`${cardEdge} bg-white overflow-hidden mb-6`}>
-              <div className={`${cardHeader} flex flex-wrap items-baseline gap-x-3`}>
-                <span>{groupName}</span>
-                <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
-                  The customer picks one. Only the most expensive is counted.
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <ComponentTable
-                  rows={rows}
-                  counting={counting}
-                  getProduct={getProduct}
-                  getIngredientUnitCost={getIngredientUnitCost}
-                  getLineCost={getLineCost}
-                  editingComponent={editingComponent}
-                  onEdit={startEditComponent}
-                  onCancelEdit={resetComponentForm}
-                  onRemove={removeComponent}
-                />
-              </div>
-            </div>
-          ))}
         </>
       )}
 
