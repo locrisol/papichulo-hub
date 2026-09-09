@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
+import logoPrint from '../../assets/PapiChuloLogoPrint.png'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 import { card } from '../../lib/controlStyles'
@@ -27,6 +28,19 @@ import { useConfirm } from '../../context/ConfirmContext'
 // The QR code is generated in the browser every time rather than stored. It only
 // depends on the restaurant slug, so there is nothing to keep, and regenerating
 // means it can never be left pointing at an old address.
+// An image jsPDF can draw, or null.
+//
+// Null rather than a throw on purpose. A missing logo is a worse looking page;
+// a page that failed to print is a page that tells nobody what is in the food.
+function loadImage(src) {
+    return new Promise(resolve => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => resolve(null)
+        img.src = src
+    })
+}
+
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
     // Named notify rather than confirm: these two only tell you something, there
@@ -156,6 +170,15 @@ export default function PublicAllergensPreviewPage() {
             ? new Date(lastUpdated).toLocaleDateString('en-IE', { dateStyle: 'short' })
             : new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
         const todayStr = new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
+
+        // Loaded before anything is drawn, because it goes on every page and a
+        // page cannot wait halfway through. If it will not load the sheet is
+        // still printed: a missing logo is a worse looking page, not a page
+        // that fails to tell anybody what is in the food.
+        const logo = await loadImage(logoPrint)
+        const logoHeight = 10
+        // Its own shape, 400 by 249, rather than a guess that squashes it.
+        const logoWidth = logoHeight * (400 / 249)
         const userName = user?.full_name || user?.email || 'Unknown'
 
         // Allergen columns. Order matches the FSAI standard.
@@ -182,7 +205,9 @@ export default function PublicAllergensPreviewPage() {
         const allergenColWidth = (tableWidth - nameColWidth) / allergens.length
 
         // Row heights
-        const titleHeight = 9
+        // Taller than the words need, because the logo is 10mm and sat exactly
+        // on the line the table under it starts at.
+        const titleHeight = 13
         const metaHeight = 22
         const headerRowHeight = 24
         const dataRowHeight = 7
@@ -191,26 +216,42 @@ export default function PublicAllergensPreviewPage() {
         let y = marginY
         let pageNumber = 1
 
+        // The logo on the left, the business in the middle, the site on the
+        // right. It is a Papi Chulo document about one shop rather than a Point
+        // Campus document, and somebody holding a page of it should be able to
+        // tell whose it is without reading.
         function drawTitle() {
+            if (logo) {
+                pdf.addImage(logo, 'PNG', marginX, y - 1, logoWidth, logoHeight)
+            }
+
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(16)
             pdf.setTextColor(40)
-            pdf.text(activeRestaurant.name, pageWidth / 2, y + 6, { align: 'center' })
+            pdf.text('Papi Chulo', pageWidth / 2, y + 6, { align: 'center' })
+
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(11)
+            pdf.setTextColor(80)
+            pdf.text(activeRestaurant.name, pageWidth - marginX, y + 6, { align: 'right' })
+
             y += titleHeight
         }
 
         function drawMetaBlock() {
-            // Left half: 3-row meta table
+            // Left half: the small table of who and when.
             const metaLeftWidth = 90
             const labelW = 35
             const valueW = metaLeftWidth - labelW
-            const rowH = metaHeight / 3
 
+            // No reviewed date. A new one is printed on every change, so the
+            // date it was made is the date it was reviewed, and a second box
+            // saying so was two boxes for one fact.
             const rows = [
                 ['Date:', lastUpdatedStr],
-                ['Reviewed Date:', todayStr],
                 ['Created by:', userName],
             ]
+            const rowH = metaHeight / rows.length
 
             pdf.setDrawColor(80)
             pdf.setLineWidth(0.2)
@@ -313,6 +354,12 @@ export default function PublicAllergensPreviewPage() {
             pdf.text(`Page ${pageNumber}`, pageWidth - marginX, pageHeight - 5, { align: 'right' })
         }
 
+        // A category heading only goes on a page if the first of its rows fit
+        // under it. Left to fit on its own it lands at the foot of a page with
+        // nothing beneath it, which reads as a category that came to nothing
+        // until you turn over. The same rule the stock take sheet uses.
+        const OPENING_ROWS = 3
+
         function startNewPage() {
             drawPageFooter()
             pdf.addPage()
@@ -340,41 +387,58 @@ export default function PublicAllergensPreviewPage() {
             y += categoryRowHeight
         }
 
+        // How tall a row has to be for its name to fit.
+        //
+        // "Loaded Nachos with Guacamole and Salsa" wraps to two lines, and with
+        // every row a fixed height the second line ran under the next row and
+        // was painted over by it. The name was on the page and unreadable,
+        // which on an allergen sheet is the worst of both.
+        function rowHeightFor(item) {
+            const lines = pdf.splitTextToSize(item.name, nameColWidth - 4).length
+            return Math.max(dataRowHeight, lines * 4 + 3)
+        }
+
         function drawItemRow(item, itemAllergens) {
-            ensureSpace(dataRowHeight)
+            const rowHeight = rowHeightFor(item)
+            ensureSpace(rowHeight)
 
             pdf.setDrawColor(80)
             pdf.setLineWidth(0.2)
 
             // Menu item cell
             pdf.setFillColor(255, 255, 255)
-            pdf.rect(marginX, y, nameColWidth, dataRowHeight, 'FD')
+            pdf.rect(marginX, y, nameColWidth, rowHeight, 'FD')
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(9)
             pdf.setTextColor(40)
-            pdf.text(item.name, marginX + 2, y + dataRowHeight / 2 + 1.5, { maxWidth: nameColWidth - 4 })
+
+            const nameLines = pdf.splitTextToSize(item.name, nameColWidth - 4)
+            const nameTop = y + rowHeight / 2 - ((nameLines.length - 1) * 4) / 2 + 1.5
+            nameLines.forEach((line, n) => {
+                pdf.text(line, marginX + 2, nameTop + n * 4)
+            })
 
             // Allergen cells
             allergens.forEach((allergen, i) => {
                 const x = marginX + nameColWidth + i * allergenColWidth
                 pdf.setFillColor(255, 255, 255) // reset fill to white every cell
-                pdf.rect(x, y, allergenColWidth, dataRowHeight, 'FD')
+                pdf.rect(x, y, allergenColWidth, rowHeight, 'FD')
 
                 const state = itemAllergens[allergen.key]
                 if (state === 'contains') {
                     pdf.setFont('helvetica', 'bold')
                     pdf.setFontSize(11)
                     pdf.setTextColor(180, 30, 30)
-                    pdf.text('X', x + allergenColWidth / 2, y + dataRowHeight / 2 + 2, { align: 'center' })
+                    pdf.text('X', x + allergenColWidth / 2, y + rowHeight / 2 + 2, { align: 'center' })
                 } else if (state === 'may_contain') {
                     pdf.setFont('helvetica', 'bold')
                     pdf.setFontSize(11)
                     pdf.setTextColor(180, 120, 30)
-                    pdf.text('~', x + allergenColWidth / 2, y + dataRowHeight / 2 + 2, { align: 'center' })
+                    pdf.text('~', x + allergenColWidth / 2, y + rowHeight / 2 + 2, { align: 'center' })
                 }
             })
 
-            y += dataRowHeight
+            y += rowHeight
         }
 
         // First page setup
@@ -399,6 +463,9 @@ export default function PublicAllergensPreviewPage() {
             )
 
             if (rows.length === 0) continue
+
+            ensureSpace(categoryRowHeight
+                + rows.slice(0, OPENING_ROWS).reduce((sum, r) => sum + rowHeightFor(r), 0))
 
             drawCategoryRow(category.name)
             for (const row of rows) drawItemRow(row, row.allergens)
