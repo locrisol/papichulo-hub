@@ -117,6 +117,29 @@ const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
 // copies of the fourteen is two things to keep in step, and the law fixes both.
 export const ALLERGEN_LABELS = Object.fromEntries(ALLERGENS.map(a => [a.key, a.label]))
 
+// The printed sheet: the order the columns go in, and the one word each gets.
+//
+// Here rather than in the page that draws it, because the keys have to be the
+// real ones. Renaming soybeans to soya to make the heading read better printed
+// an empty column, and an empty column on this sheet says there is no soya in
+// anything. The test below holds these against the fourteen.
+//
+// The long legal wording is not lost, it is printed once in the legend. Three
+// lines of 7.5pt saying "Sulphur dioxide & Sulphites" in a 16mm column was not
+// easier to read for being longer.
+export const SHEET_ORDER = [
+  'celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk',
+  'molluscs', 'mustard', 'nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites',
+]
+
+export const ALLERGEN_SHORT = {
+  ...ALLERGEN_LABELS,
+  gluten: 'Gluten',
+  soybeans: 'Soya',
+  sesame: 'Sesame',
+  sulphites: 'Sulphites',
+}
+
 // How a state looks wherever it is shown. Here rather than in a component so
 // the customer page and anything printed cannot colour the same word
 // differently.
