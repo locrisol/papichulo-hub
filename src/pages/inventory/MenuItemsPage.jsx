@@ -6,6 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
+import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
@@ -76,8 +77,21 @@ export default function MenuItemsPage() {
     fetchPrices()
   }, [activeRestaurant])
 
-  async function fetchAll() {
-    setLoading(true)
+  // quiet is for reading the same page again after changing something on it:
+  // arranging a category, turning a dish off. Blanking the list for a moment
+  // collapses the page, the browser clamps the scroll to the top, and you come
+  // back to the beginning of a list you were halfway down.
+  //
+  // The first load is not quiet, because there is genuinely nothing to show
+  // yet and a page with no word on it is worse than the word Loading.
+  // Stepping into a dish and coming back is one errand, so it lands where it
+  // left off. Going anywhere else and coming back later is a new visit, and
+  // being dropped halfway down a list nobody has looked at since this morning
+  // is a page that has lost its place rather than one being helpful.
+  useKeepScroll('menu-items', !loading, to => to.startsWith('/catalogue/menu-items/'))
+
+  async function fetchAll({ quiet = false } = {}) {
+    if (!quiet) setLoading(true)
     const [
       menuItemsRes, categoriesRes, componentsRes, productsRes,
       recipeLinesRes, allergensRes,
@@ -180,7 +194,7 @@ export default function MenuItemsPage() {
       .update({ is_active: !item.is_active })
       .eq('id', item.id)
     if (error) setError(friendlyError(error))
-    else fetchAll()
+    else fetchAll({ quiet: true })
   }
 
   function getItemComponents(itemId) {
@@ -261,7 +275,7 @@ export default function MenuItemsPage() {
     if (failed) { setError(friendlyError(failed.error)); return }
 
     setArranging(null)
-    fetchAll()
+    fetchAll({ quiet: true })
   }
 
   function rowActions(item) {
@@ -688,7 +702,7 @@ export default function MenuItemsPage() {
         <CategoryManagerModal
           categories={categories}
           onClose={() => setShowCategoryModal(false)}
-          onChange={fetchAll}
+          onChange={() => fetchAll({ quiet: true })}
         />
       )}
 
