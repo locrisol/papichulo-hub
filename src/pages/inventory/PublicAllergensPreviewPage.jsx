@@ -176,7 +176,10 @@ export default function PublicAllergensPreviewPage() {
         // still printed: a missing logo is a worse looking page, not a page
         // that fails to tell anybody what is in the food.
         const logo = await loadImage(logoPrint)
-        const logoHeight = 10
+
+        // On every page, so every millimetre of it is a millimetre of rows
+        // given up three times over. This is the one number to change.
+        const logoHeight = 22
         // Its own shape, 400 by 249, rather than a guess that squashes it.
         const logoWidth = logoHeight * (400 / 249)
         const userName = user?.full_name || user?.email || 'Unknown'
@@ -205,9 +208,8 @@ export default function PublicAllergensPreviewPage() {
         const allergenColWidth = (tableWidth - nameColWidth) / allergens.length
 
         // Row heights
-        // Taller than the words need, because the logo is 10mm and sat exactly
-        // on the line the table under it starts at.
-        const titleHeight = 13
+        // The logo plus a little air under it.
+        const titleHeight = 26
         const metaHeight = 22
         const headerRowHeight = 24
         const dataRowHeight = 7
@@ -216,24 +218,22 @@ export default function PublicAllergensPreviewPage() {
         let y = marginY
         let pageNumber = 1
 
-        // The logo on the left, the business in the middle, the site on the
-        // right. It is a Papi Chulo document about one shop rather than a Point
-        // Campus document, and somebody holding a page of it should be able to
-        // tell whose it is without reading.
+        // The logo, centred, and nothing else.
+        //
+        // It already reads Papi Chulo and Mexican street food, so a line of type
+        // beside it said the same thing twice. No restaurant either: the sheet
+        // is the same in every shop.
         function drawTitle() {
             if (logo) {
-                pdf.addImage(logo, 'PNG', marginX, y - 1, logoWidth, logoHeight)
+                pdf.addImage(logo, 'PNG', (pageWidth - logoWidth) / 2, y, logoWidth, logoHeight)
+            } else {
+                // Only if the image did not load. A page with no heading at all
+                // is worse than a plain one.
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(16)
+                pdf.setTextColor(40)
+                pdf.text('Papi Chulo', pageWidth / 2, y + 8, { align: 'center' })
             }
-
-            pdf.setFont('helvetica', 'bold')
-            pdf.setFontSize(16)
-            pdf.setTextColor(40)
-            pdf.text('Papi Chulo', pageWidth / 2, y + 6, { align: 'center' })
-
-            pdf.setFont('helvetica', 'normal')
-            pdf.setFontSize(11)
-            pdf.setTextColor(80)
-            pdf.text(activeRestaurant.name, pageWidth - marginX, y + 6, { align: 'right' })
 
             y += titleHeight
         }
