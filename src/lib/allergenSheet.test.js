@@ -56,9 +56,41 @@ describe('sheetRows', () => {
         expect(names).not.toContain('4 Churros')
     })
 
-    it('gives the sauces their own rows', () => {
+    it('gives the sauces their own rows, after the dishes', () => {
+        // A sauce sitting between two dishes reads as a dish. These are the
+        // things handed over beside them, so they go at the end.
         expect(rowsOf().map(r => r.name))
-            .toEqual(['Caramel Sauce', 'Chocolate Sauce', 'Churros'])
+            .toEqual(['Churros', 'Caramel Sauce', 'Chocolate Sauce'])
+    })
+
+    it('follows the order the category was arranged in', () => {
+        const items = [
+            { id: 'a', name: 'Flan', category_id: 'des', sort_order: 2 },
+            { id: 'b', name: 'Brownie', category_id: 'des', sort_order: 1 },
+        ]
+        expect(sheetRows(items, [], products, [], allergens).map(r => r.name))
+            .toEqual(['Brownie', 'Flan'])
+    })
+
+    it('falls back to the name where nothing has been arranged', () => {
+        // Everything starts at zero, so a category nobody has touched comes out
+        // exactly as it always did.
+        const items = [
+            { id: 'a', name: 'Flan', category_id: 'des' },
+            { id: 'b', name: 'Brownie', category_id: 'des' },
+        ]
+        expect(sheetRows(items, [], products, [], allergens).map(r => r.name))
+            .toEqual(['Brownie', 'Flan'])
+    })
+
+    it('puts a merged row where the earliest of its sizes sits', () => {
+        const items = [
+            { id: 'z', name: 'Affogato', category_id: 'des', sort_order: 5 },
+            { id: 'm4', name: '4 Churros', sheet_name: 'Churros', sort_order: 9 },
+            { id: 'm7', name: '7 Churros', sheet_name: 'Churros', sort_order: 1 },
+        ]
+        expect(sheetRows(items, [], products, [], allergens).map(r => r.name))
+            .toEqual(['Churros', 'Affogato'])
     })
 
     it('does not mind capitals or a stray space', () => {

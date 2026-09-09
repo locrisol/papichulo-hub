@@ -33,6 +33,10 @@ export default function MenuItemsPage() {
   const { activeRestaurant } = useRestaurant()
 
   const [menuItems, setMenuItems] = useState([])
+  // Which row is being moved, so its arrows stop taking presses while the
+  // writes are going out. Pressing down four times fast on a category that
+  // has never been arranged sends four sets of renumbering at once.
+  const [moving, setMoving] = useState(null)
   const [categories, setCategories] = useState([])
   const [components, setComponents] = useState([])
   const [products, setProducts] = useState([])
@@ -228,9 +232,90 @@ export default function MenuItemsPage() {
   // the two cannot end up offering different things. A plain function rather
   // than a component, since a component declared in here would be a new type on
   // every render and get rebuilt each time.
+  // Moving one up or down inside its category.
+  //
+  // The whole category is renumbered rather than two rows being swapped,
+  // because everything starts at zero and swapping two zeros does nothing at
+  // all. After the first move a category is numbered properly and only the two
+  // that actually moved are written.
+  // The real order of a category, whatever the page happens to be showing. A
+  // filter hiding half of them must not change what "up" means.
+  function orderedCategory(categoryId) {
+    return menuItems
+      .filter(i => i.category_id === categoryId)
+      .sort((a, b) =>
+        ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name))
+  }
+
+  async function move(item, by) {
+    const inCategory = orderedCategory(item.category_id)
+
+    const from = inCategory.findIndex(i => i.id === item.id)
+    const to = from + by
+    if (from < 0 || to < 0 || to >= inCategory.length) return
+
+    const reordered = [...inCategory]
+    reordered.splice(to, 0, ...reordered.splice(from, 1))
+
+    // Only what actually changed. On a category that has never been arranged
+    // that is all of it once, and two rows every time after.
+    const writes = reordered
+      .map((i, n) => ({ id: i.id, sort_order: n }))
+      .filter(({ id, sort_order }) =>
+        inCategory.find(i => i.id === id).sort_order !== sort_order)
+
+    if (writes.length === 0) return
+
+    setMoving(item.id)
+    for (const w of writes) {
+      const { error: e } = await supabase
+        .from('menu_items')
+        .update({ sort_order: w.sort_order })
+        .eq('id', w.id)
+      if (e) { setError(friendlyError(e)); break }
+    }
+    setMoving(null)
+    fetchAll()
+  }
+
+  // Whether this one can go any further, so the button says so rather than
+  // being pressed and doing nothing.
+  function edgeOf(item) {
+    const inCategory = orderedCategory(item.category_id)
+    return {
+      first: inCategory[0]?.id === item.id,
+      last: inCategory[inCategory.length - 1]?.id === item.id,
+    }
+  }
+
+  function moveButtons(item) {
+    const edge = edgeOf(item)
+    return (
+      <>
+        <button
+          onClick={() => move(item, -1)}
+          disabled={edge.first || moving === item.id}
+          aria-label={`Move ${item.name} up`}
+          className={`${rowButton('plain')} disabled:opacity-30`}
+        >
+          &uarr;
+        </button>
+        <button
+          onClick={() => move(item, 1)}
+          disabled={edge.last || moving === item.id}
+          aria-label={`Move ${item.name} down`}
+          className={`${rowButton('plain')} disabled:opacity-30`}
+        >
+          &darr;
+        </button>
+      </>
+    )
+  }
+
   function rowActions(item) {
     return (
       <>
+        {moveButtons(item)}
         <button
           onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
           className={rowButton('edit')}
@@ -255,6 +340,16 @@ export default function MenuItemsPage() {
     return s
   }
 
+  // Every category is its own table, so without this each one sizes its columns
+  // to its own contents and Cost lands in a different place in every one. Read
+  // down the page it looked like a different table each time.
+  //
+  // Percentages with table-fixed, because the widths have to be decided before
+  // the contents are looked at, which is the whole point. Name gets the most,
+  // the figures get what a figure needs, and Allergens gets room to wrap rather
+  // than pushing everything else around.
+  const COLUMNS = ['20%', '10%', '9%', '10%', '8%', '8%', '15%', '20%']
+
   // Filter, group, sort
   const filteredItems = menuItems.filter(i => showInactive || i.is_active)
   const itemsByCategory = categories
@@ -263,7 +358,11 @@ export default function MenuItemsPage() {
       category: c,
       items: filteredItems
         .filter(i => i.category_id === c.id)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        // Arranged order first, then the name. Everything starts at zero, so a
+        // category nobody has arranged is alphabetical exactly as before, and
+        // the printed allergen sheet reads in the same order as this.
+        .sort((a, b) =>
+          ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name)),
     }))
     .filter(group => group.items.length > 0 || showInactive)
 
@@ -530,7 +629,10 @@ export default function MenuItemsPage() {
                 </div>
 
                 <div className={`${tableCard} hidden md:block`}>
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      {COLUMNS.map((w, n) => <col key={n} style={{ width: w }} />)}
+                    </colgroup>
                     <thead>
                       <tr className={tableHeadRow}>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>

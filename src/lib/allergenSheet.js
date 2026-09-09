@@ -59,6 +59,12 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
         byName.get(key).items.push(item)
     }
 
+    // A merged row sits where the earliest of its items sits. Two sizes of one
+    // dish should be next to each other in the list anyway, and if they are not,
+    // the row goes where the first of them was rather than somewhere neither of
+    // them is.
+    const orderOf = items => Math.min(...items.map(i => i.sort_order ?? 0))
+
     for (const { name, items } of byName.values()) {
         const ids = new Set(items.map(i => i.id))
         const all = (allComponents || []).filter(c => ids.has(c.menu_item_id))
@@ -66,6 +72,7 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
         rows.push({
             key: `item:${name}`,
             name,
+            order: orderOf(items),
             complete: everythingArrived(all, products),
             // The choices are dropped by deriveMenuItemAllergens itself, so
             // this hands it everything rather than filtering here as well. Two
@@ -100,14 +107,22 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
         rows.push({
             key: `product:${productId}`,
             name: product.name,
+            // After the dishes. These are the things handed over beside them,
+            // and a sauce sitting between two dishes reads as a dish.
+            order: Infinity,
             complete: true,
             allergens: deriveProductAllergens(product, products, recipeLines, allergens)
                 || emptyAllergens(),
         })
     }
 
-    // The same order the sheet has always used. A dish and the sauce that goes
-    // with it end up apart, which is the price of a list somebody can run a
-    // finger down looking for one name.
-    return rows.sort((a, b) => a.name.localeCompare(b.name))
+    // The order the category was arranged in, and the name where two things
+    // have never been arranged against each other. Everything starts at zero,
+    // so a category nobody has touched still comes out alphabetically, exactly
+    // as it always did.
+    //
+    // The separately listed sauces come after all the dishes rather than being
+    // sorted in among them.
+    return rows.sort((a, b) =>
+        (a.order - b.order) || a.name.localeCompare(b.name))
 }
