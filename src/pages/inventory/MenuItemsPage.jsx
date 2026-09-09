@@ -6,6 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
+import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
@@ -37,6 +38,7 @@ export default function MenuItemsPage() {
   // writes are going out. Pressing down four times fast on a category that
   // has never been arranged sends four sets of renumbering at once.
   const [moving, setMoving] = useState(null)
+  const [arranging, setArranging] = useState(null)
   const [categories, setCategories] = useState([])
   const [components, setComponents] = useState([])
   const [products, setProducts] = useState([])
@@ -278,44 +280,9 @@ export default function MenuItemsPage() {
     fetchAll()
   }
 
-  // Whether this one can go any further, so the button says so rather than
-  // being pressed and doing nothing.
-  function edgeOf(item) {
-    const inCategory = orderedCategory(item.category_id)
-    return {
-      first: inCategory[0]?.id === item.id,
-      last: inCategory[inCategory.length - 1]?.id === item.id,
-    }
-  }
-
-  function moveButtons(item) {
-    const edge = edgeOf(item)
-    return (
-      <>
-        <button
-          onClick={() => move(item, -1)}
-          disabled={edge.first || moving === item.id}
-          aria-label={`Move ${item.name} up`}
-          className={`${rowButton('plain')} disabled:opacity-30`}
-        >
-          &uarr;
-        </button>
-        <button
-          onClick={() => move(item, 1)}
-          disabled={edge.last || moving === item.id}
-          aria-label={`Move ${item.name} down`}
-          className={`${rowButton('plain')} disabled:opacity-30`}
-        >
-          &darr;
-        </button>
-      </>
-    )
-  }
-
   function rowActions(item) {
     return (
       <>
-        {moveButtons(item)}
         <button
           onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
           className={rowButton('edit')}
@@ -348,7 +315,7 @@ export default function MenuItemsPage() {
   // the contents are looked at, which is the whole point. Name gets the most,
   // the figures get what a figure needs, and Allergens gets room to wrap rather
   // than pushing everything else around.
-  const COLUMNS = ['20%', '10%', '9%', '10%', '8%', '8%', '15%', '20%']
+  const COLUMNS = ['22%', '10%', '9%', '11%', '9%', '9%', '15%', '15%']
 
   // Filter, group, sort
   const filteredItems = menuItems.filter(i => showInactive || i.is_active)
@@ -524,9 +491,19 @@ export default function MenuItemsPage() {
                   <h3 className="font-serif text-base font-bold text-white md:text-gray-900">
                     {category.name}
                   </h3>
-                  <span className={`${badge} bg-white/20 text-white md:hidden`}>
-                    {items.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`${badge} bg-white/20 text-white md:hidden`}>
+                      {items.length}
+                    </span>
+                    {/* Beside the heading it belongs to, so it is pressed where
+                        you are already looking. */}
+                    <button
+                      onClick={() => setArranging(category.id)}
+                      className={`${rowButton('plain')} md:mt-1`}
+                    >
+                      Arrange
+                    </button>
+                  </div>
                 </div>
 
                 {/* Phone: one card per dish instead of eight columns to swipe
@@ -728,6 +705,16 @@ export default function MenuItemsPage() {
           categories={categories}
           onClose={() => setShowCategoryModal(false)}
           onChange={fetchAll}
+        />
+      )}
+
+      {arranging && (
+        <ArrangeItems
+          categoryName={categories.find(c => c.id === arranging)?.name || 'category'}
+          items={orderedCategory(arranging)}
+          onMove={move}
+          busy={moving !== null}
+          onClose={() => setArranging(null)}
         />
       )}
     </div>
