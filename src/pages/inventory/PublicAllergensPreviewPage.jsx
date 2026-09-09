@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase'
-import { deriveMenuItemAllergens } from '../../lib/allergens'
+import { sheetRows } from '../../lib/allergenSheet'
 import { useAuth } from '../../context/AuthContext'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
@@ -382,26 +382,26 @@ export default function PublicAllergensPreviewPage() {
         drawMetaBlock()
         drawTableHeader()
 
-        // Iterate categories
+        // The same rows the customer page shows, worked out in one place so the
+        // printed sheet and the screen cannot come out saying different things.
+        // They used to have a copy of this reasoning each.
         for (const category of menuData.categories) {
-            const itemsInCategory = menuData.menuItems
-                .filter(i => i.category_id === category.id)
-                .sort((a, b) => a.name.localeCompare(b.name))
+            // A category can be kept off the sheet. No answer means shown, so
+            // nothing recorded before that switch existed disappears.
+            if (category.on_allergen_sheet === false) continue
 
-            if (itemsInCategory.length === 0) continue
+            const rows = sheetRows(
+                menuData.menuItems.filter(i => i.category_id === category.id),
+                menuData.components,
+                menuData.products,
+                menuData.recipeLines,
+                menuData.allergens,
+            )
+
+            if (rows.length === 0) continue
 
             drawCategoryRow(category.name)
-
-            for (const item of itemsInCategory) {
-                const itemComponents = menuData.components.filter(c => c.menu_item_id === item.id)
-                const itemAllergens = deriveMenuItemAllergens(
-                    itemComponents,
-                    menuData.products,
-                    menuData.recipeLines,
-                    menuData.allergens,
-                )
-                drawItemRow(item, itemAllergens)
-            }
+            for (const row of rows) drawItemRow(row, row.allergens)
         }
 
         drawPageFooter()

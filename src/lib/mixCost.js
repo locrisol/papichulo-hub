@@ -120,20 +120,53 @@ export function resolveUnitCost(product, allProducts, allRecipeLines, preferredP
 // Written once because two screens ask, the menu item and the list of them, and
 // the first time this was in two places one of them broke on the very first
 // component that had no quantity.
+// A component in a choice group is one of several the customer picks between,
+// so only one of them is ever made. The dearest is the one that counts: it is
+// the most the portion can cost, and a menu costed on the cheapest option is a
+// margin that looks better than it is.
+//
+// Worked out from today's prices every time, which is the whole point of it.
+// The version of this done by hand, picking whichever option was dearest and
+// putting only that one on the recipe, stops being true the day a supplier
+// moves a price and nothing anywhere says so.
 export function menuItemCost(components, allProducts, allRecipeLines, prices) {
   if (!components || components.length === 0) return null
 
-  let total = 0
-  for (const line of components) {
-    if (line.no_quantity) continue
-
-    const product = (allProducts || []).find(p => p.id === line.product_id)
-    if (!product) return null
-
-    const result = calculateMixCost(product, allProducts, allRecipeLines, prices)
-    if (result.cost === null) return null
-
-    total += parseFloat(line.quantity) * result.cost
+  // Ungrouped lines each stand alone, so they go in a group of their own
+  // rather than being treated as a separate case twice over.
+  const groups = new Map()
+  for (let i = 0; i < components.length; i++) {
+    const line = components[i]
+    const key = line.choice_group ? `g:${line.choice_group}` : `line:${i}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(line)
   }
+
+  let total = 0
+  for (const lines of groups.values()) {
+    let dearest = null
+
+    for (const line of lines) {
+      if (line.no_quantity) continue
+
+      const product = (allProducts || []).find(p => p.id === line.product_id)
+      if (!product) return null
+
+      const result = calculateMixCost(product, allProducts, allRecipeLines, prices)
+      // All or nothing, and a group is stricter rather than looser: we cannot
+      // say which option is dearest while one of them has no price, so an
+      // unpriced alternative blanks the dish the same as an unpriced
+      // ingredient does.
+      if (result.cost === null) return null
+
+      const cost = parseFloat(line.quantity) * result.cost
+      if (dearest === null || cost > dearest) dearest = cost
+    }
+
+    // Null here means every line in the group was no_quantity, which adds
+    // nothing rather than blanking the total.
+    if (dearest !== null) total += dearest
+  }
+
   return total
 }

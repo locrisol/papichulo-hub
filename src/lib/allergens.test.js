@@ -114,6 +114,27 @@ describe('deriveMenuItemAllergens', () => {
     expect(r.milk).toBe('contains')    // from crema->milk
   })
 
+  it('leaves out anything the customer chooses between', () => {
+    // The dish itself does not carry it. Somebody who took the plain version,
+    // or the other option, is not being warned about this one, and warning
+    // about every option is what makes people stop reading the sheet.
+    const components = [
+      { product_id: 'p-tortilla', quantity: 1 },
+      { product_id: 'p-crema', quantity: 1, choice_group: 'Sauce' },
+    ]
+    const r = deriveMenuItemAllergens(components, allProducts, allRecipeLines, allAllergens)
+    expect(r.gluten).toBe('contains')
+    expect(r.milk).toBe('none')
+  })
+
+  it('still counts one that is always in it', () => {
+    // The guard is the choice group, not the product. The same crema without
+    // one is an ingredient like any other.
+    const components = [{ product_id: 'p-crema', quantity: 1 }]
+    expect(deriveMenuItemAllergens(components, allProducts, allRecipeLines, allAllergens).milk)
+      .toBe('contains')
+  })
+
   it('ignores components whose product cannot be found', () => {
     const components = [{ product_id: 'does-not-exist', quantity: 1 }]
     const r = deriveMenuItemAllergens(components, allProducts, allRecipeLines, allAllergens)

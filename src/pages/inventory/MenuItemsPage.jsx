@@ -6,6 +6,8 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
+import { useKeepScroll } from '../../context/ScrollContext'
+import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
@@ -33,6 +35,10 @@ export default function MenuItemsPage() {
   const { activeRestaurant } = useRestaurant()
 
   const [menuItems, setMenuItems] = useState([])
+  // Which row is being moved, so its arrows stop taking presses while the
+  // writes are going out. Pressing down four times fast on a category that
+  // has never been arranged sends four sets of renumbering at once.
+  const [arranging, setArranging] = useState(null)
   const [categories, setCategories] = useState([])
   const [components, setComponents] = useState([])
   const [products, setProducts] = useState([])
@@ -71,8 +77,21 @@ export default function MenuItemsPage() {
     fetchPrices()
   }, [activeRestaurant])
 
-  async function fetchAll() {
-    setLoading(true)
+  // quiet is for reading the same page again after changing something on it:
+  // arranging a category, turning a dish off. Blanking the list for a moment
+  // collapses the page, the browser clamps the scroll to the top, and you come
+  // back to the beginning of a list you were halfway down.
+  //
+  // The first load is not quiet, because there is genuinely nothing to show
+  // yet and a page with no word on it is worse than the word Loading.
+  // Stepping into a dish and coming back is one errand, so it lands where it
+  // left off. Going anywhere else and coming back later is a new visit, and
+  // being dropped halfway down a list nobody has looked at since this morning
+  // is a page that has lost its place rather than one being helpful.
+  useKeepScroll('menu-items', !loading, to => to.startsWith('/catalogue/menu-items/'))
+
+  async function fetchAll({ quiet = false } = {}) {
+    if (!quiet) setLoading(true)
     const [
       menuItemsRes, categoriesRes, componentsRes, productsRes,
       recipeLinesRes, allergensRes,
@@ -175,11 +194,25 @@ export default function MenuItemsPage() {
       .update({ is_active: !item.is_active })
       .eq('id', item.id)
     if (error) setError(friendlyError(error))
-    else fetchAll()
+    else fetchAll({ quiet: true })
   }
 
   function getItemComponents(itemId) {
     return components.filter(c => c.menu_item_id === itemId)
+  }
+
+  // What is in it, and how many choices sit beside that.
+  //
+  // The options are not ingredients. A burrito with eleven ingredients and a
+  // choice of five salsas is not a sixteen ingredient burrito: only one of the
+  // five is ever in it. Counting them together made it read as far more of a
+  // job to build than it is.
+  function countsFor(itemId) {
+    const mine = getItemComponents(itemId)
+    return {
+      components: mine.filter(c => !c.choice_group).length,
+      choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+    }
   }
 
   function getItemCost(item) {
@@ -214,6 +247,37 @@ export default function MenuItemsPage() {
   // the two cannot end up offering different things. A plain function rather
   // than a component, since a component declared in here would be a new type on
   // every render and get rebuilt each time.
+  // The real order of a category, whatever the page happens to be showing. A
+  // filter hiding half of them must not change what "up" means.
+  function orderedCategory(categoryId) {
+    return menuItems
+      .filter(i => i.category_id === categoryId)
+      .sort((a, b) =>
+        ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name))
+  }
+
+  // The order the arrange dialog settled on, written in one go.
+  //
+  // Renumbered from the top rather than two rows swapped, because everything
+  // starts at zero and swapping two zeros does nothing at all. Only the rows
+  // whose number actually changed are written: on a category nobody has
+  // arranged that is all of them once, and a handful every time after.
+  async function saveOrder(ordered) {
+    const writes = ordered
+      .map((item, n) => ({ id: item.id, sort_order: n }))
+      .filter(({ id, sort_order }) =>
+        (menuItems.find(i => i.id === id)?.sort_order ?? 0) !== sort_order)
+
+    const results = await Promise.all(writes.map(w =>
+      supabase.from('menu_items').update({ sort_order: w.sort_order }).eq('id', w.id)))
+
+    const failed = results.find(r => r.error)
+    if (failed) { setError(friendlyError(failed.error)); return }
+
+    setArranging(null)
+    fetchAll({ quiet: true })
+  }
+
   function rowActions(item) {
     return (
       <>
@@ -241,6 +305,16 @@ export default function MenuItemsPage() {
     return s
   }
 
+  // Every category is its own table, so without this each one sizes its columns
+  // to its own contents and Cost lands in a different place in every one. Read
+  // down the page it looked like a different table each time.
+  //
+  // Percentages with table-fixed, because the widths have to be decided before
+  // the contents are looked at, which is the whole point. Name gets the most,
+  // the figures get what a figure needs, and Allergens gets room to wrap rather
+  // than pushing everything else around.
+  const COLUMNS = ['22%', '10%', '9%', '11%', '9%', '9%', '15%', '15%']
+
   // Filter, group, sort
   const filteredItems = menuItems.filter(i => showInactive || i.is_active)
   const itemsByCategory = categories
@@ -249,7 +323,11 @@ export default function MenuItemsPage() {
       category: c,
       items: filteredItems
         .filter(i => i.category_id === c.id)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        // Arranged order first, then the name. Everything starts at zero, so a
+        // category nobody has arranged is alphabetical exactly as before, and
+        // the printed allergen sheet reads in the same order as this.
+        .sort((a, b) =>
+          ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name)),
     }))
     .filter(group => group.items.length > 0 || showInactive)
 
@@ -411,9 +489,19 @@ export default function MenuItemsPage() {
                   <h3 className="font-serif text-base font-bold text-white md:text-gray-900">
                     {category.name}
                   </h3>
-                  <span className={`${badge} bg-white/20 text-white md:hidden`}>
-                    {items.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`${badge} bg-white/20 text-white md:hidden`}>
+                      {items.length}
+                    </span>
+                    {/* Beside the heading it belongs to, so it is pressed where
+                        you are already looking. */}
+                    <button
+                      onClick={() => setArranging(category.id)}
+                      className={`${rowButton('plain')} md:mt-1`}
+                    >
+                      Arrange
+                    </button>
+                  </div>
                 </div>
 
                 {/* Phone: one card per dish instead of eight columns to swipe
@@ -426,7 +514,7 @@ export default function MenuItemsPage() {
                     const cost = getItemCost(item)
                     const m = getMargin(item)
                     const allergens = allergenText(item)
-                    const componentCount = getItemComponents(item.id).length
+                    const counts = countsFor(item.id)
 
                     return (
                       <div
@@ -446,7 +534,9 @@ export default function MenuItemsPage() {
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {componentCount} {componentCount === 1 ? 'component' : 'components'}
+                          {counts.components} {counts.components === 1 ? 'component' : 'components'}
+                          {counts.choices > 0
+                            && `, ${counts.choices} ${counts.choices === 1 ? 'choice' : 'choices'}`}
                         </p>
 
                         <dl className="mt-3 space-y-1.5 text-sm">
@@ -514,7 +604,10 @@ export default function MenuItemsPage() {
                 </div>
 
                 <div className={`${tableCard} hidden md:block`}>
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      {COLUMNS.map((w, n) => <col key={n} style={{ width: w }} />)}
+                    </colgroup>
                     <thead>
                       <tr className={tableHeadRow}>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>
@@ -532,7 +625,7 @@ export default function MenuItemsPage() {
                         const cost = getItemCost(item)
                         const m = getMargin(item)
                         const allergenSummary = summariseAllergens(getItemAllergens(item))
-                        const componentCount = getItemComponents(item.id).length
+                        const counts = countsFor(item.id)
 
                         return (
                           <tr
@@ -545,7 +638,12 @@ export default function MenuItemsPage() {
                               {item.name}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {componentCount}
+                              {counts.components}
+                              {counts.choices > 0 && (
+                                <span className="text-xs text-muted">
+                                  {' '}+ {counts.choices} {counts.choices === 1 ? 'choice' : 'choices'}
+                                </span>
+                              )}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
                               {cost !== null ? `€${cost.toFixed(2)}` : <span className="text-amber-600 text-xs">Incomplete</span>}
@@ -604,7 +702,16 @@ export default function MenuItemsPage() {
         <CategoryManagerModal
           categories={categories}
           onClose={() => setShowCategoryModal(false)}
-          onChange={fetchAll}
+          onChange={() => fetchAll({ quiet: true })}
+        />
+      )}
+
+      {arranging && (
+        <ArrangeItems
+          categoryName={categories.find(c => c.id === arranging)?.name || 'category'}
+          items={orderedCategory(arranging)}
+          onSave={saveOrder}
+          onClose={() => setArranging(null)}
         />
       )}
     </div>

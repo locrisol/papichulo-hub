@@ -132,11 +132,84 @@ describe('menuItemCost', () => {
   const products = [
     { id: 'chips', name: 'Chips', unit: 'KG' },
     { id: 'oil', name: 'Fryer oil', unit: 'Litre' },
+    { id: 'coke', name: 'Coca Cola', unit: 'Each' },
+    { id: 'juice', name: 'Orange Juice', unit: 'Each' },
+    { id: 'water', name: 'Still Water', unit: 'Each' },
+    { id: 'mystery', name: 'Something With No Price', unit: 'Each' },
   ]
   const prices = [
     { product_id: 'chips', price_per_unit: 2 },
     { product_id: 'oil', price_per_unit: 3 },
+    { product_id: 'coke', price_per_unit: 0.6 },
+    { product_id: 'juice', price_per_unit: 1.4 },
+    { product_id: 'water', price_per_unit: 0.35 },
   ]
+
+  describe('a choice the customer makes', () => {
+    // A breakfast that comes with any one drink. Only one is ever made, so
+    // adding all three would price a breakfast nobody has ever been served.
+    const drinks = [
+      { product_id: 'coke', quantity: '1', choice_group: 'Free drink' },
+      { product_id: 'juice', quantity: '1', choice_group: 'Free drink' },
+      { product_id: 'water', quantity: '1', choice_group: 'Free drink' },
+    ]
+
+    it('counts only the dearest of them', () => {
+      expect(menuItemCost(drinks, products, [], prices)).toBeCloseTo(1.4)
+    })
+
+    it('follows the prices rather than a choice made once by hand', () => {
+      // The whole reason this exists. Picking the dearest yourself and putting
+      // only that one on the recipe stops being true the day a supplier moves
+      // a price, and nothing anywhere says so.
+      const dearerCoke = prices.map(p =>
+        p.product_id === 'coke' ? { ...p, price_per_unit: 9 } : p)
+      expect(menuItemCost(drinks, products, [], dearerCoke)).toBeCloseTo(9)
+    })
+
+    it('weighs the line, not the unit price', () => {
+      // Cheaper per unit and more of it can still be the dearest line.
+      const lines = [
+        { product_id: 'coke', quantity: '4', choice_group: 'x' },
+        { product_id: 'juice', quantity: '1', choice_group: 'x' },
+      ]
+      expect(menuItemCost(lines, products, [], prices)).toBeCloseTo(2.4)
+    })
+
+    it('adds the ungrouped lines on top as normal', () => {
+      const lines = [{ product_id: 'chips', quantity: '0.2' }, ...drinks]
+      expect(menuItemCost(lines, products, [], prices)).toBeCloseTo(1.8)
+    })
+
+    it('keeps two different choices apart', () => {
+      const lines = [
+        { product_id: 'coke', quantity: '1', choice_group: 'Drink' },
+        { product_id: 'juice', quantity: '1', choice_group: 'Drink' },
+        { product_id: 'chips', quantity: '0.2', choice_group: 'Side' },
+        { product_id: 'oil', quantity: '0.1', choice_group: 'Side' },
+      ]
+      // The dearest drink and the dearest side, not the dearest of all four.
+      expect(menuItemCost(lines, products, [], prices)).toBeCloseTo(1.8)
+    })
+
+    it('gives nothing at all when one option has no price', () => {
+      // Stricter than an ordinary ingredient has to be, and it has to be:
+      // there is no saying which option is dearest while one is unknown.
+      const lines = [
+        { product_id: 'coke', quantity: '1', choice_group: 'Free drink' },
+        { product_id: 'mystery', quantity: '1', choice_group: 'Free drink' },
+      ]
+      expect(menuItemCost(lines, products, [], prices)).toBeNull()
+    })
+
+    it('adds nothing for a choice that is all unmeasured', () => {
+      const lines = [
+        { product_id: 'chips', quantity: '0.2' },
+        { product_id: 'oil', no_quantity: true, choice_group: 'Free drink' },
+      ]
+      expect(menuItemCost(lines, products, [], prices)).toBeCloseTo(0.4)
+    })
+  })
 
   it('adds up what is measured', () => {
     const components = [{ product_id: 'chips', quantity: '0.2' }]

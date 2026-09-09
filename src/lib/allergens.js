@@ -112,6 +112,24 @@ export const ALLERGEN_STATES = [
 
 const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
 
+// The same fourteen names, keyed, for the screens that have an allergen and
+// want the word. Built from the list above rather than written out again: two
+// copies of the fourteen is two things to keep in step, and the law fixes both.
+export const ALLERGEN_LABELS = Object.fromEntries(ALLERGENS.map(a => [a.key, a.label]))
+
+// How a state looks wherever it is shown. Here rather than in a component so
+// the customer page and anything printed cannot colour the same word
+// differently.
+export function allergenLook(state) {
+  if (state === 'contains') {
+    return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
+  }
+  if (state === 'may_contain') {
+    return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
+  }
+  return null
+}
+
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
 // A product with no record yet is Not Present for all fourteen, which is why
@@ -190,12 +208,21 @@ export function deriveProductAllergens(product, allProducts, allRecipeLines, all
 // when the caller could not read that product rather than because it does not
 // exist. See the note on deriveProductAllergens above: the caller has to notice
 // that and say so.
+//
+// A component in a choice group contributes nothing here, and that is the rule
+// rather than something each screen remembers. The customer picks one of them,
+// so the dish itself carries none: warning about the nuts in the chocolate
+// sauce on a plate of churros somebody took caramel with is the kind of
+// over-warning that makes people stop reading the sheet at all. Those options
+// are shown in their own right, either on rows of their own or under whatever
+// category they already belong to.
 export function deriveMenuItemAllergens(menuItemComponents, allProducts, allRecipeLines, allAllergens) {
   // For a menu item: combine the allergens of every component product.
   // Components themselves never have allergen overrides at the component
   // level. Each component contributes its product's full derived allergens.
   const result = emptyAllergens()
   for (const component of menuItemComponents) {
+    if (component.choice_group) continue
     const product = allProducts.find(p => p.id === component.product_id)
     if (!product) continue
     const componentAllergens = deriveProductAllergens(product, allProducts, allRecipeLines, allAllergens)
