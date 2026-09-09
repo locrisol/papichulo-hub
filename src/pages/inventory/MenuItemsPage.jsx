@@ -37,7 +37,6 @@ export default function MenuItemsPage() {
   // Which row is being moved, so its arrows stop taking presses while the
   // writes are going out. Pressing down four times fast on a category that
   // has never been arranged sends four sets of renumbering at once.
-  const [moving, setMoving] = useState(null)
   const [arranging, setArranging] = useState(null)
   const [categories, setCategories] = useState([])
   const [components, setComponents] = useState([])
@@ -234,12 +233,6 @@ export default function MenuItemsPage() {
   // the two cannot end up offering different things. A plain function rather
   // than a component, since a component declared in here would be a new type on
   // every render and get rebuilt each time.
-  // Moving one up or down inside its category.
-  //
-  // The whole category is renumbered rather than two rows being swapped,
-  // because everything starts at zero and swapping two zeros does nothing at
-  // all. After the first move a category is numbered properly and only the two
-  // that actually moved are written.
   // The real order of a category, whatever the page happens to be showing. A
   // filter hiding half of them must not change what "up" means.
   function orderedCategory(categoryId) {
@@ -249,34 +242,25 @@ export default function MenuItemsPage() {
         ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name))
   }
 
-  async function move(item, by) {
-    const inCategory = orderedCategory(item.category_id)
-
-    const from = inCategory.findIndex(i => i.id === item.id)
-    const to = from + by
-    if (from < 0 || to < 0 || to >= inCategory.length) return
-
-    const reordered = [...inCategory]
-    reordered.splice(to, 0, ...reordered.splice(from, 1))
-
-    // Only what actually changed. On a category that has never been arranged
-    // that is all of it once, and two rows every time after.
-    const writes = reordered
-      .map((i, n) => ({ id: i.id, sort_order: n }))
+  // The order the arrange dialog settled on, written in one go.
+  //
+  // Renumbered from the top rather than two rows swapped, because everything
+  // starts at zero and swapping two zeros does nothing at all. Only the rows
+  // whose number actually changed are written: on a category nobody has
+  // arranged that is all of them once, and a handful every time after.
+  async function saveOrder(ordered) {
+    const writes = ordered
+      .map((item, n) => ({ id: item.id, sort_order: n }))
       .filter(({ id, sort_order }) =>
-        inCategory.find(i => i.id === id).sort_order !== sort_order)
+        (menuItems.find(i => i.id === id)?.sort_order ?? 0) !== sort_order)
 
-    if (writes.length === 0) return
+    const results = await Promise.all(writes.map(w =>
+      supabase.from('menu_items').update({ sort_order: w.sort_order }).eq('id', w.id)))
 
-    setMoving(item.id)
-    for (const w of writes) {
-      const { error: e } = await supabase
-        .from('menu_items')
-        .update({ sort_order: w.sort_order })
-        .eq('id', w.id)
-      if (e) { setError(friendlyError(e)); break }
-    }
-    setMoving(null)
+    const failed = results.find(r => r.error)
+    if (failed) { setError(friendlyError(failed.error)); return }
+
+    setArranging(null)
     fetchAll()
   }
 
@@ -712,8 +696,7 @@ export default function MenuItemsPage() {
         <ArrangeItems
           categoryName={categories.find(c => c.id === arranging)?.name || 'category'}
           items={orderedCategory(arranging)}
-          onMove={move}
-          busy={moving !== null}
+          onSave={saveOrder}
           onClose={() => setArranging(null)}
         />
       )}
