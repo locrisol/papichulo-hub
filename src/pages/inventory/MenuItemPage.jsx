@@ -666,6 +666,7 @@ export default function MenuItemPage() {
             availableProducts={availableProducts}
             productSelectRef={productSelectRef}
             existingGroups={existingGroups}
+            editing={false}
           />
         </div>
       )}
@@ -841,6 +842,7 @@ export default function MenuItemPage() {
               availableProducts={availableProducts}
               productSelectRef={null}
               existingGroups={existingGroups}
+              editing
             />
           </div>
         </Modal>
@@ -862,7 +864,10 @@ export default function MenuItemPage() {
   )
 }
 
-function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts, productSelectRef, existingGroups }) {
+function ComponentForm({
+  formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts,
+  productSelectRef, existingGroups, editing,
+}) {
   const product = availableProducts.find(p => p.id === formData.product_id)
   const unit = product?.unit || 'unit'
 
@@ -913,9 +918,23 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
         </div>
       </div>
 
-      {/* Something the customer picks one of, rather than something that is
-          always in it. Two things follow from a group and they are both said
-          here, because neither is guessable from the words "choice group". */}
+      {/* Only when editing.
+
+          Building a menu is dozens of trips through this form, nearly all of
+          them plain ingredients, and two controls plus three lines of help text
+          on every one of those is a real cost. Add options is the way in for a
+          new one.
+
+          On an existing row it is the only way to turn an ingredient into an
+          option, move one between choices, or take one out of a choice
+          altogether, so it stays. */}
+      {!editing && (
+        <p className="text-xs text-gray-500 mb-4">
+          For something the customer picks between, use Add options.
+        </p>
+      )}
+
+      {editing && (
       <div className="mb-4 rounded-lg border border-border bg-gray-50 p-4">
         <label htmlFor="choice-group" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
           Customer choice (optional)
@@ -957,6 +976,7 @@ function ComponentForm({ formData, onChange, onSubmit, onCancel, submitLabel, er
           </span>
         </label>
       </div>
+      )}
 
       <div className="mb-4">
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
