@@ -260,6 +260,16 @@ export default function PublicAllergensPreviewPage() {
             y += contTitleHeight
         }
 
+        // Text over as many lines as it needs, each one drawn on its own.
+        //
+        // jsPDF's maxWidth spaces the letters of a wrapped line out across the
+        // whole box, which reads as a mistake rather than as a paragraph.
+        function wrapped(text, x, top, width, lineHeight) {
+            pdf.splitTextToSize(text, width).forEach((line, n) => {
+                pdf.text(line, x, top + n * lineHeight)
+            })
+        }
+
         function drawMetaBlock() {
             // Left half: the small table of who and when.
             const metaLeftWidth = 90
@@ -299,14 +309,19 @@ export default function PublicAllergensPreviewPage() {
             pdf.setTextColor(...GREEN)
             pdf.text('Food Allergen Record Form', rightX + rightW / 2, y + 5, { align: 'center' })
 
+            // Split and drawn a line at a time rather than handed to maxWidth.
+            //
+            // maxWidth was spacing the letters of the middle line right across
+            // the box, and the sentence carried a ✗, which is not in the font
+            // jsPDF is using and came out as an apostrophe. Neither is worth
+            // risking on the one paragraph that explains what the marks mean.
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(8)
             pdf.setTextColor(...INK)
-            pdf.text(
-                'Every ingredient used to create the menu item is checked against the 14 declared allergens and ticked as appropriate. Ingredients labelled "May contain X" are marked with ~ instead of ✗.',
-                rightX + 3,
-                y + 10,
-                { maxWidth: rightW - 6 },
+            wrapped(
+                'Every ingredient of every dish is checked against the 14 declared '
+                + 'allergens, including the ingredients of anything made in house.',
+                rightX + 3, y + 10, rightW - 6, 3.6,
             )
 
             // Legend at the bottom of the right block
@@ -321,12 +336,10 @@ export default function PublicAllergensPreviewPage() {
             // shouted across the top of every page.
             pdf.setFontSize(7)
             pdf.setTextColor(...INK)
-            pdf.text(
+            wrapped(
                 'Gluten means cereals containing gluten. Nuts means tree nuts. '
                 + 'Sulphites means sulphur dioxide and sulphites. Soya means soybeans.',
-                rightX + 3,
-                y + metaHeight - 4,
-                { maxWidth: rightW - 6 },
+                rightX + 3, y + metaHeight - 4, rightW - 6, 3.2,
             )
 
             y += metaHeight + 2
