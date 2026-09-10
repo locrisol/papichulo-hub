@@ -281,6 +281,17 @@ describe('checkWeek', () => {
             expect(found[0].level).toBe('block')
         })
 
+        it('counts a renewal applied for on the day it ran out, and says so', () => {
+            // Nothing settles this one. The guidance says "before the expiry
+            // date"; a permission is ordinarily good through its expiry date.
+            // It counts and it is flagged, rather than the app quietly picking
+            // a reading of a sentence nobody has clarified.
+            const found = run(shifts, [applied({ permission_renewal_applied: '2026-08-01' })])
+            expect(found[0].kind).toBe('permissionRenewedSameDay')
+            expect(found[0].level).toBe('warn')
+            expect(found[0].text).toMatch(/worth confirming/)
+        })
+
         it('blocks a renewal applied for after it ran out', () => {
             // The condition the whole thing turns on. Applying late earns
             // nothing, and letting it through would be rostering somebody who

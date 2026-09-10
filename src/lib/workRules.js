@@ -140,11 +140,24 @@ export function graceFor(employee, weekEnd, settings = {}) {
     // Applying after it ran out earns nothing at all.
     if (applied > expired) return { covered: false, tooLate: true }
 
+    // Applied on the very day it ran out, which nothing settles.
+    //
+    // Every version of the guidance says "before the expiry date". A strict
+    // reading makes the same day too late. The ordinary reading is that a
+    // permission is good through its expiry date, so an application made that
+    // day was made while it was still valid.
+    //
+    // It counts, and it says so, because the alternative is the app quietly
+    // picking one reading of a sentence nobody has clarified and either holding
+    // a week it should not or passing one it should not. A manager who can see
+    // it is on the line can go and ask.
+    const sameDay = applied === expired
+
     const until = addDays(expired, weeks * 7)
     if (weekEnd && weekEnd > until) {
-        return { covered: false, lapsed: true, until, weeks }
+        return { covered: false, lapsed: true, sameDay, until, weeks }
     }
-    return { covered: true, until, weeks }
+    return { covered: true, sameDay, until, weeks }
 }
 
 export function permissionFor(value) {
@@ -325,7 +338,12 @@ export function checkWeek({
         if (permission === 'expired') {
             const grace = graceFor(employee, weekEnd, settings)
 
-            if (grace.covered) {
+            if (grace.covered && grace.sameDay) {
+                add('warn', 'permissionRenewedSameDay',
+                    `${name}'s permission ran out on ${employee.work_permission_expires} and the `
+                    + `renewal was applied for that same day${reference(employee)}. The rule says `
+                    + 'before it ran out, so this one is worth confirming.')
+            } else if (grace.covered) {
                 add('warn', 'permissionGrace',
                     `${name}'s permission ran out on ${employee.work_permission_expires} `
                     + `and a renewal was applied for on ${employee.permission_renewal_applied}`
