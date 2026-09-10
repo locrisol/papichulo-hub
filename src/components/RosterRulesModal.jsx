@@ -288,7 +288,8 @@ export default function RosterRulesModal({ onClose }) {
                                 <span className="block text-xs text-gray-500 mt-0.5">
                                     Somebody who applied to renew before their permission ran out may keep
                                     working while it is processed. Only applies where the date they applied
-                                    is on the team list and is before the day it ran out.
+                                    is on the team list and is before the day it ran out. Somebody with no
+                                    renewal recorded still holds the week back.
                                 </span>
                             </span>
                         </label>
@@ -308,10 +309,19 @@ export default function RosterRulesModal({ onClose }) {
                                     })}
                                     className="w-20 border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
-                                <span className="text-sm text-gray-700">weeks after it ran out.</span>
+                                <span className="text-sm text-gray-700">weeks after it ran out,</span>
+                                <select
+                                    value={rules.permissionGrace.afterBlocks ? 'block' : 'warn'}
+                                    onChange={e => set('permissionGrace', { afterBlocks: e.target.value === 'block' })}
+                                    className="w-full sm:w-auto border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                                >
+                                    <option value="warn">then keep saying it every week</option>
+                                    <option value="block">then hold the week back</option>
+                                </select>
                                 <p className="w-full text-xs text-gray-500 mt-1">
-                                    Twelve is what the Department tells employers today. The roster holds the
-                                    week back once that runs out.
+                                    Twelve is the figure in the Department's notice, but renewals have been
+                                    running past seventeen weeks. Whichever you pick, the roster keeps saying
+                                    it rather than going quiet.
                                 </p>
                             </div>
                         )}

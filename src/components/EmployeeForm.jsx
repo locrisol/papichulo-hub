@@ -203,6 +203,23 @@ export default function EmployeeForm({
                     </div>
                 )}
 
+                {/* The OREG number off the application receipt. It is what an
+                    employer is asked to have on file, and the roster puts it in
+                    the warning so it is to hand where the question gets asked
+                    rather than in a folder in the office. */}
+                {formData.permissionRenewalApplied && (
+                    <div className="mb-1 mt-4">
+                        <label className={labelCls}>Application reference</label>
+                        <input
+                            type="text"
+                            value={formData.permissionRenewalReference || ''}
+                            onChange={e => onChange('permissionRenewalReference', e.target.value)}
+                            placeholder="OREG number off the receipt"
+                            className={fieldCls}
+                        />
+                    </div>
+                )}
+
             {/* Food safety.
 
                 The expiry is the part that matters. A certificate nobody is

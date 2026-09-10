@@ -23,4 +23,16 @@ alter table public.employees
 comment on column public.employees.permission_renewal_applied is
   'The day they applied to renew their permission to work. Only earns the grace period if it is on or before work_permission_expires.';
 
+-- The OREG number off the application receipt.
+--
+-- This is the part an employer is told to keep on file: the date of
+-- application and its reference. Somebody asked at an inspection needs to
+-- be able to find it, and a number written on a form in the office is a
+-- number nobody finds.
+alter table public.employees
+  add column if not exists permission_renewal_reference text;
+
+comment on column public.employees.permission_renewal_reference is
+  'The OREG number from the renewal application receipt. Kept because it is the proof an employer is asked for.';
+
 notify pgrst, 'reload schema';

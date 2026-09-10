@@ -63,17 +63,20 @@ export const DEFAULT_RULES = {
     // is a decision a restaurant can make, and the check keeps saying it either
     // way rather than going quiet.
     visaCap: { on: true, blocks: true },
-    // The window somebody may keep working in after their permission runs out,
-    // while a renewal they applied for in time is processed.
+    // Somebody whose permission ran out while a renewal they applied for in
+    // time is processed.
     //
-    // Twelve weeks is what the Department's notice to employers says today. It
-    // is a setting rather than a number in here because it has moved twice this
-    // year, and a rule the law keeps changing is a rule that must not need a
-    // deployment to change with it.
+    // weeks is how long before the Hub starts pushing rather than when the
+    // person stops being allowed to work. Twelve is the figure in the
+    // Department's notice, but renewals are running past seventeen weeks and
+    // the guidance has moved twice this year, so the number is a setting and
+    // what happens at the end of it is a choice.
     //
-    // On by default: leaving it off means the app holds weeks back for people
-    // who are lawfully entitled to work, which is its own kind of wrong.
-    permissionGrace: { on: true, weeks: 12 },
+    // afterBlocks is false by default, and that is the honest default rather
+    // than the lax one. Blocking would stop a manager rostering somebody the
+    // immigration service has told them is fine to work, on the app's reading
+    // of guidance that keeps changing. It keeps saying it every week instead.
+    permissionGrace: { on: true, weeks: 12, afterBlocks: false },
     foodSafety: { on: true, warnDays: 60, validMonths: 24 },
     gridHours: { before: 3, after: 3 },
     holidayPeriods: [
@@ -116,6 +119,15 @@ export function expiryState(expires, weekStart, weekEnd, warnDays) {
 // because a week that runs past the last covered day is a week with shifts on
 // it nobody may work. Building next month's roster must not come out clean
 // because the grace happens to still be running now.
+// The OREG number in brackets, or nothing.
+//
+// It goes in the finding rather than only on the team list because the roster
+// is where somebody is standing when they are asked to justify the shift.
+function reference(employee) {
+    const ref = (employee?.permission_renewal_reference || '').trim()
+    return ref ? ` (${ref})` : ''
+}
+
 export function graceFor(employee, weekEnd, settings = {}) {
     const expired = employee?.work_permission_expires
     const applied = employee?.permission_renewal_applied
@@ -315,13 +327,14 @@ export function checkWeek({
 
             if (grace.covered) {
                 add('warn', 'permissionGrace',
-                    `${name}'s permission ran out on ${employee.work_permission_expires}, `
-                    + `and they applied to renew on ${employee.permission_renewal_applied}. `
-                    + `They may keep working until ${grace.until}.`)
+                    `${name}'s permission ran out on ${employee.work_permission_expires} `
+                    + `and a renewal was applied for on ${employee.permission_renewal_applied}`
+                    + `${reference(employee)}. They may keep working while it is processed.`)
             } else if (grace.lapsed) {
-                add('block', 'permissionGraceOver',
-                    `${name} applied to renew on ${employee.permission_renewal_applied}, `
-                    + `but the ${grace.weeks} weeks after their permission ran out ended on ${grace.until}.`)
+                add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
+                    `${name}'s renewal, applied for on ${employee.permission_renewal_applied}`
+                    + `${reference(employee)}, has been going more than ${grace.weeks} weeks. `
+                    + 'Worth checking where it stands.')
             } else if (grace.tooLate) {
                 // Applying after it ran out earns nothing. Saying which day
                 // they applied is the difference between a rule that looks

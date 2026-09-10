@@ -243,23 +243,40 @@ describe('checkWeek', () => {
         })
         const shifts = [shift(WEEK[1], '09:00', '17:00')]
 
-        it('lets the week out, and says which day the grace ends', () => {
+        it('lets the week out and says a renewal is in hand', () => {
             const found = run(shifts, [applied()])
             expect(found[0].kind).toBe('permissionGrace')
             expect(found[0].level).toBe('warn')
-            expect(found[0].text).toMatch(/until 2026-10-24/)
+            expect(found[0].text).toMatch(/applied for on 2026-07-20/)
         })
 
-        it('blocks once the twelve weeks are up', () => {
-            // The same person, a week that starts after the window closes.
-            const late = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04',
-                '2026-11-05', '2026-11-06', '2026-11-07']
-            const found = checkWeek({
-                shifts: [shift(late[1], '09:00', '17:00')],
-                employees: [applied()],
-                weekDates: late,
-                rules: DEFAULT_RULES,
-            })
+        it('carries the OREG number, which is what gets asked for', () => {
+            const found = run(shifts, [applied({ permission_renewal_reference: 'OREG12345' })])
+            expect(found[0].text).toMatch(/\(OREG12345\)/)
+        })
+
+        // A week beyond the window, for the two tests under it.
+        const late = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04',
+            '2026-11-05', '2026-11-06', '2026-11-07']
+        const lateWeek = rules => checkWeek({
+            shifts: [shift(late[1], '09:00', '17:00')],
+            employees: [applied()],
+            weekDates: late,
+            rules: { ...DEFAULT_RULES, ...rules },
+        })
+
+        it('keeps saying it past the window, without holding the week', () => {
+            // Renewals are running past seventeen weeks. Blocking here would
+            // stop a manager rostering somebody immigration has told them is
+            // fine to work, on the app's reading of guidance that keeps
+            // changing.
+            const found = lateWeek()
+            expect(found[0].kind).toBe('permissionGraceOver')
+            expect(found[0].level).toBe('warn')
+        })
+
+        it('holds the week past the window if that is what was chosen', () => {
+            const found = lateWeek({ permissionGrace: { on: true, weeks: 12, afterBlocks: true } })
             expect(found[0].kind).toBe('permissionGraceOver')
             expect(found[0].level).toBe('block')
         })
@@ -300,6 +317,13 @@ describe('checkWeek', () => {
                 rules: { ...DEFAULT_RULES, permissionGrace: { on: true, weeks: 2 } },
             })
             expect(found[0].kind).toBe('permissionGraceOver')
+        })
+
+        it('still blocks a week with no renewal recorded, whatever the setting', () => {
+            // The whole thing turns on a renewal existing. Softening what
+            // happens after the window must not soften that.
+            const found = run(shifts, [applied({ permission_renewal_applied: null })])
+            expect(found[0].level).toBe('block')
         })
     })
 
