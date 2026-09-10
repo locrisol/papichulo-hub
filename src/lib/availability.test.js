@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     dayKeyOf,
+    patternOn,
+    pendingAvailability,
     dayNameOf,
     windowsFor,
     dayState,
@@ -366,5 +368,70 @@ describe('which weeks availability speaks for', () => {
         expect(availabilityOn({}, '2027-01-01', '2026-08-30')).toBeNull()
         expect(availabilityOn(null, '2027-01-01', '2026-08-30')).toBeNull()
         expect(availabilityOn({ availability: {} }, null, '2026-08-30')).toBeNull()
+    })
+})
+
+describe('a change with a date on it', () => {
+    // Camila says on the 10th that her college hours change on the 21st.
+    const before = { 1: [['09:00', '14:00']] }
+    const after = { 1: [['17:00', '22:00']] }
+    const camila = {
+        availability: before,
+        availability_next: after,
+        availability_from: '2026-09-21',
+    }
+
+    it('reads the old one right up to the day', () => {
+        expect(patternOn(camila, '2026-09-20')).toBe(before)
+    })
+
+    it('reads the new one from the day itself', () => {
+        expect(patternOn(camila, '2026-09-21')).toBe(after)
+        expect(patternOn(camila, '2026-10-05')).toBe(after)
+    })
+
+    it('carries through to everything the roster draws', () => {
+        // availabilityOn is the one door all of it comes through: the grid
+        // shading, the hover text, the day view, the warnings and the shared
+        // week. If it is right here it is right in all of them.
+        const from = '2026-09-01'
+        expect(availabilityOn(camila, '2026-09-20', from)).toBe(before)
+        expect(availabilityOn(camila, '2026-09-21', from)).toBe(after)
+    })
+
+    it('still says nothing about a week nobody can change', () => {
+        expect(availabilityOn(camila, '2026-08-01', '2026-09-06')).toBeNull()
+    })
+
+    it('ignores a date with no pattern behind it', () => {
+        expect(patternOn({ availability: before, availability_from: '2026-09-21' }, '2026-10-01'))
+            .toBe(before)
+    })
+
+    it('falls back to the only pattern there is', () => {
+        expect(patternOn({ availability: before }, '2026-10-01')).toBe(before)
+        expect(patternOn({}, '2026-10-01')).toBeNull()
+    })
+})
+
+describe('pendingAvailability', () => {
+    const camila = {
+        availability: { 1: [['09:00', '14:00']] },
+        availability_next: { 1: [['17:00', '22:00']] },
+        availability_from: '2026-09-21',
+    }
+
+    it('says a change is coming, and from when', () => {
+        expect(pendingAvailability(camila, '2026-09-10').from).toBe('2026-09-21')
+    })
+
+    it('says nothing once the day has come', () => {
+        // By then it is not coming, it is what they work.
+        expect(pendingAvailability(camila, '2026-09-21')).toBeNull()
+        expect(pendingAvailability(camila, '2026-10-01')).toBeNull()
+    })
+
+    it('says nothing when nothing is queued', () => {
+        expect(pendingAvailability({ availability: {} }, '2026-09-10')).toBeNull()
     })
 })

@@ -6,8 +6,9 @@ import { friendlyError } from '../lib/errors'
 import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
-    DAY_START, DAY_END,
+    DAY_START, DAY_END, patternOn,
 } from '../lib/availability'
+import { todayISO, fullDate } from '../lib/dates'
 
 // When somebody can work.
 //
@@ -46,11 +47,30 @@ const SHAPES = [
 ]
 
 export default function AvailabilityDialog({ employee, onClose, onChanged }) {
-    const [rows, setRows] = useState(() => toRows(employee.availability))
+    const today = todayISO()
+
+    // The pattern in force today, not whichever column it happens to sit in. A
+    // change dated last week has already taken over, and editing "the usual
+    // week" then has to mean editing the one they actually work.
+    const [rows, setRows] = useState(() => toRows(patternOn(employee, today)))
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
+    // A change queued for a day still to come, and the day it starts. A change
+    // whose day has passed is not queued any more, it is the usual week, and
+    // the rows above are already showing it.
+    const queued = employee.availability_from > today
+        ? { from: employee.availability_from, pattern: employee.availability_next }
+        : null
+
+    const [changing, setChanging] = useState(Boolean(queued))
+    const [from, setFrom] = useState(queued?.from || '')
+    const [nextRows, setNextRows] = useState(() => toRows(queued?.pattern || patternOn(employee, today)))
+
     const problem = availabilityProblem(rows)
+        || (changing && !from && 'Say which day the new hours start.')
+        || (changing && from <= today && 'A change has to start on a day still to come.')
+        || (changing && availabilityProblem(nextRows))
 
     const patch = (key, change) =>
         setRows(list => list.map(r => (r.key === key ? { ...r, ...change } : r)))
@@ -96,9 +116,17 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
         setSaving(true)
         setError('')
 
+        // Both columns written every time. A change whose day has passed has
+        // already been folded into the rows above, so clearing it here is what
+        // stops yesterday's change sitting in the record for ever, quietly
+        // winning every comparison.
         const { error: err } = await supabase
             .from('employees')
-            .update({ availability: fromRows(rows) })
+            .update({
+                availability: fromRows(rows),
+                availability_next: changing ? fromRows(nextRows) : null,
+                availability_from: changing ? from : null,
+            })
             .eq('id', employee.id)
 
         setSaving(false)
@@ -244,6 +272,111 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                         </div>
                     ))}
                 </div>
+            </ModalSection>
+
+            {/* A change with a date on it.
+                
+                The whole reason this exists: somebody tells you on the 10th
+                that their hours change on the 21st. Editing the week above
+                would apply it from this Sunday, so the week of the 14th gets
+                checked against hours that are not theirs yet, and waiting until
+                the 21st means the roster for that week is already built. */}
+            <ModalSection title="Changing from a date">
+                <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={changing}
+                        onChange={e => {
+                            setChanging(e.target.checked)
+                            if (e.target.checked && nextRows.length === 0) setNextRows(rows)
+                        }}
+                        className="w-4 h-4 accent-accent mt-0.5"
+                    />
+                    <span className="text-sm text-gray-700">
+                        Their hours change on a day still to come
+                        <span className="block text-xs text-gray-400">
+                            The week above stays right up to that day. From it, these do.
+                        </span>
+                    </span>
+                </label>
+
+                {changing && (
+                    <div className="mt-4">
+                        <label htmlFor="availability-from" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            Starting on
+                        </label>
+                        <input
+                            id="availability-from"
+                            type="date"
+                            value={from}
+                            min={todayISO()}
+                            onChange={e => setFrom(e.target.value)}
+                            className="border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                        {from && from > today && (
+                            <p className="text-xs text-muted mt-1">
+                                Everything up to {fullDate(from)} uses the week above.
+                            </p>
+                        )}
+
+                        <div className="mt-4">
+                            {nextRows.map(row => (
+                                <div key={row.key} className="py-2 border-b border-border last:border-b-0">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <span className="w-24 text-sm font-medium text-gray-900 flex-shrink-0">
+                                            {row.name}
+                                        </span>
+                                        <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label={`${row.name}, from the new date`}>
+                                            {STATES.map(state => (
+                                                <button
+                                                    key={state.value}
+                                                    type="button"
+                                                    onClick={() => setNextRows(list => list.map(r =>
+                                                        (r.key === row.key ? { ...r, state: state.value } : r)))}
+                                                    aria-pressed={row.state === state.value}
+                                                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                                        row.state === state.value
+                                                            ? 'bg-white text-gray-900 shadow-sm'
+                                                            : 'text-gray-600 hover:text-gray-900'
+                                                    }`}
+                                                >
+                                                    {state.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {row.state === 'some' && (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {row.windows.map((w, i) => (
+                                                    <span key={i} className="flex items-center gap-1">
+                                                        <input
+                                                            type="time"
+                                                            value={w[0]}
+                                                            onChange={e => setNextRows(list => list.map(r => (r.key === row.key
+                                                                ? { ...r, windows: r.windows.map((x, n) => (n === i ? [e.target.value, x[1]] : x)) }
+                                                                : r)))}
+                                                            aria-label={`${row.name} from`}
+                                                            className={timeCls}
+                                                        />
+                                                        <span className="text-xs text-muted">to</span>
+                                                        <input
+                                                            type="time"
+                                                            value={w[1]}
+                                                            onChange={e => setNextRows(list => list.map(r => (r.key === row.key
+                                                                ? { ...r, windows: r.windows.map((x, n) => (n === i ? [x[0], e.target.value] : x)) }
+                                                                : r)))}
+                                                            aria-label={`${row.name} to`}
+                                                            className={timeCls}
+                                                        />
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </ModalSection>
 
             <ModalSection title="What the roster does with it">

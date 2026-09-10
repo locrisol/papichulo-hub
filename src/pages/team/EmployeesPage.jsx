@@ -6,7 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, fullDate } from '../../lib/dates'
 import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '../../lib/controlStyles'
-import { availabilitySummary } from '../../lib/availability'
+import { availabilitySummary, patternOn, pendingAvailability } from '../../lib/availability'
 import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
 import {
     sortEmployees,
@@ -368,9 +368,17 @@ export default function EmployeesPage() {
                                     {employee.notes && (
                                         <p className="text-xs text-gray-400 mt-1">{employee.notes}</p>
                                     )}
-                                    {availabilitySummary(employee.availability) && (
+                                    {/* The pattern in force today, not whichever
+                                        column it sits in, so a change that has
+                                        already started reads as what they work. */}
+                                    {availabilitySummary(patternOn(employee, today)) && (
                                         <p className="text-xs text-gray-500 mt-1">
-                                            Works {availabilitySummary(employee.availability)}
+                                            Works {availabilitySummary(patternOn(employee, today))}
+                                        </p>
+                                    )}
+                                    {pendingAvailability(employee, today) && (
+                                        <p className="text-xs text-accent-ink mt-1">
+                                            Hours change on {fullDate(pendingAvailability(employee, today).from)}
                                         </p>
                                     )}
                                     {coming && (
@@ -484,9 +492,14 @@ export default function EmployeesPage() {
                                                     so a list where nobody has
                                                     availability set looks
                                                     exactly as it did before. */}
-                                                {availabilitySummary(employee.availability) && (
+                                                {availabilitySummary(patternOn(employee, today)) && (
                                                     <span className="block text-xs text-gray-500">
-                                                        Works {availabilitySummary(employee.availability)}
+                                                        Works {availabilitySummary(patternOn(employee, today))}
+                                                    </span>
+                                                )}
+                                                {pendingAvailability(employee, today) && (
+                                                    <span className="block text-xs text-accent-ink">
+                                                        Hours change on {fullDate(pendingAvailability(employee, today).from)}
                                                     </span>
                                                 )}
                                                 {/* What is coming rather than

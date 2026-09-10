@@ -285,7 +285,37 @@ export function availabilityStart(today) {
 // that date is behind the line above. Every reader here treats nothing as "no
 // availability recorded", which is exactly the right answer for a week nobody
 // can change any more.
+//
+// A queued change is picked up here and nowhere else. Everything on the roster
+// that knows about availability comes through this one function, the grid
+// shading, the hover text, the day view, the warnings and the shared week, so
+// a change dated the 21st shows on the 21st in all of them at once and no
+// screen has its own copy of the rule to forget.
 export function availabilityOn(employee, date, from) {
     if (!date) return null
-    return date < (from || availabilityStart()) ? null : (employee?.availability || null)
+    if (date < (from || availabilityStart())) return null
+    return patternOn(employee, date)
+}
+
+// Which of the two patterns is in force on a day, ignoring the past week rule.
+//
+// Kept apart because "what applies on this date" and "is this date old enough
+// to say anything about" are two questions, and the summary on the team list
+// wants the first without the second.
+export function patternOn(employee, date) {
+    const from = employee?.availability_from
+    if (from && employee?.availability_next && date >= from) {
+        return employee.availability_next
+    }
+    return employee?.availability || null
+}
+
+// A change that has not started yet, for the screens that want to say one is
+// coming. Null once the day arrives, because by then it is not coming, it is
+// what they work.
+export function pendingAvailability(employee, today) {
+    const from = employee?.availability_from
+    if (!from || !employee?.availability_next) return null
+    if (today && from <= today) return null
+    return { from, pattern: employee.availability_next }
 }
