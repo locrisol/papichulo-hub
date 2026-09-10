@@ -251,10 +251,6 @@ describe('checkWeek', () => {
             expect(found[0].text).toMatch(/applied for on 20\/07\/2026/)
         })
 
-        it('carries the OREG number, which is what gets asked for', () => {
-            const found = run(shifts, [applied({ permission_renewal_reference: 'OREG12345' })])
-            expect(found[0].text).toMatch(/\(OREG12345\)/)
-        })
 
         // A week beyond the window, for the two tests under it.
         const late = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04',
@@ -349,7 +345,7 @@ describe('checkWeek', () => {
                 permission_renewal_reference: 'OREG2026343270304',
             })])
             expect(found[0].kind).toBe('permissionSoonRenewing')
-            expect(found[0].text).toMatch(/OREG2026343270304/)
+            expect(found[0].text).toMatch(/25\/08\/2026/)
         })
 
         it('lets a week the permission runs out in go out', () => {

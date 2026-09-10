@@ -125,15 +125,6 @@ export function expiryState(expires, weekStart, weekEnd, warnDays) {
 // database's way of writing a date rather than anybody's.
 const on = date => (date ? fullDate(date) : '')
 
-// The OREG number in brackets, or nothing.
-//
-// It goes in the finding rather than only on the team list because the roster
-// is where somebody is standing when they are asked to justify the shift.
-function reference(employee) {
-    const ref = (employee?.permission_renewal_reference || '').trim()
-    return ref ? ` (${ref})` : ''
-}
-
 export function graceFor(employee, weekEnd, settings = {}) {
     const expired = employee?.work_permission_expires
     const applied = employee?.permission_renewal_applied
@@ -347,17 +338,17 @@ export function checkWeek({
             if (grace.covered && grace.sameDay) {
                 add('warn', 'permissionRenewedSameDay',
                     `${name}'s permission ran out on ${on(employee.work_permission_expires)} and the `
-                    + `renewal was applied for that same day${reference(employee)}. The rule says `
+                    + `renewal was applied for that same day. The rule says `
                     + 'before it ran out, so this one is worth confirming.')
             } else if (grace.covered) {
                 add('warn', 'permissionGrace',
                     `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
                     + `and a renewal was applied for on ${on(employee.permission_renewal_applied)}`
-                    + `${reference(employee)}. They may keep working while it is processed.`)
+                    + `. They may keep working while it is processed.`)
             } else if (grace.lapsed) {
                 add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
                     `${name}'s renewal, applied for on ${on(employee.permission_renewal_applied)}`
-                    + `${reference(employee)}, has been going more than ${grace.weeks} weeks. `
+                    + `, has been going more than ${grace.weeks} weeks. `
                     + 'Worth checking where it stands.')
             } else if (grace.tooLate) {
                 // Applying after it ran out earns nothing. Saying which day
@@ -379,7 +370,7 @@ export function checkWeek({
                 add('warn', 'permissionExpiringRenewing',
                     `${name}'s permission runs out on ${on(employee.work_permission_expires)}, `
                     + `part way through this week, and a renewal was applied for on `
-                    + `${on(employee.permission_renewal_applied)}${reference(employee)}.`)
+                    + `${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpiring',
                     `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}, part way through this week.`)
@@ -392,7 +383,7 @@ export function checkWeek({
                 add('warn', 'permissionSoonRenewing',
                     `${name}'s permission runs out on ${on(employee.work_permission_expires)}. `
                     + `A renewal was applied for on ${on(employee.permission_renewal_applied)}`
-                    + `${reference(employee)}.`)
+                    + `.`)
             } else {
                 add('warn', 'permissionSoon',
                     `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}.`)
