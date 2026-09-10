@@ -49,62 +49,51 @@ export function dayHoursFor(shifts, employeeId, date) {
 // which is what makes it a run rather than a tally. Bounded, because the
 // roster only ever holds a fortnight or so of shifts and a number that quietly
 // depends on how much happens to have been fetched is worse than no number.
-// hoursFor gives the opening and closing times of a day. Without it nothing can
-// be called a full day, so every day comes back as a part one rather than the
-// count quietly meaning something else.
-export function runBefore(shifts, employeeId, date, { limit = 14, hoursFor } = {}) {
-    const days = []
+// Full days in a row, ending on the day being rostered.
+//
+// This is the question a manager is actually asking before putting somebody on
+// open to close again: how many of those have they already done without a
+// break. Days worked is not it. Four short evenings is not a person who needs
+// a day off, and the first version counted them the same.
+//
+// Today is counted when today is already a full day, so the number moves the
+// moment a full shift goes in and moves back if it is taken out again. That is
+// the whole use of it: you are deciding whether to make it one more.
+//
+// A day that is not a full day ends the run, whether it was a half day or a day
+// off. The run is of full days.
+export function fullDayRun(shifts, employeeId, date, { limit = 21, hoursFor } = {}) {
+    let run = 0
+    let todayIsFull = false
 
-    for (let back = 1; back <= limit; back += 1) {
+    for (let back = 0; back <= limit; back += 1) {
         const day = addDays(date, -back)
         const theirs = shiftsOn(shifts, employeeId, day)
-        if (theirs.length === 0) break
+        const full = coversTheDay(theirs, hoursFor ? hoursFor(day) : null)
 
-        const hours = theirs.reduce((total, s) => total + shiftHours(s), 0)
-        days.push({
-            date: day,
-            hours,
-            full: coversTheDay(theirs, hoursFor ? hoursFor(day) : null),
-        })
+        if (back === 0) {
+            todayIsFull = full
+            // Today not being a full day does not end the run, it just does
+            // not add to it. What came before is still what they have done.
+            if (!full) continue
+        }
+
+        if (!full) break
+        run += 1
     }
 
-    return {
-        days: days.length,
-        full: days.filter(d => d.full).length,
-        // The day before, which is the one the closing time is also about.
-        last: days[0] || null,
-        // True where the run reached as far back as it was allowed to look, so
-        // a reader knows the number is "at least" rather than exactly.
-        capped: days.length === limit,
-    }
+    return { run, todayIsFull }
 }
 
 // The run in words, or nothing at all.
 //
-// Nothing for one ordinary day, because "worked yesterday" said under somebody
-// every single morning is a line that stops being read by Wednesday. It speaks
-// when the day before was a full one, or when a run is long enough to be worth
-// knowing about.
-//
-// Short on purpose. It sits in a column ten rem wide under a name and whatever
-// else that row has to say, and three lines of text where the grid expects one
-// is what broke the day view the first time this went in.
-//
-// toldAboutYesterday is for the caller that has already said something about
-// last night, the closing time being the obvious one. Saying "closed 21:30 last
-// night" and then "full day yesterday" underneath is the same fact twice.
-export function runWords(run, { longRun = 4, toldAboutYesterday = false } = {}) {
-    if (!run?.days) return ''
+// Silent below the point it is worth knowing. Five full days in a row is an
+// ordinary full time week, so saying it every Friday about everybody would
+// make it wallpaper by the second week.
+export function fullDayWords(run, from = 4) {
+    if (!run?.run || run.run < from) return ''
 
-    const bits = []
-    if (!toldAboutYesterday) {
-        if (run.last?.full) bits.push('Full day yesterday')
-        else if (run.days >= longRun) bits.push('Part day yesterday')
-    }
-
-    if (run.days >= longRun) {
-        bits.push(`${run.capped ? `${run.days}+` : run.days} in a row`)
-    }
-
-    return bits.join(', ')
+    return run.todayIsFull
+        ? `${run.run} full days in a row, counting this one.`
+        : `${run.run} full days in a row before this one.`
 }

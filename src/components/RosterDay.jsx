@@ -5,7 +5,6 @@ import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { hasWarnings } from '../lib/workRules'
-import { runWords } from '../lib/workRun'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
@@ -67,7 +66,7 @@ export default function RosterDay({
     onOpenShift,
     onNewShift,
     onDragShift,
-    onResizeShift, runsBefore,
+    onResizeShift,
 }) {
     // Whose warnings are open, one at a time. Seven rows of amber under a grid
     // you came to read is a grid you cannot read, and a warning nobody can see
@@ -487,11 +486,6 @@ export default function RosterDay({
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
                         const canOpen = hasWarnings(mineAlerts)
-                        // The closing time already says they worked last night,
-                        // so where it is showing this says only the streak.
-                        const runLine = runWords(runsBefore?.[employee.id], {
-                            toldAboutYesterday: Boolean(closedLastNight?.[employee.id]),
-                        })
                         const showing = openAlerts === employee.id
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
@@ -505,6 +499,9 @@ export default function RosterDay({
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
+                                {/* The exact minute lives in the hover rather
+                                    than on the row. What matters at a glance is
+                                    that they closed at all. */}
                                 <div
                                     className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border"
                                     title={closedLate
@@ -547,7 +544,7 @@ export default function RosterDay({
                                                     : away === 'none'
                                                         ? 'Not available today'
                                                         : closedLate
-                                                            ? `Closed ${shortTime(closedLate)} last night`
+                                                            ? 'Closed last night'
                                                             : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
 
@@ -557,11 +554,6 @@ export default function RosterDay({
                                             different fact from where they are
                                             today, and silent unless there is
                                             something worth knowing. */}
-                                        {runLine && (
-                                            <span className="block text-[0.625rem] leading-tight text-slate-600">
-                                                {runLine}
-                                            </span>
-                                        )}
                                     </span>
                                     {/* Beside the name, where the eye already
                                         is. Everything this says is also in the

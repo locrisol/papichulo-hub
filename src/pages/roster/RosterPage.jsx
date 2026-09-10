@@ -10,7 +10,7 @@ import { fmtMoney } from '../../lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '../../lib/team'
-import { runBefore } from '../../lib/workRun'
+import { fullDayRun, fullDayWords } from '../../lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
@@ -259,14 +259,23 @@ export default function RosterPage() {
         const held = closedLastNight[s.employee_id]
         if (!held || s.ends_at > held) closedLastNight[s.employee_id] = s.ends_at
     }
-    // How hard each of them has been going in the days behind this one. Both
-    // lists again: a run that started last week is in the week before.
-    const runsBefore = {}
+    // How many full days in a row each of them is on, said as a finding rather
+    // than as another line under their name.
+    //
+    // A finding because that is what the triangle already opens, so this
+    // arrives with the fold, the count on the badge and the banner for nothing.
+    // Both shift lists, since a run that started last week is in the week
+    // before, and hoursOn because a full day means open to close.
+    const fullDayNotes = []
     for (const e of roster) {
-        // hoursOn is what makes a full day mean open to close rather than a
-        // number of hours, and it already knows about a day note that changed
-        // them.
-        runsBefore[e.id] = runBefore([...shifts, ...nearbyShifts], e.id, date, { hoursFor: hoursOn })
+        const words = fullDayWords(
+            fullDayRun([...shifts, ...nearbyShifts], e.id, date, { hoursFor: hoursOn }),
+        )
+        if (words) {
+            fullDayNotes.push({
+                level: 'warn', kind: 'fullDayRun', employeeId: e.id, name: e.full_name, text: words,
+            })
+        }
     }
 
     const state = publishState(shifts)
@@ -360,7 +369,9 @@ export default function RosterPage() {
     // have scrolled past. Double bookings join them here and only here: they
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
-    const alerts = findingsByEmployee([...findings, ...overlapFindings(clashes, employeesById)])
+    const alerts = findingsByEmployee([
+        ...findings, ...overlapFindings(clashes, employeesById), ...fullDayNotes,
+    ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.
     const agreed = requests.filter(r => r.status === 'accepted')
@@ -942,7 +953,6 @@ export default function RosterPage() {
                     employees={roster}
                     weekHours={weekHoursByEmployee}
                     closedLastNight={closedLastNight}
-                    runsBefore={runsBefore}
                     shifts={dayShifts}
                     positions={positions}
                     date={date}
