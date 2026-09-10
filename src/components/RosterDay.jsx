@@ -487,6 +487,11 @@ export default function RosterDay({
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
                         const canOpen = hasWarnings(mineAlerts)
+                        // The closing time already says they worked last night,
+                        // so where it is showing this says only the streak.
+                        const runLine = runWords(runsBefore?.[employee.id], {
+                            toldAboutYesterday: Boolean(closedLastNight?.[employee.id]),
+                        })
                         const showing = openAlerts === employee.id
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
@@ -552,9 +557,9 @@ export default function RosterDay({
                                             different fact from where they are
                                             today, and silent unless there is
                                             something worth knowing. */}
-                                        {runWords(runsBefore?.[employee.id]) && (
+                                        {runLine && (
                                             <span className="block text-[0.625rem] leading-tight text-slate-600">
-                                                {runWords(runsBefore[employee.id])}
+                                                {runLine}
                                             </span>
                                         )}
                                     </span>
@@ -572,7 +577,13 @@ export default function RosterDay({
                                     />
                                 </div>
 
-                                <div className="flex-1 relative h-14" data-track>
+                                {/* As tall as the row rather than a fixed
+                                    height. It was h-14 and the name beside it
+                                    grew whenever there was a second thing to
+                                    say, so the grid lines and the hatching
+                                    stopped reaching the bottom of the row and
+                                    the whole day view looked broken. */}
+                                <div className="flex-1 relative self-stretch min-h-14" data-track>
                                     {/* The slots you press on. They sit under the
                                         shifts, so pressing a shift opens that
                                         shift rather than making a new one. */}

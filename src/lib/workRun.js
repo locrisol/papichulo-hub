@@ -58,15 +58,25 @@ export function runBefore(shifts, employeeId, date, limit = 14) {
 // every single morning is a line that stops being read by Wednesday. It speaks
 // when the day before was a full one, or when a run is long enough to be worth
 // knowing about.
-export function runWords(run, longRun = 4) {
+//
+// Short on purpose. It sits in a column ten rem wide under a name and whatever
+// else that row has to say, and three lines of text where the grid expects one
+// is what broke the day view the first time this went in.
+//
+// toldAboutYesterday is for the caller that has already said something about
+// last night, the closing time being the obvious one. Saying "closed 21:30 last
+// night" and then "full day yesterday" underneath is the same fact twice.
+export function runWords(run, { longRun = 4, toldAboutYesterday = false } = {}) {
     if (!run?.days) return ''
 
     const bits = []
-    if (run.last?.full) bits.push('Full day yesterday')
-    else if (run.days >= longRun) bits.push('Part day yesterday')
+    if (!toldAboutYesterday) {
+        if (run.last?.full) bits.push('Full day yesterday')
+        else if (run.days >= longRun) bits.push('Part day yesterday')
+    }
 
     if (run.days >= longRun) {
-        bits.push(`${run.capped ? `${run.days}+` : run.days} days running`)
+        bits.push(`${run.capped ? `${run.days}+` : run.days} in a row`)
     }
 
     return bits.join(', ')

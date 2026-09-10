@@ -93,11 +93,18 @@ describe('runWords', () => {
     })
 
     it('says both once a run is long enough to matter', () => {
-        expect(runWords(run(5, 4, true))).toBe('Full day yesterday, 5 days running')
-        expect(runWords(run(4, 1, false))).toBe('Part day yesterday, 4 days running')
+        expect(runWords(run(5, 4, true))).toBe('Full day yesterday, 5 in a row')
+        expect(runWords(run(4, 1, false))).toBe('Part day yesterday, 4 in a row')
+    })
+
+    it('leaves yesterday out when the caller has already said it', () => {
+        // The closing time already says they worked last night, so saying
+        // "full day yesterday" under it is the same fact twice.
+        expect(runWords(run(5, 4, true), { toldAboutYesterday: true })).toBe('5 in a row')
+        expect(runWords(run(1, 1, true), { toldAboutYesterday: true })).toBe('')
     })
 
     it('says at least, where it stopped looking', () => {
-        expect(runWords(run(14, 14, true, true))).toMatch(/14\+ days running/)
+        expect(runWords(run(14, 14, true, true))).toMatch(/14\+ in a row/)
     })
 })
