@@ -82,9 +82,11 @@ export default function EmployeeForm({
                 </div>
             </div>
 
-            {/* Two across on a phone, not three. A date box needs about 140px to
-                show a whole date. */}
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* One across on a phone now. A date box needs about 140px to show
+                a whole date, and a locked one needs the Edit beside it as well,
+                which does not fit in half a phone: the first day came out as
+                "01/C". Two across from the small breakpoint up, where it does. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
                     <label className={labelCls}>First day</label>
                     <LockedField label="First day" value={formData.startedOn}
@@ -293,7 +295,7 @@ export default function EmployeeForm({
                     </LockedField>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label className={labelCls}>Sat on</label>
                         <LockedField label="Training date" value={formData.foodSafetyIssued}

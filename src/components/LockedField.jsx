@@ -24,14 +24,19 @@ export default function LockedField({ value, display, children, label }) {
         <div className="flex flex-wrap items-center gap-3">
             {/* The same box, greyed and disabled, rather than the value as loose
                 text. A field that turns into a line of writing when it is locked
-                reads as a different thing from the one you typed into. */}
+                reads as a different thing from the one you typed into.
+
+                The width is a floor rather than min-w-0, which is what let it
+                be squeezed down to "01/C" in half the width of a phone. Below
+                about seven rem a whole date does not fit, so at that point the
+                Edit wraps underneath instead of the value being cut. */}
             <input
                 type="text"
                 value={display ?? value}
                 disabled
                 readOnly
                 aria-label={label ? `${label}, locked` : 'Locked'}
-                className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm
+                className="flex-1 min-w-[7rem] border border-border rounded-lg px-3 py-2 text-sm
                     bg-app-bg text-muted cursor-not-allowed"
             />
             <button
