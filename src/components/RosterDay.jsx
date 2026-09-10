@@ -4,6 +4,7 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { hasWarnings } from '../lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
@@ -67,6 +68,11 @@ export default function RosterDay({
     onDragShift,
     onResizeShift,
 }) {
+    // Whose warnings are open, one at a time. Seven rows of amber under a grid
+    // you came to read is a grid you cannot read, and a warning nobody can see
+    // past is not being read either. Blocks are never in here: those stay on
+    // screen, because a block is the reason the week will not publish.
+    const [openAlerts, setOpenAlerts] = useState(null)
     const [drag, setDrag] = useState(null)
     const [resize, setResize] = useState(null)
     const resizeRef = useRef(null)
@@ -479,22 +485,34 @@ export default function RosterDay({
                         // worked. One picture for one meaning.
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
+                        const canOpen = hasWarnings(mineAlerts)
+                        const showing = openAlerts === employee.id
+                        // Whether a strip is actually drawn under this row, which
+                        // is not the same as whether there are alerts now that
+                        // warnings fold away. The strip carries the line between
+                        // rows when it is there, so tying the border to the
+                        // wrong one of these took the lines off the grid.
+                        const stripShowing = showing || mineAlerts.some(f => f.level === 'block')
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
                         // only way to clear one.
-                        const hasAlerts = mineAlerts.length > 0
 
                         return (
                             <Fragment key={employee.id}>
                             <div
-                                className={`flex ${hasAlerts ? '' : 'border-b border-border last:border-b-0'} ${
+                                className={`flex ${stripShowing ? '' : 'border-b border-border last:border-b-0'} ${
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
+                                {/* The exact minute lives in the hover rather
+                                    than on the row. What matters at a glance is
+                                    that they closed at all. */}
                                 <div
                                     className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border"
                                     title={closedLate
-                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. Closed last night, finished at ${shortTime(closedLate)}.`
+                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. `
+                                            + `Yesterday: ${shortTime(closedLate.starts_at)} to `
+                                            + `${shortTime(closedLate.ends_at)}, closing.`
                                         : employee.full_name}
                                 >
                                     <span
@@ -516,7 +534,12 @@ export default function RosterDay({
                                             warning, no block, and putting
                                             somebody on anyway is exactly as
                                             easy as it was. */}
-                                        <span className={`block text-[0.625rem] truncate ${
+                                        {/* Allowed to wrap. It used to be one
+                                            truncated line, so "Closed 21:30 last
+                                            night" came out as "Closed 21:30 last
+                                            ni…" in a column that has the room to
+                                            take a second line. */}
+                                        <span className={`block text-[0.625rem] leading-tight ${
                                             part ? 'text-amber-700 font-semibold'
                                                 : closedLate && !offKind && away !== 'none' ? 'text-slate-600 font-semibold'
                                                     : 'text-muted'
@@ -528,19 +551,38 @@ export default function RosterDay({
                                                     : away === 'none'
                                                         ? 'Not available today'
                                                         : closedLate
-                                                            ? `Closed ${shortTime(closedLate)} last night`
+                                                            ? 'Closed last night'
                                                             : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
+
+                                        {/* How hard they have been going, under
+                                            whatever the line above is saying.
+                                            Its own line because it is a
+                                            different fact from where they are
+                                            today, and silent unless there is
+                                            something worth knowing. */}
                                     </span>
                                     {/* Beside the name, where the eye already
                                         is. Everything this says is also in the
                                         banner above the grid, and that is a
                                         banner nobody reads once they have
                                         scrolled past it. */}
-                                    <AlertBadge findings={mineAlerts} />
+                                    <AlertBadge
+                                        findings={mineAlerts}
+                                        open={showing}
+                                        onToggle={canOpen
+                                            ? () => setOpenAlerts(showing ? null : employee.id)
+                                            : undefined}
+                                    />
                                 </div>
 
-                                <div className="flex-1 relative h-14" data-track>
+                                {/* As tall as the row rather than a fixed
+                                    height. It was h-14 and the name beside it
+                                    grew whenever there was a second thing to
+                                    say, so the grid lines and the hatching
+                                    stopped reaching the bottom of the row and
+                                    the whole day view looked broken. */}
+                                <div className="flex-1 relative self-stretch min-h-14" data-track>
                                     {/* The slots you press on. They sit under the
                                         shifts, so pressing a shift opens that
                                         shift rather than making a new one. */}
@@ -738,7 +780,9 @@ export default function RosterDay({
                                 </div>
                             </div>
 
-                            {hasAlerts && <AlertStrip findings={mineAlerts} className="border-b" />}
+                            {stripShowing && (
+                                <AlertStrip findings={mineAlerts} open={showing} className="border-b" />
+                            )}
                             </Fragment>
                         )
                     })}

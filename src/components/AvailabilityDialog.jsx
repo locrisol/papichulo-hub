@@ -6,8 +6,9 @@ import { friendlyError } from '../lib/errors'
 import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
-    DAY_START, DAY_END,
+    DAY_START, DAY_END, patternOn,
 } from '../lib/availability'
+import { todayISO, fullDate, addDays } from '../lib/dates'
 
 // When somebody can work.
 //
@@ -46,59 +47,110 @@ const SHAPES = [
 ]
 
 export default function AvailabilityDialog({ employee, onClose, onChanged }) {
-    const [rows, setRows] = useState(() => toRows(employee.availability))
+    const today = todayISO()
+
+    // The pattern in force today, not whichever column it happens to sit in. A
+    // change dated last week has already taken over, and editing "the usual
+    // week" then has to mean editing the one they actually work.
+    const [rows, setRows] = useState(() => toRows(patternOn(employee, today)))
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
+    // A change queued for a day still to come, and the day it starts. A change
+    // whose day has passed is not queued any more, it is the usual week, and
+    // the rows above are already showing it.
+    const queued = employee.availability_from > today
+        ? { from: employee.availability_from, pattern: employee.availability_next }
+        : null
+
+    // Which of the two weeks is on screen. It opens on the one they work now,
+    // which is what somebody is nearly always here for.
+    const [mode, setMode] = useState('now')
+    const [changing, setChanging] = useState(Boolean(queued))
+    const [from, setFrom] = useState(queued?.from || '')
+    const [nextRows, setNextRows] = useState(() => toRows(queued?.pattern || patternOn(employee, today)))
+
+    const tomorrow = addDays(today, 1)
+
     const problem = availabilityProblem(rows)
+        || (changing && !from && 'Say which day the new hours start.')
+        || (changing && from <= today && 'A change has to start on a day still to come.')
+        || (changing && availabilityProblem(nextRows))
+    // The row helpers, made against whichever list they are for.
+    //
+    // They used to be bound to the one list, so the second grid could only
+    // have a cut-down copy of them. Two grids with different abilities is the
+    // sort of difference nobody notices until they reach for the thing that is
+    // not there.
+    function helpersFor(list, setList) {
+        const patch = (key, change) =>
+            setList(l => l.map(r => (r.key === key ? { ...r, ...change } : r)))
 
-    const patch = (key, change) =>
-        setRows(list => list.map(r => (r.key === key ? { ...r, ...change } : r)))
+        return {
+            patch,
 
-    const setTime = (key, index, side, value) =>
-        setRows(list => list.map(r => {
-            if (r.key !== key) return r
-            const windows = r.windows.map((w, i) => {
-                if (i !== index) return w
-                return side === 'from' ? [value, w[1]] : [w[0], value]
-            })
-            return { ...r, windows }
-        }))
+            setTime: (key, index, side, value) =>
+                setList(l => l.map(r => {
+                    if (r.key !== key) return r
+                    const windows = r.windows.map((w, i) => {
+                        if (i !== index) return w
+                        return side === 'from' ? [value, w[1]] : [w[0], value]
+                    })
+                    return { ...r, windows }
+                })),
 
-    // Changing the shape rewrites the pair rather than hiding a box, so what is
-    // stored is always what is on screen. The time already typed is kept
-    // wherever it still means something.
-    const setShape = (key, index, shape) =>
-        setRows(list => list.map(r => {
-            if (r.key !== key) return r
-            const windows = r.windows.map((w, i) => {
-                if (i !== index) return w
-                const [a, b] = w
-                if (shape === 'from') return [a && a !== DAY_START ? a : '13:00', DAY_END]
-                if (shape === 'until') return [DAY_START, b && b !== DAY_END ? b : '13:00']
-                return [a === DAY_START ? '09:00' : a, b === DAY_END ? '17:00' : b]
-            })
-            return { ...r, windows }
-        }))
+            // Changing the shape rewrites the pair rather than hiding a box, so
+            // what is stored is always what is on screen. The time already
+            // typed is kept wherever it still means something.
+            setShape: (key, index, shape) =>
+                setList(l => l.map(r => {
+                    if (r.key !== key) return r
+                    const windows = r.windows.map((w, i) => {
+                        if (i !== index) return w
+                        const [a, b] = w
+                        if (shape === 'from') return [a && a !== DAY_START ? a : '13:00', DAY_END]
+                        if (shape === 'until') return [DAY_START, b && b !== DAY_END ? b : '13:00']
+                        return [a === DAY_START ? '09:00' : a, b === DAY_END ? '17:00' : b]
+                    })
+                    return { ...r, windows }
+                })),
 
-    const copyRow = (key, keys) => setRows(list => copyDay(list, key, keys))
+            copyRow: (key, keys) => setList(l => copyDay(l, key, keys)),
 
-    const addWindow = key =>
-        patch(key, { windows: [...rows.find(r => r.key === key).windows, ['17:00', '22:00']] })
+            addWindow: key =>
+                patch(key, { windows: [...list.find(r => r.key === key).windows, ['17:00', '22:00']] }),
 
-    const removeWindow = (key, index) =>
-        setRows(list => list.map(r => (
-            r.key === key ? { ...r, windows: r.windows.filter((_, i) => i !== index) } : r
-        )))
+            removeWindow: (key, index) =>
+                setList(l => l.map(r => (
+                    r.key === key ? { ...r, windows: r.windows.filter((_, i) => i !== index) } : r
+                ))),
+        }
+    }
+
+    const nowRows = helpersFor(rows, setRows)
+    const laterRows = helpersFor(nextRows, setNextRows)
+
+    // The pills above the grid, and the ones inside it, are the same control.
+    const tabCls = on => `px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+        on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+    }`
 
     async function save() {
         if (problem) return
         setSaving(true)
         setError('')
 
+        // Both columns written every time. A change whose day has passed has
+        // already been folded into the rows above, so clearing it here is what
+        // stops yesterday's change sitting in the record for ever, quietly
+        // winning every comparison.
         const { error: err } = await supabase
             .from('employees')
-            .update({ availability: fromRows(rows) })
+            .update({
+                availability: fromRows(rows),
+                availability_next: changing ? fromRows(nextRows) : null,
+                availability_from: changing ? from : null,
+            })
             .eq('id', employee.id)
 
         setSaving(false)
@@ -113,10 +165,130 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
 
     return (
         <Modal title={`When ${employee.full_name} can work`} onClose={onClose} width="max-w-xl">
-            <ModalSection
-                title="The usual week"
-                description="Only the days you set say anything. A day left on any time is one the roster will never question, so there is no need to fill in a whole week to record one afternoon off."
-            >
+            {/* One grid, and a switch above it saying which week it is.
+
+                Both at once was two sets of seven days on one screen with
+                nothing but a heading telling them apart, which is a good way
+                to set the wrong one. */}
+            <ModalSection title="When they can work">
+                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1 mb-4" role="group" aria-label="Which week">
+                    <button
+                        type="button"
+                        onClick={() => setMode('now')}
+                        aria-pressed={mode === 'now'}
+                        className={tabCls(mode === 'now')}
+                    >
+                        From now on
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('later')}
+                        aria-pressed={mode === 'later'}
+                        className={tabCls(mode === 'later')}
+                    >
+                        From a date
+                    </button>
+                </div>
+
+                {mode === 'now' ? (
+                    <>
+                        <p className="text-xs text-muted mb-3">
+                            Only the days you set say anything. A day left on any time is one the roster
+                            will never question, so there is no need to fill in a whole week to record
+                            one afternoon off.
+                        </p>
+                        <DayRows rows={rows} on={nowRows} timeCls={timeCls} />
+                    </>
+                ) : !changing ? (
+                    <div className="text-center py-6">
+                        <p className="text-sm text-muted mb-3 max-w-sm mx-auto">
+                            For somebody who has told you their hours change on a day still to come.
+                            The week above keeps applying right up to it.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => { setChanging(true); setNextRows(rows) }}
+                            className={secondaryButton}
+                        >
+                            Add a change
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+                            <div>
+                                <label htmlFor="availability-from" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    Starting on
+                                </label>
+                                <input
+                                    id="availability-from"
+                                    type="date"
+                                    value={from}
+                                    min={tomorrow}
+                                    onChange={e => setFrom(e.target.value)}
+                                    className="border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { setChanging(false); setFrom('') }}
+                                className={removeButton}
+                            >
+                                Remove this change
+                            </button>
+                        </div>
+
+                        {from > today && (
+                            <p className="text-xs text-muted mb-3">
+                                Everything up to {fullDate(from)} uses the week under From now on.
+                            </p>
+                        )}
+
+                        <DayRows rows={nextRows} on={laterRows} timeCls={timeCls} />
+                    </>
+                )}
+            </ModalSection>
+
+            <ModalSection title="What the roster does with it">
+                <ul className="text-sm text-muted space-y-1.5">
+                    <li>The hours they cannot work are shaded on the day timeline, before you put anything in.</li>
+                    <li>A shift outside them is said in the warnings at the top of the week.</li>
+                    <li>It never stops a week going out. If you know something the roster does not, roster it.</li>
+                </ul>
+            </ModalSection>
+
+            {(problem || error) && (
+                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem || error}</p>
+            )}
+
+            <div className={modalFooter}>
+                <button type="button" onClick={onClose} className={secondaryButton}>
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    onClick={save}
+                    disabled={saving || !!problem}
+                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                >
+                    {saving ? 'Saving...' : 'Save'}
+                </button>
+            </div>
+        </Modal>
+    )
+}
+
+// The seven days, however they are being set.
+//
+// Written once and used twice: for the week they work now, and for a change
+// that starts on a date. Those two used to be separate blocks and the second
+// quietly had fewer features than the first, no copy-to-the-week and no second
+// stretch in a day, which is the sort of difference nobody notices until they
+// need the thing that is missing.
+function DayRows({ rows, on, timeCls }) {
+    const { patch, setTime, setShape, copyRow, addWindow, removeWindow } = on
+
+    return (
                 <div>
                     {rows.map(row => (
                         <div key={row.key} className="py-2.5 border-b border-border last:border-b-0">
@@ -244,33 +416,6 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                         </div>
                     ))}
                 </div>
-            </ModalSection>
 
-            <ModalSection title="What the roster does with it">
-                <ul className="text-sm text-muted space-y-1.5">
-                    <li>The hours they cannot work are shaded on the day timeline, before you put anything in.</li>
-                    <li>A shift outside them is said in the warnings at the top of the week.</li>
-                    <li>It never stops a week going out. If you know something the roster does not, roster it.</li>
-                </ul>
-            </ModalSection>
-
-            {(problem || error) && (
-                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem || error}</p>
-            )}
-
-            <div className={modalFooter}>
-                <button type="button" onClick={onClose} className={secondaryButton}>
-                    Cancel
-                </button>
-                <button
-                    type="button"
-                    onClick={save}
-                    disabled={saving || !!problem}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                >
-                    {saving ? 'Saving...' : 'Save'}
-                </button>
-            </div>
-        </Modal>
     )
 }

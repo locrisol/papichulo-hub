@@ -7,6 +7,7 @@ import {
     moveEmployee,
     linkableUsers,
     employeeProblem,
+    employeeNote,
     nextColour,
     POSITION_COLOURS,
 } from './team'
@@ -220,5 +221,70 @@ describe('nextColour', () => {
     it('starts again once all eight are taken', () => {
         const used = POSITION_COLOURS.map(c => ({ colour: c.value }))
         expect(nextColour(used)).toBe(POSITION_COLOURS[0].value)
+    })
+})
+
+describe('employeeProblem, the dates that cannot be true', () => {
+    const TODAY = '2026-09-10'
+    const ok = { fullName: 'Ana', dateOfBirth: '1999-08-01', startedOn: '2026-08-01' }
+
+    it('is happy with a real person', () => {
+        expect(employeeProblem(ok, TODAY)).toBeNull()
+    })
+
+    it('refuses a date of birth in the future', () => {
+        // This one actually happened. A first day was typed into the birthday
+        // box, the form took 2026-09-08 without a murmur, and the only symptom
+        // was the roster calling a woman born in 1999 a minor three weeks
+        // later, in a warning that looked like a bug in the roster.
+        expect(employeeProblem({ ...ok, dateOfBirth: '2026-09-12' }, TODAY))
+            .toMatch(/cannot be in the future/)
+    })
+
+    it('allows a birthday today', () => {
+        // The boundary. Today is not the future.
+        expect(employeeProblem({ fullName: 'Ana', dateOfBirth: TODAY }, TODAY)).toBeNull()
+    })
+
+    it('refuses a first day before they were born', () => {
+        expect(employeeProblem({ ...ok, startedOn: '1998-01-01' }, TODAY))
+            .toMatch(/before they were born/)
+    })
+
+    it('says nothing about dates it was not given', () => {
+        expect(employeeProblem({ fullName: 'Ana' }, TODAY)).toBeNull()
+    })
+})
+
+describe('employeeNote', () => {
+    const TODAY = '2026-09-10'
+
+    it('says nothing about an ordinary age', () => {
+        expect(employeeNote({ dateOfBirth: '1999-08-01' }, TODAY)).toBeNull()
+    })
+
+    it('asks about anybody under sixteen', () => {
+        // Camila went in as 2022-11-05, which made her three.
+        expect(employeeNote({ dateOfBirth: '2022-11-05' }, TODAY)).toMatch(/makes them 3/)
+        expect(employeeNote({ dateOfBirth: '2011-01-01' }, TODAY)).toMatch(/makes them 15/)
+    })
+
+    it('does not refuse them, only asks', () => {
+        // Fifteen year olds on summer work are legal, so this must never be
+        // the thing that stops a record being saved.
+        expect(employeeProblem({ fullName: 'Ana', dateOfBirth: '2011-01-01' }, TODAY)).toBeNull()
+    })
+
+    it('lets a sixteenth birthday through', () => {
+        expect(employeeNote({ dateOfBirth: '2010-09-10' }, TODAY)).toBeNull()
+    })
+
+    it('asks about a first day before their fourteenth birthday', () => {
+        expect(employeeNote({ dateOfBirth: '1999-08-01', startedOn: '2010-01-01' }, TODAY))
+            .toMatch(/fourteenth birthday/)
+    })
+
+    it('asks about an implausible age', () => {
+        expect(employeeNote({ dateOfBirth: '1910-01-01' }, TODAY)).toMatch(/Worth checking/)
     })
 })

@@ -1,3 +1,4 @@
+import { fullDate } from '../lib/dates'
 import { DAY_NAMES } from '../lib/events'
 import { NO_COLOUR } from '../lib/team'
 import { barFor } from '../lib/presence'
@@ -75,7 +76,7 @@ export default function PresenceGrid({
                                         key={day.date}
                                         type="button"
                                         onClick={() => onSelect?.(row.employee.id, day.date)}
-                                        aria-label={`${row.employee.full_name}, ${day.date}`}
+                                        aria-label={`${row.employee.full_name}, ${fullDate(day.date)}`}
                                         aria-pressed={!!picked}
                                         style={off && !shut ? { backgroundImage: away } : undefined}
                                         className={`relative h-9 rounded-sm border transition-colors ${

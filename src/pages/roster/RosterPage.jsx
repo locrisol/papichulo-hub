@@ -9,7 +9,8 @@ import { DAY_NAMES, dayName } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
-import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
+import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '../../lib/team'
+import { fullDayRun, fullDayWords } from '../../lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
@@ -45,6 +46,7 @@ import EmployeeForm from '../../components/EmployeeForm'
 const NEW_PERSON = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
     dateOfBirth: '', workPermission: '', workPermissionExpires: '',
+    permissionRenewalApplied: '', permissionRenewalReference: '',
     foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
 }
 
@@ -249,14 +251,47 @@ export default function RosterPage() {
     // week before, which is why those are fetched at all.
     const yesterday = addDays(date, -1)
     const yesterdayHours = hoursOn(yesterday)
+    // Whether they closed, and the whole of what they did yesterday.
+    //
+    // The row says only that they closed. The hover says the shift, because
+    // "closed last night" is a different weight of fact depending on whether it
+    // was four hours or twelve, and that is the bit you want before deciding to
+    // open them this morning.
     const closedLastNight = {}
     for (const s of [...shifts, ...nearbyShifts]) {
         if (s.shift_date !== yesterday) continue
         if (!shiftEdges(s, yesterdayHours).closing) continue
-        // The latest one, for somebody on twice in a day.
-        const held = closedLastNight[s.employee_id]
-        if (!held || s.ends_at > held) closedLastNight[s.employee_id] = s.ends_at
+        closedLastNight[s.employee_id] = { starts_at: s.starts_at, ends_at: s.ends_at }
     }
+
+    // Their whole day, for somebody on twice: the first start and the last
+    // finish, so a split day reads as the day it was rather than as its second
+    // half.
+    for (const s of [...shifts, ...nearbyShifts]) {
+        const closed = closedLastNight[s.employee_id]
+        if (!closed || s.shift_date !== yesterday) continue
+        if (s.starts_at < closed.starts_at) closed.starts_at = s.starts_at
+        if (s.ends_at > closed.ends_at) closed.ends_at = s.ends_at
+    }
+    // How many full days in a row each of them is on, said as a finding rather
+    // than as another line under their name.
+    //
+    // A finding because that is what the triangle already opens, so this
+    // arrives with the fold, the count on the badge and the banner for nothing.
+    // Both shift lists, since a run that started last week is in the week
+    // before, and hoursOn because a full day means open to close.
+    const fullDayNotes = []
+    for (const e of roster) {
+        const words = fullDayWords(
+            fullDayRun([...shifts, ...nearbyShifts], e.id, date, { hoursFor: hoursOn }),
+        )
+        if (words) {
+            fullDayNotes.push({
+                level: 'warn', kind: 'fullDayRun', employeeId: e.id, name: e.full_name, text: words,
+            })
+        }
+    }
+
     const state = publishState(shifts)
     const clashes = findOverlaps(shifts)
 
@@ -348,7 +383,9 @@ export default function RosterPage() {
     // have scrolled past. Double bookings join them here and only here: they
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
-    const alerts = findingsByEmployee([...findings, ...overlapFindings(clashes, employeesById)])
+    const alerts = findingsByEmployee([
+        ...findings, ...overlapFindings(clashes, employeesById), ...fullDayNotes,
+    ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.
     const agreed = requests.filter(r => r.status === 'accepted')
@@ -498,7 +535,7 @@ export default function RosterPage() {
 
     async function addPerson(e) {
         e.preventDefault()
-        if (employeeProblem(personForm)) return
+        if (employeeProblem(personForm, todayISO())) return
         setSaving(true)
 
         const { error: err } = await supabase.from('employees').insert({
@@ -513,6 +550,8 @@ export default function RosterPage() {
             date_of_birth: personForm.dateOfBirth || null,
             work_permission: personForm.workPermission || null,
             work_permission_expires: personForm.workPermissionExpires || null,
+            permission_renewal_applied: personForm.permissionRenewalApplied || null,
+            permission_renewal_reference: personForm.permissionRenewalReference || null,
             food_safety_level: personForm.foodSafetyLevel || null,
             food_safety_issued: personForm.foodSafetyIssued || null,
             food_safety_expires: personForm.foodSafetyExpires || null,
@@ -972,7 +1011,8 @@ export default function RosterPage() {
                         onCancel={() => setAddingPerson(false)}
                         submitLabel="Add them"
                         saving={saving}
-                        problem={employeeProblem(personForm)}
+                        problem={employeeProblem(personForm, todayISO())}
+                        note={employeeNote(personForm, todayISO())}
                         positions={positions.filter(p => p.is_active)}
                         users={[]}
                         employees={employees}

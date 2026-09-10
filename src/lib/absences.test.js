@@ -76,8 +76,15 @@ describe('what a stretch covers', () => {
     })
 
     it('reads as one date or two', () => {
-        expect(absenceRange(away())).toBe('2026-08-24 to 2026-08-28')
-        expect(absenceRange(away({ ends_on: '2026-08-24' }))).toBe('2026-08-24')
+        // Read as somebody reads a date. It used to fall back to the stored
+        // form, so a caller who forgot the argument printed 2026-08-24 at
+        // them.
+        expect(absenceRange(away())).toBe('24/08/2026 to 28/08/2026')
+        expect(absenceRange(away({ ends_on: '2026-08-24' }))).toBe('24/08/2026')
+    })
+
+    it('still lets the caller say how', () => {
+        expect(absenceRange(away(), d => d)).toBe('2026-08-24 to 2026-08-28')
     })
 })
 

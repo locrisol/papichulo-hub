@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     inHolidayPeriod, weeklyCap, ageOn, longestRest, shortestGap, checkWeek,
     permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, overlapFindings,
+    graceFor,
 } from './workRules'
 
 // Sunday 23 August 2026 to Saturday the 29th.
@@ -228,6 +229,164 @@ describe('checkWeek', () => {
         const found = run(shifts, [person({ work_permission_expires: '2026-08-01' })])
         expect(found[0].kind).toBe('permissionExpired')
         expect(found[0].level).toBe('block')
+    })
+
+    // The twelve weeks somebody gets after their permission runs out, if they
+    // applied to renew before it did. Getting this wrong the generous way means
+    // rostering somebody who is not entitled to work, so each of the four
+    // answers is held here rather than left to read right.
+    describe('waiting on a renewal', () => {
+        const applied = extra => person({
+            work_permission_expires: '2026-08-01',
+            permission_renewal_applied: '2026-07-20',
+            ...extra,
+        })
+        const shifts = [shift(WEEK[1], '09:00', '17:00')]
+
+        it('lets the week out and says a renewal is in hand', () => {
+            const found = run(shifts, [applied()])
+            expect(found[0].kind).toBe('permissionGrace')
+            expect(found[0].level).toBe('warn')
+            // Read as somebody reads a date, not as the database stores it.
+            expect(found[0].text).toMatch(/applied for on 20\/07\/2026/)
+        })
+
+
+        // A week beyond the window, for the two tests under it.
+        const late = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04',
+            '2026-11-05', '2026-11-06', '2026-11-07']
+        const lateWeek = rules => checkWeek({
+            shifts: [shift(late[1], '09:00', '17:00')],
+            employees: [applied()],
+            weekDates: late,
+            rules: { ...DEFAULT_RULES, ...rules },
+        })
+
+        it('keeps saying it past the window, without holding the week', () => {
+            // Renewals are running past seventeen weeks. Blocking here would
+            // stop a manager rostering somebody immigration has told them is
+            // fine to work, on the app's reading of guidance that keeps
+            // changing.
+            const found = lateWeek()
+            expect(found[0].kind).toBe('permissionGraceOver')
+            expect(found[0].level).toBe('warn')
+        })
+
+        it('holds the week past the window if that is what was chosen', () => {
+            const found = lateWeek({ permissionGrace: { on: true, weeks: 12, afterBlocks: true } })
+            expect(found[0].kind).toBe('permissionGraceOver')
+            expect(found[0].level).toBe('block')
+        })
+
+        it('counts a renewal applied for on the day it ran out, and says so', () => {
+            // Nothing settles this one. The guidance says "before the expiry
+            // date"; a permission is ordinarily good through its expiry date.
+            // It counts and it is flagged, rather than the app quietly picking
+            // a reading of a sentence nobody has clarified.
+            const found = run(shifts, [applied({ permission_renewal_applied: '2026-08-01' })])
+            expect(found[0].kind).toBe('permissionRenewedSameDay')
+            expect(found[0].level).toBe('warn')
+            expect(found[0].text).toMatch(/worth confirming/)
+        })
+
+        it('blocks a renewal applied for after it ran out', () => {
+            // The condition the whole thing turns on. Applying late earns
+            // nothing, and letting it through would be rostering somebody who
+            // is not entitled to work.
+            const found = run(shifts, [applied({ permission_renewal_applied: '2026-08-02' })])
+            expect(found[0].kind).toBe('permissionRenewedLate')
+            expect(found[0].level).toBe('block')
+        })
+
+        it('blocks when no renewal has been recorded at all', () => {
+            const found = run(shifts, [applied({ permission_renewal_applied: null })])
+            expect(found[0].kind).toBe('permissionExpired')
+            expect(found[0].level).toBe('block')
+        })
+
+        it('blocks when the grace is switched off', () => {
+            const found = checkWeek({
+                shifts,
+                employees: [applied()],
+                weekDates: WEEK,
+                rules: { ...DEFAULT_RULES, permissionGrace: { on: false, weeks: 12 } },
+            })
+            expect(found[0].kind).toBe('permissionExpired')
+            expect(found[0].level).toBe('block')
+        })
+
+        it('follows the number of weeks it is given', () => {
+            // The figure has moved twice this year, so it is a setting. A
+            // shorter one has to actually shorten the window.
+            const found = checkWeek({
+                shifts,
+                employees: [applied()],
+                weekDates: WEEK,
+                rules: { ...DEFAULT_RULES, permissionGrace: { on: true, weeks: 2 } },
+            })
+            expect(found[0].kind).toBe('permissionGraceOver')
+        })
+
+        it('still blocks a week with no renewal recorded, whatever the setting', () => {
+            // The whole thing turns on a renewal existing. Softening what
+            // happens after the window must not soften that.
+            const found = run(shifts, [applied({ permission_renewal_applied: null })])
+            expect(found[0].level).toBe('block')
+        })
+    })
+
+    describe('a renewal already applied for, before it has run out', () => {
+        const shifts = [shift(WEEK[1], '09:00', '17:00')]
+
+        it('says so rather than telling you to chase it', () => {
+            const found = run(shifts, [person({
+                work_permission_expires: '2026-10-15',
+                permission_renewal_applied: '2026-08-25',
+                permission_renewal_reference: 'OREG2026343270304',
+            })])
+            expect(found[0].kind).toBe('permissionSoonRenewing')
+            expect(found[0].text).toMatch(/25\/08\/2026/)
+        })
+
+        it('lets a week the permission runs out in go out', () => {
+            // It used to hold the week and say nothing about the renewal,
+            // which reads as the app not having noticed.
+            const found = run(shifts, [person({
+                work_permission_expires: WEEK[4],
+                permission_renewal_applied: '2026-08-01',
+            })])
+            expect(found[0].kind).toBe('permissionExpiringRenewing')
+            expect(found[0].level).toBe('warn')
+        })
+
+        it('still holds it when nothing has been applied for', () => {
+            const found = run(shifts, [person({ work_permission_expires: WEEK[4] })])
+            expect(found[0].kind).toBe('permissionExpiring')
+            expect(found[0].level).toBe('block')
+        })
+    })
+
+    describe('graceFor', () => {
+        const waiting = {
+            work_permission_expires: '2026-08-01',
+            permission_renewal_applied: '2026-07-20',
+        }
+
+        it('counts the weeks from the expiry, not from the application', () => {
+            expect(graceFor(waiting, '2026-08-29', DEFAULT_RULES).until).toBe('2026-10-24')
+        })
+
+        it('measures against the end of the week being rostered', () => {
+            // Not against today. A week running past the last covered day has
+            // shifts on it nobody may work, and next month's roster must not
+            // come out clean because the grace happens to still run now.
+            expect(graceFor(waiting, '2026-10-24', DEFAULT_RULES).covered).toBe(true)
+            expect(graceFor(waiting, '2026-10-25', DEFAULT_RULES).covered).toBe(false)
+        })
+
+        it('gives nothing for somebody with no expiry at all', () => {
+            expect(graceFor({}, '2026-08-29', DEFAULT_RULES).covered).toBe(false)
+        })
     })
 
     it('blocks a week the permission runs out part way through', () => {

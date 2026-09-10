@@ -19,7 +19,7 @@ import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
 import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from './availability'
 import { absencesOn, kindPhrase, isPartDay } from './absences'
 import { hitsShift, partWords } from './timeOff'
-import { shortDate } from './dates'
+import { shortDate, fullDate, addDays } from './dates'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -63,6 +63,20 @@ export const DEFAULT_RULES = {
     // is a decision a restaurant can make, and the check keeps saying it either
     // way rather than going quiet.
     visaCap: { on: true, blocks: true },
+    // Somebody whose permission ran out while a renewal they applied for in
+    // time is processed.
+    //
+    // weeks is how long before the Hub starts pushing rather than when the
+    // person stops being allowed to work. Twelve is the figure in the
+    // Department's notice, but renewals are running past seventeen weeks and
+    // the guidance has moved twice this year, so the number is a setting and
+    // what happens at the end of it is a choice.
+    //
+    // afterBlocks is false by default, and that is the honest default rather
+    // than the lax one. Blocking would stop a manager rostering somebody the
+    // immigration service has told them is fine to work, on the app's reading
+    // of guidance that keeps changing. It keeps saying it every week instead.
+    permissionGrace: { on: true, weeks: 12, afterBlocks: false },
     foodSafety: { on: true, warnDays: 60, validMonths: 24 },
     gridHours: { before: 3, after: 3 },
     holidayPeriods: [
@@ -90,6 +104,57 @@ export function expiryState(expires, weekStart, weekEnd, warnDays) {
     if (expires <= weekEnd) return 'expiring'
     if (daysBetween(weekEnd, expires) <= (warnDays ?? 60)) return 'soon'
     return null
+}
+
+// Where somebody with an expired permission stands.
+//
+// Four answers, and the difference between them is what stops this being a
+// blanket amnesty. Somebody who applied in time may keep working for a while;
+// somebody who applied after it ran out may not, and neither may somebody who
+// has not applied at all. The Department's notice puts that condition on it,
+// and getting it wrong the generous way means rostering somebody who is not
+// entitled to work.
+//
+// Measured against the end of the week being rostered rather than today,
+// because a week that runs past the last covered day is a week with shifts on
+// it nobody may work. Building next month's roster must not come out clean
+// because the grace happens to still be running now.
+// A stored date as somebody reads it: 23/08/2026 rather than 2026-08-23.
+//
+// These are sentences a manager reads at speed, and the stored form is the
+// database's way of writing a date rather than anybody's.
+const on = date => (date ? fullDate(date) : '')
+
+export function graceFor(employee, weekEnd, settings = {}) {
+    const expired = employee?.work_permission_expires
+    const applied = employee?.permission_renewal_applied
+    const rule = settings.permissionGrace
+    const weeks = rule?.weeks ?? 12
+
+    if (!rule?.on || !expired) return { covered: false }
+    if (!applied) return { covered: false }
+
+    // Applying after it ran out earns nothing at all.
+    if (applied > expired) return { covered: false, tooLate: true }
+
+    // Applied on the very day it ran out, which nothing settles.
+    //
+    // Every version of the guidance says "before the expiry date". A strict
+    // reading makes the same day too late. The ordinary reading is that a
+    // permission is good through its expiry date, so an application made that
+    // day was made while it was still valid.
+    //
+    // It counts, and it says so, because the alternative is the app quietly
+    // picking one reading of a sentence nobody has clarified and either holding
+    // a week it should not or passing one it should not. A manager who can see
+    // it is on the line can go and ask.
+    const sameDay = applied === expired
+
+    const until = addDays(expired, weeks * 7)
+    if (weekEnd && weekEnd > until) {
+        return { covered: false, lapsed: true, sameDay, until, weeks }
+    }
+    return { covered: true, sameDay, until, weeks }
 }
 
 export function permissionFor(value) {
@@ -268,14 +333,61 @@ export function checkWeek({
             employee.work_permission_expires, weekDates?.[0], weekEnd, 60,
         )
         if (permission === 'expired') {
-            add('block', 'permissionExpired',
-                `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
+            const grace = graceFor(employee, weekEnd, settings)
+
+            if (grace.covered && grace.sameDay) {
+                add('warn', 'permissionRenewedSameDay',
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} and the `
+                    + `renewal was applied for that same day. The rule says `
+                    + 'before it ran out, so this one is worth confirming.')
+            } else if (grace.covered) {
+                add('warn', 'permissionGrace',
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    + `and a renewal was applied for on ${on(employee.permission_renewal_applied)}`
+                    + `. They may keep working while it is processed.`)
+            } else if (grace.lapsed) {
+                add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
+                    `${name}'s renewal, applied for on ${on(employee.permission_renewal_applied)}`
+                    + `, has been going more than ${grace.weeks} weeks. `
+                    + 'Worth checking where it stands.')
+            } else if (grace.tooLate) {
+                // Applying after it ran out earns nothing. Saying which day
+                // they applied is the difference between a rule that looks
+                // broken and one somebody can act on.
+                add('block', 'permissionRenewedLate',
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    + `and the renewal was not applied for until ${on(employee.permission_renewal_applied)}.`)
+            } else {
+                add('block', 'permissionExpired',
+                    `${name}'s permission to work ran out on ${on(employee.work_permission_expires)}.`)
+            }
         } else if (permission === 'expiring') {
-            add('block', 'permissionExpiring',
-                `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)
+            // A renewal already in means this is a date passing rather than
+            // somebody stopping work, so it says so and lets the week out. It
+            // used to hold the week and say nothing about the renewal, which
+            // reads as the app not having noticed.
+            if (employee.permission_renewal_applied) {
+                add('warn', 'permissionExpiringRenewing',
+                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}, `
+                    + `part way through this week, and a renewal was applied for on `
+                    + `${on(employee.permission_renewal_applied)}.`)
+            } else {
+                add('block', 'permissionExpiring',
+                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}, part way through this week.`)
+            }
         } else if (permission === 'soon') {
-            add('warn', 'permissionSoon',
-                `${name}'s permission to work runs out on ${employee.work_permission_expires}.`)
+            // Still a warning either way. One is a job to do and the other is a
+            // job already done, and telling somebody to chase a renewal they
+            // sent three weeks ago is how a warning starts being ignored.
+            if (employee.permission_renewal_applied) {
+                add('warn', 'permissionSoonRenewing',
+                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}. `
+                    + `A renewal was applied for on ${on(employee.permission_renewal_applied)}`
+                    + `.`)
+            } else {
+                add('warn', 'permissionSoon',
+                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}.`)
+            }
         }
 
         // Food safety training. A certificate nobody is watching is one that
@@ -289,10 +401,10 @@ export function checkWeek({
             )
             if (food === 'expired') {
                 add('warn', 'foodSafetyExpired',
-                    `${name}'s food safety training ran out on ${employee.food_safety_expires}.`)
+                    `${name}'s food safety training ran out on ${on(employee.food_safety_expires)}.`)
             } else if (food === 'expiring' || food === 'soon') {
                 add('warn', 'foodSafetySoon',
-                    `${name}'s food safety training runs out on ${employee.food_safety_expires}.`)
+                    `${name}'s food safety training runs out on ${on(employee.food_safety_expires)}.`)
             }
         }
 
@@ -317,13 +429,13 @@ export function checkWeek({
                 }
                 for (const s of mine) {
                     if (shiftHours(s) > 8) {
-                        add('block', 'minorDay', `${name} is under 18 and has a ${shiftHours(s).toFixed(2)} hour shift on ${s.shift_date}, against a limit of 8.`)
+                        add('block', 'minorDay', `${name} is under 18 and has a ${shiftHours(s).toFixed(2)} hour shift on ${on(s.shift_date)}, against a limit of 8.`)
                         break
                     }
                 }
                 const late = mine.find(s => toMinutes(s.starts_at) + shiftMinutes(s.starts_at, s.ends_at) > 22 * 60)
                 if (late) {
-                    add('block', 'minorLate', `${name} is under 18 and is rostered past ten at night on ${late.shift_date}.`)
+                    add('block', 'minorLate', `${name} is under 18 and is rostered past ten at night on ${on(late.shift_date)}.`)
                 }
                 const gap = shortestGap(around, weekDates)
                 if (gap.hours < 12) {
@@ -363,7 +475,7 @@ export function checkWeek({
 
                 if (outside.kind === 'day') {
                     add('warn', 'availabilityDay',
-                        `${name} is rostered on ${s.shift_date}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
+                        `${name} is rostered on ${on(s.shift_date)}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
                 } else {
                     add('warn', 'availabilityTime',
                         `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and can work ${windowsLabel(outside.windows)}.`)
@@ -454,6 +566,12 @@ export function findingsByEmployee(findings) {
 }
 
 // The worse of what a person has, since one mark has to stand for all of it.
+// Whether a row has anything that folds away. Warnings do, blocks never do:
+// a block is what holds the week back, so it is always on screen.
+export function hasWarnings(findings) {
+    return (findings || []).some(f => f.level !== 'block')
+}
+
 export function worstLevel(findings) {
     if (!findings?.length) return null
     return findings.some(f => f.level === 'block') ? 'block' : 'warn'
@@ -471,7 +589,7 @@ export function overlapFindings(clashes, employeesById) {
         kind: 'clash',
         employeeId: a.employee_id,
         name: employeesById?.[a.employee_id]?.full_name || '',
-        text: `Rostered twice over the same hours on ${a.shift_date}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
+        text: `Rostered twice over the same hours on ${on(a.shift_date)}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
     }))
 }
 

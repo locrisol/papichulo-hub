@@ -6,7 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, fullDate } from '../../lib/dates'
 import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '../../lib/controlStyles'
-import { availabilitySummary } from '../../lib/availability'
+import { availabilitySummary, patternOn, pendingAvailability } from '../../lib/availability'
 import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
 import {
     sortEmployees,
@@ -14,6 +14,7 @@ import {
     moveEmployee,
     employeeStatus,
     employeeProblem,
+    employeeNote,
     NO_COLOUR,
 } from '../../lib/team'
 import Modal from '../../components/Modal'
@@ -23,6 +24,7 @@ import PositionsModal from '../../components/PositionsModal'
 import CalendarLinkDialog from '../../components/CalendarLinkDialog'
 import AvailabilityDialog from '../../components/AvailabilityDialog'
 import TimeOffDialog from '../../components/TimeOffDialog'
+import TeamGaps from '../../components/team/TeamGaps'
 
 // Who works here.
 //
@@ -102,7 +104,8 @@ export default function EmployeesPage() {
     }
 
     const change = (field, value) => setForm(f => ({ ...f, [field]: value }))
-    const problem = employeeProblem(form)
+    const problem = employeeProblem(form, today)
+    const note = employeeNote(form, today)
 
     function openAdd() {
         setForm(EMPTY)
@@ -121,6 +124,8 @@ export default function EmployeesPage() {
             dateOfBirth: employee.date_of_birth || '',
             workPermission: employee.work_permission || '',
             workPermissionExpires: employee.work_permission_expires || '',
+            permissionRenewalApplied: employee.permission_renewal_applied || '',
+            permissionRenewalReference: employee.permission_renewal_reference || '',
             foodSafetyLevel: employee.food_safety_level || '',
             foodSafetyIssued: employee.food_safety_issued || '',
             foodSafetyExpires: employee.food_safety_expires || '',
@@ -143,6 +148,8 @@ export default function EmployeesPage() {
             date_of_birth: form.dateOfBirth || null,
             work_permission: form.workPermission || null,
             work_permission_expires: form.workPermissionExpires || null,
+            permission_renewal_applied: form.permissionRenewalApplied || null,
+            permission_renewal_reference: form.permissionRenewalReference || null,
             food_safety_level: form.foodSafetyLevel || null,
             food_safety_issued: form.foodSafetyIssued || null,
             food_safety_expires: form.foodSafetyExpires || null,
@@ -296,6 +303,13 @@ export default function EmployeesPage() {
 
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
+            {/* Above the list rather than inside it. Filling these in is a job
+                of its own, done sitting down once in a while, not something to
+                come across while looking somebody up. */}
+            {!loading && (
+                <TeamGaps employees={current} today={today} onOpen={openEdit} />
+            )}
+
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
             ) : sorted.length === 0 ? (
@@ -354,9 +368,17 @@ export default function EmployeesPage() {
                                     {employee.notes && (
                                         <p className="text-xs text-gray-400 mt-1">{employee.notes}</p>
                                     )}
-                                    {availabilitySummary(employee.availability) && (
+                                    {/* The pattern in force today, not whichever
+                                        column it sits in, so a change that has
+                                        already started reads as what they work. */}
+                                    {availabilitySummary(patternOn(employee, today)) && (
                                         <p className="text-xs text-gray-500 mt-1">
-                                            Works {availabilitySummary(employee.availability)}
+                                            Works {availabilitySummary(patternOn(employee, today))}
+                                        </p>
+                                    )}
+                                    {pendingAvailability(employee, today) && (
+                                        <p className="text-xs text-accent-ink mt-1">
+                                            Hours change on {fullDate(pendingAvailability(employee, today).from)}
                                         </p>
                                     )}
                                     {coming && (
@@ -470,9 +492,14 @@ export default function EmployeesPage() {
                                                     so a list where nobody has
                                                     availability set looks
                                                     exactly as it did before. */}
-                                                {availabilitySummary(employee.availability) && (
+                                                {availabilitySummary(patternOn(employee, today)) && (
                                                     <span className="block text-xs text-gray-500">
-                                                        Works {availabilitySummary(employee.availability)}
+                                                        Works {availabilitySummary(patternOn(employee, today))}
+                                                    </span>
+                                                )}
+                                                {pendingAvailability(employee, today) && (
+                                                    <span className="block text-xs text-accent-ink">
+                                                        Hours change on {fullDate(pendingAvailability(employee, today).from)}
                                                     </span>
                                                 )}
                                                 {/* What is coming rather than
@@ -548,6 +575,7 @@ export default function EmployeesPage() {
                         submitLabel={editing ? 'Save' : 'Add them'}
                         saving={saving}
                         problem={problem}
+                        note={note}
                         positions={positions.filter(p => p.is_active || p.id === form.positionId)}
                         users={users}
                         employees={employees}
