@@ -251,13 +251,27 @@ export default function RosterPage() {
     // week before, which is why those are fetched at all.
     const yesterday = addDays(date, -1)
     const yesterdayHours = hoursOn(yesterday)
+    // Whether they closed, and the whole of what they did yesterday.
+    //
+    // The row says only that they closed. The hover says the shift, because
+    // "closed last night" is a different weight of fact depending on whether it
+    // was four hours or twelve, and that is the bit you want before deciding to
+    // open them this morning.
     const closedLastNight = {}
     for (const s of [...shifts, ...nearbyShifts]) {
         if (s.shift_date !== yesterday) continue
         if (!shiftEdges(s, yesterdayHours).closing) continue
-        // The latest one, for somebody on twice in a day.
-        const held = closedLastNight[s.employee_id]
-        if (!held || s.ends_at > held) closedLastNight[s.employee_id] = s.ends_at
+        closedLastNight[s.employee_id] = { starts_at: s.starts_at, ends_at: s.ends_at }
+    }
+
+    // Their whole day, for somebody on twice: the first start and the last
+    // finish, so a split day reads as the day it was rather than as its second
+    // half.
+    for (const s of [...shifts, ...nearbyShifts]) {
+        const closed = closedLastNight[s.employee_id]
+        if (!closed || s.shift_date !== yesterday) continue
+        if (s.starts_at < closed.starts_at) closed.starts_at = s.starts_at
+        if (s.ends_at > closed.ends_at) closed.ends_at = s.ends_at
     }
     // How many full days in a row each of them is on, said as a finding rather
     // than as another line under their name.

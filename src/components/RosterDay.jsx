@@ -486,16 +486,21 @@ export default function RosterDay({
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
                         const canOpen = hasWarnings(mineAlerts)
+                        // Whether a strip is actually drawn under this row, which
+                        // is not the same as whether there are alerts now that
+                        // warnings fold away. The strip carries the line between
+                        // rows when it is there, so tying the border to the
+                        // wrong one of these took the lines off the grid.
+                        const stripShowing = showing || mineAlerts.some(f => f.level === 'block')
                         const showing = openAlerts === employee.id
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
                         // only way to clear one.
-                        const hasAlerts = mineAlerts.length > 0
 
                         return (
                             <Fragment key={employee.id}>
                             <div
-                                className={`flex ${hasAlerts ? '' : 'border-b border-border last:border-b-0'} ${
+                                className={`flex ${stripShowing ? '' : 'border-b border-border last:border-b-0'} ${
                                     dayTone || (row % 2 ? 'bg-gray-50/40' : '')
                                 }`}
                             >
@@ -505,7 +510,9 @@ export default function RosterDay({
                                 <div
                                     className="w-40 flex-shrink-0 px-3 py-2 flex items-center gap-2 border-r border-border"
                                     title={closedLate
-                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. Closed last night, finished at ${shortTime(closedLate)}.`
+                                        ? `${employee.full_name}, ${positionOf(employee.position_id)?.name || 'no position'}. `
+                                            + `Yesterday: ${shortTime(closedLate.starts_at)} to `
+                                            + `${shortTime(closedLate.ends_at)}, closing.`
                                         : employee.full_name}
                                 >
                                     <span
@@ -773,7 +780,7 @@ export default function RosterDay({
                                 </div>
                             </div>
 
-                            {hasAlerts && (
+                            {stripShowing && (
                                 <AlertStrip findings={mineAlerts} open={showing} className="border-b" />
                             )}
                             </Fragment>
