@@ -247,7 +247,8 @@ describe('checkWeek', () => {
             const found = run(shifts, [applied()])
             expect(found[0].kind).toBe('permissionGrace')
             expect(found[0].level).toBe('warn')
-            expect(found[0].text).toMatch(/applied for on 2026-07-20/)
+            // Read as somebody reads a date, not as the database stores it.
+            expect(found[0].text).toMatch(/applied for on 20\/07\/2026/)
         })
 
         it('carries the OREG number, which is what gets asked for', () => {

@@ -19,7 +19,7 @@ import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
 import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from './availability'
 import { absencesOn, kindPhrase, isPartDay } from './absences'
 import { hitsShift, partWords } from './timeOff'
-import { shortDate, addDays } from './dates'
+import { shortDate, fullDate, addDays } from './dates'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -119,6 +119,12 @@ export function expiryState(expires, weekStart, weekEnd, warnDays) {
 // because a week that runs past the last covered day is a week with shifts on
 // it nobody may work. Building next month's roster must not come out clean
 // because the grace happens to still be running now.
+// A stored date as somebody reads it: 23/08/2026 rather than 2026-08-23.
+//
+// These are sentences a manager reads at speed, and the stored form is the
+// database's way of writing a date rather than anybody's.
+const on = date => (date ? fullDate(date) : '')
+
 // The OREG number in brackets, or nothing.
 //
 // It goes in the finding rather than only on the team list because the roster
@@ -340,17 +346,17 @@ export function checkWeek({
 
             if (grace.covered && grace.sameDay) {
                 add('warn', 'permissionRenewedSameDay',
-                    `${name}'s permission ran out on ${employee.work_permission_expires} and the `
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} and the `
                     + `renewal was applied for that same day${reference(employee)}. The rule says `
                     + 'before it ran out, so this one is worth confirming.')
             } else if (grace.covered) {
                 add('warn', 'permissionGrace',
-                    `${name}'s permission ran out on ${employee.work_permission_expires} `
-                    + `and a renewal was applied for on ${employee.permission_renewal_applied}`
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    + `and a renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `${reference(employee)}. They may keep working while it is processed.`)
             } else if (grace.lapsed) {
                 add(settings.permissionGrace?.afterBlocks ? 'block' : 'warn', 'permissionGraceOver',
-                    `${name}'s renewal, applied for on ${employee.permission_renewal_applied}`
+                    `${name}'s renewal, applied for on ${on(employee.permission_renewal_applied)}`
                     + `${reference(employee)}, has been going more than ${grace.weeks} weeks. `
                     + 'Worth checking where it stands.')
             } else if (grace.tooLate) {
@@ -358,11 +364,11 @@ export function checkWeek({
                 // they applied is the difference between a rule that looks
                 // broken and one somebody can act on.
                 add('block', 'permissionRenewedLate',
-                    `${name}'s permission ran out on ${employee.work_permission_expires} `
-                    + `and the renewal was not applied for until ${employee.permission_renewal_applied}.`)
+                    `${name}'s permission ran out on ${on(employee.work_permission_expires)} `
+                    + `and the renewal was not applied for until ${on(employee.permission_renewal_applied)}.`)
             } else {
                 add('block', 'permissionExpired',
-                    `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
+                    `${name}'s permission to work ran out on ${on(employee.work_permission_expires)}.`)
             }
         } else if (permission === 'expiring') {
             // A renewal already in means this is a date passing rather than
@@ -371,12 +377,12 @@ export function checkWeek({
             // reads as the app not having noticed.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionExpiringRenewing',
-                    `${name}'s permission runs out on ${employee.work_permission_expires}, `
+                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}, `
                     + `part way through this week, and a renewal was applied for on `
-                    + `${employee.permission_renewal_applied}${reference(employee)}.`)
+                    + `${on(employee.permission_renewal_applied)}${reference(employee)}.`)
             } else {
                 add('block', 'permissionExpiring',
-                    `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)
+                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}, part way through this week.`)
             }
         } else if (permission === 'soon') {
             // Still a warning either way. One is a job to do and the other is a
@@ -384,12 +390,12 @@ export function checkWeek({
             // sent three weeks ago is how a warning starts being ignored.
             if (employee.permission_renewal_applied) {
                 add('warn', 'permissionSoonRenewing',
-                    `${name}'s permission runs out on ${employee.work_permission_expires}. `
-                    + `A renewal was applied for on ${employee.permission_renewal_applied}`
+                    `${name}'s permission runs out on ${on(employee.work_permission_expires)}. `
+                    + `A renewal was applied for on ${on(employee.permission_renewal_applied)}`
                     + `${reference(employee)}.`)
             } else {
                 add('warn', 'permissionSoon',
-                    `${name}'s permission to work runs out on ${employee.work_permission_expires}.`)
+                    `${name}'s permission to work runs out on ${on(employee.work_permission_expires)}.`)
             }
         }
 
@@ -404,10 +410,10 @@ export function checkWeek({
             )
             if (food === 'expired') {
                 add('warn', 'foodSafetyExpired',
-                    `${name}'s food safety training ran out on ${employee.food_safety_expires}.`)
+                    `${name}'s food safety training ran out on ${on(employee.food_safety_expires)}.`)
             } else if (food === 'expiring' || food === 'soon') {
                 add('warn', 'foodSafetySoon',
-                    `${name}'s food safety training runs out on ${employee.food_safety_expires}.`)
+                    `${name}'s food safety training runs out on ${on(employee.food_safety_expires)}.`)
             }
         }
 
@@ -432,13 +438,13 @@ export function checkWeek({
                 }
                 for (const s of mine) {
                     if (shiftHours(s) > 8) {
-                        add('block', 'minorDay', `${name} is under 18 and has a ${shiftHours(s).toFixed(2)} hour shift on ${s.shift_date}, against a limit of 8.`)
+                        add('block', 'minorDay', `${name} is under 18 and has a ${shiftHours(s).toFixed(2)} hour shift on ${on(s.shift_date)}, against a limit of 8.`)
                         break
                     }
                 }
                 const late = mine.find(s => toMinutes(s.starts_at) + shiftMinutes(s.starts_at, s.ends_at) > 22 * 60)
                 if (late) {
-                    add('block', 'minorLate', `${name} is under 18 and is rostered past ten at night on ${late.shift_date}.`)
+                    add('block', 'minorLate', `${name} is under 18 and is rostered past ten at night on ${on(late.shift_date)}.`)
                 }
                 const gap = shortestGap(around, weekDates)
                 if (gap.hours < 12) {
@@ -478,7 +484,7 @@ export function checkWeek({
 
                 if (outside.kind === 'day') {
                     add('warn', 'availabilityDay',
-                        `${name} is rostered on ${s.shift_date}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
+                        `${name} is rostered on ${on(s.shift_date)}, a ${dayNameOf(s.shift_date)} they said they cannot work.`)
                 } else {
                     add('warn', 'availabilityTime',
                         `${name} is rostered ${shortTime(s.starts_at)} to ${shortTime(s.ends_at)} on ${shortDate(s.shift_date)} and can work ${windowsLabel(outside.windows)}.`)
@@ -586,7 +592,7 @@ export function overlapFindings(clashes, employeesById) {
         kind: 'clash',
         employeeId: a.employee_id,
         name: employeesById?.[a.employee_id]?.full_name || '',
-        text: `Rostered twice over the same hours on ${a.shift_date}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
+        text: `Rostered twice over the same hours on ${on(a.shift_date)}, ${shortTime(a.starts_at)} and ${shortTime(b.starts_at)}.`,
     }))
 }
 

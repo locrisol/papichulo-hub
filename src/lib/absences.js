@@ -12,7 +12,7 @@
 // on their row and left there, because somebody back early from a holiday or
 // coming in for one shift is a real thing.
 
-import { addDays } from './dates'
+import { addDays, fullDate } from './dates'
 
 // The kinds, and what each one is called on screen.
 //
@@ -135,7 +135,11 @@ export function absenceDays(absence) {
 
 // How a stretch reads: one date, or two.
 export function absenceRange(absence, format) {
-    const show = format || (d => d)
+    // A date the way it is read, unless the caller wants it another way. It
+    // used to fall back to the stored form, so forgetting the argument printed
+    // 2026-08-23 at somebody rather than 23/08/2026. Every caller happens to
+    // pass one today, which is exactly when a trap like that is worth closing.
+    const show = format || fullDate
     const to = absence?.ends_on || absence?.starts_on
     if (!absence?.starts_on) return ''
     return absence.starts_on === to
