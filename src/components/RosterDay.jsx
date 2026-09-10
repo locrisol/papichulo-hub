@@ -486,13 +486,13 @@ export default function RosterDay({
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
                         const canOpen = hasWarnings(mineAlerts)
+                        const showing = openAlerts === employee.id
                         // Whether a strip is actually drawn under this row, which
                         // is not the same as whether there are alerts now that
                         // warnings fold away. The strip carries the line between
                         // rows when it is there, so tying the border to the
                         // wrong one of these took the lines off the grid.
                         const stripShowing = showing || mineAlerts.some(f => f.level === 'block')
-                        const showing = openAlerts === employee.id
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
                         // only way to clear one.
