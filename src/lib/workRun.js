@@ -1,4 +1,4 @@
-import { shiftHours } from './roster'
+import { shiftHours, toMinutes } from './roster'
 import { addDays } from './dates'
 
 // How hard somebody has been going, in the days right before this one.
@@ -11,18 +11,36 @@ import { addDays } from './dates'
 // None of it stops anything. It is the same principle as the closing time: a
 // manager who can see it is deciding, and a manager who cannot is guessing.
 
-// A day of seven hours or more counts as a full one.
+// A full day is open to close, not a number of hours.
 //
-// There is no such thing as a standard day recorded anywhere, so this is a
-// line drawn rather than a fact read. Seven rather than eight because a shift
-// that came in at seven and a half is nobody's idea of a half day, and calling
-// it one is the answer that would make somebody stop trusting the line.
-export const FULL_DAY_HOURS = 7
+// The first version of this drew a line at seven hours, which was a line
+// invented rather than a fact read. This is the real one: somebody who was
+// there when the doors opened and still there when they shut did a full day,
+// whether that shop opens for eight hours or for twelve.
+//
+// At or before, and at or after. A shift starting exactly on the opening time
+// is the opening shift, and shiftEdges deliberately says otherwise because it
+// answers a different question, whether the roster should print "Closing"
+// instead of a time.
+//
+// Their earliest start and latest finish, so somebody on twice in a day counts
+// as having covered it. A split shift with the middle out is still a day that
+// began at opening and ended at closing.
+function coversTheDay(theirShifts, dayHours) {
+    if (!dayHours?.open || !dayHours?.close || theirShifts.length === 0) return false
+
+    const starts = Math.min(...theirShifts.map(s => toMinutes(s.starts_at)))
+    const ends = Math.max(...theirShifts.map(s => toMinutes(s.ends_at)))
+
+    return starts <= toMinutes(dayHours.open) && ends >= toMinutes(dayHours.close)
+}
+
+export function shiftsOn(shifts, employeeId, date) {
+    return (shifts || []).filter(s => s.employee_id === employeeId && s.shift_date === date)
+}
 
 export function dayHoursFor(shifts, employeeId, date) {
-    return (shifts || [])
-        .filter(s => s.employee_id === employeeId && s.shift_date === date)
-        .reduce((total, s) => total + shiftHours(s), 0)
+    return shiftsOn(shifts, employeeId, date).reduce((total, s) => total + shiftHours(s), 0)
 }
 
 // The unbroken run of days worked immediately before a date.
@@ -31,14 +49,23 @@ export function dayHoursFor(shifts, employeeId, date) {
 // which is what makes it a run rather than a tally. Bounded, because the
 // roster only ever holds a fortnight or so of shifts and a number that quietly
 // depends on how much happens to have been fetched is worse than no number.
-export function runBefore(shifts, employeeId, date, limit = 14) {
+// hoursFor gives the opening and closing times of a day. Without it nothing can
+// be called a full day, so every day comes back as a part one rather than the
+// count quietly meaning something else.
+export function runBefore(shifts, employeeId, date, { limit = 14, hoursFor } = {}) {
     const days = []
 
     for (let back = 1; back <= limit; back += 1) {
         const day = addDays(date, -back)
-        const hours = dayHoursFor(shifts, employeeId, day)
-        if (hours <= 0) break
-        days.push({ date: day, hours, full: hours >= FULL_DAY_HOURS })
+        const theirs = shiftsOn(shifts, employeeId, day)
+        if (theirs.length === 0) break
+
+        const hours = theirs.reduce((total, s) => total + shiftHours(s), 0)
+        days.push({
+            date: day,
+            hours,
+            full: coversTheDay(theirs, hoursFor ? hoursFor(day) : null),
+        })
     }
 
     return {

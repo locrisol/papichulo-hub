@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runBefore, runWords, dayHoursFor, FULL_DAY_HOURS } from './workRun'
+import { runBefore, runWords, dayHoursFor } from './workRun'
 import { addDays } from './dates'
 
 const shift = (date, starts_at, ends_at, employee_id = 'e1') =>
@@ -8,6 +8,10 @@ const shift = (date, starts_at, ends_at, employee_id = 'e1') =>
 // Monday the 7th to Friday the 11th, with Thursday the 10th as the day being
 // rostered, so everything below is about the days behind it.
 const DAY = '2026-09-10'
+
+// The shop, open ten to nine.
+const hoursFor = () => ({ open: '10:00', close: '21:00' })
+const opts = { hoursFor }
 
 describe('dayHoursFor', () => {
     it('adds up a day somebody was on twice', () => {
@@ -29,34 +33,58 @@ describe('runBefore', () => {
             // Nothing on the 7th, so the run stops there.
             shift('2026-09-06', '09:00', '17:00'),
         ]
-        expect(runBefore(shifts, 'e1', DAY).days).toBe(2)
+        expect(runBefore(shifts, 'e1', DAY, opts).days).toBe(2)
     })
 
     it('does not count the day being rostered', () => {
         // Otherwise putting somebody on today makes today's own row say they
         // have been going for days.
         const shifts = [shift(DAY, '09:00', '17:00')]
-        expect(runBefore(shifts, 'e1', DAY).days).toBe(0)
+        expect(runBefore(shifts, 'e1', DAY, opts).days).toBe(0)
     })
 
     it('says how many of them were full days', () => {
         const shifts = [
-            shift('2026-09-09', '09:00', '17:00'),
+            shift('2026-09-09', '10:00', '21:00'),
             shift('2026-09-08', '18:00', '21:00'),
-            shift('2026-09-07', '09:00', '17:00'),
+            shift('2026-09-07', '09:00', '22:00'),
         ]
-        const run = runBefore(shifts, 'e1', DAY)
+        const run = runBefore(shifts, 'e1', DAY, opts)
         expect(run.days).toBe(3)
         expect(run.full).toBe(2)
     })
 
-    it('calls seven hours a full day and anything under it not', () => {
-        // The line is drawn rather than read from anywhere, so it is held here.
-        const full = [shift('2026-09-09', '09:00', '16:00')]
-        const part = [shift('2026-09-09', '09:00', '15:45')]
-        expect(FULL_DAY_HOURS).toBe(7)
-        expect(runBefore(full, 'e1', DAY).last.full).toBe(true)
-        expect(runBefore(part, 'e1', DAY).last.full).toBe(false)
+    describe('what makes a day a full one', () => {
+        const lastDay = shifts => runBefore(shifts, 'e1', DAY, opts).last.full
+
+        it('is open to close, not a number of hours', () => {
+            expect(lastDay([shift('2026-09-09', '10:00', '21:00')])).toBe(true)
+        })
+
+        it('counts starting before opening and finishing after closing', () => {
+            expect(lastDay([shift('2026-09-09', '09:00', '22:00')])).toBe(true)
+        })
+
+        it('does not count a long day that missed either end', () => {
+            // Ten hours, and still not a full day: somebody else opened.
+            expect(lastDay([shift('2026-09-09', '11:00', '21:00')])).toBe(false)
+            expect(lastDay([shift('2026-09-09', '10:00', '20:00')])).toBe(false)
+        })
+
+        it('counts a split day that covers both ends', () => {
+            expect(lastDay([
+                shift('2026-09-09', '10:00', '14:00'),
+                shift('2026-09-09', '17:00', '21:00'),
+            ])).toBe(true)
+        })
+
+        it('calls nothing full on a day with no opening hours', () => {
+            // Rather than quietly meaning something else. A count nobody can
+            // explain is worse than a count of nought.
+            const shifts = [shift('2026-09-09', '10:00', '21:00')]
+            expect(runBefore(shifts, 'e1', DAY, { hoursFor: () => null }).last.full).toBe(false)
+            expect(runBefore(shifts, 'e1', DAY).last.full).toBe(false)
+        })
     })
 
     it('says when it stopped looking rather than pretending to know', () => {
@@ -66,13 +94,13 @@ describe('runBefore', () => {
         for (let i = 1; i <= 20; i += 1) {
             shifts.push(shift(addDays(DAY, -i), '09:00', '17:00'))
         }
-        const run = runBefore(shifts, 'e1', DAY, 14)
+        const run = runBefore(shifts, 'e1', DAY, { ...opts, limit: 14 })
         expect(run.days).toBe(14)
         expect(run.capped).toBe(true)
     })
 
     it('gives nothing for somebody who has not been on', () => {
-        expect(runBefore([], 'e1', DAY)).toEqual({ days: 0, full: 0, last: null, capped: false })
+        expect(runBefore([], 'e1', DAY, opts)).toEqual({ days: 0, full: 0, last: null, capped: false })
     })
 })
 

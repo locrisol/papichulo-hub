@@ -263,7 +263,10 @@ export default function RosterPage() {
     // lists again: a run that started last week is in the week before.
     const runsBefore = {}
     for (const e of roster) {
-        runsBefore[e.id] = runBefore([...shifts, ...nearbyShifts], e.id, date)
+        // hoursOn is what makes a full day mean open to close rather than a
+        // number of hours, and it already knows about a day note that changed
+        // them.
+        runsBefore[e.id] = runBefore([...shifts, ...nearbyShifts], e.id, date, { hoursFor: hoursOn })
     }
 
     const state = publishState(shifts)
