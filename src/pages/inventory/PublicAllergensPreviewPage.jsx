@@ -1,9 +1,11 @@
 import { supabase } from '../../lib/supabase'
 import { sheetRows } from '../../lib/allergenSheet'
+import { SHEET_ORDER, ALLERGEN_SHORT } from '../../lib/allergens'
 import { useAuth } from '../../context/AuthContext'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
+import logoPrint from '../../assets/PapiChuloLogoPrint.png'
 import { useRestaurant } from '../../context/RestaurantContext'
 import PublicAllergensPage from '../PublicAllergensPage'
 import { card } from '../../lib/controlStyles'
@@ -27,6 +29,19 @@ import { useConfirm } from '../../context/ConfirmContext'
 // The QR code is generated in the browser every time rather than stored. It only
 // depends on the restaurant slug, so there is nothing to keep, and regenerating
 // means it can never be left pointing at an old address.
+// An image jsPDF can draw, or null.
+//
+// Null rather than a throw on purpose. A missing logo is a worse looking page;
+// a page that failed to print is a page that tells nobody what is in the food.
+function loadImage(src) {
+    return new Promise(resolve => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => resolve(null)
+        img.src = src
+    })
+}
+
 export default function PublicAllergensPreviewPage() {
     const { activeRestaurant } = useRestaurant()
     // Named notify rather than confirm: these two only tell you something, there
@@ -156,25 +171,43 @@ export default function PublicAllergensPreviewPage() {
             ? new Date(lastUpdated).toLocaleDateString('en-IE', { dateStyle: 'short' })
             : new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
         const todayStr = new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
+
+        // Loaded before anything is drawn, because it goes on every page and a
+        // page cannot wait halfway through. If it will not load the sheet is
+        // still printed: a missing logo is a worse looking page, not a page
+        // that fails to tell anybody what is in the food.
+        const logo = await loadImage(logoPrint)
+
+        // On every page, so every millimetre of it is a millimetre of rows
+        // given up three times over. This is the one number to change.
+        const logoHeight = 22
+        // Its own shape, 400 by 249, rather than a guess that squashes it.
+        const logoWidth = logoHeight * (400 / 249)
         const userName = user?.full_name || user?.email || 'Unknown'
 
-        // Allergen columns. Order matches the FSAI standard.
-        const allergens = [
-            { key: 'celery', label: 'Celery' },
-            { key: 'gluten', label: 'Cereal containing gluten' },
-            { key: 'crustaceans', label: 'Crustaceans' },
-            { key: 'eggs', label: 'Eggs' },
-            { key: 'fish', label: 'Fish' },
-            { key: 'lupin', label: 'Lupin' },
-            { key: 'milk', label: 'Milk' },
-            { key: 'molluscs', label: 'Molluscs' },
-            { key: 'mustard', label: 'Mustard' },
-            { key: 'nuts', label: 'Nuts' },
-            { key: 'peanuts', label: 'Peanuts' },
-            { key: 'sesame', label: 'Sesame seeds' },
-            { key: 'soybeans', label: 'Soya' },
-            { key: 'sulphites', label: 'Sulphur dioxide & Sulphites' },
-        ]
+        // The company's colours, taken from the app's own tokens so the sheet,
+        // the Hub and the shopfront are the same green.
+        //
+        // Only the chrome is coloured: the heading band, the category bands, the
+        // rules and the footer. Everything inside a data cell stays dark on
+        // white.
+        //
+        // That is a decision rather than a half measure. This is read at a
+        // counter by somebody deciding whether a dish will hurt them, and a
+        // green ground behind it costs contrast on the one thing that matters.
+        // It is also three landscape pages of solid ink on whatever printer is
+        // in the back.
+        const GREEN = [24, 47, 36]
+        const CREAM = [242, 238, 228]
+        const SALMON = [232, 146, 124]
+        const INK = [29, 43, 35]
+        const RULE = [150, 160, 150]
+
+        // The order and the wording both come from lib/allergens, where they
+        // are held against the fourteen by a test. They used to be written out
+        // here, which is how a key got renamed to make a heading read better
+        // and printed an empty column.
+        const allergens = SHEET_ORDER.map(key => ({ key, label: ALLERGEN_SHORT[key] }))
 
         // Column widths
         const nameColWidth = 55
@@ -182,37 +215,77 @@ export default function PublicAllergensPreviewPage() {
         const allergenColWidth = (tableWidth - nameColWidth) / allergens.length
 
         // Row heights
-        const titleHeight = 9
-        const metaHeight = 22
-        const headerRowHeight = 24
+        // The logo plus a little air under it, on the first page only.
+        const titleHeight = 26
+        // What a later page gets instead: one line of type. The logo three
+        // times over is 60mm of rows given up, and this is a sheet somebody
+        // reads at a counter rather than a brochure. A page that comes loose
+        // still says whose it is and what it is.
+        const contTitleHeight = 7
+        const metaHeight = 26
+        // Half what it was. One word fits on one line.
+        const headerRowHeight = 13
         const dataRowHeight = 7
         const categoryRowHeight = 6
 
         let y = marginY
         let pageNumber = 1
 
+        // The logo, centred, and nothing else.
+        //
+        // It already reads Papi Chulo and Mexican street food, so a line of type
+        // beside it said the same thing twice. No restaurant either: the sheet
+        // is the same in every shop.
         function drawTitle() {
-            pdf.setFont('helvetica', 'bold')
-            pdf.setFontSize(16)
-            pdf.setTextColor(40)
-            pdf.text(activeRestaurant.name, pageWidth / 2, y + 6, { align: 'center' })
+            if (logo) {
+                pdf.addImage(logo, 'PNG', (pageWidth - logoWidth) / 2, y, logoWidth, logoHeight)
+            } else {
+                // Only if the image did not load. A page with no heading at all
+                // is worse than a plain one.
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(16)
+                pdf.setTextColor(...INK)
+                pdf.text('Papi Chulo', pageWidth / 2, y + 8, { align: 'center' })
+            }
+
             y += titleHeight
         }
 
+        function drawContinuationTitle() {
+            pdf.setFont('helvetica', 'bold')
+            pdf.setFontSize(9)
+            pdf.setTextColor(...GREEN)
+            pdf.text('Papi Chulo  ·  Food Allergen Record Form',
+                pageWidth / 2, y + 3.5, { align: 'center' })
+            y += contTitleHeight
+        }
+
+        // Text over as many lines as it needs, each one drawn on its own.
+        //
+        // jsPDF's maxWidth spaces the letters of a wrapped line out across the
+        // whole box, which reads as a mistake rather than as a paragraph.
+        function wrapped(text, x, top, width, lineHeight) {
+            pdf.splitTextToSize(text, width).forEach((line, n) => {
+                pdf.text(line, x, top + n * lineHeight)
+            })
+        }
+
         function drawMetaBlock() {
-            // Left half: 3-row meta table
+            // Left half: the small table of who and when.
             const metaLeftWidth = 90
             const labelW = 35
             const valueW = metaLeftWidth - labelW
-            const rowH = metaHeight / 3
 
+            // No reviewed date. A new one is printed on every change, so the
+            // date it was made is the date it was reviewed, and a second box
+            // saying so was two boxes for one fact.
             const rows = [
                 ['Date:', lastUpdatedStr],
-                ['Reviewed Date:', todayStr],
                 ['Created by:', userName],
             ]
+            const rowH = metaHeight / rows.length
 
-            pdf.setDrawColor(80)
+            pdf.setDrawColor(...RULE)
             pdf.setLineWidth(0.2)
             rows.forEach((row, i) => {
                 const ry = y + i * rowH
@@ -220,7 +293,7 @@ export default function PublicAllergensPreviewPage() {
                 pdf.rect(marginX + labelW, ry, valueW, rowH)
                 pdf.setFont('helvetica', 'bold')
                 pdf.setFontSize(9)
-                pdf.setTextColor(40)
+                pdf.setTextColor(...INK)
                 pdf.text(row[0], marginX + 2, ry + rowH / 2 + 1.5)
                 pdf.setFont('helvetica', 'normal')
                 pdf.text(row[1], marginX + labelW + 2, ry + rowH / 2 + 1.5)
@@ -233,47 +306,64 @@ export default function PublicAllergensPreviewPage() {
 
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(11)
+            pdf.setTextColor(...GREEN)
             pdf.text('Food Allergen Record Form', rightX + rightW / 2, y + 5, { align: 'center' })
 
+            // Split and drawn a line at a time rather than handed to maxWidth.
+            //
+            // maxWidth was spacing the letters of the middle line right across
+            // the box, and the sentence carried a ✗, which is not in the font
+            // jsPDF is using and came out as an apostrophe. Neither is worth
+            // risking on the one paragraph that explains what the marks mean.
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(8)
-            pdf.setTextColor(60)
-            pdf.text(
-                'Every ingredient used to create the menu item is checked against the 14 declared allergens and ticked as appropriate. Ingredients labelled "May contain X" are marked with ~ instead of ✗.',
-                rightX + 3,
-                y + 10,
-                { maxWidth: rightW - 6 },
+            pdf.setTextColor(...INK)
+            wrapped(
+                'Every ingredient of every dish is checked against the 14 declared '
+                + 'allergens, including the ingredients of anything made in house.',
+                rightX + 3, y + 10, rightW - 6, 3.6,
             )
 
             // Legend at the bottom of the right block
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(8)
-            pdf.setTextColor(40)
-            pdf.text('Legend:', rightX + 3, y + metaHeight - 3)
+            pdf.setTextColor(...INK)
+            pdf.text('Legend:', rightX + 3, y + metaHeight - 9)
             pdf.setFont('helvetica', 'normal')
-            pdf.text('X = Contains      ~ = May contain', rightX + 22, y + metaHeight - 3)
+            pdf.text('X = Contains      ~ = May contain', rightX + 22, y + metaHeight - 9)
+
+            // The wording the law uses, kept, but read once here rather than
+            // shouted across the top of every page.
+            pdf.setFontSize(7)
+            pdf.setTextColor(...INK)
+            wrapped(
+                'Gluten means cereals containing gluten. Nuts means tree nuts. '
+                + 'Sulphites means sulphur dioxide and sulphites. Soya means soybeans.',
+                rightX + 3, y + metaHeight - 4, rightW - 6, 3.2,
+            )
 
             y += metaHeight + 2
         }
 
         function drawTableHeader() {
-            pdf.setDrawColor(80)
+            pdf.setDrawColor(...RULE)
             pdf.setLineWidth(0.2)
 
-            // Menu Item column header
-            pdf.setFillColor(245, 245, 245)
+            // The green band the Hub uses over every table, so a person who
+            // works off both sees one thing rather than two.
+            pdf.setFillColor(...GREEN)
             pdf.rect(marginX, y, nameColWidth, headerRowHeight, 'FD')
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(10)
-            pdf.setTextColor(40)
+            pdf.setTextColor(...CREAM)
             pdf.text('Menu Item', marginX + nameColWidth / 2, y + headerRowHeight / 2 + 1.5, { align: 'center' })
 
             // Allergen column headers
             pdf.setFontSize(7.5)
             allergens.forEach((allergen, i) => {
                 const x = marginX + nameColWidth + i * allergenColWidth
-                pdf.setFillColor(245, 245, 245) // reset fill for every cell
-                pdf.setTextColor(40)            // reset text colour
+                pdf.setFillColor(...GREEN)   // reset fill for every cell
+                pdf.setTextColor(...CREAM)   // reset text colour
                 pdf.rect(x, y, allergenColWidth, headerRowHeight, 'FD')
 
                 const words = allergen.label.split(' ')
@@ -301,9 +391,17 @@ export default function PublicAllergensPreviewPage() {
         }
 
         function drawPageFooter() {
+            // A salmon rule above it, which is the one place the accent earns
+            // its keep: it separates the warning from the table without another
+            // black line on a page that already has a hundred.
+            pdf.setDrawColor(...SALMON)
+            pdf.setLineWidth(0.8)
+            pdf.line(marginX, pageHeight - 9, pageWidth - marginX, pageHeight - 9)
+            pdf.setLineWidth(0.2)
+
             pdf.setFont('helvetica', 'italic')
             pdf.setFontSize(7)
-            pdf.setTextColor(120)
+            pdf.setTextColor(...GREEN)
             pdf.text(
                 'If you have a severe allergy, please speak to a member of staff before ordering. Our kitchen handles many allergens and we cannot guarantee zero cross-contamination.',
                 marginX,
@@ -313,14 +411,30 @@ export default function PublicAllergensPreviewPage() {
             pdf.text(`Page ${pageNumber}`, pageWidth - marginX, pageHeight - 5, { align: 'right' })
         }
 
+        // A category is kept whole: if it will not fit in what is left, the
+        // whole thing goes over. Reading half of Burritos, turning over, and
+        // finding the rest with no heading on it is how somebody checks the
+        // wrong four dishes.
+        //
+        // Unless it is taller than a page can hold, and then it has to split
+        // whatever anybody would prefer. In that case the old rule still
+        // applies: the heading goes over unless its first rows come with it, or
+        // it lands at the foot of a page with nothing beneath it.
+        const OPENING_ROWS = 3
+
         function startNewPage() {
             drawPageFooter()
             pdf.addPage()
             pageNumber++
             y = marginY
-            drawTitle()
+            drawContinuationTitle()
             drawTableHeader()
         }
+
+        // How much room a category has on a page it is given all of. Anything
+        // taller than this cannot be kept whole however hard it is tried.
+        const bodyOfAPage =
+            (pageHeight - 14) - (marginY + contTitleHeight + headerRowHeight)
 
         function ensureSpace(needed) {
             if (y + needed > pageHeight - 12) {
@@ -330,51 +444,68 @@ export default function PublicAllergensPreviewPage() {
 
         function drawCategoryRow(categoryName) {
             ensureSpace(categoryRowHeight)
-            pdf.setFillColor(225, 235, 245)
-            pdf.setDrawColor(80)
+            pdf.setFillColor(...CREAM)
+            pdf.setDrawColor(...RULE)
             pdf.rect(marginX, y, tableWidth, categoryRowHeight, 'FD')
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(9)
-            pdf.setTextColor(40)
+            pdf.setTextColor(...INK)
             pdf.text(categoryName, marginX + 2, y + categoryRowHeight / 2 + 1.5)
             y += categoryRowHeight
         }
 
-        function drawItemRow(item, itemAllergens) {
-            ensureSpace(dataRowHeight)
+        // How tall a row has to be for its name to fit.
+        //
+        // "Loaded Nachos with Guacamole and Salsa" wraps to two lines, and with
+        // every row a fixed height the second line ran under the next row and
+        // was painted over by it. The name was on the page and unreadable,
+        // which on an allergen sheet is the worst of both.
+        function rowHeightFor(item) {
+            const lines = pdf.splitTextToSize(item.name, nameColWidth - 4).length
+            return Math.max(dataRowHeight, lines * 4 + 3)
+        }
 
-            pdf.setDrawColor(80)
+        function drawItemRow(item, itemAllergens) {
+            const rowHeight = rowHeightFor(item)
+            ensureSpace(rowHeight)
+
+            pdf.setDrawColor(...RULE)
             pdf.setLineWidth(0.2)
 
             // Menu item cell
             pdf.setFillColor(255, 255, 255)
-            pdf.rect(marginX, y, nameColWidth, dataRowHeight, 'FD')
+            pdf.rect(marginX, y, nameColWidth, rowHeight, 'FD')
             pdf.setFont('helvetica', 'normal')
             pdf.setFontSize(9)
-            pdf.setTextColor(40)
-            pdf.text(item.name, marginX + 2, y + dataRowHeight / 2 + 1.5, { maxWidth: nameColWidth - 4 })
+            pdf.setTextColor(...INK)
+
+            const nameLines = pdf.splitTextToSize(item.name, nameColWidth - 4)
+            const nameTop = y + rowHeight / 2 - ((nameLines.length - 1) * 4) / 2 + 1.5
+            nameLines.forEach((line, n) => {
+                pdf.text(line, marginX + 2, nameTop + n * 4)
+            })
 
             // Allergen cells
             allergens.forEach((allergen, i) => {
                 const x = marginX + nameColWidth + i * allergenColWidth
                 pdf.setFillColor(255, 255, 255) // reset fill to white every cell
-                pdf.rect(x, y, allergenColWidth, dataRowHeight, 'FD')
+                pdf.rect(x, y, allergenColWidth, rowHeight, 'FD')
 
                 const state = itemAllergens[allergen.key]
                 if (state === 'contains') {
                     pdf.setFont('helvetica', 'bold')
                     pdf.setFontSize(11)
                     pdf.setTextColor(180, 30, 30)
-                    pdf.text('X', x + allergenColWidth / 2, y + dataRowHeight / 2 + 2, { align: 'center' })
+                    pdf.text('X', x + allergenColWidth / 2, y + rowHeight / 2 + 2, { align: 'center' })
                 } else if (state === 'may_contain') {
                     pdf.setFont('helvetica', 'bold')
                     pdf.setFontSize(11)
                     pdf.setTextColor(180, 120, 30)
-                    pdf.text('~', x + allergenColWidth / 2, y + dataRowHeight / 2 + 2, { align: 'center' })
+                    pdf.text('~', x + allergenColWidth / 2, y + rowHeight / 2 + 2, { align: 'center' })
                 }
             })
 
-            y += dataRowHeight
+            y += rowHeight
         }
 
         // First page setup
@@ -399,6 +530,13 @@ export default function PublicAllergensPreviewPage() {
             )
 
             if (rows.length === 0) continue
+
+            const whole = categoryRowHeight
+                + rows.reduce((sum, r) => sum + rowHeightFor(r), 0)
+            const opening = categoryRowHeight
+                + rows.slice(0, OPENING_ROWS).reduce((sum, r) => sum + rowHeightFor(r), 0)
+
+            ensureSpace(whole <= bodyOfAPage ? whole : opening)
 
             drawCategoryRow(category.name)
             for (const row of rows) drawItemRow(row, row.allergens)

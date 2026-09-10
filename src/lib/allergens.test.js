@@ -7,6 +7,8 @@ import {
   ALLERGENS,
   emptyAllergens,
   declaredCount,
+  SHEET_ORDER,
+  ALLERGEN_SHORT,
 } from './allergens'
 
 // --- Fixtures ------------------------------------------------------------
@@ -201,5 +203,29 @@ describe('ALLERGENS', () => {
   it('counts only what was actually declared', () => {
     const values = { ...emptyAllergens(), gluten: 'contains', milk: 'may_contain' }
     expect(declaredCount(values)).toBe(2)
+  })
+})
+
+describe('the printed sheet columns', () => {
+  it('names all fourteen and no others', () => {
+    // The one that matters. A key that is not real prints an empty column,
+    // and an empty column on an allergen sheet says there is none of it in
+    // anything. That is how renaming soybeans to soya to make the heading
+    // read better got through once.
+    expect([...SHEET_ORDER].sort()).toEqual([...ALLERGEN_KEYS].sort())
+  })
+
+  it('gives every one a word to print', () => {
+    for (const key of SHEET_ORDER) {
+      expect(ALLERGEN_SHORT[key], key).toBeTruthy()
+    }
+  })
+
+  it('keeps the short ones short', () => {
+    // One word each. Anything longer goes back to three lines of tiny type in
+    // a sixteen millimetre column.
+    for (const key of SHEET_ORDER) {
+      expect(ALLERGEN_SHORT[key].split(' '), key).toHaveLength(1)
+    }
   })
 })
