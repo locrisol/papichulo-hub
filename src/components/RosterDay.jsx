@@ -5,6 +5,7 @@ import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
 import { hasWarnings } from '../lib/workRules'
+import { runWords } from '../lib/workRun'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
@@ -66,7 +67,7 @@ export default function RosterDay({
     onOpenShift,
     onNewShift,
     onDragShift,
-    onResizeShift,
+    onResizeShift, runsBefore,
 }) {
     // Whose warnings are open, one at a time. Seven rows of amber under a grid
     // you came to read is a grid you cannot read, and a warning nobody can see
@@ -524,7 +525,12 @@ export default function RosterDay({
                                             warning, no block, and putting
                                             somebody on anyway is exactly as
                                             easy as it was. */}
-                                        <span className={`block text-[0.625rem] truncate ${
+                                        {/* Allowed to wrap. It used to be one
+                                            truncated line, so "Closed 21:30 last
+                                            night" came out as "Closed 21:30 last
+                                            ni…" in a column that has the room to
+                                            take a second line. */}
+                                        <span className={`block text-[0.625rem] leading-tight ${
                                             part ? 'text-amber-700 font-semibold'
                                                 : closedLate && !offKind && away !== 'none' ? 'text-slate-600 font-semibold'
                                                     : 'text-muted'
@@ -539,6 +545,18 @@ export default function RosterDay({
                                                             ? `Closed ${shortTime(closedLate)} last night`
                                                             : positionOf(employee.position_id)?.name || 'No position'}
                                         </span>
+
+                                        {/* How hard they have been going, under
+                                            whatever the line above is saying.
+                                            Its own line because it is a
+                                            different fact from where they are
+                                            today, and silent unless there is
+                                            something worth knowing. */}
+                                        {runWords(runsBefore?.[employee.id]) && (
+                                            <span className="block text-[0.625rem] leading-tight text-slate-600">
+                                                {runWords(runsBefore[employee.id])}
+                                            </span>
+                                        )}
                                     </span>
                                     {/* Beside the name, where the eye already
                                         is. Everything this says is also in the

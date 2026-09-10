@@ -10,6 +10,7 @@ import { fmtMoney } from '../../lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '../../lib/team'
+import { runBefore } from '../../lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
@@ -258,6 +259,13 @@ export default function RosterPage() {
         const held = closedLastNight[s.employee_id]
         if (!held || s.ends_at > held) closedLastNight[s.employee_id] = s.ends_at
     }
+    // How hard each of them has been going in the days behind this one. Both
+    // lists again: a run that started last week is in the week before.
+    const runsBefore = {}
+    for (const e of roster) {
+        runsBefore[e.id] = runBefore([...shifts, ...nearbyShifts], e.id, date)
+    }
+
     const state = publishState(shifts)
     const clashes = findOverlaps(shifts)
 
@@ -931,6 +939,7 @@ export default function RosterPage() {
                     employees={roster}
                     weekHours={weekHoursByEmployee}
                     closedLastNight={closedLastNight}
+                    runsBefore={runsBefore}
                     shifts={dayShifts}
                     positions={positions}
                     date={date}
