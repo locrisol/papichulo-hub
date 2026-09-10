@@ -1,5 +1,6 @@
 import { numberField } from '../lib/numberInput'
 import { linkableUsers } from '../lib/team'
+import { todayISO } from '../lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
 import { modalFooter } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
@@ -9,6 +10,7 @@ import ModalSection from './ModalSection'
 // It holds no state of its own. The page owns the values and passes them down,
 // the same arrangement ProductForm and InvoiceForm use.
 export default function EmployeeForm({
+    note,
     formData,
     onChange,
     onSubmit,
@@ -139,12 +141,20 @@ export default function EmployeeForm({
                         <input
                             type="date"
                             value={formData.dateOfBirth}
+                            max={todayISO()}
                             onChange={e => onChange('dateOfBirth', e.target.value)}
                             className={fieldCls}
                         />
-                        <p className="text-xs text-gray-400 mt-1">
-                            Only used to apply the under 18 limits. Leave empty otherwise.
-                        </p>
+                        {/* Said here rather than only at the bottom with the
+                            thing that stops the save. An age that is wrong is
+                            wrong about this box, and the answer is in it. */}
+                        {note ? (
+                            <p className="text-xs text-amber-700 mt-1">{note}</p>
+                        ) : (
+                            <p className="text-xs text-gray-400 mt-1">
+                                Only used to apply the under 18 limits. Leave empty otherwise.
+                            </p>
+                        )}
                     </div>
                     <div>
                         <label className={labelCls}>Permission</label>

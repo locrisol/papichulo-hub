@@ -9,7 +9,7 @@ import { DAY_NAMES, dayName } from '../../lib/events'
 import { fmtMoney } from '../../lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
-import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem } from '../../lib/team'
+import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '../../lib/team'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
@@ -499,7 +499,7 @@ export default function RosterPage() {
 
     async function addPerson(e) {
         e.preventDefault()
-        if (employeeProblem(personForm)) return
+        if (employeeProblem(personForm, todayISO())) return
         setSaving(true)
 
         const { error: err } = await supabase.from('employees').insert({
@@ -975,7 +975,8 @@ export default function RosterPage() {
                         onCancel={() => setAddingPerson(false)}
                         submitLabel="Add them"
                         saving={saving}
-                        problem={employeeProblem(personForm)}
+                        problem={employeeProblem(personForm, todayISO())}
+                        note={employeeNote(personForm, todayISO())}
                         positions={positions.filter(p => p.is_active)}
                         users={[]}
                         employees={employees}

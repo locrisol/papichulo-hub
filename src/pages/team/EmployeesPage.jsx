@@ -14,6 +14,7 @@ import {
     moveEmployee,
     employeeStatus,
     employeeProblem,
+    employeeNote,
     NO_COLOUR,
 } from '../../lib/team'
 import Modal from '../../components/Modal'
@@ -103,7 +104,8 @@ export default function EmployeesPage() {
     }
 
     const change = (field, value) => setForm(f => ({ ...f, [field]: value }))
-    const problem = employeeProblem(form)
+    const problem = employeeProblem(form, today)
+    const note = employeeNote(form, today)
 
     function openAdd() {
         setForm(EMPTY)
@@ -560,6 +562,7 @@ export default function EmployeesPage() {
                         submitLabel={editing ? 'Save' : 'Add them'}
                         saving={saving}
                         problem={problem}
+                        note={note}
                         positions={positions.filter(p => p.is_active || p.id === form.positionId)}
                         users={users}
                         employees={employees}

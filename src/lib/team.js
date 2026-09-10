@@ -140,10 +140,63 @@ export function linkableUsers(users, employees, currentEmployeeId) {
 //
 // Returns the first problem as a sentence, because a form with one field
 // wrong should say what is wrong, not colour four boxes red.
-export function employeeProblem({ fullName, startedOn, endedOn }) {
+export function employeeProblem({ fullName, startedOn, endedOn, dateOfBirth }, today) {
     if (!fullName?.trim()) return 'Give them a name.'
     if (endedOn && startedOn && endedOn < startedOn) {
         return 'The last day cannot be before the first day.'
     }
+
+    // The two that cannot be true of any real person.
+    //
+    // Both of these have already happened. A birthday was typed into the first
+    // day box and a first day into the birthday box, and the form took a date
+    // of birth two days in the future without a murmur. The only symptom was
+    // the roster calling a woman born in 1999 a minor, three weeks later, in a
+    // warning that looked like a bug in the roster.
+    if (dateOfBirth && today && dateOfBirth > today) {
+        return 'A date of birth cannot be in the future.'
+    }
+    if (dateOfBirth && startedOn && startedOn < dateOfBirth) {
+        return 'The first day cannot be before they were born.'
+    }
+
     return null
+}
+
+// Something worth a second look rather than something to refuse.
+//
+// Kept apart from employeeProblem on purpose: none of these is impossible, and
+// a form that will not let you save a fifteen year old is a form that is wrong
+// about the summer.
+export function employeeNote({ dateOfBirth, startedOn }, today) {
+    if (!dateOfBirth || !today) return null
+
+    const age = yearsBetween(dateOfBirth, today)
+
+    // Under 14 cannot be employed at all here, 14 and 15 only in the holidays.
+    // So anything under 16 is either a typo or a case somebody needs to have
+    // thought about, and both are worth saying out loud.
+    if (age < 16) {
+        return `That date of birth makes them ${age}. Under 16s can only be employed in limited cases, `
+            + 'so check it is right.'
+    }
+    if (age > 90) {
+        return `That date of birth makes them ${age}. Worth checking.`
+    }
+    if (startedOn && yearsBetween(dateOfBirth, startedOn) < 14) {
+        return 'That first day is before their fourteenth birthday.'
+    }
+
+    return null
+}
+
+// Whole years from one date to another.
+function yearsBetween(from, to) {
+    const born = new Date(from + 'T00:00:00')
+    const on = new Date(to + 'T00:00:00')
+    let years = on.getFullYear() - born.getFullYear()
+    const before = on.getMonth() < born.getMonth()
+        || (on.getMonth() === born.getMonth() && on.getDate() < born.getDate())
+    if (before) years -= 1
+    return years
 }
