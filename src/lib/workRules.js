@@ -566,6 +566,12 @@ export function findingsByEmployee(findings) {
 }
 
 // The worse of what a person has, since one mark has to stand for all of it.
+// Whether a row has anything that folds away. Warnings do, blocks never do:
+// a block is what holds the week back, so it is always on screen.
+export function hasWarnings(findings) {
+    return (findings || []).some(f => f.level !== 'block')
+}
+
 export function worstLevel(findings) {
     if (!findings?.length) return null
     return findings.some(f => f.level === 'block') ? 'block' : 'warn'

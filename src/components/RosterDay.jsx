@@ -4,6 +4,7 @@ import { NO_COLOUR } from '../lib/team'
 import { categoryDot } from '../lib/events'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { hasWarnings } from '../lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
 import { partWords, partDaySpans } from '../lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
@@ -67,6 +68,11 @@ export default function RosterDay({
     onDragShift,
     onResizeShift,
 }) {
+    // Whose warnings are open, one at a time. Seven rows of amber under a grid
+    // you came to read is a grid you cannot read, and a warning nobody can see
+    // past is not being read either. Blocks are never in here: those stay on
+    // screen, because a block is the reason the week will not publish.
+    const [openAlerts, setOpenAlerts] = useState(null)
     const [drag, setDrag] = useState(null)
     const [resize, setResize] = useState(null)
     const resizeRef = useRef(null)
@@ -479,6 +485,8 @@ export default function RosterDay({
                         // worked. One picture for one meaning.
                         const partSpans = part ? partDaySpans(part, from, to) : []
                         const mineAlerts = alerts?.[employee.id] || []
+                        const canOpen = hasWarnings(mineAlerts)
+                        const showing = openAlerts === employee.id
                         // There for as long as the warning is true. Deleting
                         // the shift that caused it takes it away, which is the
                         // only way to clear one.
@@ -537,7 +545,13 @@ export default function RosterDay({
                                         banner above the grid, and that is a
                                         banner nobody reads once they have
                                         scrolled past it. */}
-                                    <AlertBadge findings={mineAlerts} />
+                                    <AlertBadge
+                                        findings={mineAlerts}
+                                        open={showing}
+                                        onToggle={canOpen
+                                            ? () => setOpenAlerts(showing ? null : employee.id)
+                                            : undefined}
+                                    />
                                 </div>
 
                                 <div className="flex-1 relative h-14" data-track>
@@ -738,7 +752,9 @@ export default function RosterDay({
                                 </div>
                             </div>
 
-                            {hasAlerts && <AlertStrip findings={mineAlerts} className="border-b" />}
+                            {hasAlerts && (
+                                <AlertStrip findings={mineAlerts} open={showing} className="border-b" />
+                            )}
                             </Fragment>
                         )
                     })}

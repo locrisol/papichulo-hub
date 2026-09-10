@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { cardEdge, tableHeadRow } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { DAY_NAMES } from '../lib/events'
 import { fullDate } from '../lib/dates'
 import { dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
 import { AlertBadge, AlertStrip } from './RosterAlerts'
+import { hasWarnings } from '../lib/workRules'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '../lib/absences'
 import { askedOff, partWords } from '../lib/timeOff'
 import { AWAY } from '../lib/rosterShare'
@@ -45,6 +47,10 @@ export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
     alerts, absences, onOpenShift, onNewShift, onOpenDay, shiftMark, staff = false,
 }) {
+    // Whose warnings are open, one at a time. Blocks are never in here: those
+    // stay on screen, because a block is the reason the week will not publish.
+    const [openAlerts, setOpenAlerts] = useState(null)
+
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
     const perDay = dayTotals(shifts, dates, employeesById)
@@ -298,7 +304,14 @@ export default function RosterWeek({
                                                 {positionOf(row.employee.position_id)?.name || ''}
                                             </span>
                                         </span>
-                                        <AlertBadge findings={mineAlerts} />
+                                        <AlertBadge
+                                            findings={mineAlerts}
+                                            open={openAlerts === row.employee.id}
+                                            onToggle={hasWarnings(mineAlerts)
+                                                ? () => setOpenAlerts(
+                                                    openAlerts === row.employee.id ? null : row.employee.id)
+                                                : undefined}
+                                        />
                                     </span>
                                 </td>
                                 {row.days.map(day => {
@@ -488,7 +501,7 @@ export default function RosterWeek({
                             hasAlerts ? (
                                 <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
                                     <td colSpan={dates.length + (anyHoliday ? 3 : 2)} className="p-0">
-                                        <AlertStrip findings={mineAlerts} />
+                                        <AlertStrip findings={mineAlerts} open={openAlerts === row.employee.id} />
                                     </td>
                                 </tr>
                             ) : null,

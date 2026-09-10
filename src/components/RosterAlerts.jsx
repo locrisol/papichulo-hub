@@ -27,48 +27,76 @@ function Triangle({ className = '' }) {
 // The mark beside a name. Nothing at all when there is nothing wrong, so a
 // clean week looks exactly as it did before any of this.
 //
-// A mark and not a button. The messages are already open underneath it, so
-// there is nothing left for pressing it to do, and something that looks
-// pressable and does nothing is worse than something that plainly is not.
-export function AlertBadge({ findings }) {
+// A button when there are warnings to open, and a plain mark when there are
+// only blocks, because a block is already open underneath and there is nothing
+// left for pressing it to do.
+export function AlertBadge({ findings, open, onToggle }) {
     if (!findings?.length) return null
 
     const tone = worstLevel(findings) === 'block' ? 'text-red-600' : 'text-amber-500'
-
-    return (
-        <span className={`inline-flex items-center gap-0.5 flex-shrink-0 ${tone}`}>
+    const inside = (
+        <>
             <Triangle className="w-3.5 h-3.5" />
             {findings.length > 1 && (
                 <span className="text-[0.625rem] font-bold leading-none">{findings.length}</span>
             )}
-        </span>
+        </>
+    )
+
+    if (!onToggle) {
+        return (
+            <span className={`inline-flex items-center gap-0.5 flex-shrink-0 ${tone}`}>{inside}</span>
+        )
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!!open}
+            aria-label={open ? 'Hide what is worth a look' : 'Show what is worth a look'}
+            className={`inline-flex items-center gap-0.5 flex-shrink-0 rounded transition-opacity
+                hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-accent ${tone}`}
+        >
+            {inside}
+        </button>
     )
 }
 
+
 // The messages themselves, sitting under the row for as long as they are true.
 //
-// Not behind a press. Something you have to open is something you have to know
-// is there, and not knowing is the whole problem being solved. A strip takes
-// itself away when the shift causing it is fixed, so the only way to clear one
-// is to deal with what it says.
+// A block is never behind a press. Something you have to open is something you
+// have to know is there, and a block is the thing that holds the week back, so
+// missing it is missing the reason you cannot publish. A strip takes itself
+// away when the shift causing it is fixed, so the only way to clear one is to
+// deal with what it says.
+//
+// Warnings fold behind the mark, which they did not used to. That was right
+// when a warning was a rare thing about a shift somebody had just put in. It
+// stopped being right once every person waiting on a permission renewal carried
+// one every week: seven rows of amber under a grid you came to read is a grid
+// you cannot read, and a warning nobody can see past is not being read either.
 //
 // Full width under the row rather than floating beside the name. The grid
 // scrolls sideways inside a box that clips anything hanging out of it, so a
 // bubble would be cut in half exactly on the wide screens this is built for.
 //
 // The ground it sits on says which kind it is before anybody reads a word.
-export function AlertStrip({ findings, className = '' }) {
+export function AlertStrip({ findings, open, className = '' }) {
+    const shown = open ? findings : (findings || []).filter(f => f.level === 'block')
+
     // Nothing at all when there is nothing to say, so no caller can leave a
     // bare yellow band behind with no words in it.
-    if (!findings?.length) return null
+    if (!shown.length) return null
 
-    const ground = worstLevel(findings) === 'block'
+    const ground = worstLevel(shown) === 'block'
         ? 'bg-red-50 border-red-200'
         : 'bg-amber-50 border-amber-200'
 
     return (
         <div className={`px-4 py-2 space-y-1 ${ground} ${className}`}>
-            {findings.map((finding, i) => (
+            {shown.map((finding, i) => (
                 <p
                     key={i}
                     className={`text-xs leading-snug ${
