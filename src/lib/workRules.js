@@ -19,7 +19,7 @@ import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
 import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from './availability'
 import { absencesOn, kindPhrase, isPartDay } from './absences'
 import { hitsShift, partWords } from './timeOff'
-import { shortDate } from './dates'
+import { shortDate, addDays } from './dates'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -63,6 +63,17 @@ export const DEFAULT_RULES = {
     // is a decision a restaurant can make, and the check keeps saying it either
     // way rather than going quiet.
     visaCap: { on: true, blocks: true },
+    // The window somebody may keep working in after their permission runs out,
+    // while a renewal they applied for in time is processed.
+    //
+    // Twelve weeks is what the Department's notice to employers says today. It
+    // is a setting rather than a number in here because it has moved twice this
+    // year, and a rule the law keeps changing is a rule that must not need a
+    // deployment to change with it.
+    //
+    // On by default: leaving it off means the app holds weeks back for people
+    // who are lawfully entitled to work, which is its own kind of wrong.
+    permissionGrace: { on: true, weeks: 12 },
     foodSafety: { on: true, warnDays: 60, validMonths: 24 },
     gridHours: { before: 3, after: 3 },
     holidayPeriods: [
@@ -90,6 +101,38 @@ export function expiryState(expires, weekStart, weekEnd, warnDays) {
     if (expires <= weekEnd) return 'expiring'
     if (daysBetween(weekEnd, expires) <= (warnDays ?? 60)) return 'soon'
     return null
+}
+
+// Where somebody with an expired permission stands.
+//
+// Four answers, and the difference between them is what stops this being a
+// blanket amnesty. Somebody who applied in time may keep working for a while;
+// somebody who applied after it ran out may not, and neither may somebody who
+// has not applied at all. The Department's notice puts that condition on it,
+// and getting it wrong the generous way means rostering somebody who is not
+// entitled to work.
+//
+// Measured against the end of the week being rostered rather than today,
+// because a week that runs past the last covered day is a week with shifts on
+// it nobody may work. Building next month's roster must not come out clean
+// because the grace happens to still be running now.
+export function graceFor(employee, weekEnd, settings = {}) {
+    const expired = employee?.work_permission_expires
+    const applied = employee?.permission_renewal_applied
+    const rule = settings.permissionGrace
+    const weeks = rule?.weeks ?? 12
+
+    if (!rule?.on || !expired) return { covered: false }
+    if (!applied) return { covered: false }
+
+    // Applying after it ran out earns nothing at all.
+    if (applied > expired) return { covered: false, tooLate: true }
+
+    const until = addDays(expired, weeks * 7)
+    if (weekEnd && weekEnd > until) {
+        return { covered: false, lapsed: true, until, weeks }
+    }
+    return { covered: true, until, weeks }
 }
 
 export function permissionFor(value) {
@@ -268,8 +311,28 @@ export function checkWeek({
             employee.work_permission_expires, weekDates?.[0], weekEnd, 60,
         )
         if (permission === 'expired') {
-            add('block', 'permissionExpired',
-                `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
+            const grace = graceFor(employee, weekEnd, settings)
+
+            if (grace.covered) {
+                add('warn', 'permissionGrace',
+                    `${name}'s permission ran out on ${employee.work_permission_expires}, `
+                    + `and they applied to renew on ${employee.permission_renewal_applied}. `
+                    + `They may keep working until ${grace.until}.`)
+            } else if (grace.lapsed) {
+                add('block', 'permissionGraceOver',
+                    `${name} applied to renew on ${employee.permission_renewal_applied}, `
+                    + `but the ${grace.weeks} weeks after their permission ran out ended on ${grace.until}.`)
+            } else if (grace.tooLate) {
+                // Applying after it ran out earns nothing. Saying which day
+                // they applied is the difference between a rule that looks
+                // broken and one somebody can act on.
+                add('block', 'permissionRenewedLate',
+                    `${name}'s permission ran out on ${employee.work_permission_expires} `
+                    + `and the renewal was not applied for until ${employee.permission_renewal_applied}.`)
+            } else {
+                add('block', 'permissionExpired',
+                    `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
+            }
         } else if (permission === 'expiring') {
             add('block', 'permissionExpiring',
                 `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)

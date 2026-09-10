@@ -268,6 +268,55 @@ export default function RosterRulesModal({ onClose }) {
                             </div>
                         )}
                     </div>
+
+                    {/* Its own switch, because it is a different rule from the
+                        one above it. That one is about how many hours a valid
+                        permission allows; this is about somebody whose
+                        permission has run out while a renewal is processed. */}
+                    <div className="py-3 border-b border-border">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!rules.permissionGrace?.on}
+                                onChange={e => set('permissionGrace', { on: e.target.checked })}
+                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Waiting on a renewal
+                                </span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    Somebody who applied to renew before their permission ran out may keep
+                                    working while it is processed. Only applies where the date they applied
+                                    is on the team list and is before the day it ran out.
+                                </span>
+                            </span>
+                        </label>
+
+                        {/* Typed in, unlike the hours above, because this one
+                            is not a fixed ceiling. It has changed twice this
+                            year, and a rule the law keeps moving must not need
+                            a new version of the app to move with it. */}
+                        {rules.permissionGrace?.on && (
+                            <div className="ml-7 mt-2 flex flex-wrap items-center gap-2">
+                                <span className="text-sm text-gray-700">They may keep working for</span>
+                                <input
+                                    {...numberField({
+                                        value: String(rules.permissionGrace.weeks ?? 12),
+                                        onChange: v => set('permissionGrace', { weeks: parseInt(v) || 0 }),
+                                        whole: true,
+                                    })}
+                                    className="w-20 border border-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                                />
+                                <span className="text-sm text-gray-700">weeks after it ran out.</span>
+                                <p className="w-full text-xs text-gray-500 mt-1">
+                                    Twelve is what the Department tells employers today. The roster holds the
+                                    week back once that runs out.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="py-3">
                         <label className="flex items-start gap-3 cursor-pointer">
                             <input

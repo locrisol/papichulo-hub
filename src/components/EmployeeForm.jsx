@@ -181,6 +181,28 @@ export default function EmployeeForm({
                     </p>
                 </div>
 
+                {/* Only shown once there is an expiry to be waiting on, since
+                    without one it is a date about nothing.
+
+                    The date matters rather than a tick: the grace period only
+                    applies where the renewal went in before the permission ran
+                    out, so the app has to know which came first. */}
+                {formData.workPermissionExpires && (
+                    <div className="mb-1 mt-4">
+                        <label className={labelCls}>Renewal applied for on</label>
+                        <input
+                            type="date"
+                            value={formData.permissionRenewalApplied || ''}
+                            onChange={e => onChange('permissionRenewalApplied', e.target.value)}
+                            className={fieldCls}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                            Somebody who applied before their permission ran out may keep working
+                            while it is processed. Leave it empty if they have not applied.
+                        </p>
+                    </div>
+                )}
+
             {/* Food safety.
 
                 The expiry is the part that matters. A certificate nobody is
