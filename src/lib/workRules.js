@@ -365,11 +365,32 @@ export function checkWeek({
                     `${name}'s permission to work ran out on ${employee.work_permission_expires}.`)
             }
         } else if (permission === 'expiring') {
-            add('block', 'permissionExpiring',
-                `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)
+            // A renewal already in means this is a date passing rather than
+            // somebody stopping work, so it says so and lets the week out. It
+            // used to hold the week and say nothing about the renewal, which
+            // reads as the app not having noticed.
+            if (employee.permission_renewal_applied) {
+                add('warn', 'permissionExpiringRenewing',
+                    `${name}'s permission runs out on ${employee.work_permission_expires}, `
+                    + `part way through this week, and a renewal was applied for on `
+                    + `${employee.permission_renewal_applied}${reference(employee)}.`)
+            } else {
+                add('block', 'permissionExpiring',
+                    `${name}'s permission to work runs out on ${employee.work_permission_expires}, part way through this week.`)
+            }
         } else if (permission === 'soon') {
-            add('warn', 'permissionSoon',
-                `${name}'s permission to work runs out on ${employee.work_permission_expires}.`)
+            // Still a warning either way. One is a job to do and the other is a
+            // job already done, and telling somebody to chase a renewal they
+            // sent three weeks ago is how a warning starts being ignored.
+            if (employee.permission_renewal_applied) {
+                add('warn', 'permissionSoonRenewing',
+                    `${name}'s permission runs out on ${employee.work_permission_expires}. `
+                    + `A renewal was applied for on ${employee.permission_renewal_applied}`
+                    + `${reference(employee)}.`)
+            } else {
+                add('warn', 'permissionSoon',
+                    `${name}'s permission to work runs out on ${employee.work_permission_expires}.`)
+            }
         }
 
         // Food safety training. A certificate nobody is watching is one that

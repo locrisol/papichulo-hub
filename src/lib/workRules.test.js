@@ -338,6 +338,37 @@ describe('checkWeek', () => {
         })
     })
 
+    describe('a renewal already applied for, before it has run out', () => {
+        const shifts = [shift(WEEK[1], '09:00', '17:00')]
+
+        it('says so rather than telling you to chase it', () => {
+            const found = run(shifts, [person({
+                work_permission_expires: '2026-10-15',
+                permission_renewal_applied: '2026-08-25',
+                permission_renewal_reference: 'OREG2026343270304',
+            })])
+            expect(found[0].kind).toBe('permissionSoonRenewing')
+            expect(found[0].text).toMatch(/OREG2026343270304/)
+        })
+
+        it('lets a week the permission runs out in go out', () => {
+            // It used to hold the week and say nothing about the renewal,
+            // which reads as the app not having noticed.
+            const found = run(shifts, [person({
+                work_permission_expires: WEEK[4],
+                permission_renewal_applied: '2026-08-01',
+            })])
+            expect(found[0].kind).toBe('permissionExpiringRenewing')
+            expect(found[0].level).toBe('warn')
+        })
+
+        it('still holds it when nothing has been applied for', () => {
+            const found = run(shifts, [person({ work_permission_expires: WEEK[4] })])
+            expect(found[0].kind).toBe('permissionExpiring')
+            expect(found[0].level).toBe('block')
+        })
+    })
+
     describe('graceFor', () => {
         const waiting = {
             work_permission_expires: '2026-08-01',
