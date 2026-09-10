@@ -23,6 +23,7 @@ import PositionsModal from '../../components/PositionsModal'
 import CalendarLinkDialog from '../../components/CalendarLinkDialog'
 import AvailabilityDialog from '../../components/AvailabilityDialog'
 import TimeOffDialog from '../../components/TimeOffDialog'
+import TeamGaps from '../../components/team/TeamGaps'
 
 // Who works here.
 //
@@ -299,6 +300,13 @@ export default function EmployeesPage() {
             </div>
 
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+
+            {/* Above the list rather than inside it. Filling these in is a job
+                of its own, done sitting down once in a while, not something to
+                come across while looking somebody up. */}
+            {!loading && (
+                <TeamGaps employees={current} today={today} onOpen={openEdit} />
+            )}
 
             {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
