@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle } from '../../lib/controlStyles'
 import SupplierForm from '../../components/SupplierForm'
 import Modal from '../../components/Modal'
 
@@ -141,7 +141,7 @@ export default function SuppliersPage() {
         <div>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Suppliers</h2>
+                    <h2 className={pageTitle}>Suppliers</h2>
                     <p className="text-sm text-gray-500 mt-1">
                         {isManager ? 'Manage your supplier directory' : 'Who we buy from, and how to reach them'}
                     </p>

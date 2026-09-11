@@ -20,7 +20,7 @@ import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { orderFormats } from '../../lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -975,7 +975,7 @@ export default function ProductsPage() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Products</h2>
+          <h2 className={pageTitle}>Products</h2>
           <p className="text-sm text-gray-500 mt-1">
             Showing prices for {activeRestaurant?.name}
           </p>

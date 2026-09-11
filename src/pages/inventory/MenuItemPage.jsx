@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
@@ -514,7 +514,7 @@ export default function MenuItemPage() {
       <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
 
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">Menu Item: {item?.name}</h2>
+        <h2 className={pageTitle}>Menu Item: {item?.name}</h2>
         <p className="text-sm text-gray-500 mt-1">Costs and margins for {activeRestaurant?.name}</p>
       </div>
 
@@ -1055,12 +1055,12 @@ function ComponentTable({
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Component</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Component</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Quantity</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Unit Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Line Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Notes</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>

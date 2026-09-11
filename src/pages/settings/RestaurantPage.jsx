@@ -14,7 +14,7 @@ import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
 import { numberField } from '../../lib/numberInput'
-import { card, rowButton, checkbox, labelClass } from '../../lib/controlStyles'
+import { card, rowButton, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -152,7 +152,7 @@ export default function RestaurantPage() {
     return (
         <>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
+                <h2 className={pageTitle}>Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     Cost targets and settings for {activeRestaurant?.name}
                 </p>

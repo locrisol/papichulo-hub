@@ -1,3 +1,4 @@
+import { pageTitle } from '../../lib/controlStyles'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -121,7 +122,7 @@ export default function AllergenPage() {
       <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className={pageTitle}>
           Allergens: {product?.name || '...'}
         </h2>
         <p className="text-sm text-gray-500 mt-1">

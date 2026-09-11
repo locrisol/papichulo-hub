@@ -293,3 +293,15 @@ export const closeButton =
     'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
     + 'rounded-lg text-lg leading-none text-white/70 transition-colors hover:text-white hover:bg-white/15 '
     + 'focus:outline-none focus:ring-2 focus:ring-white/60'
+
+// The title at the top of a page.
+//
+// There were two of these and the split was chronological rather than
+// deliberate: thirteen older pages used text-lg font-semibold, and the four
+// written most recently used the serif display face at text-2xl. Nothing
+// distinguished them except when they were written.
+//
+// The serif wins. It is the face the theme carries for exactly this, and at
+// text-lg semibold a page title was the same weight and nearly the same size as
+// the heading on a card inside it, so the page did not read as having a name.
+export const pageTitle = 'font-serif text-2xl font-bold text-gray-900'

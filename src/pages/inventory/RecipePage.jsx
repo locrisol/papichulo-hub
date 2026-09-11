@@ -7,7 +7,7 @@ import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { fmtMoney, fmtUnitCost } from '../../lib/format'
-import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
@@ -302,7 +302,7 @@ export default function RecipePage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={pageTitle}>
             Recipe: {product?.name || '...'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -436,12 +436,12 @@ export default function RecipePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadRow}>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingredient</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Cost</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Ingredient</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Quantity</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Unit Cost</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Line Cost</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Notes</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>

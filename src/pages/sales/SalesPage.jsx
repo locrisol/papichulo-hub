@@ -9,7 +9,7 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
 
@@ -396,7 +396,7 @@ export default function SalesPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
+                    <h2 className={pageTitle}>Daily sales</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
                 </div>
                 {/* Switch to the whole-week grid, better suited to a laptop */}

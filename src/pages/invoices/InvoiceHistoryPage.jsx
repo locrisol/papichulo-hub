@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
@@ -104,7 +104,7 @@ export default function InvoiceHistoryPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Invoice history</h2>
+                    <h2 className={pageTitle}>Invoice history</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 <button
@@ -204,9 +204,9 @@ export default function InvoiceHistoryPage() {
                                         Date {sortDesc ? '↓' : '↑'}
                                     </button>
                                 </th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Category</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Total</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Supplier</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Category</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Total</th>
                             </tr>
                         </thead>
                         <tbody>

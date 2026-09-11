@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -792,7 +792,7 @@ export default function WeeklySalesPage() {
                         and the date, but on a grid full of numbers it is easy to
                         lose track of the month, so it is said once up here. */}
                     <p className="font-serif text-xl font-bold text-gray-900">{weekMonthLabel(weekStart)}</p>
-                    <h2 className="text-lg font-semibold text-gray-900 mt-1">Weekly sales</h2>
+                    <h2 className={`${pageTitle} mt-1`}>Weekly sales</h2>
                     <p className="text-sm text-gray-500 mt-1">
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>

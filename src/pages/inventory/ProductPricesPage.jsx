@@ -8,7 +8,7 @@ import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import BackButton from '../../components/BackButton'
 
@@ -261,7 +261,7 @@ export default function ProductPricesPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className={pageTitle}>
                         Prices: {product?.name || '...'}
                     </h2>
                     <p className="text-sm text-gray-500 mt-1">
@@ -381,13 +381,13 @@ export default function ProductPricesPage() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier Code</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pack</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost / {product?.unit || 'Unit'}</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Preferred</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Type</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Supplier Code</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Pack</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Cost / {product?.unit || 'Unit'}</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Preferred</th>
+                                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody>

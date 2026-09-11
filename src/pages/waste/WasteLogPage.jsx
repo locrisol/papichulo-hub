@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -247,7 +247,7 @@ export default function WasteLogPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
+                    <h2 className={pageTitle}>Waste</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 {isManager && (

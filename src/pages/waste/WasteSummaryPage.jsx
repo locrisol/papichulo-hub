@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 
@@ -138,7 +138,7 @@ export default function WasteSummaryPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Waste summary</h2>
+                    <h2 className={pageTitle}>Waste summary</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 <button
@@ -286,9 +286,9 @@ export default function WasteSummaryPage() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Quantity</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Value</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Product</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Quantity</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Value</th>
                             </tr>
                         </thead>
                         <tbody>

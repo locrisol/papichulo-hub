@@ -10,7 +10,7 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
@@ -339,7 +339,7 @@ export default function MenuItemsPage() {
           narrow column while the last button hung off the right edge. */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+          <h2 className={pageTitle}>Menu Items</h2>
           <p className="text-sm text-gray-500 mt-1">
             Costs and margins for {activeRestaurant?.name}
           </p>
