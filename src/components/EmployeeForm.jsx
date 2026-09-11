@@ -3,7 +3,7 @@ import LockedField from './LockedField'
 import { linkableUsers } from '../lib/team'
 import { todayISO, fullDate } from '../lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { modalFooter, labelClass, fieldClass } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // The add and edit form for a person.
@@ -38,9 +38,10 @@ export default function EmployeeForm({
                         value={formData.fullName}
                         onChange={e => onChange('fullName', e.target.value)}
                         className={fieldClass}
-                        placeholder="As it should read on the roster"
+                        placeholder="Full name"
                         autoFocus
                     />
+                    <p className={hintClass}>As it should read on the roster.</p>
                 </LockedField>
             </div>
 
@@ -253,9 +254,10 @@ export default function EmployeeForm({
                                 type="text"
                                 value={formData.permissionRenewalReference || ''}
                                 onChange={e => onChange('permissionRenewalReference', e.target.value)}
-                                placeholder="OREG number off the receipt"
+                                placeholder="OREG number"
                                 className={fieldClass}
                             />
+                            <p className={hintClass}>Off the receipt they were given.</p>
                         </LockedField>
                     </div>
                 )}
@@ -342,7 +344,7 @@ export default function EmployeeForm({
                     value={formData.notes}
                     onChange={e => onChange('notes', e.target.value)}
                     className={fieldClass}
-                    placeholder="Anything worth remembering"
+                    placeholder="Optional note"
                 />
             </ModalSection>
 

@@ -10,7 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
-import { checkbox, labelClass, fieldClass } from '../lib/controlStyles'
+import { checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -165,9 +165,10 @@ export default function ProductForm({
           list="held-for-names"
           value={formData.held_for || ''}
           onChange={e => onChange('held_for', e.target.value)}
-          placeholder="Leave empty if it is ours"
-          className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="Leave empty"
+          className={fieldClass}
         />
+        <p className={hintClass}>Leave it empty if the stock is ours.</p>
         <datalist id="held-for-names">
           {heldForNames.map(name => <option key={name} value={name} />)}
         </datalist>

@@ -453,7 +453,7 @@ export default function StockTakeSummaryPage() {
               type="text"
               value={reopenReason}
               onChange={e => setReopenReason(e.target.value)}
-              placeholder="e.g. accountant flagged a discrepancy"
+              placeholder="Why it was reopened"
               maxLength={200}
               className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent mb-4"
             />

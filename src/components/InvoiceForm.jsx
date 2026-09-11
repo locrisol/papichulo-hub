@@ -109,7 +109,7 @@ export default function InvoiceForm({
                     value={formData.notes}
                     onChange={e => onChange('notes', e.target.value)}
                     className={fieldClass}
-                    placeholder="Anything worth remembering about this one"
+                    placeholder="Optional note"
                 />
             </div>
 

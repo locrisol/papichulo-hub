@@ -5,7 +5,7 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
@@ -341,8 +341,9 @@ export default function DayNoteDialog({
                         onChange={e => set('message', e.target.value)}
                         rows={2}
                         className={fieldClass}
-                        placeholder="Deliveries go to the back door this week"
+                        placeholder="What happened"
                     />
+                    <p className={hintClass}>For example, deliveries go to the back door this week.</p>
                 </ModalSection>
                 )}
 

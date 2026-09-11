@@ -330,7 +330,7 @@ export default function TimeOffDialog({
                                 value={form.note}
                                 onChange={e => change('note', e.target.value)}
                                 className={fieldClass}
-                                placeholder="Anything worth remembering"
+                                placeholder="Optional note"
                             />
                         </div>
                     </div>

@@ -177,7 +177,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                         value={name}
                         onChange={e => setName(e.target.value)}
                         className={fieldClass}
-                        placeholder="Kitchen, Counter, Delivery"
+                        placeholder="Kitchen"
                     />
                     {swatches(colour, setColour)}
                     <div className="flex justify-end">

@@ -155,7 +155,7 @@ export default function ShiftDialog({
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
                         className={fieldClass}
-                        placeholder="Anything worth saying about this one"
+                        placeholder="Optional note"
                     />
                 </div>
 

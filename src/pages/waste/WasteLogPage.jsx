@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -315,8 +315,9 @@ export default function WasteLogPage() {
                                     value={search}
                                     onChange={e => { setSearch(e.target.value); setProductId('') }}
                                     className={fieldClass}
-                                    placeholder="Start typing a product name"
+                                    placeholder="Product name"
                                 />
+                                <p className={hintClass}>Start typing and pick from the list.</p>
                                 {filtered.length > 0 && !productId && (
                                     <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-sm overflow-hidden">
                                         {filtered.map(p => (

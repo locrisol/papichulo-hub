@@ -148,7 +148,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                     <label className="block text-xs font-medium text-muted mb-1">Add a note (optional)</label>
                     <input type="text" value={note} maxLength={200}
                         onChange={e => setNote(e.target.value)} className={field}
-                        placeholder="Anything they should know" />
+                        placeholder="Optional note" />
                 </div>
 
                 {/* How long it is and how far off, once there is enough to say

@@ -151,11 +151,11 @@ export default function WeeklyExtrasModal({ onClose }) {
                     onChange={e => setNote(e.target.value)}
                     rows={3}
                     className={fieldClass}
-                    placeholder="Swaps have to be agreed with a manager before they happen."
+                    placeholder="Optional note"
                 />
                 <p className="text-xs text-gray-400 mt-2">
-                    Anything about one week goes on the day it is about instead, through Options on that
-                    day. Those are the ones people read.
+                    Swaps have to be agreed with a manager before they happen. Anything about one week goes on
+                    the day it is about instead, through Options on that day. Those are the ones people read.
                 </p>
             </ModalSection>
 
