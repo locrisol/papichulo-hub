@@ -9,7 +9,7 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
 
@@ -319,18 +319,14 @@ export default function SalesPage() {
         loadDay()
     }
 
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-
     // A filled box is faintly green, an empty one is white, the same as the
     // weekly grid. The 0.00 placeholders are gone with it: a grey 0.00 reads as
     // a figure somebody entered when it is not one. Blank means nobody has
     // filled it in, a typed 0 means the till took nothing, and the day has to
     // be able to say which.
     function fieldWith(value) {
-        return `${fieldCls} ${value === '' || value == null ? '' : 'bg-green-50'}`
+        return `${fieldClass} ${value === '' || value == null ? '' : 'bg-green-50'}`
     }
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
     function trackingBucket(title, bucketPlatforms, receiptKey, note) {
@@ -377,7 +373,7 @@ export default function SalesPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
-                            <label className={labelCls}>{p.name}</label>
+                            <label className={labelClass}>{p.name}</label>
                             <input
                                 {...numberField({
                                     value: platformSales[p.name],
@@ -496,7 +492,7 @@ export default function SalesPage() {
                                         filled box gets, or the block reads as
                                         one big confirmation tick. */}
                                     <div className="bg-blue-200 rounded-lg p-2">
-                                        <label className={labelCls}>Gross sales</label>
+                                        <label className={labelClass}>Gross sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.gross,
@@ -506,7 +502,7 @@ export default function SalesPage() {
                                         />
                                     </div>
                                     <div className="bg-green-200 rounded-lg p-2">
-                                        <label className={labelCls}>Net sales</label>
+                                        <label className={labelClass}>Net sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.net,
@@ -520,7 +516,7 @@ export default function SalesPage() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {shownTenders.map(t => (
                                         <div key={t.key}>
-                                            <label className={labelCls}>
+                                            <label className={labelClass}>
                                                 {t.label}
                                                 {!t.is_active && (
                                                     <span className="ml-2 text-gray-400">retired</span>
@@ -564,7 +560,7 @@ export default function SalesPage() {
                         <div className={`${card} p-5 mb-3`}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className={labelCls}>Staff food</label>
+                                    <label className={labelClass}>Staff food</label>
                                     <input
                                         {...numberField({
                                             value: staffFood,

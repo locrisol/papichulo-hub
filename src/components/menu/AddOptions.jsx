@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '../Modal'
 import ModalSection from '../ModalSection'
-import { modalFooter, secondaryButton, checkbox } from '../../lib/controlStyles'
+import { modalFooter, secondaryButton, checkbox, labelClass } from '../../lib/controlStyles'
 import QuantityInUnit from '../QuantityInUnit'
 import { offerable } from '../../lib/menuChoices'
 import { canBeMenuComponent } from '../../lib/products'
@@ -237,7 +237,7 @@ export default function AddOptions({
                     <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
                         {commonUnit ? (
                             <div className="w-56">
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                <label className={labelClass}>
                                     Quantity for all
                                 </label>
                                 {/* The same control as the ordinary component

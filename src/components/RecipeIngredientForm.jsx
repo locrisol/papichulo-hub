@@ -1,3 +1,4 @@
+import { labelClass } from '../lib/controlStyles'
 import { useRef, useEffect } from 'react'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -29,7 +30,7 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ingredient</label>
+          <label className={labelClass}>Ingredient</label>
           <ProductSelect
             inputRef={ingredientSelectRef}
             value={formData.ingredient_product_id}
@@ -41,7 +42,7 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
+          <label className={labelClass}>Quantity</label>
           <QuantityInUnit
             value={formData.quantity}
             onChange={v => onChange('quantity', v)}
@@ -52,7 +53,7 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
       </div>
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+        <label className={labelClass}>Notes (optional)</label>
         <input
           type="text"
           value={formData.notes}

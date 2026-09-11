@@ -6,7 +6,7 @@ import { dayName } from '../lib/events'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
 } from '../lib/roster'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass } from '../lib/controlStyles'
 
 // One shift: making it, changing it, removing it.
 //
@@ -85,10 +85,6 @@ export default function ShiftDialog({
         })
     }
 
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
-
     return (
         <Modal
             title={`${dayName(date)} ${shortDate(date)}`}
@@ -97,11 +93,11 @@ export default function ShiftDialog({
             <form onSubmit={submit}>
                 <div className="px-6 py-4">
                 <div className="mb-3">
-                    <label className={labelCls}>Who</label>
+                    <label className={labelClass}>Who</label>
                     <select
                         value={form.employeeId}
                         onChange={e => set('employeeId', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     >
                         <option value="">Pick somebody</option>
                         {employees.map(e => (
@@ -112,21 +108,21 @@ export default function ShiftDialog({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
-                        <label className={labelCls}>Starts</label>
+                        <label className={labelClass}>Starts</label>
                         <input
                             type="time"
                             value={form.startsAt}
                             onChange={e => set('startsAt', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         />
                     </div>
                     <div>
-                        <label className={labelCls}>Finishes</label>
+                        <label className={labelClass}>Finishes</label>
                         <input
                             type="time"
                             value={form.endsAt}
                             onChange={e => set('endsAt', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         />
                     </div>
                 </div>
@@ -153,12 +149,12 @@ export default function ShiftDialog({
                 )}
 
                 <div className="mb-4">
-                    <label className={labelCls}>Note</label>
+                    <label className={labelClass}>Note</label>
                     <input
                         type="text"
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                         placeholder="Anything worth saying about this one"
                     />
                 </div>

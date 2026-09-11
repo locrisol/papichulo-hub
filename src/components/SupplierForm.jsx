@@ -10,6 +10,8 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
+import { labelClass, fieldClass } from '../lib/controlStyles'
+
 const CATEGORIES = [
     { value: 'food', label: 'Food' },
     { value: 'packaging', label: 'Packaging' },
@@ -18,30 +20,26 @@ const CATEGORIES = [
 ]
 
 export default function SupplierForm({ formData, onChange, onSubmit, onCancel, submitLabel }) {
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls =
-        'block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2'
 
     return (
         <form onSubmit={onSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label className={labelCls}>Name</label>
+                    <label className={labelClass}>Name</label>
                     <input
                         type="text"
                         value={formData.name}
                         onChange={e => onChange('name', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                         required
                     />
                 </div>
                 <div>
-                    <label className={labelCls}>Category</label>
+                    <label className={labelClass}>Category</label>
                     <select
                         value={formData.category}
                         onChange={e => onChange('category', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     >
                         {CATEGORIES.map(c => (
                             <option key={c.value} value={c.value}>{c.label}</option>
@@ -49,32 +47,32 @@ export default function SupplierForm({ formData, onChange, onSubmit, onCancel, s
                     </select>
                 </div>
                 <div>
-                    <label className={labelCls}>Contact Email</label>
+                    <label className={labelClass}>Contact Email</label>
                     <input
                         type="email"
                         value={formData.contact_email}
                         onChange={e => onChange('contact_email', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     />
                 </div>
                 <div>
-                    <label className={labelCls}>Contact Phone</label>
+                    <label className={labelClass}>Contact Phone</label>
                     <input
                         type="text"
                         value={formData.contact_phone}
                         onChange={e => onChange('contact_phone', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     />
                 </div>
             </div>
 
             <div className="mb-4">
-                <label className={labelCls}>Notes</label>
+                <label className={labelClass}>Notes</label>
                 <textarea
                     value={formData.notes}
                     onChange={e => onChange('notes', e.target.value)}
                     rows={2}
-                    className={fieldCls}
+                    className={fieldClass}
                 />
             </div>
 

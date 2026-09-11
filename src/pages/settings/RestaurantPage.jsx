@@ -14,7 +14,7 @@ import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
 import { numberField } from '../../lib/numberInput'
-import { card, rowButton, checkbox } from '../../lib/controlStyles'
+import { card, rowButton, checkbox, labelClass } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -234,7 +234,7 @@ export default function RestaurantPage() {
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    <label className={labelClass}>
                                         Hourly rate (€)
                                     </label>
                                     <input
@@ -257,7 +257,7 @@ export default function RestaurantPage() {
 
                         <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            <label className={labelClass}>
                                 Sent from
                             </label>
                             {/* Locked once it is set, like an overhead line on the

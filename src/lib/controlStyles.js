@@ -46,6 +46,18 @@ export const fieldClass =
 
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
+// The small caps line over a figure: "Waste this week", "Margin", "Net sales".
+//
+// This is not a field label and it was written in the same class string as one,
+// so the two were indistinguishable. Worth keeping apart: a caption sits over a
+// number you read, a label sits over a box you type in, and the app had 37
+// field labels wearing the caption's uppercase and letter spacing.
+//
+// Which mattered on a phone, because uppercase with tracking-wider is the
+// widest way there is to write a word: "Price per case (€)" fits on one line
+// and "PRICE PER CASE (€)" does not.
+export const captionClass = 'text-xs font-semibold text-gray-500 uppercase tracking-wider'
+
 // The sentence under a box, where anything longer than two or three words
 // belongs.
 //

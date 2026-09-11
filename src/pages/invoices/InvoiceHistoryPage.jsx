@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
@@ -99,8 +99,6 @@ export default function InvoiceHistoryPage() {
         setCategory('')
     }
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
         <>
@@ -125,23 +123,23 @@ export default function InvoiceHistoryPage() {
                     quarter of the screen, which showed a single digit. */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                     <div>
-                        <label className={labelCls}>From</label>
-                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={fieldCls} />
+                        <label className={labelClass}>From</label>
+                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={fieldClass} />
                     </div>
                     <div>
-                        <label className={labelCls}>To</label>
-                        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={fieldCls} />
+                        <label className={labelClass}>To</label>
+                        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={fieldClass} />
                     </div>
                     <div>
-                        <label className={labelCls}>Supplier</label>
-                        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldCls}>
+                        <label className={labelClass}>Supplier</label>
+                        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldClass}>
                             <option value="">All suppliers</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Category</label>
-                        <select value={category} onChange={e => setCategory(e.target.value)} className={fieldCls}>
+                        <label className={labelClass}>Category</label>
+                        <select value={category} onChange={e => setCategory(e.target.value)} className={fieldClass}>
                             <option value="">All categories</option>
                             {INVOICE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>

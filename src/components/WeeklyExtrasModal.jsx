@@ -4,7 +4,7 @@ import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, labelClass, fieldClass } from '../lib/controlStyles'
 import { cleanExtras, sortExtras, usualProblem } from '../lib/dayExtras'
 
 // The two things that are the same every week.
@@ -62,12 +62,8 @@ export default function WeeklyExtrasModal({ onClose }) {
         setActiveRestaurant(data)
         onClose()
     }
-
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
     const timeCls =
         'border border-border rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
         <Modal title="Every week" onClose={onClose} width="max-w-xl">
@@ -90,7 +86,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                                     value={extra.name}
                                     onChange={e => patch(i, { name: e.target.value })}
                                     aria-label="Name"
-                                    className={`${fieldCls} flex-1 min-w-40`}
+                                    className={`${fieldClass} flex-1 min-w-40`}
                                 />
                                 <input
                                     type="time"
@@ -114,12 +110,12 @@ export default function WeeklyExtrasModal({ onClose }) {
 
                 <div className="flex flex-wrap items-end gap-2">
                     <div className="flex-1 min-w-40">
-                        <label className={labelCls}>Add one</label>
+                        <label className={labelClass}>Add one</label>
                         <input
                             type="text"
                             value={adding.name}
                             onChange={e => setAdding(a => ({ ...a, name: e.target.value }))}
-                            className={fieldCls}
+                            className={fieldClass}
                             placeholder="Feedr"
                         />
                     </div>
@@ -154,7 +150,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                     value={note}
                     onChange={e => setNote(e.target.value)}
                     rows={3}
-                    className={fieldCls}
+                    className={fieldClass}
                     placeholder="Swaps have to be agreed with a manager before they happen."
                 />
                 <p className="text-xs text-gray-400 mt-2">

@@ -10,7 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
-import { checkbox } from '../lib/controlStyles'
+import { checkbox, labelClass, fieldClass } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -45,10 +45,6 @@ export default function ProductForm({
   // this in they already know what green means.
   const colour = sectionColour(formData.section)
 
-  const fieldCls =
-    'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-  const labelCls = 'block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2'
-
   const showExtras = extras && !formData.is_mix
   // Cleaning and packaging still have a supplier, they just have nothing to
   // declare. So only the allergens go, not the whole block.
@@ -75,7 +71,7 @@ export default function ProductForm({
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+          <label className={labelClass}>Name</label>
           <input
             type="text"
             value={formData.name}
@@ -94,7 +90,7 @@ export default function ProductForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Section</label>
+          <label className={labelClass}>Section</label>
           <select
             value={formData.section}
             onChange={e => onChange('section', e.target.value)}
@@ -117,7 +113,7 @@ export default function ProductForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Unit</label>
+          <label className={labelClass}>Unit</label>
           <select
             value={formData.unit}
             onChange={e => onChange('unit', e.target.value)}
@@ -134,7 +130,7 @@ export default function ProductForm({
             is not a question you can ask about a case of tomatoes. */}
         {formData.is_mix && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Weight Loss %</label>
+            <label className={labelClass}>Weight Loss %</label>
             <input
               {...numberField({
                 value: formData.weight_loss_pct,
@@ -161,7 +157,7 @@ export default function ProductForm({
           list underneath offers names already in use, so the same arrangement
           is not typed two ways and split into two columns. */}
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <label className={labelClass}>
           Held for someone else
         </label>
         <input
@@ -224,7 +220,7 @@ export default function ProductForm({
           count they were being missed because the screen only ever showed them
           under one heading. */}
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <label className={labelClass}>
           Also kept in
         </label>
         <div className="flex flex-wrap gap-2">
@@ -292,7 +288,7 @@ export default function ProductForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
+        <label className={labelClass}>Notes</label>
         <textarea
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
@@ -333,7 +329,7 @@ export default function ProductForm({
           {openExtra === 'recipe' && (
             <div className="mb-4">
               <div className="mb-3">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                <label className={labelClass}>
                   Batch yield
                 </label>
                 <QuantityInUnit
@@ -383,7 +379,7 @@ export default function ProductForm({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className={labelClass}>
                     Ingredient
                   </label>
                   <ProductSelect
@@ -398,7 +394,7 @@ export default function ProductForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className={labelClass}>
                     How much
                   </label>
                   <QuantityInUnit
@@ -524,7 +520,7 @@ export default function ProductForm({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={labelCls}>Pack</label>
+                      <label className={labelClass}>Pack</label>
                       <input
                         type="text"
                         value={formats.draft.label}
@@ -533,11 +529,11 @@ export default function ProductForm({
                           draft: { ...formats.draft, label: e.target.value },
                         })}
                         placeholder="Box, Bag, Tin"
-                        className={fieldCls}
+                        className={fieldClass}
                       />
                     </div>
                     <div>
-                      <label className={labelCls}>One of them is</label>
+                      <label className={labelClass}>One of them is</label>
                       <input
                         {...numberField({
                           value: formats.draft.factor,
@@ -547,7 +543,7 @@ export default function ProductForm({
                           }),
                         })}
                         placeholder={formData.unit}
-                        className={fieldCls}
+                        className={fieldClass}
                       />
                     </div>
                   </div>

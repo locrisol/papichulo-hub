@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
@@ -525,7 +525,7 @@ export default function MenuItemPage() {
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Details</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+            <label className={labelClass}>Name</label>
             <input
               type="text"
               value={headerForm.name}
@@ -587,7 +587,7 @@ export default function MenuItemPage() {
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+            <label className={labelClass}>Category</label>
             <select
               value={headerForm.category_id}
               onChange={e => handleHeaderChange('category_id', e.target.value)}
@@ -615,7 +615,7 @@ export default function MenuItemPage() {
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
+            <label className={labelClass}>Selling Price (€, gross)</label>
             <input
               {...numberField({
                 value: headerForm.selling_price,
@@ -626,7 +626,7 @@ export default function MenuItemPage() {
             {headerErrors.selling_price && <p className="text-xs text-red-600 mt-1">{headerErrors.selling_price}</p>}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
+            <label className={labelClass}>VAT Rate (%)</label>
             <input
               {...numberField({
                 value: headerForm.vat_rate,
@@ -638,7 +638,7 @@ export default function MenuItemPage() {
           </div>
         </div>
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+          <label className={labelClass}>Notes (optional)</label>
           <textarea
             value={headerForm.notes}
             onChange={e => handleHeaderChange('notes', e.target.value)}
@@ -911,7 +911,7 @@ function ComponentForm({
     <form onSubmit={onSubmit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Component</label>
+          <label className={labelClass}>Component</label>
           <ProductSelect
             inputRef={productSelectRef}
             value={formData.product_id}
@@ -922,7 +922,7 @@ function ComponentForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
+          <label className={labelClass}>Quantity</label>
           <QuantityInUnit
             value={formData.quantity}
             onChange={v => onChange('quantity', v)}
@@ -1015,7 +1015,7 @@ function ComponentForm({
       )}
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+        <label className={labelClass}>Notes (optional)</label>
         <input
           type="text"
           value={formData.notes}

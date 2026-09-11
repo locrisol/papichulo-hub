@@ -9,7 +9,7 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
@@ -383,7 +383,7 @@ export default function MenuItemsPage() {
           <form onSubmit={handleSave}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+                <label className={labelClass}>Name</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -393,7 +393,7 @@ export default function MenuItemsPage() {
                 {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+                <label className={labelClass}>Category</label>
                 <select
                   value={formData.category_id}
                   onChange={e => handleFieldChange('category_id', e.target.value)}
@@ -407,7 +407,7 @@ export default function MenuItemsPage() {
                 {errors.category_id && <p className="text-xs text-red-600 mt-1">{errors.category_id}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
+                <label className={labelClass}>Selling Price (€, gross)</label>
                 <input
                   {...numberField({
                     value: formData.selling_price,
@@ -418,7 +418,7 @@ export default function MenuItemsPage() {
                 {errors.selling_price && <p className="text-xs text-red-600 mt-1">{errors.selling_price}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
+                <label className={labelClass}>VAT Rate (%)</label>
                 <input
                   {...numberField({
                     value: formData.vat_rate,
@@ -431,7 +431,7 @@ export default function MenuItemsPage() {
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+              <label className={labelClass}>Notes (optional)</label>
               <textarea
                 value={formData.notes}
                 onChange={e => handleFieldChange('notes', e.target.value)}

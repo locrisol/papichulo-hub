@@ -8,7 +8,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { numberField } from '../lib/numberInput'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
-import { modalFooter, removeButton, checkbox } from '../lib/controlStyles'
+import { modalFooter, removeButton, checkbox, labelClass, fieldClass } from '../lib/controlStyles'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -119,8 +119,6 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
     const timeline = describeTargets(history, targetType, week)
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     const badge = {
         current: { text: 'In force this week', cls: 'bg-green-100 text-green-800' },
@@ -149,9 +147,9 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
                     <form onSubmit={handleSave}>
                         <div className="mb-3">
-                            <label className={labelCls}>Target as a percentage of net sales</label>
+                            <label className={labelClass}>Target as a percentage of net sales</label>
                             <input {...numberField({ value, onChange: setValue })}
-                                className={`${fieldCls} text-right`} placeholder="30" />
+                                className={`${fieldClass} text-right`} placeholder="30" />
                         </div>
 
                         <label className="flex items-center gap-3 cursor-pointer mb-3">
@@ -168,14 +166,14 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                             <div>
-                                <label className={labelCls}>From the week of</label>
-                                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldCls} />
+                                <label className={labelClass}>From the week of</label>
+                                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldClass} />
                                 <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(from))}</p>
                             </div>
                             {isTemporary && (
                                 <div>
-                                    <label className={labelCls}>Until the week of</label>
-                                    <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldCls} />
+                                    <label className={labelClass}>Until the week of</label>
+                                    <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldClass} />
                                     {until && <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(until))}</p>}
                                 </div>
                             )}

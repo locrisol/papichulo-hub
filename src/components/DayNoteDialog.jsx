@@ -5,7 +5,7 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton, checkbox } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
@@ -102,10 +102,6 @@ export default function DayNoteDialog({
         if (err) { setError(friendlyError(err)); return }
         onSaved()
     }
-
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
     const timeCls =
         'border border-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
 
@@ -134,7 +130,7 @@ export default function DayNoteDialog({
 
                 {!form.isClosed && (
                     <div className="mb-4">
-                        <p className={labelCls}>
+                        <p className={labelClass}>
                             Different hours just for this day
                             {usual && (
                                 <span className="text-gray-400">
@@ -147,14 +143,14 @@ export default function DayNoteDialog({
                                 type="time"
                                 value={form.opensAt}
                                 onChange={e => set('opensAt', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                                 aria-label="Opens at"
                             />
                             <input
                                 type="time"
                                 value={form.closesAt}
                                 onChange={e => set('closesAt', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                                 aria-label="Closes at"
                             />
                         </div>
@@ -217,7 +213,7 @@ export default function DayNoteDialog({
                         type="text"
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                         placeholder="Deep Cleaning Day"
                     />
                 </ModalSection>
@@ -303,12 +299,12 @@ export default function DayNoteDialog({
                         a thing to set up, it is a thing to type. */}
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="flex-1 min-w-40">
-                            <label className={labelCls}>Something else, just this day</label>
+                            <label className={labelClass}>Something else, just this day</label>
                             <input
                                 type="text"
                                 value={oneOff.name}
                                 onChange={e => setOneOff(o => ({ ...o, name: e.target.value }))}
-                                className={fieldCls}
+                                className={fieldClass}
                                 placeholder="Coffee machine service"
                             />
                         </div>
@@ -344,7 +340,7 @@ export default function DayNoteDialog({
                         value={form.message}
                         onChange={e => set('message', e.target.value)}
                         rows={2}
-                        className={fieldCls}
+                        className={fieldClass}
                         placeholder="Deliveries go to the back door this week"
                     />
                 </ModalSection>

@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -238,8 +238,6 @@ export default function WasteLogPage() {
 
     const dayTotal = entries.reduce((sum, e) => sum + Number(e.waste_value || 0), 0)
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     if (loading) {
         return <p className="text-sm text-gray-400">Loading...</p>
@@ -311,12 +309,12 @@ export default function WasteLogPage() {
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
 
                             <div className="mb-3 relative">
-                                <label className={labelCls}>Product</label>
+                                <label className={labelClass}>Product</label>
                                 <input
                                     type="text"
                                     value={search}
                                     onChange={e => { setSearch(e.target.value); setProductId('') }}
-                                    className={fieldCls}
+                                    className={fieldClass}
                                     placeholder="Start typing a product name"
                                 />
                                 {filtered.length > 0 && !productId && (
@@ -338,7 +336,7 @@ export default function WasteLogPage() {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                                 <div>
-                                    <label className={labelCls}>
+                                    <label className={labelClass}>
                                         Quantity {selectedProduct ? `(${selectedProduct.unit})` : ''}
                                     </label>
                                     <input
@@ -346,13 +344,13 @@ export default function WasteLogPage() {
                                             value: quantity,
                                             onChange: setQuantity,
                                         })}
-                                        className={`${fieldCls} text-right`}
+                                        className={`${fieldClass} text-right`}
                                         placeholder="0"
                                     />
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Reason</label>
-                                    <select value={reason} onChange={e => setReason(e.target.value)} className={fieldCls}>
+                                    <label className={labelClass}>Reason</label>
+                                    <select value={reason} onChange={e => setReason(e.target.value)} className={fieldClass}>
                                         {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                     </select>
                                 </div>
