@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { removeButton } from '../lib/controlStyles'
+import { fieldClass } from '../lib/controlStyles'
+import Modal from './Modal'
 
 // Starts a stock take session.
 //
@@ -73,31 +74,15 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
     onCreated(data)
   }
 
+  // The shared shell rather than a fourth hand rolled overlay. This one had
+  // written its own heading bar as well as its own backdrop, so it was the one
+  // dialog in the app with a white header instead of the green one, and the
+  // only one Escape would not close.
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        <header className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-serif text-xl font-bold text-gray-900">Start a stock take</h2>
-            <p className="text-sm text-muted mt-1">
-              Once started, you and your team can begin counting.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className={removeButton}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </header>
+    <Modal title="Start a stock take" onClose={onClose} width="max-w-md">
+        <p className="px-5 pt-4 text-sm text-muted">
+          Once started, you and your team can begin counting.
+        </p>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
           {/* Type */}
@@ -144,7 +129,7 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
               onChange={e => setNotes(e.target.value)}
               placeholder="e.g. End of May 2026"
               maxLength={200}
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+              className={fieldClass}
             />
             <p className="text-xs text-muted mt-1">
               A short label to help identify this session later.
@@ -175,7 +160,6 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }

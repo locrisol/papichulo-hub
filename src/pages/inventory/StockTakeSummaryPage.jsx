@@ -1,4 +1,3 @@
-import { monthYearOf } from '../../lib/dates'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -6,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { monthYearOf, stampDateTime } from '../../lib/dates'
 import { sectionColour } from '../../lib/sections'
 import { countName } from '../../lib/products'
 import { bySection, summarise } from '../../lib/stockTakeSummary'
@@ -13,6 +13,7 @@ import StockTakeValue from '../../components/StockTakeValue'
 import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
 import BackButton from '../../components/BackButton'
+import Modal from '../../components/Modal'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -30,8 +31,7 @@ import BackButton from '../../components/BackButton'
 // to seeing.
 
 function fmtDateTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return stampDateTime(iso) || '—'
 }
 
 // What a stock take is called, for any of them rather than only the one on
@@ -441,11 +441,12 @@ export default function StockTakeSummaryPage() {
         </button>
       )}
 
-      {/* Reopen confirmation */}
+      {/* Reopen confirmation, in the shared shell rather than its own overlay.
+          The hand rolled one had no Escape key, did not stop the page scrolling
+          underneath it and told a screen reader nothing. */}
       {showReopen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={closeReopen}>
-          <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Reopen this stock take?</h2>
+        <Modal title="Reopen this stock take?" onClose={closeReopen} width="max-w-md">
+          <div className="p-6">
             <p className="text-sm text-gray-700 mb-3">
               This returns the stock take to in-progress so counts can be edited. The reopen is recorded with your name and the reason.
             </p>
@@ -477,7 +478,7 @@ export default function StockTakeSummaryPage() {
               </div>
             )}
 
-            <div className="flex gap-2 justify-end">
+            <div className="flex flex-wrap gap-2 justify-end">
               <button type="button" onClick={closeReopen} disabled={reopening} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
@@ -486,7 +487,7 @@ export default function StockTakeSummaryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )

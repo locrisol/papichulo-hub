@@ -9,6 +9,7 @@ import { countName } from '../../lib/products'
 import { sectionRank, sectionColour } from '../../lib/sections'
 import { card } from '../../lib/controlStyles'
 import BackButton from '../../components/BackButton'
+import Modal from '../../components/Modal'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -446,11 +447,15 @@ export default function StockTakeReviewPage() {
         Close stock take
       </button>
 
-      {/* Close confirmation */}
+      {/* Close confirmation.
+
+          In the shared shell rather than its own overlay. The hand rolled one
+          had no Escape key, did not stop the page scrolling underneath it and
+          told a screen reader nothing, all of which the shell has had for
+          months. */}
       {showCloseConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={closeConfirm}>
-          <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Close this stock take?</h2>
+        <Modal title="Close this stock take?" onClose={closeConfirm} width="max-w-md">
+          <div className="p-6">
             <p className="text-sm text-gray-700 mb-3">
               Once closed, counts become read-only. You can reopen it later if a correction is needed.
             </p>
@@ -467,7 +472,7 @@ export default function StockTakeReviewPage() {
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
             )}
 
-            <div className="flex gap-2 justify-end">
+            <div className="flex flex-wrap gap-2 justify-end">
               <button type="button" onClick={closeConfirm} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
@@ -476,7 +481,7 @@ export default function StockTakeReviewPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )
