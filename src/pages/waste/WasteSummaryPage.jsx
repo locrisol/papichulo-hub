@@ -5,7 +5,7 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 
@@ -204,27 +204,33 @@ export default function WasteSummaryPage() {
                 </div>
             </div>
 
-            {/* The headline numbers. Two across on a phone, so the third one
-                takes a full row of its own. Three across gave each about 100px
-                and "Waste as % of sales" came out over three lines. */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Waste this week</p>
-                    <p className="text-xl font-semibold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
-                </div>
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Net sales</p>
-                    <p className="text-xl font-semibold text-gray-900 mt-1">{fmtMoney(netSales)}</p>
-                </div>
-                <div className={`${card} p-4`}>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Waste as % of sales</p>
-                    <p className={`text-xl font-semibold mt-1 ${pctColour(wastePct)}`}>
-                        {wastePct == null ? '-' : `${wastePct.toFixed(1)}%`}
+            {/* The headline number, and then the two it came out of.
+
+                These were three equal cards, which on a phone is about 100px
+                each and put "Waste as % of sales" over three lines. Making them
+                stack would have fixed the wrapping and kept the real problem,
+                which is that only one of the three is the point.
+
+                The share is the point: it is the figure with a target against
+                it and the one that means anything on its own. The money thrown
+                out and the sales it is measured against are how it was worked
+                out, so they read as a sentence underneath rather than as two
+                more headlines competing with it. */}
+            <div className={`${card} p-5 mb-4`}>
+                <p className={captionClass}>Waste as % of sales</p>
+                <p className={`font-serif text-3xl font-bold leading-none mt-1 ${pctColour(wastePct)}`}>
+                    {wastePct == null ? '—' : `${wastePct.toFixed(1)}%`}
+                </p>
+                {wastePct == null ? (
+                    <p className="text-sm text-muted mt-2">
+                        {fmtMoney(totalValue)} thrown out. No sales entered for this week, so there is
+                        nothing to measure it against yet.
                     </p>
-                    {wastePct == null && (
-                        <p className="text-xs text-gray-400 mt-1">No sales entered for this week</p>
-                    )}
-                </div>
+                ) : (
+                    <p className="text-sm text-muted mt-2">
+                        {fmtMoney(totalValue)} thrown out of {fmtMoney(netSales)} taken
+                    </p>
+                )}
             </div>
 
             {/* By product */}
@@ -238,10 +244,45 @@ export default function WasteSummaryPage() {
                 ) : byProduct.length === 0 ? (
                     <p className="text-sm text-gray-400 italic">Nothing logged for this week.</p>
                 ) : (
-                    // Inside a padded card, so it needs its own scrolling
-                    // wrapper. The reason breakdown under each product name can
-                    // get long, which pushes Quantity and Value off a phone.
-                    <div className="overflow-x-auto">
+                    <>
+                    {/* A card each on a phone. The reason breakdown under a
+                        product name can run long, and inside a padded card that
+                        pushed Quantity and Value off the side, so the two
+                        figures the list is for were the two you had to go
+                        looking for. */}
+                    <div className="sm:hidden space-y-2">
+                        {byProduct.map(row => (
+                            <div key={row.id} className="rounded-lg border border-border p-3">
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <span className="text-sm text-gray-900">{row.name}</span>
+                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                                        {fmtMoney(row.value)}
+                                    </span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-3 mt-0.5">
+                                    <span className="text-xs text-gray-400">
+                                        {Object.entries(row.reasons)
+                                            .map(([r, q]) => `${reasonLabel(r)} ${fmtQty(q)}`)
+                                            .join(' · ')}
+                                    </span>
+                                    <span className="text-xs text-muted whitespace-nowrap">
+                                        {fmtQty(row.quantity)} {row.unit}
+                                    </span>
+                                </div>
+                                {row.anyMissingPrice && (
+                                    <p className="text-xs text-amber-600 mt-0.5">price missing</p>
+                                )}
+                            </div>
+                        ))}
+                        <div className="flex items-baseline justify-between gap-3 rounded-lg bg-app-bg px-3 py-2.5">
+                            <span className="text-sm font-semibold text-gray-900">Total</span>
+                            <span className="text-sm font-semibold text-gray-900 tabular-nums whitespace-nowrap">
+                                {fmtMoney(totalValue)}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -282,6 +323,7 @@ export default function WasteSummaryPage() {
                         </tfoot>
                     </table>
                     </div>
+                    </>
                 )}
             </div>
 
