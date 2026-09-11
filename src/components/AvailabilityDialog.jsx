@@ -3,7 +3,7 @@ import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, captionClass } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
@@ -45,6 +45,10 @@ const SHAPES = [
     { value: 'from', label: 'From' },
     { value: 'until', label: 'Until' },
 ]
+
+// What to call each stretch once there is more than one of them. Three is the
+// most a day can have, so the list is complete and there is no counting to do.
+const STRETCH_NAMES = ['First stretch', 'Second stretch', 'Third stretch']
 
 export default function AvailabilityDialog({ employee, onClose, onChanged }) {
     const today = todayISO()
@@ -354,7 +358,33 @@ function DayRows({ rows, on, timeCls }) {
                                         const found = windowShape(window)
                                         const shape = found === 'all' ? 'from' : found
                                         return (
-                                        <div key={i} className="flex flex-wrap items-center gap-2">
+                                        // Each stretch in its own box with its
+                                        // own heading.
+                                        //
+                                        // On a phone these wrapped into five
+                                        // boxes running straight down the page
+                                        // with two remove crosses among them
+                                        // and nothing saying where one stretch
+                                        // ended and the next began. Pressing
+                                        // the wrong cross silently changes when
+                                        // somebody can work, so a cross has to
+                                        // be plainly attached to something.
+                                        //
+                                        // Only when there is more than one. A
+                                        // single stretch needs no heading
+                                        // telling you it is the first.
+                                        <div
+                                            key={i}
+                                            className={row.windows.length > 1
+                                                ? 'rounded-lg border border-border bg-app-bg p-3'
+                                                : ''}
+                                        >
+                                        {row.windows.length > 1 && (
+                                            <p className={`${captionClass} mb-2`}>
+                                                {STRETCH_NAMES[i] || `Stretch ${i + 1}`}
+                                            </p>
+                                        )}
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <select
                                                 value={shape}
                                                 onChange={e => setShape(row.key, i, e.target.value)}
@@ -394,6 +424,7 @@ function DayRows({ rows, on, timeCls }) {
                                                     ×
                                                 </button>
                                             )}
+                                        </div>
                                         </div>
                                         )
                                     })}
