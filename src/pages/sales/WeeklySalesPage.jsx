@@ -879,7 +879,20 @@ export default function WeeklySalesPage() {
                 under Wednesday has to be under Wednesday on every card.
 
                 Fixed layout stops columns resizing as digits are typed. */}
-            <div className="overflow-x-auto mb-4" onKeyDown={handleGridKeyDown}>
+            {/* The scroller runs the full width of the screen on a phone rather
+                than sitting inside the page padding.
+
+                Inset by p-4 either side it had about 32 pixels less to scroll
+                in than the screen has, and since the grid is a fixed 1000px
+                wide that came straight off the far end: Saturday could be
+                brought into view but never brought clear of the edge. The
+                padding comes back as padding on the scrolling content, so the
+                last column still ends with a margin rather than against the
+                glass. Unchanged from md up, where the page has the room. */}
+            <div
+                className="overflow-x-auto mb-4 -mx-4 px-4 md:mx-0 md:px-0"
+                onKeyDown={handleGridKeyDown}
+            >
                 <div className="min-w-[1000px] space-y-4">
 
                 <div className={`${card} overflow-hidden`}>
