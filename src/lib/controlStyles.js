@@ -27,6 +27,54 @@ export const secondaryButton =
 export const dateField =
     'bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm cursor-pointer transition-colors hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// A box you type in, and the label over it.
+//
+// These were written out by hand on every form in the app. The label was the
+// same eleven characters in eleven files, which is not a problem until somebody
+// changes one of them, and then it is eleven files that no longer match.
+//
+// The box had genuinely drifted: three files called it fieldCls and disagreed
+// about whether it was py-2 text-sm or py-2.5 text-base, one had its own focus
+// ring at a different opacity, one used a smaller radius and a grey border, and
+// the product form used a completely different label, uppercase and letter
+// spaced. Five versions of one box.
+//
+// text-base rather than text-sm on purpose: an iPhone zooms the whole page in
+// when you focus a box whose text is under 16px, and then leaves you there.
+export const fieldClass =
+    'w-full bg-white border border-border rounded-lg px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+
+export const labelClass = 'text-xs text-gray-500 mb-1 block'
+
+// The sentence under a box, where anything longer than two or three words
+// belongs.
+//
+// A placeholder is the wrong place for an explanation. It has the width of the
+// box and no more, it is cut without warning on a narrow screen, and it
+// disappears the moment somebody starts typing, which is often exactly when
+// they wanted to read it. A line underneath has the full width of the form and
+// stays put.
+export const hintClass = 'text-xs text-gray-400 mt-1'
+
+// A tick box.
+//
+// The native one was w-4 h-4 in twenty three places, which at this app's foot
+// rule is about nineteen pixels. A thumb is nearer forty five, so every one of
+// them was a guess, usually with a text box beside it to land in by mistake.
+//
+// This is the size the one in the weekly report already uses, which was written
+// when somebody noticed the same thing about that section. It is the same
+// native input, so it keeps its keyboard behaviour and its label association;
+// only the size and the target change.
+export const checkbox = 'w-6 h-6 flex-shrink-0 accent-accent cursor-pointer'
+
+// The row a tick box sits in: the box, then whatever it is labelling.
+//
+// gap-3 because a 24px box needs space from its words to stop reading as one
+// blob, and items-start so a label that wraps to three lines keeps its box
+// beside the first line rather than floating to the middle.
+export const checkRow = 'flex items-start gap-3'
+
 // The heading row of a table.
 //
 // These used to be bg-gray-50, which is exactly the colour of every second
@@ -187,10 +235,23 @@ export function jumpButton(isCurrent) {
 // it. Written down here because the roster had it typed into the page and the
 // staff week needed the same control, and the second copy is where these things
 // start drifting apart.
-export const segmentTrack = 'inline-flex bg-gray-100 rounded-lg p-1 gap-1'
+// A row of choices where only one is on: Bars or Pie, one month or twelve.
+//
+// This was inline-flex with px-4 on every button, which is a width nobody
+// chose: it is whatever the longest label happens to need. Four ranges reading
+// "1 month" to "12 months" come to more than a 390px screen holds, and
+// inline-flex neither wraps nor shrinks, so the twelfth month simply went off
+// the side of the page with no way to reach it.
+//
+// A grid that fills its container cannot do that. The buttons share the width
+// evenly however many there are and whatever they are called, so it fits by
+// construction rather than because somebody measured a phone. From sm up it
+// goes back to sitting at its natural width beside whatever it belongs to.
+export const segmentTrack =
+    'grid grid-flow-col auto-cols-fr w-full sm:w-auto sm:inline-flex bg-gray-100 rounded-lg p-1 gap-1'
 
 export function segmentButton(isOn) {
-    return 'px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize '
+    return 'px-2 sm:px-4 py-1.5 text-xs font-semibold rounded-md transition-colors capitalize text-center whitespace-nowrap '
         + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
 }
 
