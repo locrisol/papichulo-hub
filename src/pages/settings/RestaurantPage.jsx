@@ -8,7 +8,7 @@ import CostTargetModal from '../../components/CostTargetModal'
 import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
-import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
+import { todayISO, weekStartOf, shortDate, stampDateTime } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
@@ -158,10 +158,7 @@ export default function RestaurantPage() {
                 </p>
                 {activeRestaurant?.updated_at && (
                     <p className="text-xs text-gray-400 mt-1">
-                        Last updated: {new Date(activeRestaurant.updated_at).toLocaleDateString('en-IE', {
-                            day: '2-digit', month: '2-digit', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit'
-                        })}
+                        Last updated: {stampDateTime(activeRestaurant.updated_at)}
                     </p>
                 )}
             </div>

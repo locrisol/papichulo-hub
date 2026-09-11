@@ -1,3 +1,4 @@
+import { monthYearOf } from '../../lib/dates'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -211,10 +212,7 @@ export default function StockTakeCountPage() {
         const typeWord = session.type
             ? session.type.charAt(0).toUpperCase() + session.type.slice(1)
             : 'Stock'
-        const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', {
-            month: 'long',
-            year: 'numeric',
-        })
+        const monthYear = monthYearOf(session.started_at)
         return `${typeWord} Stock Take (${monthYear})`
     }
 

@@ -1,3 +1,4 @@
+import { monthYearOf } from '../../lib/dates'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -40,7 +41,7 @@ function titleOf(session) {
   if (!session) return 'the open stock take'
   if (session.notes && session.notes.trim()) return session.notes.trim()
   const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
-  const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
+  const monthYear = monthYearOf(session.started_at)
   return `${typeWord} Stock Take (${monthYear})`
 }
 

@@ -164,3 +164,41 @@ export function weekRange(weekStart) {
     }
     return `${from} to ${to} ${end.getFullYear()}`
 }
+
+// A timestamp as a date, for example 23/08/2026.
+//
+// fullDate above takes a plain YYYY-MM-DD and adds T00:00:00 so it is read as
+// local rather than UTC. A timestamp out of the database already carries a time
+// and a zone, so it needs its own door rather than being fed through that one.
+//
+// Built by hand for the same reason fullDate is: toLocaleDateString follows
+// whatever locale the browser is set to, so the same screen reads 23/08/2026 on
+// one machine and 8/23/2026 on another. Ten places were calling it directly
+// with 'en-IE' passed in by hand, which works until somebody changes the format
+// in one of them and not the other nine.
+export function stampDate(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    return `${day}/${month}/${d.getFullYear()}`
+}
+
+// The same with the time on it, for example 23/08/2026, 14:05.
+export function stampDateTime(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
+    const hours = String(d.getHours()).padStart(2, '0')
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    return `${stampDate(stamp)}, ${hours}:${minutes}`
+}
+
+// The month a timestamp falls in, written out. For example September 2026.
+export function monthYearOf(stamp) {
+    if (!stamp) return ''
+    const d = new Date(stamp)
+    if (isNaN(d)) return ''
+    return d.toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
+}

@@ -1,3 +1,4 @@
+import { stampDate } from '../../lib/dates'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -117,11 +118,7 @@ export default function StockTakesListPage() {
 
   function formatDate(iso) {
     if (!iso) return '-'
-    return new Date(iso).toLocaleDateString('en-IE', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    })
+    return stampDate(iso)
   }
 
   function typeLabel(type) {

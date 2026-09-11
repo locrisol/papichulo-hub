@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { sheetRows } from '../lib/allergenSheet'
 import AllergenList from '../components/allergens/AllergenList'
 import { card } from '../lib/controlStyles'
+import { stampDate } from '../lib/dates'
 
 
 // The allergen page customers see, at /allergens/[slug]. No login.
@@ -145,9 +146,10 @@ export default function PublicAllergensPage({ slugOverride }) {
     return latest
   }, null)
 
+  // The day the sheet was last touched. Falls back to today, because a sheet
+  // with no date on it reads as one nobody has checked.
   function formatDate(iso) {
-    if (!iso) return new Date().toLocaleDateString('en-IE', { dateStyle: 'long' })
-    return new Date(iso).toLocaleDateString('en-IE', { dateStyle: 'long' })
+    return stampDate(iso || new Date().toISOString())
   }
 
   if (loading) {
