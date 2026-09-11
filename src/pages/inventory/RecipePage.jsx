@@ -6,7 +6,7 @@ import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, fmtUnitCost } from '../../lib/format'
 import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
@@ -412,7 +412,7 @@ export default function RecipePage() {
                   <p className="text-xs text-muted mt-0.5">
                     {parseFloat(line.quantity)} {ingredient?.unit || ''}
                     {unitCost !== null
-                      ? ` at €${unitCost.toFixed(4)} / ${ingredient?.unit}`
+                      ? ` at ${fmtUnitCost(unitCost)} / ${ingredient?.unit}`
                       : <span className="text-amber-600"> · no cost available</span>}
                   </p>
                   {line.notes && <p className="text-xs text-gray-400 mt-0.5">{line.notes}</p>}
@@ -459,10 +459,10 @@ export default function RecipePage() {
                           {parseFloat(line.quantity)} {ingredient?.unit || ''}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
-                          {unitCost !== null ? `€${unitCost.toFixed(4)} / ${ingredient?.unit}` : <span className="text-amber-600">No cost available</span>}
+                          {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${ingredient?.unit}` : <span className="text-amber-600">No cost available</span>}
                         </td>
                         <td className="px-4 py-3 font-medium text-gray-900">
-                          {lineCost !== null ? `€${lineCost.toFixed(2)}` : '—'}
+                          {lineCost !== null ? `${fmtMoney(lineCost)}` : '—'}
                         </td>
                         <td className="px-4 py-3 text-gray-500">{line.notes || '—'}</td>
                         <td className="px-4 py-3">
@@ -502,7 +502,7 @@ export default function RecipePage() {
               <div className="bg-app-bg rounded-lg p-4 mb-3">
                 <p className={`${captionClass} mb-1`}>Cost per {product?.unit}</p>
                 <p className="font-serif text-3xl font-bold text-gray-900 leading-none">
-                  {summary.perUnit !== null ? `€${summary.perUnit.toFixed(4)}` : '—'}
+                  {summary.perUnit !== null ? `${fmtUnitCost(summary.perUnit)}` : '—'}
                 </p>
               </div>
               <div>

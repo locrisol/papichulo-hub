@@ -14,6 +14,7 @@
 // value is worked out again on save, but seeing it immediately catches a units
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
+import { fmtUnitCost } from '../lib/format'
 import { labelClass } from '../lib/controlStyles'
 import { numberField } from '../lib/numberInput'
 import { perUnitPreview } from '../lib/productPrice'
@@ -114,7 +115,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
           <div className="col-span-2">
             <p className="text-xs text-gray-500">
               {previewPerUnit !== null
-                ? `Calculated cost per ${unit}: €${previewPerUnit.toFixed(4)}`
+                ? `Calculated cost per ${unit}: ${fmtUnitCost(previewPerUnit)}`
                 : `Cost per ${unit || 'unit'} will be calculated automatically when you fill both fields.`}
             </p>
           </div>

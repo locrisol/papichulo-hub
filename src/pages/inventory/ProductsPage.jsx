@@ -1,3 +1,4 @@
+import { fmtUnitCost } from '../../lib/format'
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -854,8 +855,8 @@ export default function ProductsPage() {
       // Null means we could not work it out: a MIX with an ingredient that has
       // no price, or a bought product with no preferred price set.
       cost: p.is_mix
-        ? (mixResult?.cost != null ? `€${mixResult.cost.toFixed(4)}` : null)
-        : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : null),
+        ? (mixResult?.cost != null ? fmtUnitCost(mixResult.cost) : null)
+        : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : null),
       weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
     }
   }
@@ -1366,9 +1367,9 @@ export default function ProductsPage() {
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                         {p.is_mix
                           ? (mixResult?.cost !== null
-                              ? `€${mixResult.cost.toFixed(4)}`
+                              ? fmtUnitCost(mixResult.cost)
                               : <span className="text-amber-600 text-xs">Incomplete</span>)
-                          : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : '—')}
+                          : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}

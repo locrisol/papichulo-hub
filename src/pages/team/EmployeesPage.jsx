@@ -1,3 +1,4 @@
+import { fmtMoney } from '../../lib/format'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -393,7 +394,7 @@ export default function EmployeesPage() {
                                             <dd className="text-right text-gray-900 font-medium">
                                                 {employee.hourly_rate == null
                                                     ? <span className="text-gray-400">-</span>
-                                                    : `€${Number(employee.hourly_rate).toFixed(2)}`}
+                                                    : `${fmtMoney(Number(employee.hourly_rate))}`}
                                             </dd>
                                         </div>
                                     </dl>
@@ -536,7 +537,7 @@ export default function EmployeesPage() {
                                             <td className="px-3 py-2 text-right whitespace-nowrap text-gray-700">
                                                 {employee.hourly_rate == null
                                                     ? <span className="text-gray-300">—</span>
-                                                    : `€${Number(employee.hourly_rate).toFixed(2)}`}
+                                                    : `${fmtMoney(Number(employee.hourly_rate))}`}
                                             </td>
                                             <td className="px-3 py-2">
                                                 <RowActions label={employee.full_name} {...rowActionList(employee)} />

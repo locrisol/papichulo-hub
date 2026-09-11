@@ -26,6 +26,29 @@ export function fmtMoney(n) {
   return (value < 0 && !roundsToNothing ? '-' : '') + '€' + text
 }
 
+// The cost of one unit, to four decimals. e.g. 6.4875 → "€6.4875"
+//
+// A separate helper because two decimals is genuinely not enough here and
+// rounding to it would be wrong, not just coarse. A tortilla at €0.3033 each
+// reads as €0.30, and a dish using thirty of them is then costed eleven cent
+// light every time. Four decimals is what the prices are stored at.
+//
+// It exists mainly so nothing is tempted to write the euro sign by hand again.
+// Five files were building their own money with a template string, which is how
+// the app ended up printing €1,234.56 on the dashboard and €1234.56 on a menu
+// item: toFixed has no thousands separator and nobody notices until the figures
+// get big enough to need one.
+export function fmtUnitCost(n) {
+  if (n == null || isNaN(n)) return '—'
+  const value = Number(n)
+  const text = Math.abs(value).toLocaleString('en-IE', {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  })
+  const roundsToNothing = /^[0.,\s]*$/.test(text)
+  return (value < 0 && !roundsToNothing ? '-' : '') + '€' + text
+}
+
 // Quantity: up to 3 decimals, trailing zeros stripped, with thousands
 // separators. e.g. 11.799999 → "11.8", 1200 → "1,200", 100 → "100"
 export function fmtQty(n) {

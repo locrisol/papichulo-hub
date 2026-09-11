@@ -13,7 +13,7 @@ import AddOptions from '../../components/menu/AddOptions'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, fmtUnitCost } from '../../lib/format'
 import BackButton from '../../components/BackButton'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -762,7 +762,7 @@ export default function MenuItemPage() {
                 <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
                   {packagingCost === null
                     ? 'Counted in the cost'
-                    : `€${packagingCost.toFixed(2)} of the cost`}
+                    : `${fmtMoney(packagingCost)} of the cost`}
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -1095,17 +1095,17 @@ function ComponentTable({
                           : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
-                        {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
+                        {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {lineCost === null ? '—' : counting.has(c.id) ? (
-                          `€${lineCost.toFixed(2)}`
+                          fmtMoney(lineCost)
                         ) : (
                           // Shown rather than hidden. What the other options
                           // come to is worth seeing, and a blank here would
                           // read as a line that costs nothing.
                           <span className="font-normal text-gray-400">
-                            €{lineCost.toFixed(2)}
+                            {fmtMoney(lineCost)}
                             <span className="block text-xs">not the most expensive</span>
                           </span>
                         )}

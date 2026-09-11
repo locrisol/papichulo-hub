@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, fmtUnitCost } from '../../lib/format'
 import { priceProblem, pricePayload } from '../../lib/productPrice'
 import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
@@ -235,7 +235,7 @@ export default function ProductPricesPage() {
                 : 'The product keeps whichever price is preferred.',
             details: [
                 { label: 'Supplier', value: getSupplierName(price.supplier_id) },
-                { label: 'Per unit', value: `€${parseFloat(price.price_per_unit).toFixed(4)}` },
+                { label: 'Per unit', value: fmtUnitCost(parseFloat(price.price_per_unit)) },
             ],
             confirmLabel: 'Remove price',
             tone: 'danger',
@@ -334,7 +334,7 @@ export default function ProductPricesPage() {
                                     {getSupplierName(p.supplier_id)}
                                 </span>
                                 <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                                    €{parseFloat(p.price_per_unit).toFixed(4)}
+                                    {fmtUnitCost(parseFloat(p.price_per_unit))}
                                 </span>
                             </div>
                             <div className="flex items-baseline justify-between gap-3 mt-0.5">
@@ -413,11 +413,11 @@ export default function ProductPricesPage() {
                                         <td className="px-4 py-3 text-gray-500">{p.supplier_code || '—'}</td>
                                         <td className="px-4 py-3 text-gray-500">
                                             {p.purchase_type === 'case'
-                                                ? `${parseFloat(p.units_per_case)} ${product?.unit} @ €${parseFloat(p.price_per_case).toFixed(2)}`
+                                                ? `${parseFloat(p.units_per_case)} ${product?.unit} @ ${fmtMoney(parseFloat(p.price_per_case))}`
                                                 : '—'}
                                         </td>
                                         <td className="px-4 py-3 font-medium text-gray-900">
-                                            €{parseFloat(p.price_per_unit).toFixed(4)}
+                                            {fmtUnitCost(parseFloat(p.price_per_unit))}
                                         </td>
                                         <td className="px-4 py-3">
                                             {p.is_preferred ? (

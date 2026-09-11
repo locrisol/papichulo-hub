@@ -1,3 +1,4 @@
+import { fmtMoney } from '../../lib/format'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -544,14 +545,14 @@ export default function MenuItemsPage() {
                             <dt className="text-gray-500">Cost</dt>
                             <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                               {cost !== null
-                                ? `€${cost.toFixed(2)}`
+                                ? fmtMoney(cost)
                                 : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Price (gross)</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">
                                 (VAT {parseFloat(item.vat_rate)}%)
                               </span>
@@ -560,7 +561,7 @@ export default function MenuItemsPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Net</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
@@ -568,7 +569,7 @@ export default function MenuItemsPage() {
                             <dd className="text-right">
                               {m ? (
                                 <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                  €{m.margin.toFixed(2)}
+                                  {fmtMoney(m.margin)}
                                   <span className="text-xs ml-1">
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
                                   </span>
@@ -646,20 +647,20 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              {cost !== null ? `€${cost.toFixed(2)}` : <span className="text-amber-600 text-xs">Incomplete</span>}
+                              {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </td>
                             <td className="px-4 py-3">
                               {m ? (
                                 <>
                                   <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                    €{m.margin.toFixed(2)}
+                                    {fmtMoney(m.margin)}
                                   </span>
                                   <span className={`text-xs ml-1 ${marginColour(m.marginPct)}`}>
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
