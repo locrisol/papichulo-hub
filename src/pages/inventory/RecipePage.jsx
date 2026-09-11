@@ -6,7 +6,8 @@ import { calculateMixCost } from '../../lib/mixCost'
 import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, card, rowButton } from '../../lib/controlStyles'
+import { fmtMoney } from '../../lib/format'
+import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
@@ -333,22 +334,28 @@ export default function RecipePage() {
           How much finished {product?.name || 'product'} one batch of this recipe produces,
           measured in {product?.unit || 'the product unit'}.
         </p>
-        <div className="flex items-center gap-3">
-          <input
-            {...numberField({
-              value: batchYieldInput,
-              onChange: setBatchYieldInput,
-            })}
-            placeholder="e.g. 10"
-            className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white w-40"
-          />
-          <span className="text-sm text-gray-600">{product?.unit}</span>
+        {/* The box and its unit on one line, the button under them on a phone
+            and beside them from sm. All three across 390px left the button
+            hanging off the edge, and it is the one thing here you have to
+            press. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <input
+              {...numberField({
+                value: batchYieldInput,
+                onChange: setBatchYieldInput,
+              })}
+              placeholder="e.g. 10"
+              className={`${fieldClass} flex-1 sm:w-40 sm:flex-none`}
+            />
+            <span className="text-sm text-gray-600 whitespace-nowrap">{product?.unit}</span>
+          </div>
           <button
             onClick={saveBatchYield}
             disabled={batchYieldSaving}
-            className="px-3 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            className="w-full sm:w-auto px-4 py-2 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
           >
-            {batchYieldSaving ? 'Saving...' : 'Save Batch Yield'}
+            {batchYieldSaving ? 'Saving...' : 'Save batch yield'}
           </button>
           {batchYieldMessage && (
             <span className={`text-xs ${batchYieldMessage === 'Saved' ? 'text-green-700' : 'text-red-600'}`}>
@@ -383,7 +390,49 @@ export default function RecipePage() {
         </div>
       ) : (
         <>
-          <div className={tableCard}>
+          {/* A card each on a phone, the table from sm up. Six columns across
+              390px left the ingredient name wrapping inside about ninety
+              pixels while the line cost sat off the right hand edge, so the
+              two things you actually read were the two hardest to get at. */}
+          <div className="sm:hidden space-y-2">
+            {recipeLines.filter(line => line.mix_product_id === id).map(line => {
+              const ingredient = getProduct(line.ingredient_product_id)
+              const unitCost = getIngredientUnitCost(ingredient)
+              const lineCost = getLineCost(line)
+              return (
+                <div key={line.id} className="rounded-lg border border-border bg-white p-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {ingredient ? ingredient.name : <span className="text-red-600">Missing product</span>}
+                    </span>
+                    <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                      {lineCost !== null ? fmtMoney(lineCost) : '—'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted mt-0.5">
+                    {parseFloat(line.quantity)} {ingredient?.unit || ''}
+                    {unitCost !== null
+                      ? ` at €${unitCost.toFixed(4)} / ${ingredient?.unit}`
+                      : <span className="text-amber-600"> · no cost available</span>}
+                  </p>
+                  {line.notes && <p className="text-xs text-gray-400 mt-0.5">{line.notes}</p>}
+                  <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                    <button
+                      onClick={() => editingLine?.id === line.id ? resetForm() : startEdit(line)}
+                      className={rowButton('edit')}
+                    >
+                      {editingLine?.id === line.id ? 'Cancel' : 'Edit'}
+                    </button>
+                    <button onClick={() => removeLine(line)} className={rowButton('danger')}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className={`hidden sm:block ${tableCard}`}>
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadRow}>
@@ -442,25 +491,34 @@ export default function RecipePage() {
 
           {summary && (
             <div className={`${card} p-6 mt-6`}>
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Recipe Summary</h3>
-              <div className="grid grid-cols-3 gap-6">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Cost per Batch</p>
-                  <p className="text-2xl font-semibold text-gray-900">
-                    {summary.total !== null ? `€${summary.total.toFixed(2)}` : '—'}
-                  </p>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Recipe summary</h3>
+
+              {/* The cost per unit is what this panel is for: it is the figure
+                  every menu item using this mix is costed from. The batch total
+                  and the yield are the two numbers it was divided out of, so
+                  they read as the working underneath rather than as three equal
+                  columns squeezed into 130 pixels each. Same shape as the Menu
+                  Item summary, for the same reason. */}
+              <div className="bg-app-bg rounded-lg p-4 mb-3">
+                <p className={`${captionClass} mb-1`}>Cost per {product?.unit}</p>
+                <p className="font-serif text-3xl font-bold text-gray-900 leading-none">
+                  {summary.perUnit !== null ? `€${summary.perUnit.toFixed(4)}` : '—'}
+                </p>
+              </div>
+              <div>
+                <div className="flex justify-between gap-3 text-sm py-2 border-b border-border">
+                  <span className="text-muted">Total cost per batch</span>
+                  <span className="font-semibold text-gray-900 tabular-nums whitespace-nowrap">
+                    {summary.total !== null ? fmtMoney(summary.total) : '—'}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Batch Yield</p>
-                  <p className="text-2xl font-semibold text-gray-900">
-                    {summary.batchYield ? `${summary.batchYield} ${product?.unit}` : <span className="text-amber-600 text-base">Not set</span>}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Cost per {product?.unit}</p>
-                  <p className="text-2xl font-semibold text-gray-900">
-                    {summary.perUnit !== null ? `€${summary.perUnit.toFixed(4)}` : '—'}
-                  </p>
+                <div className="flex justify-between gap-3 text-sm py-2">
+                  <span className="text-muted">Batch yield</span>
+                  <span className="font-semibold text-gray-900 tabular-nums whitespace-nowrap">
+                    {summary.batchYield
+                      ? `${summary.batchYield} ${product?.unit}`
+                      : <span className="text-amber-600">Not set</span>}
+                  </span>
                 </div>
               </div>
               {summary.status === 'missing_price' && (

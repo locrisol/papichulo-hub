@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
+import { fmtMoney } from '../../lib/format'
 import { priceProblem, pricePayload } from '../../lib/productPrice'
 import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
@@ -308,7 +309,75 @@ export default function ProductPricesPage() {
                     </p>
                 </div>
             ) : (
-                <div className={tableCard}>
+                <>
+                {/* One card per supplier on a phone, the table from sm up.
+
+                    Seven columns will not fit on a 390px screen at any setting,
+                    so it was a sideways scroll, and the column furthest off the
+                    edge was the cost per unit: the one figure the page exists to
+                    show. A card puts the supplier and that cost on the same
+                    line, which is the comparison actually being made, and the
+                    pack and code underneath where they belong.
+
+                    The table stays exactly as it was above sm, because reading
+                    four suppliers down a column really is easier there. */}
+                <div className="sm:hidden space-y-2">
+                    {prices.map(p => (
+                        <div
+                            key={p.id}
+                            className={`rounded-lg border p-3 ${p.is_preferred
+                                ? 'border-green-700 bg-green-50'
+                                : 'border-border bg-white'}`}
+                        >
+                            <div className="flex items-baseline justify-between gap-3">
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {getSupplierName(p.supplier_id)}
+                                </span>
+                                <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                                    €{parseFloat(p.price_per_unit).toFixed(4)}
+                                </span>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-3 mt-0.5">
+                                <span className="text-xs text-muted">
+                                    {p.purchase_type === 'case'
+                                        ? `Case · ${parseFloat(p.units_per_case)} ${product?.unit} @ ${fmtMoney(p.price_per_case)}`
+                                        : 'Loose'}
+                                </span>
+                                <span className="text-xs text-muted whitespace-nowrap">
+                                    per {product?.unit || 'unit'}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                                {p.supplier_code || 'No supplier code'}
+                            </p>
+
+                            {p.is_preferred ? (
+                                <p className="text-xs font-semibold text-green-700 mt-2">★ Preferred</p>
+                            ) : (
+                                <button onClick={() => setAsPreferred(p)} className={`${rowButton('good')} mt-2`}>
+                                    Set as preferred
+                                </button>
+                            )}
+
+                            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                                <button
+                                    onClick={() => editingPrice?.id === p.id ? resetForm() : startEdit(p)}
+                                    className={rowButton('edit')}
+                                >
+                                    {editingPrice?.id === p.id ? 'Cancel' : 'Edit'}
+                                </button>
+                                <button onClick={() => setFormatsForPriceId(p.id)} className={rowButton()}>
+                                    Formats
+                                </button>
+                                <button onClick={() => removePrice(p)} className={rowButton('danger')}>
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`hidden sm:block ${tableCard}`}>
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -390,6 +459,7 @@ export default function ProductPricesPage() {
                         </tbody>
                     </table>
                 </div>
+                </>
             )}
             {/* The pack formats open in a dialog too, for the same reason as
                 editing: pushed into the table they were hard to tell apart from
