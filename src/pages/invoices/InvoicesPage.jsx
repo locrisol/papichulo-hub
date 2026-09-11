@@ -6,7 +6,8 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton, jumpButton, jumpLabel } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import InvoiceForm from '../../components/InvoiceForm'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
@@ -111,9 +112,18 @@ export default function InvoicesPage() {
     // kept as a second copy, so it cannot go stale if the list reloads.
     const editingInvoice = invoices.find(i => i.id === editingId) || null
 
-    // Which week the list below is showing. Follows the date on the add form, so
-    // entering an invoice from last week shows you last week's invoices.
-    const weekStart = weekStartOf(form.invoiceDate)
+    // Which week the list below is showing.
+    //
+    // This used to be worked out from the date on the add form and nothing
+    // else, which meant the only way to look at another week was to type an
+    // invoice date inside it. Every other screen in the app has a week selector
+    // and this one had a side effect.
+    //
+    // It is its own state now, and the two still move together, because a form
+    // saying one week while the list shows another is worse than either problem
+    // it would solve. Neither wins: changing the week carries the form's date
+    // into it, and typing a date in another week carries the list to that week.
+    const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const restaurantId = activeRestaurant?.id
 
     useEffect(() => {
@@ -155,6 +165,24 @@ export default function InvoicesPage() {
 
     function setFormField(field, value) {
         setForm(prev => ({ ...prev, [field]: value }))
+        // Typing a date in another week takes the list with it, which is what
+        // the page did before there was a selector and is still what somebody
+        // entering last Friday's invoice wants.
+        if (field === 'invoiceDate' && value) {
+            const week = weekStartOf(value)
+            if (week !== weekStart) setWeekStart(week)
+        }
+    }
+
+    // Moving the week takes the form's date with it, onto the same day of the
+    // new week. Landing on a Tuesday and getting Tuesday back is worth more
+    // than landing on the first of the week every time, because invoices from
+    // one supplier tend to arrive on the same day.
+    function goToWeek(newStart) {
+        const offset = Math.max(0, Math.min(6,
+            Math.round((new Date(form.invoiceDate) - new Date(weekStart)) / 86400000)))
+        setWeekStart(newStart)
+        setForm(prev => ({ ...prev, invoiceDate: addDays(newStart, offset) }))
     }
 
     function setEditField(field, value) {
@@ -335,6 +363,29 @@ export default function InvoicesPage() {
 
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+
+            {/* The week, the same control the other eight screens use. */}
+            <div className={`${card} p-4 mb-4`}>
+                <DateStepper
+                    onBack={() => goToWeek(addDays(weekStart, -7))}
+                    onNext={() => goToWeek(addDays(weekStart, 7))}
+                    backLabel="Previous week"
+                    nextLabel="Next week"
+                    jump={(
+                        <button
+                            type="button"
+                            onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            className={jumpButton(weekStart === weekStartOf(todayISO()))}
+                        >
+                            {jumpLabel(weekStart === weekStartOf(todayISO()))}
+                        </button>
+                    )}
+                >
+                    <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
+                        {shortDate(weekStart)} - {shortDate(addDays(weekStart, 6))}
+                    </span>
+                </DateStepper>
+            </div>
 
             {/* Entry form */}
             <div className={`${card} overflow-hidden mb-4`}>
