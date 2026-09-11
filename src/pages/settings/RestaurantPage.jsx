@@ -188,27 +188,22 @@ export default function RestaurantPage() {
                             {TARGET_TYPES.map(type => {
                                 const s = targetSummary(type)
                                 return (
+                                    // The name and the figure on one line, the
+                                    // sentence about it underneath.
+                                    //
+                                    // This was a single row with the wording on
+                                    // the left carrying min-w-0 and the figure
+                                    // and button pinned flex-shrink-0 on the
+                                    // right. Since only the left was allowed to
+                                    // give way, on a phone it gave way to about
+                                    // one word, and "The restaurant default.
+                                    // Nothing has been set for a particular
+                                    // week" came out reading straight down the
+                                    // page. Same fault as the actions list on
+                                    // the weekly report, same fix.
                                     <div key={type.key} className="px-4 py-3">
                                         <div className="flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-900">{type.label}</p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {s.current ? (
-                                                        s.current.until
-                                                            ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
-                                                            : `Running since the week of ${shortDate(s.current.from)}`
-                                                    ) : (
-                                                        'The restaurant default. Nothing has been set for a particular week'
-                                                    )}
-                                                </p>
-                                                {s.upcoming.length > 0 && (
-                                                    <p className="text-xs text-blue-600 mt-0.5">
-                                                        {s.upcoming.length === 1
-                                                            ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
-                                                            : `${s.upcoming.length} more changes already set for later weeks`}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            <p className="text-sm font-medium text-gray-900">{type.label}</p>
                                             <div className="flex items-center gap-3 flex-shrink-0">
                                                 <span className="font-serif text-xl font-bold text-gray-900">
                                                     {s.value != null ? `${s.value}%` : '-'}
@@ -222,6 +217,22 @@ export default function RestaurantPage() {
                                                 </button>
                                             </div>
                                         </div>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {s.current ? (
+                                                s.current.until
+                                                    ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
+                                                    : `Running since the week of ${shortDate(s.current.from)}`
+                                            ) : (
+                                                'The restaurant default. Nothing has been set for a particular week'
+                                            )}
+                                        </p>
+                                        {s.upcoming.length > 0 && (
+                                            <p className="text-xs text-blue-600 mt-0.5">
+                                                {s.upcoming.length === 1
+                                                    ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
+                                                    : `${s.upcoming.length} more changes already set for later weeks`}
+                                            </p>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -352,7 +363,11 @@ export default function RestaurantPage() {
                 <div>
                     {/* Sales platforms management */}
                     <div className={`${card} p-6 mb-4`}>
-                        <div className="flex items-center justify-between">
+                        {/* Same shape as Opening hours below, which already had
+                            the gap and the wrap. Without them the sentence was
+                            squeezed against a button that refuses to wrap, and
+                            on a phone it came out a word per line. */}
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
                                 <p className="text-xs text-gray-500 mt-1">
