@@ -5,7 +5,7 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
@@ -177,7 +177,7 @@ export default function DayNoteDialog({
                             type="checkbox"
                             checked={form.isClosed}
                             onChange={e => set('isClosed', e.target.checked)}
-                            className="w-4 h-4 mt-0.5 accent-accent"
+                            className={`${checkbox} mt-0.5`}
                         />
                         <span>
                             <span className="block text-sm font-medium text-gray-900">Closed all day</span>
@@ -193,7 +193,7 @@ export default function DayNoteDialog({
                             type="checkbox"
                             checked={form.isBankHoliday}
                             onChange={e => set('isBankHoliday', e.target.checked)}
-                            className="w-4 h-4 mt-0.5 accent-accent"
+                            className={`${checkbox} mt-0.5`}
                         />
                         <span>
                             <span className="block text-sm font-medium text-gray-900">Bank holiday</span>

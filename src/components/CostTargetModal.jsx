@@ -8,7 +8,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { numberField } from '../lib/numberInput'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
-import { modalFooter, removeButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, checkbox } from '../lib/controlStyles'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -157,7 +157,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                         <label className="flex items-center gap-3 cursor-pointer mb-3">
                             <input type="checkbox" checked={isTemporary}
                                 onChange={e => setIsTemporary(e.target.checked)}
-                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
+                                className={checkbox} />
                             <div>
                                 <span className="text-sm font-medium text-gray-900">Only for a while</span>
                                 <p className="text-xs text-gray-500 mt-0.5">

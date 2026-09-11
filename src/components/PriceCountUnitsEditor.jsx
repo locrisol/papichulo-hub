@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { orderFormats } from '../lib/countUnits'
-import { rowButton } from '../lib/controlStyles'
+import { rowButton, checkbox } from '../lib/controlStyles'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
 //
@@ -198,7 +198,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     checked={allowLoose}
                     onChange={toggleLoose}
                     disabled={!looseLoaded}
-                    className="accent-accent"
+                    className={checkbox}
                 />
                 <span className="text-sm text-gray-700">
                     Allow loose counting in {unit} (for opened boxes / partial stock)

@@ -14,7 +14,7 @@ import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
 import { numberField } from '../../lib/numberInput'
-import { card, rowButton } from '../../lib/controlStyles'
+import { card, rowButton, checkbox } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -329,7 +329,7 @@ export default function RestaurantPage() {
                                         type="checkbox"
                                         checked={formData.forecasting_enabled}
                                         onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
-                                        className="w-4 h-4 accent-accent"
+                                        className={checkbox}
                                     />
                                     <div>
                                         <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>

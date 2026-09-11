@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -914,7 +914,7 @@ export default function WeeklySalesPage() {
                                             type="checkbox"
                                             checked={days[d]?.isClosed ?? false}
                                             onChange={() => toggleClosed(d)}
-                                            className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                            className={checkbox}
                                             aria-label={`Mark ${d} as closed`}
                                         />
                                     </td>

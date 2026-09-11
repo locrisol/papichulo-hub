@@ -10,6 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
+import { checkbox } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -247,7 +248,7 @@ export default function ProductForm({
                       ? [...(formData.also_in || []), section]
                       : (formData.also_in || []).filter(x => x !== section),
                   )}
-                  className="w-4 h-4 accent-accent"
+                  className={checkbox}
                 />
                 {section}
               </label>
@@ -266,7 +267,7 @@ export default function ProductForm({
             type="checkbox"
             checked={formData.is_mix}
             onChange={e => onChange('is_mix', e.target.checked)}
-            className="w-4 h-4 accent-accent"
+            className={checkbox}
           />
           <span className="text-sm text-gray-700">This is a MIX product (house-made, cost calculated from recipe)</span>
         </label>
@@ -282,7 +283,7 @@ export default function ProductForm({
             type="checkbox"
             checked={(formData.category || 'ingredient') === 'drink'}
             onChange={e => onChange('category', e.target.checked ? 'drink' : 'ingredient')}
-            className="w-4 h-4 accent-accent"
+            className={checkbox}
           />
           <span className="text-sm text-gray-700">
             This is a drink (counted as normal, never an ingredient in a MIX)
@@ -575,7 +576,7 @@ export default function ProductForm({
                         type="checkbox"
                         checked={formats.allowLoose}
                         onChange={e => onFormatsChange({ ...formats, allowLoose: e.target.checked })}
-                        className="w-4 h-4 accent-accent"
+                        className={checkbox}
                       />
                       <span className="text-sm text-gray-700">
                         Also count loose {formData.unit}

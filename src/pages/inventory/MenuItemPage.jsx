@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
@@ -941,7 +941,7 @@ function ComponentForm({
               type="checkbox"
               checked={!!formData.no_quantity}
               onChange={e => onChange('no_quantity', e.target.checked)}
-              className="w-4 h-4 accent-accent mt-0.5"
+              className={`${checkbox} mt-0.5`}
             />
             <span className="text-sm text-gray-700">
               No specific quantity
@@ -1001,7 +1001,7 @@ function ComponentForm({
             type="checkbox"
             checked={!!formData.list_separately}
             onChange={e => onChange('list_separately', e.target.checked)}
-            className="w-4 h-4 accent-accent mt-0.5"
+            className={`${checkbox} mt-0.5`}
           />
           <span className="text-sm text-gray-700">
             List it separately on the allergen sheet
