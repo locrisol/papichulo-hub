@@ -37,6 +37,16 @@ function num(v) {
     return isNaN(n) ? 0 : n
 }
 
+// The colour of a figure on the gross profit run down, from the same verdict
+// the cards at the top of the page use. Grey where there is no target to judge
+// it against, which is waste and nothing else.
+const LINE_TONE = {
+    green: 'text-green-700',
+    amber: 'text-amber-700',
+    red: 'text-red-600',
+    none: 'text-muted',
+}
+
 // One cost, as a percentage of net sales, against its target.
 //
 // The bar fills toward the target rather than toward 100%, so being at 29 of 30
@@ -451,17 +461,48 @@ export default function CostDashboardPage() {
                             <span className="text-muted">Net sales</span>
                             <span className="font-semibold text-gray-900 whitespace-nowrap">{fmtMoney(netSales)}</span>
                         </div>
+                        {/* Each cost against the target already in force for this
+                            week, in the colour the cards above it use.
+
+                            Every line used to be red, which told you nothing you
+                            did not know from the minus sign: they are costs, all
+                            money going out. The one week where food is comfortably
+                            inside target and packaging is at four percent against
+                            two and a half looked exactly like the week where it is
+                            the other way round, and the line worth acting on was
+                            the same colour as the three that are fine.
+
+                            The share is here for the same reason. €586 means
+                            nothing without the sales it came out of, and a week
+                            where sales doubled would show every cost rising and
+                            nothing wrong. Waste stays grey rather than green
+                            because there is no configurable target for it, and a
+                            colour would be inventing one. */}
                         {[
-                            { label: 'Food purchases', value: foodCost },
-                            { label: 'Packaging and cleaning', value: packagingCost },
-                            { label: 'Labour', value: labourCost },
-                            { label: 'Waste', value: wasteCost },
-                        ].map(r => (
-                            <div key={r.label} className="flex justify-between gap-3 text-sm py-2 border-b border-border">
-                                <span className="text-muted">{r.label}</span>
-                                <span className="font-semibold text-red-600 whitespace-nowrap">− {fmtMoney(r.value)}</span>
-                            </div>
-                        ))}
+                            { label: 'Food purchases', value: foodCost, target: foodTarget },
+                            { label: 'Packaging and cleaning', value: packagingCost, target: packagingTarget },
+                            { label: 'Labour', value: labourCost, target: labourTarget },
+                            { label: 'Waste', value: wasteCost, target: null },
+                        ].map(r => {
+                            const share = pct(r.value)
+                            const tone = LINE_TONE[r.target ? statusFor(share, r.target) : 'none']
+                            return (
+                                <div key={r.label} className="flex justify-between gap-3 text-sm py-2 border-b border-border">
+                                    <span className="text-muted">
+                                        {r.label}
+                                        {share != null && (
+                                            <span className="block text-xs text-gray-400 tabular-nums">
+                                                {share.toFixed(1)}% of net
+                                                {r.target ? ` · target ${r.target}%` : ' · no target set'}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className={`font-semibold whitespace-nowrap tabular-nums ${tone}`}>
+                                        − {fmtMoney(r.value)}
+                                    </span>
+                                </div>
+                            )
+                        })}
                         <div className="flex justify-between gap-3 text-base py-3 font-bold">
                             <span className="text-gray-900">Gross profit</span>
                             <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
