@@ -374,7 +374,7 @@ export default function SalesPage() {
                         commission and VAT differently.
                     </p>
                 )}
-                <div className="grid grid-cols-3 gap-3 p-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
                             <label className={labelCls}>{p.name}</label>
@@ -491,7 +491,7 @@ export default function SalesPage() {
                                     kinds of figure, so they are set apart with
                                     the same two colours the weekly spreadsheet
                                     gives them. */}
-                                <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
                                     {/* A step darker than the faint green a
                                         filled box gets, or the block reads as
                                         one big confirmation tick. */}
@@ -517,7 +517,7 @@ export default function SalesPage() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {shownTenders.map(t => (
                                         <div key={t.key}>
                                             <label className={labelCls}>
@@ -562,7 +562,7 @@ export default function SalesPage() {
                             'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
 
                         <div className={`${card} p-5 mb-3`}>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className={labelCls}>Staff food</label>
                                     <input

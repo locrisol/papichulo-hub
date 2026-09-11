@@ -72,7 +72,7 @@ export default function ProductForm({
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
           <input

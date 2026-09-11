@@ -119,7 +119,7 @@ export default function ShiftRequestDialog({
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []
 
     const timeRow = (from, setFrom, to, setTo) => (
-        <div className="grid grid-cols-2 gap-3 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             <div>
                 <label className={labelCls}>From</label>
                 <input type="time" value={from} onChange={e => setFrom(e.target.value)} className={fieldCls} />

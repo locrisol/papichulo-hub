@@ -13,6 +13,7 @@ import AddOptions from '../../components/menu/AddOptions'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
+import { fmtMoney } from '../../lib/format'
 import BackButton from '../../components/BackButton'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -33,6 +34,31 @@ import BackButton from '../../components/BackButton'
 
 const MARGIN_GREEN = 65
 const MARGIN_AMBER = 60
+
+// What the colour means, said in words.
+//
+// A number going amber tells you something is wrong with it and not what, and
+// on a phone the target it is being judged against is nowhere on the screen to
+// compare it with. Saying the target out loud costs one line and saves the trip
+// to Restaurant settings to remember what it was.
+function marginWords(pct) {
+  if (pct === null) return ''
+  if (pct >= MARGIN_GREEN) return `Above the ${MARGIN_GREEN}% this kitchen aims at`
+  if (pct >= MARGIN_AMBER) return `Under the ${MARGIN_GREEN}% this kitchen aims at`
+  return `Below the ${MARGIN_AMBER}% floor`
+}
+
+// One line of the working under the margin: what it is, and the figure.
+function SummaryLine({ label, value, tone, muted, last }) {
+  return (
+    <div className={`flex justify-between gap-3 text-sm py-2 ${last ? '' : 'border-b border-border'}`}>
+      <span className="text-muted">{label}</span>
+      <span className={`font-semibold tabular-nums whitespace-nowrap ${tone || (muted ? 'text-muted' : 'text-gray-900')}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
 
 const ALLERGEN_LABELS = {
   gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
@@ -497,7 +523,7 @@ export default function MenuItemPage() {
       {/* Header form: name, category, price, VAT, notes */}
       <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Details</h3>
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
             <input
@@ -761,34 +787,35 @@ export default function MenuItemPage() {
       {/* Summary */}
       <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Summary</h3>
-        <div className="grid grid-cols-5 gap-4">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Cost</p>
-            <p className="text-xl font-semibold text-gray-900">
-              {totalCost !== null ? `€${totalCost.toFixed(2)}` : <span className="text-amber-600 text-base">—</span>}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Price (gross)</p>
-            <p className="text-xl font-semibold text-gray-900">€{grossPrice.toFixed(2)}</p>
-            <p className="text-xs text-gray-400">VAT {vatRate.toFixed(1)}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Net Price</p>
-            <p className="text-xl font-semibold text-gray-900">€{netPrice.toFixed(2)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin</p>
-            <p className={`text-xl font-semibold ${marginColour(marginPct)}`}>
-              {margin !== null ? `€${margin.toFixed(2)}` : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin %</p>
-            <p className={`text-xl font-semibold ${marginColour(marginPct)}`}>
-              {marginPct !== null ? `${marginPct.toFixed(1)}%` : '—'}
-            </p>
-          </div>
+        {/* The margin percentage, and then the working.
+
+            This was five equal columns, which on a phone is about forty pixels
+            each: the headings ran into one another and Margin printed on top of
+            Margin %. Stacking five identical boxes would have fixed the
+            collision and kept the real problem, which is that the panel had not
+            decided what it was for.
+
+            The percentage is what it is for. It means something on its own,
+            where the euro margin does not: the same €3.73 is a healthy margin
+            on a side and a poor one on a burrito. So the percentage gets the
+            space, and the four figures it was worked out from become a short
+            list underneath, in the order you would check them. */}
+        <div className="bg-app-bg rounded-lg p-4 mb-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin</p>
+          <p className={`font-serif text-3xl font-bold leading-none ${marginColour(marginPct)}`}>
+            {marginPct !== null ? `${marginPct.toFixed(1)}%` : '—'}
+          </p>
+          {marginPct !== null && (
+            <p className={`text-sm mt-1 ${marginColour(marginPct)}`}>{marginWords(marginPct)}</p>
+          )}
+        </div>
+
+        <div>
+          <SummaryLine label="Margin in money" value={margin !== null ? fmtMoney(margin) : '—'} tone={marginColour(marginPct)} />
+          <SummaryLine label="Cost" value={totalCost !== null ? fmtMoney(totalCost) : '—'} tone={totalCost === null ? 'text-amber-600' : ''} />
+          <SummaryLine label="Price (gross)" value={fmtMoney(grossPrice)} />
+          <SummaryLine label={`VAT ${vatRate.toFixed(1)}%`} value={fmtMoney(grossPrice - netPrice)} muted />
+          <SummaryLine label="Net price" value={fmtMoney(netPrice)} last />
         </div>
         {totalCost === null && components.length > 0 && (
           <p className="text-xs text-amber-700 mt-3">
@@ -813,7 +840,16 @@ export default function MenuItemPage() {
                 : 'bg-gray-100 text-gray-500 border-gray-300'
             const label = state === 'contains' ? 'Contains' : state === 'may_contain' ? 'May Contain' : 'Not Present'
             return (
-              <div key={key} className={`px-3 py-2 rounded-lg border text-sm flex items-center justify-between ${colour}`}>
+              // The name over the state on a phone, side by side from small up.
+              // Two of these fit across a phone, and at that width Crustaceans
+              // and Not Present were pushed into each other with nothing
+              // between them, so the reader had to guess which word belonged to
+              // which allergen. The customer facing list was fixed for this
+              // months ago; this is the same chip and it was missed.
+              <div
+                key={key}
+                className={`px-3 py-2 rounded-lg border text-sm flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 ${colour}`}
+              >
                 <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
                 <span className="text-xs">{label}</span>
               </div>
@@ -873,7 +909,7 @@ function ComponentForm({
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Component</label>
           <ProductSelect

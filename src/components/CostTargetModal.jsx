@@ -166,7 +166,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                             </div>
                         </label>
 
-                        <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                             <div>
                                 <label className={labelCls}>From the week of</label>
                                 <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldCls} />
