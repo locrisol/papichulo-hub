@@ -29,14 +29,28 @@
  * widths the roster grid scrolls inside. Nothing about the layout changes, it
  * is the same page with a bigger foot rule.
  *
- * A percentage rather than a pixel size on purpose. 118.75% makes 1rem 19px on
+ * A percentage rather than a pixel size on purpose. 106.25% makes 1rem 17px on
  * a normal browser, and on a browser where somebody has already set a larger
  * default font it makes it that much larger again rather than replacing their
  * choice, which is the one thing a person who went and changed that setting
  * does not want.
+ *
+ * It was 118.75%, so 19px, and the note below used to argue that a phone should
+ * keep the full 19 because it is held closer and tapped rather than clicked.
+ * That was the wrong way round. The clamp underneath only starts at 768px, so
+ * the effect of keeping 19 on a phone was that the narrowest screen in the
+ * building ran the largest foot rule in the app: 390 pixels is 20.5rem at 19px
+ * and 22.9rem at 17. Three quarters of what was wrong with the app on a phone
+ * came down to those two and a half rem, because every padding, gap, field and
+ * heading is measured in them.
+ *
+ * 17 rather than 16 because the point was never to cram more in. It is the
+ * smallest step that gives two fields room to be one field with a sentence
+ * under it, and text at 17px is still comfortably above what anything else on
+ * a phone sets.
  */
 :root {
-  font-size: 118.75%;
+  font-size: 106.25%;
 }
 
 /* Except where the window has not got the room for it.
@@ -69,9 +83,10 @@
  * is bigger than it looks.
  *
  * Below 768px it does not apply, and that is the one deliberate step. Down
- * there the layout is not a table at all, it is a column of cards, so it is not
- * short of width in the way a squeezed table is, and a phone is held closer and
- * tapped rather than clicked. It keeps the full 19px.
+ * there the layout is not a table at all, it is a column of cards, so what it
+ * needs is not a foot rule that tracks the window but a fixed one that leaves
+ * room for a field and its label. That is the 106.25% above, and it is why a
+ * phone is now the one size in the app that does not move.
  */
 @media (min-width: 768px) {
   :root {
