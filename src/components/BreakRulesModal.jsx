@@ -92,15 +92,29 @@ export default function BreakRulesModal({ onClose }) {
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
+                {/* A rung reads as a sentence: 8 hours or more gives 60 min. It
+                    will not hold that on one line at 390px, the operator alone
+                    wants seven rem, so it wraps after the operator and "gives"
+                    carries the second line.
+
+                    The two number boxes are sized by a wrapper rather than by
+                    putting w-16 next to the shared field style, which already
+                    carries w-full. Two width classes of equal weight resolve by
+                    where they land in the compiled stylesheet, not by the order
+                    they are written in, and w-full happens to sit later: both
+                    boxes came out full width, one per line, with the words
+                    orphaned beside the wrong ones. */}
                 <div className="space-y-2 mb-3">
                     {rules.map((rule, i) => (
                         <div key={i} className="flex flex-wrap items-center gap-2">
-                            <input
-                                {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
-                                className={`${fieldClass} w-16 text-right`}
-                                aria-label="Hours"
-                                placeholder="8"
-                            />
+                            <div className="w-16">
+                                <input
+                                    {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
+                                    className={`${fieldClass} text-right`}
+                                    aria-label="Hours"
+                                    placeholder="8"
+                                />
+                            </div>
                             <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
                             <select
                                 value={rule.operator}
@@ -112,12 +126,15 @@ export default function BreakRulesModal({ onClose }) {
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
                             </select>
-                            <input
-                                {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
-                                className={`${fieldClass} w-16 text-right`}
-                                aria-label="Minutes"
-                                placeholder="60"
-                            />
+                            <span className="text-sm text-gray-500 whitespace-nowrap">gives</span>
+                            <div className="w-16">
+                                <input
+                                    {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
+                                    className={`${fieldClass} text-right`}
+                                    aria-label="Minutes"
+                                    placeholder="60"
+                                />
+                            </div>
                             <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
                             <button
                                 type="button"
