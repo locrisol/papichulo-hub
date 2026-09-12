@@ -1,5 +1,5 @@
 -- ======================================================================
--- Migration 002: the indexes the queries needed, and four timestamps that
+-- Migration 008: the indexes the queries needed, and four timestamps that
 -- had never moved
 --
 -- The first eighteen tables were created without a single index between

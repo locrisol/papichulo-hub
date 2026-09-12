@@ -1,5 +1,5 @@
 -- ======================================================================
--- Migration 001: the audit log remembers what the row was called again
+-- Migration 007: the audit log remembers what the row was called again
 --
 -- 055 added change_log.label and filled it with row_label(), which works
 -- out a human name for the row from whatever it has: a name, a full_name,

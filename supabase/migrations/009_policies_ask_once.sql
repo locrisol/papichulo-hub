@@ -1,5 +1,5 @@
 -- ======================================================================
--- Migration 003: every policy looks the caller up once, not once per row
+-- Migration 009: every policy looks the caller up once, not once per row
 --
 -- get_my_role and get_my_restaurant_id are STABLE, which means Postgres is
 -- allowed to call them once per query. It does not. A bare function call
