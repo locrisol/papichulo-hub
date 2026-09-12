@@ -267,32 +267,47 @@ export function segmentButton(isOn) {
         + (isOn ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900')
 }
 
-// The small × that removes a line or closes a dialog.
+// The small × that takes a line away.
 //
 // These were all written by hand and all came out as an eleven pixel glyph with
 // px-1 either side, which is a target about sixteen pixels across. A thumb is
 // nearer forty five, so on a phone every one of them was a guess, and the thing
-// beside it was usually a text box you did not want to be in.
+// beside it was usually a text box you did not want to be in. The target was
+// fixed first, and the look is this pass.
 //
-// The glyph stays small because a huge × is shouting. What changes is the space
-// around it: the button is a real target with the mark centred in it. Nothing
-// moves visually on a laptop, and on a phone it becomes something you can
-// actually hit.
+// A grey disc rather than a bare mark. Sitting in a row of bordered boxes, a
+// glyph on the page with no ground and no edge reads as a piece of text that
+// happens to be a cross, and it was the only control in some of those rows with
+// nothing around it at all. The disc is enough to say press me without adding a
+// third border to a row that already has two.
 //
-// -m-1.5 pulls the padding back out of the layout, so a row does not grow by
-// twelve pixels in every direction to hold a control that looks the same size
-// as it did before.
+// Grey and not red on purpose. Fifteen places use this and two of them are not
+// deletions: the × in Opening hours empties the two times to say the restaurant
+// is shut that day, and the row stays where it is. A bin or a red ground would
+// be telling those two a lie.
+//
+// It gives up the -m-1.5 the bare glyph used to carry, which pulled the padding
+// back out of the layout so a row would not grow to hold it. A control with a
+// ground of its own has to take its own space or it laps over whatever is
+// beside it. The rows that hold one are about thirteen pixels tighter for it,
+// which the tightest of them, the Opening hours week, has been measured
+// against: the two time boxes still have eighty nine pixels each and need
+// seventy seven.
 export const removeButton =
-    'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
-    + 'rounded-lg text-lg leading-none text-gray-400 transition-colors hover:text-red-600 hover:bg-red-50 '
-    + 'focus:outline-none focus:ring-2 focus:ring-accent'
+    'flex-shrink-0 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
+    + 'rounded-full bg-gray-100 text-lg leading-none text-gray-600 transition-colors '
+    + 'hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-accent'
 
 // The same control on a dark heading bar, which is only ever the close on a
-// dialog. Same size, different colours.
+// dialog. Same size and shape, different colours.
+//
+// This one keeps its negative margin. The heading bar is about fifty five
+// pixels tall and the button is thirty eight, so taking its own space would
+// push every dialog heading in the app out by the difference for no reason.
 export const closeButton =
     'flex-shrink-0 -m-1.5 p-1.5 min-w-[2.25rem] min-h-[2.25rem] inline-flex items-center justify-center '
-    + 'rounded-lg text-lg leading-none text-white/70 transition-colors hover:text-white hover:bg-white/15 '
-    + 'focus:outline-none focus:ring-2 focus:ring-white/60'
+    + 'rounded-full bg-white/10 text-lg leading-none text-white/80 transition-colors '
+    + 'hover:bg-white/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60'
 
 // The title at the top of a page.
 //

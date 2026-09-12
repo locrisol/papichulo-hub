@@ -234,10 +234,17 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                     className="border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
                             </div>
+                            {/* The other half of Add a change above, so it is
+                                the same kind of button. It was wearing the
+                                style the small crosses use, which is built for
+                                one glyph in a round target: five words in it
+                                came out oversized, with no edge and with the
+                                negative margins of a control a fifth the size,
+                                and with nothing for a screen reader either. */}
                             <button
                                 type="button"
                                 onClick={() => { setChanging(false); setFrom('') }}
-                                className={removeButton}
+                                className={secondaryButton}
                             >
                                 Remove this change
                             </button>
