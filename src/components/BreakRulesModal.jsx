@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter, removeButton, fieldClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // The break ladder.
@@ -92,57 +92,66 @@ export default function BreakRulesModal({ onClose }) {
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
-                {/* A rung is one sentence on two deliberate lines: the shift it
-                    catches, then the break it gives.
+                {/* A rung on two lines, and which two is the whole of it.
 
-                        At least  [ 8 ] hours
-                        gives     [ 60 ] min   ×
+                    The operator gets a line to itself with the remove beside
+                    it, then the two numbers underneath:
 
-                    Two lines chosen rather than left to wrap. Wrapping broke
-                    wherever the widths happened to land, which put "gives 60" on
-                    the first line and left "min" stranded on the second beside
-                    nothing. One row from sm up, where it all fits.
+                        [ At least | More than ]          x
+                        [ 8 ] hours  ->  [ 60 ] min
 
-                    The boxes are sized by a wrapper rather than by a width class
-                    beside the shared field style, which already carries w-full.
-                    Two width classes of equal weight resolve by where they sit
-                    in the compiled stylesheet rather than by the order they are
-                    written, and w-full lands later. */}
-                <div className="space-y-3 sm:space-y-2 mb-3">
+                    It is a switch rather than a dropdown because there are only
+                    ever two of them, and a dropdown that has to share a line
+                    with a number box and the word hours is given whatever width
+                    is left over rather than the width of its own longest
+                    option. On a phone that came out as "More tha", which is the
+                    one thing a control whose entire job is to say which of two
+                    rules applies cannot do. A switch filling the line splits it
+                    evenly and sizes its own words, so it cannot happen again
+                    however the wording changes.
+
+                    Both choices are also on show without opening anything,
+                    which matters here more than it usually would: at least and
+                    more than differ only at the exact number, and that is the
+                    corner somebody gets wrong.
+
+                    The boxes are sized by a wrapper rather than by a width
+                    class beside the shared field style, which already carries
+                    w-full. Two width classes of equal weight resolve by where
+                    they sit in the compiled stylesheet rather than by the order
+                    they are written, and w-full lands later. */}
+                <div className="space-y-3 mb-3">
                     {rules.map((rule, i) => (
-                        <div
-                            key={i}
-                            className="rounded-lg border border-border p-3 sm:border-0 sm:p-0
-                                grid grid-cols-[auto_1fr] items-center gap-2
-                                sm:flex sm:items-center"
-                        >
-                            {/* The first column takes its width from the select,
-                                and "gives" sits under it in the same column, so
-                                the two lines line up without anybody choosing a
-                                number.
-
-                                That matters here: a fixed width is a guess about
-                                how wide the longest option renders, and the
-                                guess was wrong, which is why More than came out
-                                as More tha. A grid measures it instead, and it
-                                keeps measuring if the wording ever changes.
-
-                                The select keeps w-full off the shared field
-                                style and fills the column. An auto track sizes
-                                to its item's content, treating a percentage
-                                width as auto while it works that out, so the
-                                column comes out as wide as the longest option
-                                and the select then fills it. */}
-                            <select
-                                value={rule.operator}
-                                onChange={e => set(i, 'operator', e.target.value)}
-                                className={fieldClass}
-                                aria-label="Which shifts this rung catches"
-                            >
-                                {OPERATORS.map(o => (
-                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                            </select>
+                        <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <div
+                                        className={segmentTrack}
+                                        role="group"
+                                        aria-label="Which shifts this rung catches"
+                                    >
+                                        {OPERATORS.map(o => (
+                                            <button
+                                                key={o.value}
+                                                type="button"
+                                                onClick={() => set(i, 'operator', o.value)}
+                                                aria-pressed={rule.operator === o.value}
+                                                className={segmentButton(rule.operator === o.value)}
+                                            >
+                                                {o.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => removeRung(i)}
+                                    className={removeButton}
+                                    aria-label="Remove this rung"
+                                >
+                                    &times;
+                                </button>
+                            </div>
 
                             <div className="flex items-center gap-2">
                                 <div className="w-16 flex-shrink-0">
@@ -154,11 +163,7 @@ export default function BreakRulesModal({ onClose }) {
                                     />
                                 </div>
                                 <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
-                            </div>
-
-                            <span className="text-sm text-gray-500 whitespace-nowrap">gives</span>
-
-                            <div className="flex items-center gap-2">
+                                <span className="text-gray-300" aria-hidden="true">&rarr;</span>
                                 <div className="w-16 flex-shrink-0">
                                     <input
                                         {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
@@ -168,14 +173,6 @@ export default function BreakRulesModal({ onClose }) {
                                     />
                                 </div>
                                 <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
-                                <button
-                                    type="button"
-                                    onClick={() => removeRung(i)}
-                                    className={`${removeButton} ml-auto sm:ml-0`}
-                                    aria-label="Remove this rung"
-                                >
-                                    ×
-                                </button>
                             </div>
                         </div>
                     ))}
