@@ -31,5 +31,13 @@ export default defineConfig({
     // .jsx as well as .js. It was .js only, so a component test would have been
     // collected by nothing and would have passed by not existing.
     include: ['src/**/*.test.{js,jsx}'],
+
+    // Node by default, because most of the tests are plain functions and a
+    // jsdom window for each of those is time spent for nothing. A component
+    // test asks for jsdom itself with a docblock at the top of the file:
+    //
+    //     // @vitest-environment jsdom
+    //
+    setupFiles: ['./src/test/setup.js'],
   },
 })
