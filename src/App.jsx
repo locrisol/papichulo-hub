@@ -14,11 +14,11 @@
 // scanning a QR code has no account and never will.
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import ProtectedRoute from '@/components/ProtectedRoute'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/auth/LoginPage'
 import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
-import RequireRole from '@/components/RequireRole'
+import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 import { useAuth } from '@/context/AuthContext'
 import { homeFor } from '@/lib/access'
@@ -43,7 +43,7 @@ const RecipePage = lazy(() => import('@/pages/inventory/RecipePage'))
 const AllergenPage = lazy(() => import('@/pages/inventory/AllergenPage'))
 const MenuItemsPage = lazy(() => import('@/pages/inventory/MenuItemsPage'))
 const MenuItemPage = lazy(() => import('@/pages/inventory/MenuItemPage'))
-const PublicAllergensPage = lazy(() => import('@/pages/PublicAllergensPage'))
+const PublicAllergensPage = lazy(() => import('@/pages/public/PublicAllergensPage'))
 const PublicAllergensPreviewPage = lazy(() => import('@/pages/inventory/PublicAllergensPreviewPage'))
 const StockTakesListPage = lazy(() => import('@/pages/inventory/StockTakesListPage'))
 const StockTakeCountPage = lazy(() => import('@/pages/inventory/StockTakeCountPage'))

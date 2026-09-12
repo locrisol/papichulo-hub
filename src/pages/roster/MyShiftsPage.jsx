@@ -16,12 +16,12 @@ import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
     LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
 } from '@/lib/shiftRequests'
-import DateStepper from '@/components/DateStepper'
-import RosterWeek from '@/components/RosterWeek'
-import PresenceGrid from '@/components/PresenceGrid'
-import ShiftRequestDialog from '@/components/ShiftRequestDialog'
-import TimeOffRequestDialog from '@/components/TimeOffRequestDialog'
-import TimeOffCard from '@/components/TimeOffCard'
+import DateStepper from '@/components/ui/DateStepper'
+import RosterWeek from '@/components/roster/RosterWeek'
+import PresenceGrid from '@/components/roster/PresenceGrid'
+import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
+import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
+import TimeOffCard from '@/components/roster/TimeOffCard'
 
 // The staff side of the roster. One page.
 //

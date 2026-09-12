@@ -9,13 +9,13 @@ import { monthYearOf, stampDateTime } from '@/lib/dates'
 import { sectionColour } from '@/lib/sections'
 import { countName } from '@/lib/products'
 import { bySection, summarise } from '@/lib/stockTakeSummary'
-import StockTakeValue from '@/components/StockTakeValue'
+import StockTakeValue from '@/components/inventory/StockTakeValue'
 import { friendlyError } from '@/lib/errors'
 import { card } from '@/lib/controlStyles'
-import BackButton from '@/components/BackButton'
-import Modal from '@/components/Modal'
+import BackButton from '@/components/ui/BackButton'
+import Modal from '@/components/ui/Modal'
 import { can, MANAGERS } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //

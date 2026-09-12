@@ -1,4 +1,4 @@
-import Modal from '@/components/Modal'
+import Modal from '@/components/ui/Modal'
 import { fullDate } from '@/lib/dates'
 import { describeAgent, isScript, agoWords, usedForWords, lastUsed } from '@/lib/loginEvents'
 

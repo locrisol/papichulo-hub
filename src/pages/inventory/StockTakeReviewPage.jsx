@@ -8,10 +8,10 @@ import { friendlyError } from '@/lib/errors'
 import { countName } from '@/lib/products'
 import { sectionRank, sectionColour } from '@/lib/sections'
 import { card } from '@/lib/controlStyles'
-import BackButton from '@/components/BackButton'
-import Modal from '@/components/Modal'
+import BackButton from '@/components/ui/BackButton'
+import Modal from '@/components/ui/Modal'
 import { can, MANAGERS } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The last look before a stock take is closed. Managers only.
 //

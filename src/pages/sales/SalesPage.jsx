@@ -10,9 +10,9 @@ import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
-import DateStepper from '@/components/DateStepper'
+import DateStepper from '@/components/ui/DateStepper'
 import { useConfirm } from '@/context/ConfirmContext'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes

@@ -4,11 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/RestaurantContext'
 import { useAuth } from '@/context/AuthContext'
-import StartStockTakeModal from '@/components/StartStockTakeModal'
+import StartStockTakeModal from '@/components/inventory/StartStockTakeModal'
 import { friendlyError } from '@/lib/errors'
 import { card } from '@/lib/controlStyles'
 import { can, MANAGERS } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The way in to stock takes: whatever is open now, and the last ten that closed.
 //

@@ -11,17 +11,17 @@ import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
   heldFor, partiesIn,
 } from '@/lib/products'
-import SearchBox from '@/components/SearchBox'
-import RowActions from '@/components/RowActions'
+import SearchBox from '@/components/ui/SearchBox'
+import RowActions from '@/components/ui/RowActions'
 import { useKeepScroll } from '@/context/ScrollContext'
 import { sectionColour, productInk, DRINK_COLOUR } from '@/lib/sections'
-import ProductForm from '@/components/ProductForm'
-import Modal from '@/components/Modal'
+import ProductForm from '@/components/inventory/ProductForm'
+import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
 import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Every column in the table, in the order it appears.
 //

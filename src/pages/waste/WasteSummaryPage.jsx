@@ -6,9 +6,9 @@ import { fmtMoney, fmtQty, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '@/lib/dates'
 import { REASONS, reasonLabel } from '@/lib/wasteReasons'
 import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '@/lib/controlStyles'
-import DateStepper from '@/components/DateStepper'
+import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Waste for a week, grouped by product.
 //

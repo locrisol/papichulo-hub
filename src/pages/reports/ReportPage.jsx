@@ -27,10 +27,10 @@ import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
 import WeekChart from '@/components/reports/WeekChart'
-import BackButton from '@/components/BackButton'
-import AddButton from '@/components/AddButton'
+import BackButton from '@/components/ui/BackButton'
+import AddButton from '@/components/ui/AddButton'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One week's report.
 //

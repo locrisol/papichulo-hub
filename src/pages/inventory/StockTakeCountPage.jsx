@@ -12,11 +12,11 @@ import { countName, compareForCount } from '@/lib/products'
 import { countedLine } from '@/lib/countedAt'
 import { orderFormats } from '@/lib/countUnits'
 import { card } from '@/lib/controlStyles'
-import SearchBox from '@/components/SearchBox'
+import SearchBox from '@/components/ui/SearchBox'
 import { sectionColour, sectionRank } from '@/lib/sections'
-import BackButton from '@/components/BackButton'
+import BackButton from '@/components/ui/BackButton'
 import { can, MANAGERS } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room

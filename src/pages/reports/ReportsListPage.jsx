@@ -15,7 +15,7 @@ import {
     DEFAULT_OVERHEADS,
 } from '@/lib/weeklyReport'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The way in to the weekly report: the weeks that have finished, and what state
 // each one is in.

@@ -4,9 +4,9 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { ALLERGENS, emptyAllergens } from '@/lib/allergens'
-import AllergenPicker from '@/components/AllergenPicker'
-import BackButton from '@/components/BackButton'
-import ErrorBanner from '@/components/ErrorBanner'
+import AllergenPicker from '@/components/inventory/AllergenPicker'
+import BackButton from '@/components/ui/BackButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Tagging the 14 allergens on one product.
 //

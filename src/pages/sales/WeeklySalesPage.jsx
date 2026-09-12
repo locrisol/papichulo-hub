@@ -10,9 +10,9 @@ import { friendlyError, isPermissionError } from '@/lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
-import DateStepper from '@/components/DateStepper'
+import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are

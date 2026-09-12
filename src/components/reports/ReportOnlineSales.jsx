@@ -5,8 +5,8 @@ import { brandFor } from '@/lib/platformBrand'
 import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
 import { useRemoveCard } from '@/components/reports/useRemoveCard'
 import { removeButton } from '@/lib/controlStyles'
-import AutoTextarea from '@/components/AutoTextarea'
-import AddButton from '@/components/AddButton'
+import AutoTextarea from '@/components/ui/AutoTextarea'
+import AddButton from '@/components/ui/AddButton'
 
 // Online sales, one block per platform.
 //

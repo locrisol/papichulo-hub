@@ -4,7 +4,7 @@ import { numberField } from '@/lib/numberInput'
 import { wasChanged, platformShare, startsOpen, figureGaps } from '@/lib/weeklyReport'
 import { removeButton, secondaryButton } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/ConfirmContext'
-import AddButton from '@/components/AddButton'
+import AddButton from '@/components/ui/AddButton'
 
 // The weekly profit and loss.
 //

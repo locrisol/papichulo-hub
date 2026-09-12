@@ -1,0 +1,524 @@
+import { useState } from 'react'
+import TimeField from '@/components/ui/TimeField'
+import Modal from '@/components/ui/Modal'
+import ModalSection from '@/components/ui/ModalSection'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton } from '@/lib/controlStyles'
+import {
+    toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
+    DAY_START, DAY_END, patternOn,
+} from '@/lib/availability'
+import { todayISO, fullDate, addDays } from '@/lib/dates'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+
+// When somebody can work.
+//
+// Seven rows, and every one of them starts on "any time" rather than empty.
+// That is the difference between a screen you can half fill in safely and one
+// you cannot: saying something about Sunday has to say nothing about Thursday,
+// or the first person somebody types in here starts throwing warnings for the
+// six days they never got to.
+//
+// Two stretches in a day are allowed because that is the shape a student's week
+// actually has: free in the morning, in college in the middle, free again in the
+// evening. One window covering the whole day would say they can work through the
+// lecture.
+//
+// None of it refuses anything on the roster. It warns, and a manager who knows
+// the timetable changed this term rosters straight over it.
+const STATES = [
+    { value: 'any', label: 'Any time' },
+    { value: 'windows', label: 'Set hours' },
+    { value: 'none', label: 'Cannot work' },
+]
+
+// The three ways a stretch can be said.
+//
+// Not before one and nothing after six are the two commonest things anybody
+// actually says, and both of them only have one time in them. Asking for two
+// meant typing an end of the day that was never really being said.
+//
+// All three are stored the same way underneath, as a pair with the open end
+// sitting on the edge of the day, so nothing further down has to know which
+// was picked.
+const SHAPES = [
+    { value: 'between', label: 'Between' },
+    { value: 'from', label: 'From' },
+    { value: 'until', label: 'Until' },
+]
+
+// What to call each stretch once there is more than one of them. Three is the
+// most a day can have, so the list is complete and there is no counting to do.
+const STRETCH_NAMES = ['First stretch', 'Second stretch', 'Third stretch']
+
+export default function AvailabilityDialog({ employee, onClose, onChanged }) {
+    const today = todayISO()
+
+    // The pattern in force today, not whichever column it happens to sit in. A
+    // change dated last week has already taken over, and editing "the usual
+    // week" then has to mean editing the one they actually work.
+    const [rows, setRows] = useState(() => toRows(patternOn(employee, today)))
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState('')
+
+    // A change queued for a day still to come, and the day it starts. A change
+    // whose day has passed is not queued any more, it is the usual week, and
+    // the rows above are already showing it.
+    const queued = employee.availability_from > today
+        ? { from: employee.availability_from, pattern: employee.availability_next }
+        : null
+
+    // Which of the two weeks is on screen. It opens on the one they work now,
+    // which is what somebody is nearly always here for.
+    const [mode, setMode] = useState('now')
+    const [changing, setChanging] = useState(Boolean(queued))
+    const [from, setFrom] = useState(queued?.from || '')
+    const [nextRows, setNextRows] = useState(() => toRows(queued?.pattern || patternOn(employee, today)))
+
+    const tomorrow = addDays(today, 1)
+
+    const problem = availabilityProblem(rows)
+        || (changing && !from && 'Say which day the new hours start.')
+        || (changing && from <= today && 'A change has to start on a day still to come.')
+        || (changing && availabilityProblem(nextRows))
+    // The row helpers, made against whichever list they are for.
+    //
+    // They used to be bound to the one list, so the second grid could only
+    // have a cut-down copy of them. Two grids with different abilities is the
+    // sort of difference nobody notices until they reach for the thing that is
+    // not there.
+    function helpersFor(list, setList) {
+        const patch = (key, change) =>
+            setList(l => l.map(r => (r.key === key ? { ...r, ...change } : r)))
+
+        return {
+            patch,
+
+            setTime: (key, index, side, value) =>
+                setList(l => l.map(r => {
+                    if (r.key !== key) return r
+                    const windows = r.windows.map((w, i) => {
+                        if (i !== index) return w
+                        return side === 'from' ? [value, w[1]] : [w[0], value]
+                    })
+                    return { ...r, windows }
+                })),
+
+            // Changing the shape rewrites the pair rather than hiding a box, so
+            // what is stored is always what is on screen. The time already
+            // typed is kept wherever it still means something.
+            setShape: (key, index, shape) =>
+                setList(l => l.map(r => {
+                    if (r.key !== key) return r
+                    const windows = r.windows.map((w, i) => {
+                        if (i !== index) return w
+                        const [a, b] = w
+                        if (shape === 'from') return [a && a !== DAY_START ? a : '13:00', DAY_END]
+                        if (shape === 'until') return [DAY_START, b && b !== DAY_END ? b : '13:00']
+                        return [a === DAY_START ? '09:00' : a, b === DAY_END ? '17:00' : b]
+                    })
+                    return { ...r, windows }
+                })),
+
+            copyRow: (key, keys) => setList(l => copyDay(l, key, keys)),
+
+            addWindow: key =>
+                patch(key, { windows: [...list.find(r => r.key === key).windows, ['17:00', '22:00']] }),
+
+            removeWindow: (key, index) =>
+                setList(l => l.map(r => (
+                    r.key === key ? { ...r, windows: r.windows.filter((_, i) => i !== index) } : r
+                ))),
+        }
+    }
+
+    const nowRows = helpersFor(rows, setRows)
+    const laterRows = helpersFor(nextRows, setNextRows)
+
+    // The pills above the grid, and the ones inside it, are the same control.
+    const tabCls = on => `px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+        on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+    }`
+
+    async function save() {
+        if (problem) return
+        setSaving(true)
+        setError('')
+
+        // Both columns written every time. A change whose day has passed has
+        // already been folded into the rows above, so clearing it here is what
+        // stops yesterday's change sitting in the record for ever, quietly
+        // winning every comparison.
+        const { error: err } = await supabase
+            .from('employees')
+            .update({
+                availability: fromRows(rows),
+                availability_next: changing ? fromRows(nextRows) : null,
+                availability_from: changing ? from : null,
+            })
+            .eq('id', employee.id)
+
+        setSaving(false)
+        if (err) { setError(friendlyError(err)); return }
+
+        onChanged?.()
+        onClose()
+    }
+
+    return (
+        <Modal title={`When ${employee.full_name} can work`} onClose={onClose} width="max-w-xl">
+            {/* One grid, and a switch above it saying which week it is.
+
+                Both at once was two sets of seven days on one screen with
+                nothing but a heading telling them apart, which is a good way
+                to set the wrong one. */}
+            <ModalSection title="When they can work">
+                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1 mb-4" role="group" aria-label="Which week">
+                    <button
+                        type="button"
+                        onClick={() => setMode('now')}
+                        aria-pressed={mode === 'now'}
+                        className={tabCls(mode === 'now')}
+                    >
+                        From now on
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('later')}
+                        aria-pressed={mode === 'later'}
+                        className={tabCls(mode === 'later')}
+                    >
+                        From a date
+                    </button>
+                </div>
+
+                {mode === 'now' ? (
+                    <>
+                        <p className="text-xs text-muted mb-3">
+                            Only the days you set say anything. A day left on any time is one the roster
+                            will never question, so there is no need to fill in a whole week to record
+                            one afternoon off.
+                        </p>
+                        <DayRows rows={rows} on={nowRows} />
+                    </>
+                ) : !changing ? (
+                    <div className="text-center py-6">
+                        <p className="text-sm text-muted mb-3 max-w-sm mx-auto">
+                            For somebody who has told you their hours change on a day still to come.
+                            The week above keeps applying right up to it.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => { setChanging(true); setNextRows(rows) }}
+                            className={secondaryButton}
+                        >
+                            Add a change
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+                            <div>
+                                <label htmlFor="availability-from" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    Starting on
+                                </label>
+                                {/* The same box as every other box in this
+                                    dialog. It had a fourth hand written style
+                                    of its own, taller than the time boxes on
+                                    the tab beside it, which read as the two
+                                    tabs deliberately looking different when
+                                    nothing of the sort was meant. */}
+                                <div className="w-44">
+                                    <input
+                                        id="availability-from"
+                                        type="date"
+                                        value={from}
+                                        min={tomorrow}
+                                        onChange={e => setFrom(e.target.value)}
+                                        className={compactField}
+                                    />
+                                </div>
+                            </div>
+                            {/* The other half of Add a change above, so it is
+                                the same kind of button. It was wearing the
+                                style the small crosses use, which is built for
+                                one glyph in a round target: five words in it
+                                came out oversized, with no edge and with the
+                                negative margins of a control a fifth the size,
+                                and with nothing for a screen reader either. */}
+                            <button
+                                type="button"
+                                onClick={() => { setChanging(false); setFrom('') }}
+                                className={secondaryButton}
+                            >
+                                Remove this change
+                            </button>
+                        </div>
+
+                        {from > today && (
+                            <p className="text-xs text-muted mb-3">
+                                Everything up to {fullDate(from)} uses the week under From now on.
+                            </p>
+                        )}
+
+                        <DayRows rows={nextRows} on={laterRows} />
+                    </>
+                )}
+            </ModalSection>
+
+            <ModalSection title="What the roster does with it">
+                <ul className="text-sm text-muted space-y-1.5">
+                    <li>The hours they cannot work are shaded on the day timeline, before you put anything in.</li>
+                    <li>A shift outside them is said in the warnings at the top of the week.</li>
+                    <li>It never stops a week going out. If you know something the roster does not, roster it.</li>
+                </ul>
+            </ModalSection>
+
+            {(problem || error) && (
+                <ErrorBanner className="mx-6 mb-4">{problem || error}</ErrorBanner>
+            )}
+
+            <div className={modalFooter}>
+                <button type="button" onClick={onClose} className={secondaryButton}>
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    onClick={save}
+                    disabled={saving || !!problem}
+                    className={primaryButton('lg')}
+                >
+                    {saving ? 'Saving...' : 'Save'}
+                </button>
+            </div>
+        </Modal>
+    )
+}
+
+// The seven days, however they are being set.
+//
+// Written once and used twice: for the week they work now, and for a change
+// that starts on a date. Those two used to be separate blocks and the second
+// quietly had fewer features than the first, no copy-to-the-week and no second
+// stretch in a day, which is the sort of difference nobody notices until they
+// need the thing that is missing.
+function DayRows({ rows, on }) {
+    const { patch, setTime, setShape, copyRow, addWindow, removeWindow } = on
+
+    return (
+                <div>
+                    {rows.map(row => (
+                        <div key={row.key} className="py-2.5 border-b border-border last:border-b-0">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="w-24 text-sm font-medium text-gray-900 flex-shrink-0">
+                                    {row.name}
+                                </span>
+                                <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1" role="group" aria-label={row.name}>
+                                    {STATES.map(state => (
+                                        <button
+                                            key={state.value}
+                                            type="button"
+                                            onClick={() => patch(row.key, { state: state.value })}
+                                            aria-pressed={row.state === state.value}
+                                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                                row.state === state.value
+                                                    ? 'bg-white text-gray-900 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            {state.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Copying a day onto the rest of the week.
+                                    Somebody who can only start at one is almost
+                                    never saying it about one day, they are
+                                    saying it about the college week, and typing
+                                    the same thing five times is how the fifth
+                                    one ends up different from the other four.
+
+                                    Only on a day that says something, since
+                                    there is nothing to copy off a day left on
+                                    any time. */}
+                                {/* Its own line on a phone. Sharing one with
+                                    the three way switch left it about eighty
+                                    pixels to put a label and three buttons in,
+                                    so every one of them broke in half: "COPY
+                                    TO" over two lines, then "Mon to" over
+                                    "Fri". Given the width it needs nothing
+                                    breaks at all. */}
+                                {row.state !== 'any' && (
+                                    <span className="w-full sm:w-auto flex items-center gap-1 sm:ml-auto">
+                                        <span className="text-[0.625rem] text-gray-400 uppercase tracking-wider">
+                                            Copy to
+                                        </span>
+                                        {DAY_GROUPS.map(group => (
+                                            <button
+                                                key={group.label}
+                                                type="button"
+                                                onClick={() => copyRow(row.key, group.keys)}
+                                                className="px-2 py-1 text-[0.6875rem] font-semibold text-blue-600 rounded-md hover:bg-blue-50"
+                                            >
+                                                {group.label}
+                                            </button>
+                                        ))}
+                                    </span>
+                                )}
+                            </div>
+
+                            {row.state === 'windows' && (
+                                <div className="mt-2 ml-0 sm:ml-27 space-y-2">
+                                    {row.windows.map((window, i) => {
+                                        // A window sitting on both edges of the
+                                        // day is any time, and it reads as from
+                                        // midnight rather than flipping the
+                                        // picker to Between and leaving an empty
+                                        // box beside it.
+                                        const found = windowShape(window)
+                                        const shape = found === 'all' ? 'from' : found
+                                        return (
+                                        // Each stretch in its own box with its
+                                        // own heading.
+                                        //
+                                        // On a phone these wrapped into five
+                                        // boxes running straight down the page
+                                        // with two remove crosses among them
+                                        // and nothing saying where one stretch
+                                        // ended and the next began. Pressing
+                                        // the wrong cross silently changes when
+                                        // somebody can work, so a cross has to
+                                        // be plainly attached to something.
+                                        //
+                                        // Only when there is more than one. A
+                                        // single stretch needs no heading
+                                        // telling you it is the first.
+                                        <div
+                                            key={i}
+                                            className={row.windows.length > 1
+                                                ? 'rounded-lg border border-border bg-app-bg p-3'
+                                                : ''}
+                                        >
+                                        {row.windows.length > 1 && (
+                                            <p className={`${captionClass} mb-2`}>
+                                                {STRETCH_NAMES[i] || `Stretch ${i + 1}`}
+                                            </p>
+                                        )}
+                                        {/* Two lines, the same shape a break
+                                            rule uses: what kind of stretch it
+                                            is, then the times.
+
+                                            One line with everything on it was
+                                            never going to hold. A stretch is a
+                                            shape box, two time boxes, the word
+                                            to and a remove, and a phone row is
+                                            about 305 pixels. It wrapped, and
+                                            because a time box carries w-full
+                                            with nothing containing it, each one
+                                            asked for the whole width and took a
+                                            line of its own: three lines for one
+                                            stretch, with the boxes stretched
+                                            right across the dialog.
+
+                                            The wrappers are what fixes that. A
+                                            box sized by the thing around it
+                                            cannot fight the shared field style
+                                            for the same property, and the cap
+                                            keeps them from stretching on a wide
+                                            screen where there is room to spare.
+                                            Ten rem is the widest option, End of
+                                            day, with room around it. */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                    <select
+                                                        value={shape}
+                                                        onChange={e => setShape(row.key, i, e.target.value)}
+                                                        aria-label={`${row.name}, how the hours are set`}
+                                                        className={compactField}
+                                                    >
+                                                        {SHAPES.map(o => (
+                                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                {row.windows.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeWindow(row.key, i)}
+                                                        className={`${removeButton} ml-auto`}
+                                                        aria-label={`Remove that stretch from ${row.name}`}
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* The whole day, not the
+                                                    trading day: somebody saying
+                                                    they cannot start before
+                                                    06:00 is talking about their
+                                                    life, not about when we
+                                                    open. */}
+                                                {shape !== 'until' && (
+                                                    <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                        <TimeField
+                                                            value={window[0]}
+                                                            onChange={v => setTime(row.key, i, 'from', v)}
+                                                            aria-label={`${row.name} from`}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
+                                                {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
+                                                {/* endOfDay so 24:00 is a thing
+                                                    the list can hold. It should
+                                                    never arrive here, because a
+                                                    window ending at 24:00 reads
+                                                    as "from" and this box is
+                                                    not drawn for that shape.
+                                                    But a select with no option
+                                                    matching its value shows the
+                                                    first one instead, which
+                                                    would quietly turn the end
+                                                    of the day into midnight. */}
+                                                {shape !== 'from' && (
+                                                    <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                        <TimeField
+                                                            value={window[1]}
+                                                            onChange={v => setTime(row.key, i, 'to', v)}
+                                                            endOfDay
+                                                            aria-label={`${row.name} to`}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        </div>
+                                        )
+                                    })}
+                                    {/* A second stretch is the college day: free
+                                        in the morning, in a lecture in the
+                                        middle, free again in the evening. One
+                                        window across the whole day would say
+                                        they can work through it. */}
+                                    {row.windows.length < 3 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => addWindow(row.key)}
+                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                        >
+                                            Add another stretch
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+    )
+}

@@ -7,7 +7,7 @@ import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
 import logoPrint from '@/assets/PapiChuloLogoPrint.png'
 import { useRestaurant } from '@/context/RestaurantContext'
-import PublicAllergensPage from '@/pages/PublicAllergensPage'
+import PublicAllergensPage from '@/pages/public/PublicAllergensPage'
 import { card } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/ConfirmContext'
 

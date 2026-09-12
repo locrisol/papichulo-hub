@@ -6,13 +6,13 @@ import { useRestaurant } from '@/context/RestaurantContext'
 import { useConfirm } from '@/context/ConfirmContext'
 import { menuItemCost } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '@/lib/allergens'
-import CategoryManagerModal from '@/components/CategoryManagerModal'
+import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/ScrollContext'
-import ArrangeList from '@/components/ArrangeList'
+import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Every dish we sell, with what it costs us and what it makes.
 //

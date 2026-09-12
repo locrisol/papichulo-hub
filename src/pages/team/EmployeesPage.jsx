@@ -17,15 +17,15 @@ import {
     employeeNote,
     NO_COLOUR,
 } from '@/lib/team'
-import Modal from '@/components/Modal'
-import RowActions from '@/components/RowActions'
-import EmployeeForm from '@/components/EmployeeForm'
-import PositionsModal from '@/components/PositionsModal'
-import CalendarLinkDialog from '@/components/CalendarLinkDialog'
-import AvailabilityDialog from '@/components/AvailabilityDialog'
-import TimeOffDialog from '@/components/TimeOffDialog'
+import Modal from '@/components/ui/Modal'
+import RowActions from '@/components/ui/RowActions'
+import EmployeeForm from '@/components/team/EmployeeForm'
+import PositionsModal from '@/components/team/PositionsModal'
+import CalendarLinkDialog from '@/components/team/CalendarLinkDialog'
+import AvailabilityDialog from '@/components/team/AvailabilityDialog'
+import TimeOffDialog from '@/components/roster/TimeOffDialog'
 import TeamGaps from '@/components/team/TeamGaps'
-import ArrangeList from '@/components/ArrangeList'
+import ArrangeList from '@/components/ui/ArrangeList'
 
 // Who works here.
 //

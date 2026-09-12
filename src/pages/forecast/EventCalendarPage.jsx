@@ -8,10 +8,10 @@ import { todayISO, weekStartOf, addDays, monthStart } from '@/lib/dates'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
 import { friendlyError } from '@/lib/errors'
 import { byDate as groupByDate } from '@/lib/events'
-import EventModal from '@/components/EventModal'
-import EventMonth from '@/components/EventMonth'
-import EventWeek from '@/components/EventWeek'
-import EventAgenda from '@/components/EventAgenda'
+import EventModal from '@/components/forecast/EventModal'
+import EventMonth from '@/components/forecast/EventMonth'
+import EventWeek from '@/components/forecast/EventWeek'
+import EventAgenda from '@/components/forecast/EventAgenda'
 
 // What is on at 3Arena.
 //

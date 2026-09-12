@@ -7,10 +7,10 @@ import { fmtMoney, fmtQty, num, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle, primaryButton } from '@/lib/controlStyles'
-import DateStepper from '@/components/DateStepper'
+import DateStepper from '@/components/ui/DateStepper'
 import { numberField } from '@/lib/numberInput'
 import { DAY_NAMES } from '@/lib/events'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Labour hours, entered a week at a time.
 //

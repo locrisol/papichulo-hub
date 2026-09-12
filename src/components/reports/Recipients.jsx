@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { addExtra, removeExtra, recipientSummary } from '@/lib/reportRecipients'
 import { card, secondaryButton, removeButton } from '@/lib/controlStyles'
-import AddButton from '@/components/AddButton'
+import AddButton from '@/components/ui/AddButton'
 
 // Who the report goes to.
 //

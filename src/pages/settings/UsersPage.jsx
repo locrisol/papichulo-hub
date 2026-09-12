@@ -8,7 +8,7 @@ import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '@/lib/cont
 import { latestByUser, lastUsed, agoWords } from '@/lib/loginEvents'
 import { fullDate } from '@/lib/dates'
 import SignInHistory from '@/components/settings/SignInHistory'
-import ErrorBanner from '@/components/ErrorBanner'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Everyone with an account, and turning them on or off.
 //
