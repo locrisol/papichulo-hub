@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/context/RestaurantContext'
+import { useRestaurant } from '@/context/restaurant'
 import { calculateMixCost, menuItemCost } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
 import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import AddOptions from '@/components/inventory/AddOptions'
 import ProductSelect from '@/components/ui/ProductSelect'
@@ -123,14 +123,9 @@ export default function MenuItemPage() {
 
   const productSelectRef = useRef(null)
 
-  useEffect(() => {
-    fetchAll()
-  }, [id])
+  
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-  }, [activeRestaurant])
+  
 
   useEffect(() => {
     // Auto-focus the product dropdown after the form clears (post-add)
@@ -142,7 +137,7 @@ export default function MenuItemPage() {
     }
   }, [componentForm.product_id, showComponentForm])
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     const [
       itemRes, categoriesRes, productsRes, componentsRes, recipesRes, allergensRes,
@@ -174,16 +169,35 @@ export default function MenuItemPage() {
     if (allComponentsRes.data) setAllComponents(allComponentsRes.data)
 
     setLoading(false)
-  }
+    }, [id])
 
-  async function fetchPrices() {
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAll()
+  }, [fetchAll])
+
+  const fetchPrices = useCallback(async () => {
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
     if (data) setPrices(data)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+  }, [fetchPrices, activeRestaurant])
 
   function handleHeaderChange(field, value) {
     setHeaderForm({ ...headerForm, [field]: value })

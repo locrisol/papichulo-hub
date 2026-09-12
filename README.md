@@ -187,6 +187,20 @@ Add the Vercel address to the allowed URLs in Supabase under Authentication, or 
 
 `vercel.json` sends every path to `index.html`. Without it, opening a link directly returns a 404, because Vercel looks for a file at that path and this is a single page app. It matters most for the allergen page, which is only ever reached by scanning a QR code.
 
+## Checks
+
+Three commands, and all three have to pass before anything is committed:
+
+```bash
+npm run lint       # 0 problems, and it stays 0
+npm run test:run   # 1,573 tests
+npm run build
+```
+
+A GitHub action runs the same three on every pull request into `development` and `main`, so a change that adds a lint problem or breaks a test fails there rather than being found six branches later.
+
+The database tests are separate and local only. They sign in as real accounts against the live project, so they are not something to run on every push.
+
 ## How the work is organised
 
 Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is sent to `development` through a pull request. Issues that were described but we decided not to build at this stage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definitely want to implement some of them soon.

@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { AuthContext } from '@/context/auth'
 
 // Who is signed in.
 //
@@ -10,12 +11,31 @@ import { supabase } from '@/lib/supabase'
 //
 // So there is a moment on every sign-in where there is a session but no user
 // yet. RequireRole has to allow for that gap or it refuses people at random.
-const AuthContext = createContext(null)
+
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Above the effect that calls it, not below. It works either way,
+  // because a function declaration is hoisted, but the React Compiler
+  // reads the file in order and will not optimise a component that uses
+  // something before it is written.
+  async function fetchUser(userId) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single()
+
+        // Do not swallow this. If the row cannot be read the app has no idea
+        // who is signed in, every role check reads undefined, and nothing says
+        // so. That is how an employee could sign in and quietly have no role.
+        if (error) console.error('Could not load the signed-in user:', error.message)
+        else setUser(data)
+        setLoading(false)
+    }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -36,28 +56,9 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchUser(userId) {
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .single()
-
-        // Do not swallow this. If the row cannot be read the app has no idea
-        // who is signed in, every role check reads undefined, and nothing says
-        // so. That is how an employee could sign in and quietly have no role.
-        if (error) console.error('Could not load the signed-in user:', error.message)
-        else setUser(data)
-        setLoading(false)
-    }
-
   return (
     <AuthContext.Provider value={{ session, user, loading }}>
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  return useContext(AuthContext)
 }

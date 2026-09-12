@@ -3,7 +3,7 @@ import Modal from '@/components/ui/Modal'
 import ModalSection from '@/components/ui/ModalSection'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 import { modalFooter, secondaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 

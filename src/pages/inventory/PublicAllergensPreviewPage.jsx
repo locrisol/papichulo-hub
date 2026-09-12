@@ -1,15 +1,15 @@
 import { supabase } from '@/lib/supabase'
 import { sheetRows } from '@/lib/allergenSheet'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/auth'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
 import logoPrint from '@/assets/PapiChuloLogoPrint.png'
-import { useRestaurant } from '@/context/RestaurantContext'
+import { useRestaurant } from '@/context/restaurant'
 import PublicAllergensPage from '@/pages/public/PublicAllergensPage'
 import { card } from '@/lib/controlStyles'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.

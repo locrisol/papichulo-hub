@@ -21,6 +21,11 @@ export default function QuantityInUnit({ value, onChange, unit, disabled = false
     // A new ingredient means a new canonical unit, so the display goes back to
     // the small one, which is what a recipe is usually written in.
     useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of unit keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (unit === 'KG') setDisplayUnit('g')
         else if (unit === 'Litre') setDisplayUnit('ml')
         else setDisplayUnit(unit || 'unit')

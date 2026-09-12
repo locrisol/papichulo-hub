@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import TimeField from '@/components/ui/TimeField'
 import Modal from '@/components/ui/Modal'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
 import {

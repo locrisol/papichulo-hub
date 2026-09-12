@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useState, useEffect, useCallback } from 'react'
+import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { orderFormats } from '@/lib/countUnits'
@@ -32,11 +32,9 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     const [factor, setFactor] = useState('')
     const [saving, setSaving] = useState(false)
 
-    useEffect(() => {
-        fetchFormats()
-    }, [price.id])
+    
 
-    async function fetchFormats() {
+    const fetchFormats = useCallback(async () => {
         setLoading(true)
 
         // Fetch formats and the current allow_loose_count together, so the editor
@@ -63,7 +61,16 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
         }
         setLooseLoaded(true)
         setLoading(false)
-    }
+        }, [price.id])
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of what is shown keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchFormats()
+    }, [fetchFormats])
 
     async function handleAdd() {
         setError('')

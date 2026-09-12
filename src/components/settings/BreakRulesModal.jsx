@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/context/RestaurantContext'
+import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { numberField } from '@/lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '@/lib/roster'

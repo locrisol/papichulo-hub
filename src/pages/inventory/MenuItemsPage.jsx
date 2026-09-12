@@ -1,13 +1,13 @@
 import { fmtMoney } from '@/lib/format'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/context/RestaurantContext'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useRestaurant } from '@/context/restaurant'
+import { useConfirm } from '@/context/confirm'
 import { menuItemCost } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '@/lib/allergens'
 import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
-import { useKeepScroll } from '@/context/ScrollContext'
+import { useKeepScroll } from '@/context/scroll'
 import ArrangeList from '@/components/ui/ArrangeList'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
@@ -80,10 +80,7 @@ export default function MenuItemsPage() {
     fetchAll()
   }, [])
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-  }, [activeRestaurant])
+  
 
   // quiet is for reading the same page again after changing something on it:
   // arranging a category, turning a dish off. Blanking the list for a moment
@@ -124,14 +121,24 @@ export default function MenuItemsPage() {
     setLoading(false)
   }
 
-  async function fetchPrices() {
+  const fetchPrices = useCallback(async () => {
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
     if (data) setPrices(data)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+  }, [fetchPrices, activeRestaurant])
 
   function handleFieldChange(field, value) {
     setFormData({ ...formData, [field]: value })

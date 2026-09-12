@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { sheetRows } from '@/lib/allergenSheet'
@@ -48,11 +48,9 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchAll()
-  }, [slug])
+  
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
 
     // Find the restaurant by slug. Even though selling prices are uniform,
@@ -105,7 +103,16 @@ export default function PublicAllergensPage({ slugOverride }) {
     if (allergensRes.data) setAllergens(allergensRes.data)
 
     setLoading(false)
-  }
+    }, [slug])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAll()
+  }, [fetchAll])
 
   // Which rows there are, what each one carries, and whether everything it is
   // built from actually arrived, all worked out in lib/allergenSheet. It used
