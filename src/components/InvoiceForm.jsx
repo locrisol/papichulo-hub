@@ -20,6 +20,7 @@ export default function InvoiceForm({
     submitLabel,
     saving,
     suppliers,
+    problem,
     weekStart,
 }) {
 
@@ -112,6 +113,18 @@ export default function InvoiceForm({
                     placeholder="Optional note"
                 />
             </div>
+
+            {/* Beside the button that caused it, not at the top of the page.
+                On a phone you press Save at the bottom of a form and a message
+                written above the form is simply not on screen, so the press
+                reads as having done nothing. Worse in the edit dialog, where
+                the page behind it is covered: a message up there was never seen
+                at all, on any device. */}
+            {problem && (
+                <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">
+                    {problem}
+                </p>
+            )}
 
             <div className="flex justify-end gap-3">
                 {onCancel && (

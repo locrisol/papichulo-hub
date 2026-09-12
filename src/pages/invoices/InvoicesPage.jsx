@@ -91,8 +91,23 @@ export default function InvoicesPage() {
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
-    const [error, setError] = useState('')
-    const [success, setSuccess] = useState('')
+    const [error, setError] = useState("")
+    const [success, setSuccess] = useState("")
+
+    // Kept apart from `error` above on purpose.
+    //
+    // `error` is for something that failed to load, which belongs at the top of
+    // the page because there is nothing else up there to look at. These two are
+    // for a save that would not go through, and those belong beside the button
+    // that was pressed: on a phone you press Save at the foot of the form and
+    // anything written above it is off the screen, so the press looks like it
+    // did nothing at all. The edit one was worse again, since the page behind
+    // an open dialog is covered.
+    //
+    // Two of them because adding and editing are two forms with their own
+    // values, and a problem with one is not a problem with the other.
+    const [addProblem, setAddProblem] = useState("")
+    const [editProblem, setEditProblem] = useState("")
 
     // Bumped after saving or deleting to make the effect below run again.
     // Cheaper than keeping a load function outside the effect, which would be a
@@ -207,7 +222,7 @@ export default function InvoicesPage() {
     }
 
     function startEdit(inv) {
-        setError(''); setSuccess('')
+        setEditProblem(""); setSuccess("")
         setEditingId(inv.id)
         setEditForm({
             supplierId: inv.supplier_id || '',
@@ -221,6 +236,9 @@ export default function InvoicesPage() {
     function cancelEdit() {
         setEditingId(null)
         setEditForm(emptyForm())
+        // Or the same complaint is waiting inside the dialog the next time one
+        // is opened, about an invoice nobody is editing any more.
+        setEditProblem("")
     }
 
     // Asks about a duplicate, and returns whether to carry on.
@@ -256,10 +274,10 @@ export default function InvoicesPage() {
 
     async function handleSave(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setAddProblem(""); setSuccess("")
 
         const problem = validate(form)
-        if (problem) { setError(problem); return }
+        if (problem) { setAddProblem(problem); return }
 
         if (!await pastDuplicate(form)) return
 
@@ -272,7 +290,7 @@ export default function InvoicesPage() {
         })
         setSaving(false)
 
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setAddProblem(friendlyError(e1)); return }
 
         // Everything clears except the date.
         //
@@ -303,10 +321,10 @@ export default function InvoicesPage() {
     // filed under the old one and quietly wrong on the cost dashboard.
     async function handleUpdate(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setEditProblem(""); setSuccess("")
 
         const problem = validate(editForm)
-        if (problem) { setError(problem); return }
+        if (problem) { setEditProblem(problem); return }
 
         // The same check on the way through. Correcting a date or an amount can
         // land an invoice exactly on top of another one, and itself does not
@@ -320,7 +338,7 @@ export default function InvoicesPage() {
             .eq('id', editingId)
         setSaving(false)
 
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setEditProblem(friendlyError(e1)); return }
 
         cancelEdit()
         setSuccess('Invoice updated.')
@@ -415,6 +433,7 @@ export default function InvoicesPage() {
                         submitLabel="Save invoice"
                         saving={saving}
                         suppliers={suppliers}
+                        problem={addProblem}
                         weekStart={weekStart}
                     />
                 </div>
@@ -593,6 +612,7 @@ export default function InvoicesPage() {
                             submitLabel="Save changes"
                             saving={saving}
                             suppliers={suppliers}
+                            problem={editProblem}
                             weekStart={weekStartOf(editForm.invoiceDate)}
                         />
                     </div>
