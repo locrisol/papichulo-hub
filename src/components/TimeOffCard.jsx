@@ -1,3 +1,4 @@
+import { useConfirm } from '../context/ConfirmContext'
 import { card, badge } from '../lib/controlStyles'
 import { absenceRange } from '../lib/absences'
 import { requestLabel, partWords } from '../lib/timeOff'
@@ -18,6 +19,27 @@ const LOOK = {
 }
 
 export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
+
+    const confirm = useConfirm()
+
+    // Cancelling deletes the request outright rather than marking it withdrawn,
+    // so there is nothing to undo and nothing for a manager to see afterwards.
+    // Worth asking about, and worth reading the dates back: this sits under a
+    // list where the waiting ones are all together and they look alike.
+    async function ask(row) {
+        const ok = await confirm({
+            title: 'Cancel this request?',
+            message: 'It is taken back and your manager will not see it. You can ask again afterwards.',
+            details: [
+                { label: 'What', value: requestLabel(row) },
+                { label: 'When', value: absenceRange(row, d => `${dayName(d)} ${shortDate(d)}`) },
+            ],
+            confirmLabel: 'Cancel it',
+            tone: 'danger',
+        })
+        if (ok) onWithdraw(row.id)
+    }
+
     const rows = (requests || []).slice().sort((a, b) => {
         const waiting = (a.status === 'requested' ? 0 : 1) - (b.status === 'requested' ? 0 : 1)
         if (waiting !== 0) return waiting
@@ -68,7 +90,7 @@ export default function TimeOffCard({ requests, onAsk, onWithdraw }) {
                                 {row.status === 'requested' && (
                                     <button
                                         type="button"
-                                        onClick={() => onWithdraw(row.id)}
+                                        onClick={() => ask(row)}
                                         className="mt-1.5 text-xs font-semibold text-gray-600 underline"
                                     >
                                         Cancel this request

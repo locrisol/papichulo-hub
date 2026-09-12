@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { orderFormats } from '../lib/countUnits'
@@ -18,6 +19,7 @@ import { rowButton, checkbox } from '../lib/controlStyles'
 // Formats belong to a price rather than to a product on purpose: two suppliers
 // sell the same thing in different sized boxes.
 export default function PriceCountUnitsEditor({ price, unit, onClose }) {
+    const confirm = useConfirm()
     const [formats, setFormats] = useState([])
     const [allowLoose, setAllowLoose] = useState(price.allow_loose_count ?? true)
     const [looseLoaded, setLooseLoaded] = useState(false)
@@ -89,6 +91,20 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     }
 
     async function handleDelete(formatId) {
+        const format = formats.find(f => f.id === formatId)
+        const ok = await confirm({
+            title: 'Remove this pack format?',
+            message: 'It stops being offered as a way of counting this product on a stock take. Counts '
+                + 'already taken keep the figures they were saved with.',
+            details: format ? [
+                { label: 'Format', value: format.label || '' },
+                { label: 'Holds', value: `${format.factor} ${unit || ''}` },
+            ] : undefined,
+            confirmLabel: 'Remove it',
+            tone: 'danger',
+        })
+        if (!ok) return
+
         const { error } = await supabase
             .from('price_count_units')
             .delete()

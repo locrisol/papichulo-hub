@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { modalFooter, rowButton, tableHeadRow } from '../lib/controlStyles'
@@ -15,6 +16,7 @@ import { ModalSectionBar } from './ModalSection'
 // set with arrows. Categories are deactivated and never deleted, because menu
 // items point at one by id and deleting would leave them pointing at nothing.
 export default function CategoryManagerModal({ categories, onClose, onChange }) {
+  const confirm = useConfirm()
   const [error, setError] = useState('')
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -120,7 +122,21 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
     else onChange()
   }
 
+  // Only on the way out, and it says the part nobody expects: the customer
+  // facing allergen sheet reads active categories only, so switching one off
+  // takes every dish in it off the page customers scan in the shop.
   async function toggleActive(category) {
+    if (category.is_active) {
+      const ok = await confirm({
+        title: `Turn off ${category.name}?`,
+        message: 'It stops appearing in Menu Items, and every dish in it comes off the allergen sheet '
+          + 'customers read. The dishes themselves are not touched and turning it back on brings them back.',
+        confirmLabel: 'Turn it off',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('menu_categories')
       .update({ is_active: !category.is_active })

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
@@ -33,6 +34,7 @@ function keyFrom(label) {
 }
 
 export default function SalesTendersModal({ onClose, onChange }) {
+  const confirm = useConfirm()
   const { activeRestaurant } = useRestaurant()
 
   const [tenders, setTenders] = useState([])
@@ -162,7 +164,21 @@ export default function SalesTendersModal({ onClose, onChange }) {
     onChange?.()
   }
 
+  // Only on the way out. A retired row is still drawn on the weeks that were
+  // entered with it, which is why the weekly grid deliberately does not filter
+  // these by is_active, so nothing already typed is lost either way.
   async function toggleActive(t) {
+    if (t.is_active) {
+      const ok = await confirm({
+        title: `Retire ${t.label}?`,
+        message: 'It stops appearing on new weeks and stops counting towards the reconciliation. Weeks '
+          + 'already entered still show it with whatever was typed.',
+        confirmLabel: 'Retire it',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('sales_tenders')
       .update({ is_active: !t.is_active })
