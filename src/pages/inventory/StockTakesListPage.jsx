@@ -1,5 +1,5 @@
 import { stampDate } from '@/lib/dates'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
@@ -38,12 +38,9 @@ export default function StockTakesListPage() {
 
   const isManager = can(user, MANAGERS)
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchSessions()
-  }, [activeRestaurant])
+  
 
-  async function fetchSessions() {
+  const fetchSessions = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -105,7 +102,17 @@ export default function StockTakesListPage() {
     }
 
     setLoading(false)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSessions()
+  }, [fetchSessions, activeRestaurant])
 
   function formatDateTime(iso) {
     if (!iso) return '-'

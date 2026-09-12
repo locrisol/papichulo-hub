@@ -1,5 +1,5 @@
 import { fmtUnitCost } from '@/lib/format'
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
@@ -260,11 +260,7 @@ export default function ProductsPage() {
     fetchSuppliers()
   }, [])
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-    fetchRecipeLines()
-  }, [activeRestaurant])
+  
 
   // Ordered by name. Without an order the database returns the rows however it
   // likes, and updating a row moves it, so deactivating a product and turning it
@@ -295,7 +291,7 @@ export default function ProductsPage() {
     if (data) setSuppliers(data)
   }
 
-  async function fetchPrices() {
+  const fetchPrices = useCallback(async () => {
     if (!activeRestaurant) return
     const { data } = await supabase
       .from('product_supplier_prices')
@@ -333,7 +329,18 @@ export default function ProductsPage() {
       counts[row.product_id] = (counts[row.product_id] || 0) + 1
     }
     setPriceCounts(counts)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+    fetchRecipeLines()
+  }, [fetchPrices, activeRestaurant])
 
   async function fetchRecipeLines() {
     const { data } = await supabase

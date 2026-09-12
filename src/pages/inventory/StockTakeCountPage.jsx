@@ -1,5 +1,5 @@
 import { monthYearOf } from '@/lib/dates'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -90,9 +90,7 @@ export default function StockTakeCountPage() {
 
     const isManager = can(user, MANAGERS)
 
-    useEffect(() => {
-        fetchEverything()
-    }, [id])
+    
 
     // The undo is offered for ten seconds, which is long enough to notice the
     // wrong row and short enough that it is gone before the next shelf.
@@ -102,7 +100,7 @@ export default function StockTakeCountPage() {
         return () => clearTimeout(timer)
     }, [justNoned])
 
-    async function fetchEverything() {
+    const fetchEverything = useCallback(async () => {
         setLoading(true)
         setError('')
 
@@ -188,7 +186,16 @@ export default function StockTakeCountPage() {
         }
 
         setLoading(false)
-    }
+        }, [id])
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of session keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchEverything()
+    }, [fetchEverything])
 
     // Every line carries the place it was counted in, so asking by place never
     // counts the same box twice however many headings a product appears under.
@@ -486,10 +493,11 @@ export default function StockTakeCountPage() {
     // the freezer is worth nothing.
     const allSections = useMemo(() => group(products), [products])
 
-    const countedPlaces = useMemo(
-        () => new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other'))),
-        [lines],
-    )
+    // Not wrapped in useMemo, deliberately. The React Compiler could not
+    // preserve that memoization and was skipping the optimisation of this whole
+    // component to avoid changing its meaning, which costs far more than the
+    // one Set this was saving. Left plain, the compiler memoizes it itself.
+    const countedPlaces = new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other')))
 
     const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
 

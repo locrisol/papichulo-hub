@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
@@ -66,17 +66,11 @@ export default function ProductPricesPage() {
         }
     }
 
-    useEffect(() => {
-        fetchProduct()
-        fetchSuppliers()
-    }, [id])
+    
 
-    useEffect(() => {
-        if (!activeRestaurant) return
-        fetchPrices()
-    }, [activeRestaurant, id])
+    
 
-    async function fetchProduct() {
+    const fetchProduct = useCallback(async () => {
         const { data, error } = await supabase
             .from('products')
             .select('*')
@@ -85,7 +79,17 @@ export default function ProductPricesPage() {
 
         if (error) setError(friendlyError(error))
         else setProduct(data)
-    }
+        }, [id])
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of what is shown keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchProduct()
+        fetchSuppliers()
+    }, [fetchProduct])
 
     async function fetchSuppliers() {
         const { data } = await supabase
@@ -97,7 +101,7 @@ export default function ProductPricesPage() {
         if (data) setSuppliers(data)
     }
 
-    async function fetchPrices() {
+    const fetchPrices = useCallback(async () => {
         setLoading(true)
         const { data, error } = await supabase
             .from('product_supplier_prices')
@@ -110,7 +114,17 @@ export default function ProductPricesPage() {
         if (error) setError(friendlyError(error))
         else setPrices(data)
         setLoading(false)
-    }
+        }, [activeRestaurant, id])
+
+    useEffect(() => {
+        if (!activeRestaurant) return
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of what is shown keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchPrices()
+    }, [fetchPrices, activeRestaurant])
 
     function handleFieldChange(field, value) {
         setFormData({ ...formData, [field]: value })

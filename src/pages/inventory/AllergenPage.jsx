@@ -1,5 +1,5 @@
 import { pageTitle, primaryButton } from '@/lib/controlStyles'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
@@ -38,11 +38,9 @@ export default function AllergenPage() {
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
 
-  useEffect(() => {
-    loadAll()
-  }, [id])
+  
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true)
 
     const { data: productData, error: productError } = await supabase
@@ -83,7 +81,16 @@ export default function AllergenPage() {
     // else: keep the default emptyAllergens() initial state (all 'none')
 
     setLoading(false)
-  }
+    }, [id])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll()
+  }, [loadAll])
 
   function setAllergenState(key, value) {
     setValues({ ...values, [key]: value })

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
@@ -110,13 +110,7 @@ export default function WeeklySalesPage() {
 
     // Depend on the id, not the object: the context can return a new object for
     // the same restaurant, which would re-run this and wipe anything typed.
-    useEffect(() => {
-        if (!restaurantId) return
-        const key = `${restaurantId}:${weekStart}`
-        if (loadedKey.current === key) return
-        loadWeek(key)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [restaurantId, weekStart])
+    
 
     // Keep a local draft of anything unsaved. Guarded by loadedKey: when the week
     // changes, weekStart updates before loadWeek replaces `days`, so without this
@@ -143,7 +137,18 @@ export default function WeeklySalesPage() {
         return () => window.removeEventListener('beforeunload', onBeforeUnload)
     }, [dirty])
 
-    async function loadWeek(key) {
+    const loadWeek = useCallback(async (key) => {
+
+        // The week's seven days, worked out here rather than taken as a
+
+        // dependency. They are derived from weekStart on every render, so
+
+        // depending on them would rebuild this callback every render and the
+
+        // effect below would reload the week forever.
+
+        const dates = weekDates(weekStart)
+
         setLoading(true)
         setError('')
         setSuccess('')
@@ -254,7 +259,15 @@ export default function WeeklySalesPage() {
         if (restored) setSuccess('Restored unsaved changes from this device.')
         loadedKey.current = key
         setLoading(false)
-    }
+        }, [restaurantId, weekStart])
+
+    useEffect(() => {
+        if (!restaurantId) return
+        const key = `${restaurantId}:${weekStart}`
+        if (loadedKey.current === key) return
+        loadWeek(key)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadWeek])
 
     function setField(date, field, value) {
         setDirty(true)

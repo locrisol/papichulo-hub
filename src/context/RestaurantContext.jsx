@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { RestaurantContext } from '@/context/restaurant'
@@ -25,12 +25,9 @@ export function RestaurantProvider({ children }) {
     const [activeRestaurant, setActiveRestaurant] = useState(null)
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        if (!user) return
-        fetchRestaurants()
-    }, [user])
+    
 
-    async function fetchRestaurants() {
+    const fetchRestaurants = useCallback(async () => {
         // Ordered by name so the list in the switcher is always in the same
         // order, and so the last fallback below is always the same restaurant.
         let query = supabase.from('restaurants').select('*').eq('is_active', true).order('name')
@@ -70,7 +67,17 @@ export function RestaurantProvider({ children }) {
         }
 
         setLoading(false)
-    }
+        }, [user])
+
+    useEffect(() => {
+        if (!user) return
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of account keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchRestaurants()
+    }, [fetchRestaurants, user])
 
     function switchRestaurant(restaurant) {
         setActiveRestaurant(restaurant)

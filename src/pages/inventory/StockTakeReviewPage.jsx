@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -55,11 +55,9 @@ export default function StockTakeReviewPage() {
 
   const isManager = can(user, MANAGERS)
 
-  useEffect(() => {
-    fetchEverything()
-  }, [id])
+  
 
-  async function fetchEverything() {
+  const fetchEverything = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -89,7 +87,16 @@ export default function StockTakeReviewPage() {
     setRecipeLines(recipesData || [])
 
     setLoading(false)
-  }
+    }, [id])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of session keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchEverything()
+  }, [fetchEverything])
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 

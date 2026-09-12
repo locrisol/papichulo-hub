@@ -76,6 +76,11 @@ export default function EventCalendarPage() {
     const enabled = activeRestaurant?.forecasting_enabled
 
     useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of month keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (!activeRestaurant || !enabled) { setLoading(false); return }
 
         async function load() {
