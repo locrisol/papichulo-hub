@@ -7,18 +7,22 @@
 // is why the file could not be read as a design. This one reads the design and
 // checks it still builds a database.
 //
-// The steps are exactly the ones in the README, so if this works a fresh
-// install works, and if a fresh install is going to break it breaks here first
-// rather than in front of somebody setting the project up.
+// The order is the order a real install goes in, which is the point:
 //
-//   1. supabase db reset   an empty Supabase database, no migrations
+//   1. supabase db reset   an empty Supabase database
 //   2. schema.sql          every table, key, rule and view
-//   3. seed.sql            the rows it cannot start without
+//   3. migrations/         anything written since, in order
+//   4. seed.sql            the rows it cannot start without
+//
+// So if this works a fresh install works, and if a fresh install is going to
+// break it breaks here rather than in front of somebody setting the project up.
 //
 // The Supabase CLI cannot do this on its own. `db reset` applies
-// supabase/migrations, and the whole point is that the folder is empty until
-// somebody writes 001. schema_paths in config.toml is for `db diff`, not for
-// reset, which is a thing worth knowing before trying it again.
+// supabase/migrations and has no way to apply schema.sql, so a reset on its own
+// would run the migrations against an empty database. That is why
+// db.migrations.enabled is false in config.toml, and why this file exists.
+// schema_paths in config.toml is for `db diff`, not for reset, which is worth
+// knowing before trying it again.
 //
 // It counts the tables at the end. The first version of this script piped
 // nothing into psql, so psql read an empty stdin, did nothing at all, and the
@@ -26,7 +30,7 @@
 // the same, which is the one thing a setup script must never do.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 const EXPECTED_TABLES = 36
 
@@ -59,10 +63,20 @@ const psql = (args, input) => execFileSync(
     { input, encoding: 'utf8' },
 )
 
+const migrations = readdirSync('supabase/migrations')
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+
+const files = [
+    'supabase/schema.sql',
+    ...migrations.map(f => `supabase/migrations/${f}`),
+    'supabase/seed.sql',
+]
+
 // psql reads from stdin, so nothing has to be copied into the container first
 // and a project path with a space in it cannot bite.
-for (const [step, file] of [['2', 'supabase/schema.sql'], ['3', 'supabase/seed.sql']]) {
-    console.log(`\n${step}. Applying ${file}`)
+for (const [i, file] of files.entries()) {
+    console.log(`\n${i + 2}. Applying ${file}`)
     try {
         psql(['-v', 'ON_ERROR_STOP=1', '-q'], readFileSync(file))
     } catch (err) {
@@ -72,15 +86,14 @@ for (const [step, file] of [['2', 'supabase/schema.sql'], ['3', 'supabase/seed.s
     }
 }
 
-const count = Number(psql(['-t', '-A', '-c',
-    "select count(*) from pg_tables where schemaname = 'public'"], '').trim())
+const one = (sql) => Number(psql(['-t', '-A', '-c', sql], '').trim())
 
-const places = Number(psql(['-t', '-A', '-c',
-    'select count(*) from public.restaurants'], '').trim())
+const tables = one("select count(*) from pg_tables where schemaname = 'public'")
+const places = one('select count(*) from public.restaurants')
 
-console.log(`\n${count} tables, ${places} restaurants.`)
+console.log(`\n${tables} tables, ${places} restaurants, ${migrations.length} migrations on top.`)
 
-if (count < EXPECTED_TABLES) {
+if (tables < EXPECTED_TABLES) {
     console.error(`Expected at least ${EXPECTED_TABLES} tables. Something did not run.`)
     process.exit(1)
 }

@@ -56,8 +56,12 @@ max_client_conn = 100
 # secret_key = "env(SECRET_VALUE)"
 
 [db.migrations]
-# If disabled, migrations will be skipped during a db push or reset.
-enabled = true
+# Off for "db reset" on purpose. The design is in schema.sql, which the CLI
+# has no way to apply on its own, so a reset that ran the migrations would be
+# running them against an empty database. "npm run db:local" does it in the
+# right order: reset, schema.sql, then whatever is in here, then seed.sql.
+# That is the same order a real install goes in.
+enabled = false
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
 # The design lives in one hand written file. This is what makes
