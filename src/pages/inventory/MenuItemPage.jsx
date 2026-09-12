@@ -671,8 +671,14 @@ export default function MenuItemPage() {
         </div>
       </div>
 
-      {/* Components section */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Components section.
+
+          The heading gets its own line on a phone. This was one row with
+          justify-between and no gap, so on a narrow screen the two buttons were
+          pushed straight into the word Components and sat on top of it: the
+          inner group could wrap but the row it was in could not, and nothing
+          was holding the two apart. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Components</h3>
         <div className="flex flex-wrap gap-2">
           <button
@@ -723,7 +729,6 @@ export default function MenuItemPage() {
           {ingredients.length > 0 && (
             <div className={`${cardEdge} bg-white overflow-hidden mb-6`}>
               <div className={cardHeader}>Ingredients</div>
-              <div className="overflow-x-auto">
               <ComponentTable
                 rows={ingredients}
                 counting={counting}
@@ -735,7 +740,6 @@ export default function MenuItemPage() {
                 onCancelEdit={resetComponentForm}
                 onRemove={removeComponent}
               />
-              </div>
             </div>
           )}
 
@@ -747,8 +751,7 @@ export default function MenuItemPage() {
                   The customer picks one. Only the most expensive is counted.
                 </span>
               </div>
-              <div className="overflow-x-auto">
-                <ComponentTable
+              <ComponentTable
                   rows={rows}
                   counting={counting}
                   getProduct={getProduct}
@@ -759,7 +762,6 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
-              </div>
             </div>
           ))}
           {/* Last, because it is the part you look at least. On a burrito with
@@ -779,8 +781,7 @@ export default function MenuItemPage() {
                     : `${fmtMoney(packagingCost)} of the cost`}
                 </span>
               </div>
-              <div className="overflow-x-auto">
-                <ComponentTable
+              <ComponentTable
                   rows={packaging}
                   counting={counting}
                   getProduct={getProduct}
@@ -791,7 +792,6 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
-              </div>
             </div>
           )}
 
@@ -1071,11 +1071,87 @@ function ComponentForm({
 // The rows of one table: either the ingredients that are always in the dish,
 // or the options of one choice. The same six columns either way, because they
 // are the same six questions.
+// The chips that say what kind of component a line is, shared by both the card
+// and the table so they cannot drift apart.
+function ComponentChips({ product, component }) {
+  return (
+    <>
+      {product?.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
+      {component.choice_group && (
+        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+          {component.choice_group}
+        </span>
+      )}
+      {component.list_separately && (
+        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+          Listed separately
+        </span>
+      )}
+    </>
+  )
+}
+
 function ComponentTable({
   rows, counting, getProduct, getIngredientUnitCost, getLineCost,
   editingComponent, onEdit, onCancelEdit, onRemove,
 }) {
   return (
+    <>
+      {/* A card each on a phone.
+          Six columns will not fit on a 390px screen, so this was a sideways
+          scroll, and it was the worst one in the app: Line Cost, Notes and both
+          buttons were all off the right hand edge, which meant a component
+          could not be edited or removed on a phone at all without dragging the
+          table sideways first. The line cost and the name are the pair worth
+          reading, so they share the top line, and the buttons come back into
+          reach at the bottom of the card. */}
+      <div className="sm:hidden">
+        {rows.map(c => {
+          const product = getProduct(c.product_id)
+          const unitCost = getIngredientUnitCost(product)
+          const lineCost = getLineCost(c)
+          const counted = counting.has(c.id)
+          return (
+            <div key={c.id} className="border-b border-border last:border-b-0 px-3 py-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-medium text-gray-900">
+                  {product ? product.name : <span className="text-red-600">Missing product</span>}
+                  <ComponentChips product={product} component={c} />
+                </span>
+                <span className={`text-sm font-semibold whitespace-nowrap tabular-nums text-right ${
+                  counted ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {lineCost === null ? '—' : fmtMoney(lineCost)}
+                  {lineCost !== null && !counted && (
+                    <span className="block text-xs font-normal">not the most expensive</span>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs text-muted mt-0.5">
+                {c.no_quantity
+                  ? <span className="italic">Used, not measured</span>
+                  : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
+                {unitCost !== null
+                  ? ` at ${fmtUnitCost(unitCost)} / ${product?.unit}`
+                  : <span className="text-amber-600"> · no cost available</span>}
+              </p>
+              {c.notes && <p className="text-xs text-gray-400 mt-0.5">{c.notes}</p>}
+              <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                <button
+                  onClick={() => editingComponent?.id === c.id ? onCancelEdit() : onEdit(c)}
+                  className={rowButton('edit')}
+                >
+                  {editingComponent?.id === c.id ? 'Cancel' : 'Edit'}
+                </button>
+                <button onClick={() => onRemove(c)} className={rowButton('danger')}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
@@ -1096,22 +1172,8 @@ function ComponentTable({
                   <Fragment key={c.id}>
                     <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {product ? (
-                          <>
-                            {product.name}
-                            {product.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
-                          </>
-                        ) : <span className="text-red-600">Missing product</span>}
-                        {c.choice_group && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                            {c.choice_group}
-                          </span>
-                        )}
-                        {c.list_separately && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
-                            Listed separately
-                          </span>
-                        )}
+                        {product ? product.name : <span className="text-red-600">Missing product</span>}
+                        <ComponentChips product={product} component={c} />
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {c.no_quantity
@@ -1157,6 +1219,7 @@ function ComponentTable({
               })}
             </tbody>
           </table>
-
+      </div>
+    </>
   )
 }

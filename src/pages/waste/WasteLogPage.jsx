@@ -400,7 +400,7 @@ export default function WasteLogPage() {
                     {/* The list being built. Nothing here is saved yet. */}
                     {basket.length > 0 && (
                         <div className={`bg-white rounded-xl p-5 mb-4 ${reviewing ? 'border-2 border-accent' : 'border border-border'}`}>
-                            <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center justify-between gap-3 mb-1">
                                 <h3 className="text-sm font-semibold text-gray-900">
                                     {reviewing ? 'Check before saving' : 'Not saved yet'}
                                 </h3>
@@ -478,7 +478,7 @@ export default function WasteLogPage() {
                 {/* What is already logged. Dims while another day loads instead
                     of disappearing, so the page does not jump. */}
                 <div className={`${card} p-5 transition-opacity ${loadingEntries ? 'opacity-50' : ''}`}>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between gap-3 mb-3">
                         <h3 className="text-sm font-semibold text-gray-700">
                             {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}
                         </h3>

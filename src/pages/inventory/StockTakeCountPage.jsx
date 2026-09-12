@@ -629,7 +629,7 @@ export default function StockTakeCountPage() {
                 {isManager && totalValue > 0 && (
                     <div className="pt-4">
                         <div className={`${card} p-4`}>
-                            <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center justify-between gap-3 mb-3">
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>
