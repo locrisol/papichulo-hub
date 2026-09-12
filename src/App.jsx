@@ -12,6 +12,7 @@
 //
 // The public allergen page sits outside ProtectedRoute, because a customer
 // scanning a QR code has no account and never will.
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
@@ -22,39 +23,55 @@ import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from './lib/access
 import { useAuth } from './context/AuthContext'
 import { homeFor } from './lib/access'
 
-import UsersPage from './pages/settings/UsersPage'
-import ChangesPage from './pages/settings/ChangesPage'
-import RestaurantPage from './pages/settings/RestaurantPage'
-import SuppliersPage from './pages/inventory/SuppliersPage'
-import ProductsPage from './pages/inventory/ProductsPage'
-import ProductPricesPage from './pages/inventory/ProductPricesPage'
-import RecipePage from './pages/inventory/RecipePage'
-import AllergenPage from './pages/inventory/AllergenPage'
-import MenuItemsPage from './pages/inventory/MenuItemsPage'
-import MenuItemPage from './pages/inventory/MenuItemPage'
-import PublicAllergensPage from './pages/PublicAllergensPage'
-import PublicAllergensPreviewPage from './pages/inventory/PublicAllergensPreviewPage'
-import StockTakesListPage from './pages/inventory/StockTakesListPage'
-import StockTakeCountPage from './pages/inventory/StockTakeCountPage'
-import StockTakeReviewPage from './pages/inventory/StockTakeReviewPage'
-import StockTakeSummaryPage from './pages/inventory/StockTakeSummaryPage'
-import SalesPage from './pages/sales/SalesPage'
-import WeeklySalesPage from './pages/sales/WeeklySalesPage'
-import InvoicesPage from './pages/invoices/InvoicesPage'
-import InvoiceHistoryPage from './pages/invoices/InvoiceHistoryPage'
-import LabourPage from './pages/costs/LabourPage'
-import WasteLogPage from './pages/waste/WasteLogPage'
-import WasteSummaryPage from './pages/waste/WasteSummaryPage'
-import CostDashboardPage from './pages/costs/CostDashboardPage'
-import ReportsListPage from './pages/reports/ReportsListPage'
-import ReportPage from './pages/reports/ReportPage'
-import EventCalendarPage from './pages/forecast/EventCalendarPage'
-import EmployeesPage from './pages/team/EmployeesPage'
-import RosterPage from './pages/roster/RosterPage'
-import MyShiftsPage from './pages/roster/MyShiftsPage'
+// Every screen is fetched when somebody actually opens it.
+//
+// All 32 were imported at the top, so the browser downloaded the roster,
+// the weekly report builder, the stock take and jsPDF before it could show
+// the login box. That is over a megabyte and a half of JavaScript, and the
+// worst case is not a manager on a laptop: it is a customer scanning a QR
+// code on a phone, on data, for a page that is two hundred lines long.
+//
+// Login and the unauthorised page stay eager. They are tiny, and they are
+// the two screens somebody might see before anything else has loaded.
+const UsersPage = lazy(() => import('./pages/settings/UsersPage'))
+const ChangesPage = lazy(() => import('./pages/settings/ChangesPage'))
+const RestaurantPage = lazy(() => import('./pages/settings/RestaurantPage'))
+const SuppliersPage = lazy(() => import('./pages/inventory/SuppliersPage'))
+const ProductsPage = lazy(() => import('./pages/inventory/ProductsPage'))
+const ProductPricesPage = lazy(() => import('./pages/inventory/ProductPricesPage'))
+const RecipePage = lazy(() => import('./pages/inventory/RecipePage'))
+const AllergenPage = lazy(() => import('./pages/inventory/AllergenPage'))
+const MenuItemsPage = lazy(() => import('./pages/inventory/MenuItemsPage'))
+const MenuItemPage = lazy(() => import('./pages/inventory/MenuItemPage'))
+const PublicAllergensPage = lazy(() => import('./pages/PublicAllergensPage'))
+const PublicAllergensPreviewPage = lazy(() => import('./pages/inventory/PublicAllergensPreviewPage'))
+const StockTakesListPage = lazy(() => import('./pages/inventory/StockTakesListPage'))
+const StockTakeCountPage = lazy(() => import('./pages/inventory/StockTakeCountPage'))
+const StockTakeReviewPage = lazy(() => import('./pages/inventory/StockTakeReviewPage'))
+const StockTakeSummaryPage = lazy(() => import('./pages/inventory/StockTakeSummaryPage'))
+const SalesPage = lazy(() => import('./pages/sales/SalesPage'))
+const WeeklySalesPage = lazy(() => import('./pages/sales/WeeklySalesPage'))
+const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage'))
+const InvoiceHistoryPage = lazy(() => import('./pages/invoices/InvoiceHistoryPage'))
+const LabourPage = lazy(() => import('./pages/costs/LabourPage'))
+const WasteLogPage = lazy(() => import('./pages/waste/WasteLogPage'))
+const WasteSummaryPage = lazy(() => import('./pages/waste/WasteSummaryPage'))
+const CostDashboardPage = lazy(() => import('./pages/costs/CostDashboardPage'))
+const ReportsListPage = lazy(() => import('./pages/reports/ReportsListPage'))
+const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
+const EventCalendarPage = lazy(() => import('./pages/forecast/EventCalendarPage'))
+const EmployeesPage = lazy(() => import('./pages/team/EmployeesPage'))
+const RosterPage = lazy(() => import('./pages/roster/RosterPage'))
+const MyShiftsPage = lazy(() => import('./pages/roster/MyShiftsPage'))
+
+
 
 export default function App() {
   return (
+    // What is on screen while the next page arrives. Deliberately plain: on a
+    // fast connection it is never seen, and on a slow one a spinner that
+    // appears for 80ms is worse than nothing at all.
+    <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/unauthorised" element={<UnauthorisedPage />} />
@@ -131,6 +148,7 @@ export default function App() {
         }
       />
     </Routes>
+    </Suspense>
   )
 }
 

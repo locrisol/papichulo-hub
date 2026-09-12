@@ -152,52 +152,54 @@ export default function WeeklySalesPage() {
         setError('')
         setSuccess('')
 
-        const { data: plats, error: pErr } = await supabase
-            .from('sales_platforms')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
-            .order('sort_order')
-            .order('name')
+        // Four at once. None of them needs anything from another, and this
+        // grid is the slowest screen in the app to open.
+        //
+        // The tenders are deliberately not filtered by is_active. A week from
+        // March has to be able to show Outside Catering, and it can only do
+        // that if the retired row is here to be matched against what that week
+        // has stored.
+        const [
+            { data: plats, error: pErr },
+            { data: tends, error: tErr },
+            { data: recs, error: rErr },
+            { data: notes },
+        ] = await Promise.all([
+            supabase.from('sales_platforms')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
+                .order('sort_order')
+                .order('name'),
+            supabase.from('sales_tenders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order')
+                .order('label'),
+            supabase.from('sales_records')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('sale_date', dates[0])
+                .lte('sale_date', dates[6]),
+            // What the roster says about these days. It decides which are
+            // closed, and a failure here is not worth stopping the week over.
+            supabase.from('day_notes')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('note_date', dates[0]).lte('note_date', dates[6]),
+        ])
 
-        if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
+        const failed = [pErr, tErr, rErr].find(Boolean)
+        if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
         const sortedPlats = (plats || []).sort(
             (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
         )
         setPlatforms(sortedPlats)
-
-        // Not filtered by is_active on purpose. A week from March has to be able
-        // to show Outside Catering, and it can only do that if the retired row
-        // is here to be matched against what that week has stored.
-        const { data: tends, error: tErr } = await supabase
-            .from('sales_tenders')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .order('sort_order')
-            .order('label')
-
-        if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
         setTenders(tends || [])
-
-        const { data: recs, error: rErr } = await supabase
-            .from('sales_records')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('sale_date', dates[0])
-            .lte('sale_date', dates[6])
-
-        if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
         const byDate = {}
         for (const r of recs || []) byDate[r.sale_date] = r
-
-        // What the roster says about these days. It decides which are closed.
-        const { data: notes } = await supabase
-            .from('day_notes')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('note_date', dates[0]).lte('note_date', dates[6])
 
         const noteByDate = {}
         for (const n of notes || []) noteByDate[n.note_date] = n

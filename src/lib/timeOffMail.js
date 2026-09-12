@@ -44,12 +44,12 @@ export function emailTheAsk(absenceId) {
 //
 // Part of a day never gets one, which the function checks for itself too. It is
 // checked here as well so a PDF nobody will send is never built.
-export function emailTheAnswer({ absence, employeeName, restaurant, answeredBy, cleared }) {
+export async function emailTheAnswer({ absence, employeeName, restaurant, answeredBy, cleared }) {
     if (!absence?.id || isPartDay(absence)) return
 
     let pdf = null
     try {
-        pdf = timeOffRecordBase64({ absence, employeeName, restaurant, answeredBy, cleared })
+        pdf = await timeOffRecordBase64({ absence, employeeName, restaurant, answeredBy, cleared })
     } catch (err) {
         // The email is worth sending without it. The answer is the point and
         // the record is the receipt.
