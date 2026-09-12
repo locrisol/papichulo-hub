@@ -113,23 +113,38 @@ export default function BreakRulesModal({ onClose }) {
                         <div
                             key={i}
                             className="rounded-lg border border-border p-3 sm:border-0 sm:p-0
-                                flex flex-col sm:flex-row sm:items-center gap-2"
+                                grid grid-cols-[auto_1fr] items-center gap-2
+                                sm:flex sm:items-center"
                         >
+                            {/* The first column takes its width from the select,
+                                and "gives" sits under it in the same column, so
+                                the two lines line up without anybody choosing a
+                                number.
+
+                                That matters here: a fixed width is a guess about
+                                how wide the longest option renders, and the
+                                guess was wrong, which is why More than came out
+                                as More tha. A grid measures it instead, and it
+                                keeps measuring if the wording ever changes.
+
+                                The select keeps w-full off the shared field
+                                style and fills the column. An auto track sizes
+                                to its item's content, treating a percentage
+                                width as auto while it works that out, so the
+                                column comes out as wide as the longest option
+                                and the select then fills it. */}
+                            <select
+                                value={rule.operator}
+                                onChange={e => set(i, 'operator', e.target.value)}
+                                className={fieldClass}
+                                aria-label="Which shifts this rung catches"
+                            >
+                                {OPERATORS.map(o => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </select>
+
                             <div className="flex items-center gap-2">
-                                {/* Wide enough for the longer of the two, so the
-                                    box does not resize as you change it. */}
-                                <div className="w-28 flex-shrink-0">
-                                    <select
-                                        value={rule.operator}
-                                        onChange={e => set(i, 'operator', e.target.value)}
-                                        className={fieldClass}
-                                        aria-label="Which shifts this rung catches"
-                                    >
-                                        {OPERATORS.map(o => (
-                                            <option key={o.value} value={o.value}>{o.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
                                 <div className="w-16 flex-shrink-0">
                                     <input
                                         {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
@@ -141,8 +156,9 @@ export default function BreakRulesModal({ onClose }) {
                                 <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
                             </div>
 
+                            <span className="text-sm text-gray-500 whitespace-nowrap">gives</span>
+
                             <div className="flex items-center gap-2">
-                                <span className="w-28 sm:w-auto flex-shrink-0 text-sm text-gray-500">gives</span>
                                 <div className="w-16 flex-shrink-0">
                                     <input
                                         {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
