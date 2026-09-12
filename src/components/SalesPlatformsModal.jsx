@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
@@ -19,6 +20,7 @@ const BUCKET_LABEL = {
 }
 
 export default function SalesPlatformsModal({ onClose, onChange }) {
+  const confirm = useConfirm()
   const { activeRestaurant } = useRestaurant()
 
   const [platforms, setPlatforms] = useState([])
@@ -165,7 +167,19 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     onChange && onChange()
   }
 
+  // Only on the way out.
   async function toggleActive(p) {
+    if (p.is_active) {
+      const ok = await confirm({
+        title: `Retire ${p.name}?`,
+        message: 'It stops appearing on the sales screens from now on. Weeks already entered keep their '
+          + 'figures for it, and turning it back on brings the row back.',
+        confirmLabel: 'Retire it',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('sales_platforms')
       .update({ is_active: !p.is_active })

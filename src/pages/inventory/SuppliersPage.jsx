@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
+import { useConfirm } from '../../context/ConfirmContext'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
@@ -22,6 +23,7 @@ import Modal from '../../components/Modal'
 // Suppliers are deactivated and never deleted. Old invoices and prices point at
 // them, and those have to keep making sense.
 export default function SuppliersPage() {
+    const confirm = useConfirm()
     const { user } = useAuth()
 
     // Employees can see this page on purpose: if a delivery is wrong they need
@@ -137,7 +139,19 @@ export default function SuppliersPage() {
         setShowForm(true)
     }
 
+    // Only on the way out. Bringing one back is not a loss and needs no dialog.
     async function toggleActive(supplier) {
+        if (supplier.is_active) {
+            const ok = await confirm({
+                title: `Deactivate ${supplier.name}?`,
+                message: 'They stop being offered when you enter an invoice or add a price. Prices already '
+                    + 'saved against them keep working, and nothing costed from those prices changes.',
+                confirmLabel: 'Deactivate',
+                tone: 'danger',
+            })
+            if (!ok) return
+        }
+
         const { error } = await supabase
             .from('suppliers')
             .update({ is_active: !supplier.is_active })

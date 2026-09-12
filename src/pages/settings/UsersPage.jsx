@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useConfirm } from '../../context/ConfirmContext'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
@@ -20,6 +21,7 @@ import SignInHistory from '../../components/settings/SignInHistory'
 // would break the history of every count and every waste entry they logged.
 export default function UsersPage() {
   const { user } = useAuth()
+  const confirm = useConfirm()
   const [users, setUsers] = useState([])
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
@@ -87,11 +89,34 @@ export default function UsersPage() {
     else setShowEvents(data || [])
   }
 
-  async function toggleUserActive(userId, currentStatus) {
+  // Asked for on the way out, never on the way back in.
+  //
+  // Turning somebody off takes away their way into the Hub, which is the only
+  // half of this button worth stopping over. Turning them back on gives it
+  // back, and asking about that would be ceremony for nothing: a dialog that
+  // appears whatever you pressed is one people learn to dismiss unread, and
+  // then it is not protecting the half that matters either.
+  async function toggleUserActive(person, currentStatus) {
+    if (currentStatus) {
+      const ok = await confirm({
+        title: `Deactivate ${person.full_name || person.email}?`,
+        message: 'They will not be able to sign in. Nothing they have entered is touched, and you can '
+          + 'turn them back on here whenever you want.',
+        details: [
+          { label: 'Email', value: person.email || '' },
+          { label: 'Role', value: (person.role || '').replace('_', ' ') },
+          { label: 'Restaurant', value: getRestaurantName(person.restaurant_id) },
+        ],
+        confirmLabel: 'Deactivate',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+
     const { error } = await supabase
       .from('users')
       .update({ is_active: !currentStatus })
-      .eq('id', userId)
+      .eq('id', person.id)
 
     if (error) setError(friendlyError(error))
     else fetchData()
@@ -178,7 +203,7 @@ export default function UsersPage() {
               {canManageUser(user, u) && (
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                   <button
-                    onClick={() => toggleUserActive(u.id, u.is_active)}
+                    onClick={() => toggleUserActive(u, u.is_active)}
                     className={rowButton(u.is_active ? 'danger' : 'good')}
                   >
                     {u.is_active ? 'Deactivate' : 'Reactivate'}
@@ -242,7 +267,7 @@ export default function UsersPage() {
                         them, because the database refused the change. */}
                     {canManageUser(user, u) && (
                       <button
-                        onClick={() => toggleUserActive(u.id, u.is_active)}
+                        onClick={() => toggleUserActive(u, u.is_active)}
                         className={rowButton(u.is_active ? 'danger' : 'good')}
                       >
                         {u.is_active ? 'Deactivate' : 'Reactivate'}
