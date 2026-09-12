@@ -730,6 +730,34 @@ export default function WeeklySalesPage() {
         )
     }
 
+    // Which day each column is, over every block rather than only over the first.
+    //
+    // The week is nine columns of nothing but figures and it is wider than any
+    // phone, so it scrolls both ways. Reaching the Corporate rows meant the only
+    // day heading in the page was somewhere above the top of the screen, and
+    // typing a figure into the wrong day is not a mistake this page shows you.
+    //
+    // The first cell is sticky and paints its own background, so it has to be
+    // given the heading colour too. Otherwise it keeps the old grey and you see
+    // it as soon as you scroll sideways. The day and date are divs inside the
+    // cell, so they set their own colour rather than inheriting.
+    function dayHeadRow(key) {
+        return (
+            <tr key={key} className={tableHeadRow}>
+                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
+                    &nbsp;
+                </th>
+                {dates.map((d, i) => (
+                    <th key={d} className="px-1.5 py-2 text-center w-24">
+                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
+                    </th>
+                ))}
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
+            </tr>
+        )
+    }
+
     // Every table on this screen uses the same column widths, so the cards line
     // up with each other and with the day headings above them. They are separate
     // tables now, one per card, which is the only way to give each a border of
@@ -905,24 +933,7 @@ export default function WeeklySalesPage() {
                     <table className="w-full table-fixed">
                         {gridColumns()}
                         <thead>
-                            {/* The first cell is sticky and paints its own
-                                background, so it has to be given the heading
-                                colour too. Otherwise it keeps the old grey and
-                                you see it as soon as you scroll sideways. The
-                                day and date are divs inside the cell, so they
-                                set their own colour rather than inheriting. */}
-                            <tr className={tableHeadRow}>
-                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
-                                    &nbsp;
-                                </th>
-                                {dates.map((d, i) => (
-                                    <th key={d} className="px-1.5 py-2 text-center w-24">
-                                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
-                                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
-                                    </th>
-                                ))}
-                                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
-                            </tr>
+                            {dayHeadRow()}
 
                             {/* Closed sits in the header: it is a property of the day */}
                             <tr className="border-b border-border bg-gray-50">
@@ -995,8 +1006,11 @@ export default function WeeklySalesPage() {
                     <div className={`${card} overflow-hidden`}>
                         <table className="w-full table-fixed">
                             {gridColumns()}
-                            <tbody>
+                            <thead>
                                 {trackingHeaderRow({ key: 'onlineHead', title: 'Online Platforms' })}
+                                {dayHeadRow('onlineDays')}
+                            </thead>
+                            <tbody>
                                 {onlinePlatforms.map(p => platformRow(p))}
                                 {platformSumRow({ key: 'onlineSum', label: 'Online', bucketPlatforms: onlinePlatforms, receiptKey: 'online_sales' })}
                             </tbody>
@@ -1008,12 +1022,15 @@ export default function WeeklySalesPage() {
                     <div className={`${card} overflow-hidden`}>
                         <table className="w-full table-fixed">
                             {gridColumns()}
-                            <tbody>
+                            <thead>
                                 {trackingHeaderRow({
                                     key: 'corporateHead',
                                     title: 'Corporate',
                                     note: 'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.',
                                 })}
+                                {dayHeadRow('corporateDays')}
+                            </thead>
+                            <tbody>
                                 {cateringPlatforms.map(p => platformRow(p))}
                                 {platformSumRow({ key: 'cateringSum', label: 'Corporate', bucketPlatforms: cateringPlatforms, receiptKey: 'outside_catering' })}
                             </tbody>
