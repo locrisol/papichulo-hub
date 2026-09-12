@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "schema": "node scripts/build-schema.mjs",
+    "db:local": "node scripts/local-db.mjs",
     "test:rls": "vitest run --config vitest.rls.config.js"
   },
   "dependencies": {

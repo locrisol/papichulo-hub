@@ -56,18 +56,23 @@ max_client_conn = 100
 # secret_key = "env(SECRET_VALUE)"
 
 [db.migrations]
-# If disabled, migrations will be skipped during a db push or reset.
-enabled = true
+# Off for "db reset" on purpose. The design is in schema.sql, which the CLI
+# has no way to apply on its own, so a reset that ran the migrations would be
+# running them against an empty database. "npm run db:local" does it in the
+# right order: reset, schema.sql, then whatever is in here, then seed.sql.
+# That is the same order a real install goes in.
+enabled = false
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
-schema_paths = []
+# The design lives in one hand written file. This is what makes
+# "supabase db reset" build it, so local and a fresh install are the same
+# thing rather than two paths that drift.
+schema_paths = ["./schema.sql"]
 
 [db.seed]
-# Off on purpose. seed.sql is built from the three seed migrations, and those
-# are migrations too, so they have already run by the time this would fire.
-# Running it as well inserts everything a second time, and fails first anyway,
-# because seed.sql inserts a restaurant with no slug and slug became NOT NULL
-# in migration 011. A fresh install that follows the README hits the same wall.
+# Off, because "supabase db reset" seeds before anything has created a table:
+# the migrations folder is empty and the design lives in schema.sql. Use
+# "npm run db:local", which resets, applies schema.sql and then applies this.
 enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
