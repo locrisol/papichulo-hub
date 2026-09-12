@@ -44,6 +44,21 @@ export const dateField =
 export const fieldClass =
     'w-full bg-white border border-border rounded-lg px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// The same box at the smaller size, for a control that opens a list rather than
+// a keyboard.
+//
+// TimeField had this written inside it and the availability dialog had a third
+// copy of its own, a tenth of a rem shorter, which is why that dialog could put
+// two boxes doing the same job side by side at two different heights.
+//
+// text-sm is safe here where it would not be on a text box: a phone zooms the
+// whole page in when you focus something under 16px, and it is a keyboard that
+// brings that on. A select opens a list instead, so there is no keyboard and no
+// zoom.
+export const compactField =
+    'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
+    + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".
