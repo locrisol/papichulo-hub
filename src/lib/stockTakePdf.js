@@ -1,10 +1,22 @@
-import jsPDF from 'jspdf'
 import { fmtMoney, fmtQty } from './format'
 import { countName } from './products'
 import { sectionColour, MIX_COLOUR } from './sections'
 import { bySection, summarise } from './stockTakeSummary'
 import { slicePoints } from './donut'
 import logo from '../assets/PapiChuloLogoPrint.png?inline'
+
+// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
+//
+// It is 400KB with its own optional dependencies behind it, and a plain import
+// at the top of this file means every visit to the screen that can make one
+// pays for it whether or not anybody presses the button. Most never do.
+let jsPdfModule = null
+
+async function loadJsPdf() {
+    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
+    return jsPdfModule
+}
+
 
 // The logo, in millimetres. The file is 400 by 249.
 const LOGO_WIDTH = 26
@@ -76,8 +88,8 @@ function breakdownString(line, product) {
 
 // Builds and saves a stock take PDF.
 // session, restaurant ({name}), products, lines, generatedBy (display name), title
-export function exportStockTakePdf({ session, restaurant, products, lines, generatedBy, title }) {
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+export async function exportStockTakePdf({ session, restaurant, products, lines, generatedBy, title }) {
+    const pdf = new (await loadJsPdf())({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
     const marginX = 15
