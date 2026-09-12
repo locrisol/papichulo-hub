@@ -20,9 +20,18 @@ export const DEFAULT_BREAK_RULES = [
     { hours: 4.5, operator: 'gt', minutes: 15 },
 ]
 
+// The two ways a rung can catch a shift, worded to go before the number.
+//
+// They used to read "or more" and "more than" and sit after it, which works for
+// one of them and not the other: "8 hours or more" is English and "8 hours more
+// than" is not. Half the choices in the box made the sentence nonsense, and the
+// box is the only place anybody learns what the rung means.
+//
+// In front of the number both read properly, and they say the same thing the
+// comparison does: at least 8 is >=, more than 8 is >.
 export const OPERATORS = [
-    { value: 'gte', label: 'or more' },
-    { value: 'gt', label: 'more than' },
+    { value: 'gte', label: 'At least' },
+    { value: 'gt', label: 'More than' },
 ]
 
 // "HH:MM" or "HH:MM:SS" to minutes past midnight. Nothing sensible comes back

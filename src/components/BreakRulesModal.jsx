@@ -92,58 +92,75 @@ export default function BreakRulesModal({ onClose }) {
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
-                {/* A rung reads as a sentence: 8 hours or more gives 60 min. It
-                    will not hold that on one line at 390px, the operator alone
-                    wants seven rem, so it wraps after the operator and "gives"
-                    carries the second line.
+                {/* A rung is one sentence on two deliberate lines: the shift it
+                    catches, then the break it gives.
 
-                    The two number boxes are sized by a wrapper rather than by
-                    putting w-16 next to the shared field style, which already
-                    carries w-full. Two width classes of equal weight resolve by
-                    where they land in the compiled stylesheet, not by the order
-                    they are written in, and w-full happens to sit later: both
-                    boxes came out full width, one per line, with the words
-                    orphaned beside the wrong ones. */}
-                <div className="space-y-2 mb-3">
+                        At least  [ 8 ] hours
+                        gives     [ 60 ] min   ×
+
+                    Two lines chosen rather than left to wrap. Wrapping broke
+                    wherever the widths happened to land, which put "gives 60" on
+                    the first line and left "min" stranded on the second beside
+                    nothing. One row from sm up, where it all fits.
+
+                    The boxes are sized by a wrapper rather than by a width class
+                    beside the shared field style, which already carries w-full.
+                    Two width classes of equal weight resolve by where they sit
+                    in the compiled stylesheet rather than by the order they are
+                    written, and w-full lands later. */}
+                <div className="space-y-3 sm:space-y-2 mb-3">
                     {rules.map((rule, i) => (
-                        <div key={i} className="flex flex-wrap items-center gap-2">
-                            <div className="w-16">
-                                <input
-                                    {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
-                                    className={`${fieldClass} text-right`}
-                                    aria-label="Hours"
-                                    placeholder="8"
-                                />
+                        <div
+                            key={i}
+                            className="rounded-lg border border-border p-3 sm:border-0 sm:p-0
+                                flex flex-col sm:flex-row sm:items-center gap-2"
+                        >
+                            <div className="flex items-center gap-2">
+                                {/* Wide enough for the longer of the two, so the
+                                    box does not resize as you change it. */}
+                                <div className="w-28 flex-shrink-0">
+                                    <select
+                                        value={rule.operator}
+                                        onChange={e => set(i, 'operator', e.target.value)}
+                                        className={fieldClass}
+                                        aria-label="Which shifts this rung catches"
+                                    >
+                                        {OPERATORS.map(o => (
+                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="w-16 flex-shrink-0">
+                                    <input
+                                        {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
+                                        className={`${fieldClass} text-right`}
+                                        aria-label="Hours"
+                                        placeholder="8"
+                                    />
+                                </div>
+                                <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
                             </div>
-                            <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
-                            <select
-                                value={rule.operator}
-                                onChange={e => set(i, 'operator', e.target.value)}
-                                className={`${fieldClass} flex-1 min-w-[7rem]`}
-                                aria-label="Operator"
-                            >
-                                {OPERATORS.map(o => (
-                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                            </select>
-                            <span className="text-sm text-gray-500 whitespace-nowrap">gives</span>
-                            <div className="w-16">
-                                <input
-                                    {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
-                                    className={`${fieldClass} text-right`}
-                                    aria-label="Minutes"
-                                    placeholder="60"
-                                />
+
+                            <div className="flex items-center gap-2">
+                                <span className="w-28 sm:w-auto flex-shrink-0 text-sm text-gray-500">gives</span>
+                                <div className="w-16 flex-shrink-0">
+                                    <input
+                                        {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
+                                        className={`${fieldClass} text-right`}
+                                        aria-label="Minutes"
+                                        placeholder="60"
+                                    />
+                                </div>
+                                <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
+                                <button
+                                    type="button"
+                                    onClick={() => removeRung(i)}
+                                    className={`${removeButton} ml-auto sm:ml-0`}
+                                    aria-label="Remove this rung"
+                                >
+                                    ×
+                                </button>
                             </div>
-                            <span className="text-sm text-gray-500 whitespace-nowrap">min</span>
-                            <button
-                                type="button"
-                                onClick={() => removeRung(i)}
-                                className={removeButton}
-                                aria-label="Remove this rung"
-                            >
-                                ×
-                            </button>
                         </div>
                     ))}
                 </div>

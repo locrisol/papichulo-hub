@@ -134,8 +134,11 @@ export default function RestaurantPage() {
     const ladder = activeRestaurant?.break_rules?.length
         ? [...activeRestaurant.break_rules].sort((a, b) => b.hours - a.hours)
         : DEFAULT_BREAK_RULES
+    // The same words the dialog uses, so the summary and the thing it
+    // summarises do not describe the same rule two different ways. It read
+    // "8h up gives 60 min", which is not a sentence anybody says.
     const breakSummary = ladder
-        .map(r => `${r.hours}h ${r.operator === 'gt' ? 'over' : 'up'} gives ${r.minutes} min`)
+        .map(r => `${r.operator === 'gt' ? 'more than' : 'at least'} ${r.hours}h gives ${r.minutes} min`)
         .join(', ')
 
     // How many checks are switched on, so it is obvious at a glance whether
