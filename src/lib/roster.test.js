@@ -55,6 +55,24 @@ describe('shiftMinutes', () => {
 })
 
 describe('shiftHours', () => {
+    // The roster page used to work this out by subtracting one time from the
+    // other, which makes a Saturday close minus twenty hours, and breakFor
+    // then hands back the wrong break for it. Nothing covered the case.
+    it('a shift that crosses midnight is four hours, not minus twenty', () => {
+        expect(shiftHours(shift('22:00', '02:00'))).toBe(4)
+    })
+
+    it('and the break it earns is the one for four hours', () => {
+        const rules = [
+            { hours: 8, operator: 'gte', minutes: 60 },
+            { hours: 6, operator: 'gte', minutes: 30 },
+            { hours: 4.5, operator: 'gt', minutes: 15 },
+        ]
+        expect(breakFor(shiftHours(shift('22:00', '02:00')), rules)).toBe(0)
+        expect(breakFor(shiftHours(shift('18:00', '02:00')), rules)).toBe(60)
+    })
+
+
     // The week from the spreadsheet this replaces. It comes to 43.50 there,
     // and to 40.50 if the breaks are taken off. The sheet is right.
     it("matches Leandro's week from the sheet, with breaks left in", () => {
