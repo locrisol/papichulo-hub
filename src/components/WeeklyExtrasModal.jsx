@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
@@ -62,8 +63,6 @@ export default function WeeklyExtrasModal({ onClose }) {
         setActiveRestaurant(data)
         onClose()
     }
-    const timeCls =
-        'border border-border rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
 
     return (
         <Modal title="Every week" onClose={onClose} width="max-w-xl">
@@ -88,13 +87,12 @@ export default function WeeklyExtrasModal({ onClose }) {
                                     aria-label="Name"
                                     className={`${fieldClass} flex-1 min-w-40`}
                                 />
-                                <input
-                                    type="time"
+                                <TimeField
                                     value={extra.time}
-                                    onChange={e => patch(i, { time: e.target.value })}
+                                    onChange={v => patch(i, { time: v })}
                                     aria-label={`${extra.name} usual time`}
-                                    className={timeCls}
-                                />
+                                    compact
+                                    />
                                 <button
                                     type="button"
                                     onClick={() => setExtras(list => list.filter((_, n) => n !== i))}
@@ -119,13 +117,12 @@ export default function WeeklyExtrasModal({ onClose }) {
                             placeholder="Feedr"
                         />
                     </div>
-                    <input
-                        type="time"
+                    <TimeField
                         value={adding.time}
-                        onChange={e => setAdding(a => ({ ...a, time: e.target.value }))}
+                        onChange={v => setAdding(a => ({ ...a, time: v }))}
                         aria-label="Usual time"
-                        className={timeCls}
-                    />
+                        compact
+                        />
                     <button type="button" onClick={add} disabled={!adding.name.trim()} className={secondaryButton}>
                         Add it
                     </button>

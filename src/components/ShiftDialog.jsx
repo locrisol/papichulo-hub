@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { useConfirm } from '../context/ConfirmContext'
 import { shortDate } from '../lib/dates'
@@ -107,22 +108,26 @@ export default function ShiftDialog({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    {/* The list starts at opening rather than midnight, so the
+                        times a shift actually begins at are the first thing in
+                        it. It still runs the whole day round, because a shift
+                        finishing at 02:00 is a normal Saturday. */}
                     <div>
                         <label className={labelClass}>Starts</label>
-                        <input
-                            type="time"
+                        <TimeField
                             value={form.startsAt}
-                            onChange={e => set('startsAt', e.target.value)}
-                            className={fieldClass}
+                            onChange={v => set('startsAt', v)}
+                            dayStart={dayHours?.open}
+                            aria-label="Starts"
                         />
                     </div>
                     <div>
                         <label className={labelClass}>Finishes</label>
-                        <input
-                            type="time"
+                        <TimeField
                             value={form.endsAt}
-                            onChange={e => set('endsAt', e.target.value)}
-                            className={fieldClass}
+                            onChange={v => set('endsAt', v)}
+                            dayStart={dayHours?.open}
+                            aria-label="Finishes"
                         />
                     </div>
                 </div>

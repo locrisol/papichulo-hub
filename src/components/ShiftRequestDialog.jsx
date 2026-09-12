@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
@@ -118,11 +119,11 @@ export default function ShiftRequestDialog({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             <div>
                 <label className={labelClass}>From</label>
-                <input type="time" value={from} onChange={e => setFrom(e.target.value)} className={fieldClass} />
+                <TimeField value={from} onChange={setFrom} aria-label="From" />
             </div>
             <div>
                 <label className={labelClass}>To</label>
-                <input type="time" value={to} onChange={e => setTo(e.target.value)} className={fieldClass} />
+                <TimeField value={to} onChange={setTo} aria-label="To" />
             </div>
         </div>
     )

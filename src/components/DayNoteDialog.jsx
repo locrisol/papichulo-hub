@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
@@ -139,20 +140,16 @@ export default function DayNoteDialog({
                             )}
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                            <input
-                                type="time"
+                            <TimeField
                                 value={form.opensAt}
-                                onChange={e => set('opensAt', e.target.value)}
-                                className={fieldClass}
+                                onChange={v => set("opensAt", v)}
                                 aria-label="Opens at"
-                            />
-                            <input
-                                type="time"
+                                />
+                            <TimeField
                                 value={form.closesAt}
-                                onChange={e => set('closesAt', e.target.value)}
-                                className={fieldClass}
+                                onChange={v => set("closesAt", v)}
                                 aria-label="Closes at"
-                            />
+                                />
                         </div>
                         <p className="text-xs text-gray-400">
                             This is where a late night for a concert or an early close for renovations goes.
@@ -274,13 +271,12 @@ export default function DayNoteDialog({
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={extra.time}
-                                        onChange={e => set('extras', setExtraTime(form.extras, extra.name, e.target.value))}
-                                        aria-label={extra.name + ' time'}
+                                        onChange={v => set("extras", setExtraTime(form.extras, extra.name, v))}
+                                        aria-label={extra.name + " time"}
                                         className={timeCls}
-                                    />
+                                        />
                                     <button
                                         type="button"
                                         onClick={() => set('extras', removeExtra(form.extras, extra.name))}
@@ -308,13 +304,12 @@ export default function DayNoteDialog({
                                 placeholder="Coffee machine service"
                             />
                         </div>
-                        <input
-                            type="time"
+                        <TimeField
                             value={oneOff.time}
-                            onChange={e => setOneOff(o => ({ ...o, time: e.target.value }))}
+                            onChange={v => setOneOff(o => ({ ...o, time: v }))}
                             aria-label="Time for the one off"
                             className={timeCls}
-                        />
+                            />
                         <button
                             type="button"
                             onClick={() => {

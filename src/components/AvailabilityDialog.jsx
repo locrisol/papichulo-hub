@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
@@ -395,23 +396,37 @@ function DayRows({ rows, on, timeCls }) {
                                                     <option key={o.value} value={o.value}>{o.label}</option>
                                                 ))}
                                             </select>
+                                            {/* The whole day, not the trading
+                                                day: somebody saying they
+                                                cannot start before 06:00 is
+                                                talking about their life, not
+                                                about when we open. */}
                                             {shape !== 'until' && (
-                                                <input
-                                                    type="time"
+                                                <TimeField
                                                     value={window[0]}
-                                                    onChange={e => setTime(row.key, i, 'from', e.target.value)}
+                                                    onChange={v => setTime(row.key, i, 'from', v)}
                                                     aria-label={`${row.name} from`}
-                                                    className={timeCls}
+                                                    compact
                                                 />
                                             )}
                                             {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
+                                            {/* endOfDay so 24:00 is a thing the
+                                                list can hold. It should never
+                                                arrive here, because a window
+                                                ending at 24:00 reads as "from"
+                                                and this box is not drawn for
+                                                that shape. But a select with no
+                                                option matching its value shows
+                                                the first one instead, which
+                                                would quietly turn the end of
+                                                the day into midnight. */}
                                             {shape !== 'from' && (
-                                                <input
-                                                    type="time"
-                                                    value={window[1] === DAY_END ? '' : window[1]}
-                                                    onChange={e => setTime(row.key, i, 'to', e.target.value)}
+                                                <TimeField
+                                                    value={window[1]}
+                                                    onChange={v => setTime(row.key, i, 'to', v)}
+                                                    endOfDay
                                                     aria-label={`${row.name} to`}
-                                                    className={timeCls}
+                                                    compact
                                                 />
                                             )}
                                             {row.windows.length > 1 && (

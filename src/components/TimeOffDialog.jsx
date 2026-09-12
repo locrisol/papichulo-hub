@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
@@ -300,21 +301,21 @@ export default function TimeOffDialog({
                             <div className="sm:col-span-3">
                                 <label className={labelClass}>Only part of the day, optional</label>
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={form.canFrom}
-                                        onChange={e => change('canFrom', e.target.value)}
-                                        className={fieldClass}
+                                        onChange={v => change("canFrom", v)}
+                                        allowEmpty
+                                        placeholder="From opening"
                                         aria-label="Can work from"
-                                    />
+                                        />
                                     <span className="text-xs text-muted flex-shrink-0">to</span>
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={form.canTo}
-                                        onChange={e => change('canTo', e.target.value)}
-                                        className={fieldClass}
+                                        onChange={v => change("canTo", v)}
+                                        allowEmpty
+                                        placeholder="Until closing"
                                         aria-label="Can work until"
-                                    />
+                                        />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-1">
                                     The hours they can still work. Leave both empty for the whole day,
