@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { DAY_NAMES } from '../../lib/events'
 import ErrorBanner from '../../components/ErrorBanner'
@@ -1064,7 +1064,7 @@ export default function WeeklySalesPage() {
                 <button
                     onClick={handleSaveWeek}
                     disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : 'Save week'}
                 </button>

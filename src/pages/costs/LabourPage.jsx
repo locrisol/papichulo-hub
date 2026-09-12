@@ -6,7 +6,7 @@ import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty, num, fmtPct } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
+import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
 import { DAY_NAMES } from '../../lib/events'
@@ -418,7 +418,7 @@ export default function LabourPage() {
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                    className={primaryButton('lg')}>
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>

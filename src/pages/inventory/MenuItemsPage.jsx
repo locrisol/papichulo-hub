@@ -10,7 +10,7 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeList from '../../components/ArrangeList'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 import ErrorBanner from '../../components/ErrorBanner'
 
@@ -397,7 +397,7 @@ export default function MenuItemsPage() {
           </button>
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             + Add Menu Item
           </button>
@@ -480,7 +480,7 @@ export default function MenuItemsPage() {
             <div className="flex gap-3">
               <button
                 type="submit"
-                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                className={primaryButton()}
               >
                 Create & Edit Components
               </button>

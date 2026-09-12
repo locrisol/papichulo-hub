@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '../Modal'
 import ModalSection from '../ModalSection'
-import { modalFooter, secondaryButton, checkbox, labelClass } from '../../lib/controlStyles'
+import { modalFooter, secondaryButton, checkbox, labelClass, primaryButton } from '../../lib/controlStyles'
 import QuantityInUnit from '../QuantityInUnit'
 import { offerable } from '../../lib/menuChoices'
 import { canBeMenuComponent } from '../../lib/products'
@@ -395,7 +395,7 @@ export default function AddOptions({
                     type="button"
                     onClick={add}
                     disabled={!ready}
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                    className={primaryButton()}
                 >
                     {chosen.length === 0
                         ? 'Add them'

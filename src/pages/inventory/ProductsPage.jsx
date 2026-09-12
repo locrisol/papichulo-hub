@@ -20,7 +20,7 @@ import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { orderFormats } from '../../lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '../../lib/controlStyles'
 import ErrorBanner from '../../components/ErrorBanner'
 
 // Every column in the table, in the order it appears.
@@ -1006,7 +1006,7 @@ export default function ProductsPage() {
           </button>
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             + Add Product
           </button>

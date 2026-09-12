@@ -4,7 +4,7 @@ import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton, captionClass, compactField } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
@@ -287,7 +287,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                     type="button"
                     onClick={save}
                     disabled={saving || !!problem}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : 'Save'}
                 </button>

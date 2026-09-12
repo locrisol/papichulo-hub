@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -392,7 +392,7 @@ export default function WasteLogPage() {
                             )}
 
                             <div className="flex justify-end">
-                                <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                <button type="submit" className={primaryButton('xl')}>
                                     Add to list
                                 </button>
                             </div>
@@ -468,7 +468,7 @@ export default function WasteLogPage() {
                                     </>
                                 ) : (
                                     <button onClick={() => setReviewing(true)}
-                                        className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                        className={primaryButton('xl')}>
                                         Review and save
                                     </button>
                                 )}

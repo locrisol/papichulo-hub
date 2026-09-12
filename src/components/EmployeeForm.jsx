@@ -3,7 +3,7 @@ import LockedField from './LockedField'
 import { linkableUsers } from '../lib/team'
 import { todayISO, fullDate } from '../lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { modalFooter, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import ErrorBanner from './ErrorBanner'
 
@@ -364,7 +364,7 @@ export default function EmployeeForm({
                 <button
                     type="submit"
                     disabled={saving || !!problem}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : submitLabel}
                 </button>

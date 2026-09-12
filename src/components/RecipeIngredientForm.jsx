@@ -1,4 +1,4 @@
-import { labelClass } from '../lib/controlStyles'
+import { labelClass, primaryButton } from '../lib/controlStyles'
 import { useRef, useEffect } from 'react'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -75,7 +75,7 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

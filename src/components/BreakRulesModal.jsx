@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import ErrorBanner from './ErrorBanner'
 
@@ -223,7 +223,7 @@ export default function BreakRulesModal({ onClose }) {
                         type="button"
                         onClick={save}
                         disabled={saving || !!problem}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : 'Save'}
                     </button>

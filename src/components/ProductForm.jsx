@@ -10,7 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
-import { checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -633,7 +633,7 @@ export default function ProductForm({
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

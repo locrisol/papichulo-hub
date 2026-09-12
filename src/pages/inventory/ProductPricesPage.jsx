@@ -8,7 +8,7 @@ import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import BackButton from '../../components/BackButton'
 import ErrorBanner from '../../components/ErrorBanner'
@@ -281,7 +281,7 @@ export default function ProductPricesPage() {
                 </div>
                 <button
                     onClick={() => { resetForm(); setShowForm(true) }}
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    className={primaryButton()}
                 >
                     + Add Price
                 </button>

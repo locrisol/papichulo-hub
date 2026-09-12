@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
@@ -664,7 +664,7 @@ export default function MenuItemPage() {
           <button
             onClick={saveHeader}
             disabled={headerSaving}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            className={primaryButton()}
           >
             {headerSaving ? 'Saving...' : 'Save Details'}
           </button>
@@ -692,7 +692,7 @@ export default function MenuItemPage() {
           <button
             onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
             disabled={availableProducts.length === 0}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={primaryButton()}
           >
             + Add Component
           </button>
@@ -1053,7 +1053,7 @@ function ComponentForm({
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

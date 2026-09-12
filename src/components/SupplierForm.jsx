@@ -10,7 +10,7 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
-import { labelClass, fieldClass } from '../lib/controlStyles'
+import { labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
 import ErrorBanner from './ErrorBanner'
 
 const CATEGORIES = [
@@ -95,7 +95,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                 </button>
                 <button
                     type="submit"
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    className={primaryButton()}
                 >
                     {submitLabel}
                 </button>

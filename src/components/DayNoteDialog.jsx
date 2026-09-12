@@ -6,7 +6,7 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
@@ -359,7 +359,7 @@ export default function DayNoteDialog({
                         type="button"
                         onClick={save}
                         disabled={saving || !!problem}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : isEmpty && note ? 'Back to normal' : 'Save'}
                     </button>

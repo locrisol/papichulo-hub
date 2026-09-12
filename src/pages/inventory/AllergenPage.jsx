@@ -1,4 +1,4 @@
-import { pageTitle } from '../../lib/controlStyles'
+import { pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -165,7 +165,7 @@ export default function AllergenPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+              className={primaryButton()}
             >
               {saving ? 'Saving...' : 'Save Allergens'}
             </button>

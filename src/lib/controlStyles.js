@@ -14,6 +14,27 @@
 // The primary action on a page keeps its accent orange and is not in here. These
 // are only for the secondary controls that sit beside it.
 
+// The one button on a screen that does the thing: Save, Publish, Add, Log it.
+//
+// This was typed out sixty three times and came in eight spellings. The
+// differences were not decisions: some carried transition-colors and some did
+// not, some had disabled:opacity-50 and some had nothing to show for being
+// disabled, and the padding varied between px-4 py-2 and px-6 py-2.5 within
+// the same screen. Both paddings are real, so size is an argument rather than
+// something to settle by picking one.
+//
+// A function rather than a string, for the same reason rowButton is one: a
+// caller adding its own padding beside a padding already in here would be two
+// classes setting one property, and which of them wins is decided by where
+// they land in the compiled stylesheet, not by the order they are written.
+export function primaryButton(size = 'md') {
+    const pad = { sm: 'px-3 py-1.5', md: 'px-4 py-2', lg: 'px-6 py-2.5', xl: 'px-6 py-3' }[size]
+        || 'px-4 py-2'
+
+    return `${pad} bg-accent text-white text-sm font-medium rounded-lg `
+        + 'transition-colors hover:bg-orange-600 disabled:opacity-50'
+}
+
 // Ordinary secondary button: Log waste, Week view, Day view, Manage Categories,
 // Check for new events.
 export const secondaryButton =

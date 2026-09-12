@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle, primaryButton } from '../../lib/controlStyles'
 import SupplierForm from '../../components/SupplierForm'
 import Modal from '../../components/Modal'
 import ErrorBanner from '../../components/ErrorBanner'
@@ -191,7 +191,7 @@ export default function SuppliersPage() {
                     {isManager && (
                         <button
                             onClick={() => { resetForm(); setShowForm(true) }}
-                            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                            className={primaryButton()}
                         >
                             + Add Supplier
                         </button>

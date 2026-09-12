@@ -9,7 +9,7 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
 import ErrorBanner from '../../components/ErrorBanner'
@@ -584,7 +584,7 @@ export default function SalesPage() {
             )}
 
             <div className="flex justify-end">
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                <button onClick={handleSave} disabled={saving} className={primaryButton('lg')}>
                     {saving
                         ? 'Saving...'
                         : isClosed

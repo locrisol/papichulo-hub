@@ -15,7 +15,7 @@
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
 import { fmtUnitCost } from '../lib/format'
-import { labelClass } from '../lib/controlStyles'
+import { labelClass, primaryButton } from '../lib/controlStyles'
 import { numberField } from '../lib/numberInput'
 import { perUnitPreview } from '../lib/productPrice'
 import ErrorBanner from './ErrorBanner'
@@ -170,7 +170,7 @@ export default function PriceForm({
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

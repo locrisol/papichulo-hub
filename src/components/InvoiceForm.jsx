@@ -1,4 +1,4 @@
-import { labelClass, fieldClass } from '../lib/controlStyles'
+import { labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
 import { INVOICE_CATEGORIES } from '../lib/invoiceCategories'
 import { numberField } from '../lib/numberInput'
 import { shortDate } from '../lib/dates'
@@ -140,7 +140,7 @@ export default function InvoiceForm({
                 <button
                     type="submit"
                     disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : submitLabel}
                 </button>
