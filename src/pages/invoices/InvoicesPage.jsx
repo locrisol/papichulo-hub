@@ -442,10 +442,16 @@ export default function InvoicesPage() {
                     // week there was no telling where Monday's deliveries ended
                     // and Tuesday's began without reading every date.
                     //
-                    // Still in a scrolling wrapper: it sits inside a padded card
-                    // rather than the usual table box, and without it the Total
-                    // column and the Delete buttons are off the edge of a phone.
-                    <div className="overflow-x-auto space-y-4">
+                    // The scrolling wrapper that used to be here was an
+                    // admission rather than a fix. Its own comment said the
+                    // total and the Delete button were off the edge of a phone,
+                    // and sliding them back into view one thumb at a time is
+                    // not the same as them fitting: the row is four columns
+                    // with w-32, w-28 and w-28 nailed to three of them, which
+                    // is about 375 pixels spoken for before the supplier gets
+                    // any. Cards below sm, the table above it, the same way
+                    // Prices and the recipe ingredients were dealt with.
+                    <div className="space-y-4">
                         {groupByDay(invoices).map(day => (
                             <div key={day.date} className="border border-border rounded-lg overflow-hidden">
                                 <div className="bg-gray-100 border-b border-border px-3 py-2 flex items-center justify-between gap-3">
@@ -456,6 +462,54 @@ export default function InvoicesPage() {
                                     </span>
                                 </div>
 
+                                {/* A card each on a phone. The supplier and the
+                                    amount share the first line because they are
+                                    the pair anybody is scanning for; the
+                                    category, the note and the two buttons go
+                                    underneath, where none of them is competing
+                                    for width. The coloured stripe down the side
+                                    is doing real work, telling Food from
+                                    Packaging at a glance, so it stays. */}
+                                <div className="sm:hidden">
+                                    {day.rows.map(inv => {
+                                        const cat = invoiceCategory(inv.category)
+                                        const isEditing = editingId === inv.id
+                                        return (
+                                            <div
+                                                key={inv.id}
+                                                className={`border-b border-border last:border-b-0 border-l-4 px-3 py-2.5 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}
+                                            >
+                                                <div className="flex items-baseline justify-between gap-3">
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {inv.suppliers?.name || 'Unknown supplier'}
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                                                        {fmtMoney(inv.total_amount)}
+                                                    </span>
+                                                </div>
+                                                <span className={`inline-block mt-1 px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                                    {cat.label}
+                                                </span>
+                                                {inv.notes && (
+                                                    <p className="text-xs text-gray-400 mt-1">{inv.notes}</p>
+                                                )}
+                                                <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                                                    <button
+                                                        onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
+                                                        className={rowButton('edit')}
+                                                    >
+                                                        {isEditing ? 'Cancel' : 'Edit'}
+                                                    </button>
+                                                    <button onClick={() => handleDelete(inv)} className={rowButton('danger')}>
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <div className="hidden sm:block overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <tbody>
                                         {day.rows.map(inv => {
@@ -500,6 +554,7 @@ export default function InvoicesPage() {
                                         })}
                                     </tbody>
                                 </table>
+                                </div>
                             </div>
                         ))}
                     </div>
