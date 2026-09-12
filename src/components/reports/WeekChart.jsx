@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { shortDate } from '../../lib/dates'
+import { shortDate } from '@/lib/dates'
 import {
     RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside, segments, isMissing,
     labelIndices,
-} from '../../lib/reportChart'
-import { segmentTrack, segmentButton } from '../../lib/controlStyles'
-import { num } from '../../lib/format'
+} from '@/lib/reportChart'
+import { segmentTrack, segmentButton } from '@/lib/controlStyles'
+import { num } from '@/lib/format'
 
 // A week by week chart for the report.
 //

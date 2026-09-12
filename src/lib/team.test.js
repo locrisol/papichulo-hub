@@ -9,7 +9,7 @@ import {
     employeeNote,
     nextColour,
     POSITION_COLOURS,
-} from './team'
+} from '@/lib/team'
 
 const emp = (id, full_name, sort_order = 0, extra = {}) => ({ id, full_name, sort_order, ...extra })
 

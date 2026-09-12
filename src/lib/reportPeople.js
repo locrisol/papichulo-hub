@@ -9,7 +9,7 @@
 // nobody is watching is a certificate that has quietly run out, and finding
 // that out during an inspection is the expensive way.
 
-import { addDays } from './dates'
+import { addDays } from '@/lib/dates'
 
 // How far ahead is worth mentioning.
 //

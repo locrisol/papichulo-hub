@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import BackToTop from './BackToTop'
-import { ScrollProvider } from '../../context/ScrollContext'
-import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '../../lib/access'
+import { useAuth } from '@/context/AuthContext'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import BackToTop from '@/components/layout/BackToTop'
+import { ScrollProvider } from '@/context/ScrollContext'
+import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 
 // Sidebar navigation.
 //

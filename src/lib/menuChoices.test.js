@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { offerable } from './menuChoices'
+import { offerable } from '@/lib/menuChoices'
 
 const products = [
     { id: 'coke', name: 'Coca Cola 330ml', section: 'Dry' },

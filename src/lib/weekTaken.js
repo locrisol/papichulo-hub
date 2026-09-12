@@ -108,4 +108,4 @@ export function toSlices(rows) {
 // The pie geometry moved out to its own file once the stock take grew a pie of
 // its own. Re-exported here so the dashboard side goes on importing it from
 // where it has always imported it.
-export { slicePath } from './donut'
+export { slicePath } from '@/lib/donut'

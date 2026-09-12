@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toSlices, slicePath, TENDER_COLOURS, OTHER_COLOUR } from './weekTaken'
+import { toSlices, slicePath, TENDER_COLOURS, OTHER_COLOUR } from '@/lib/weekTaken'
 
 const row = (label, amount) => ({ label, amount })
 

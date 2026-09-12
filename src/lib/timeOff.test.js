@@ -3,7 +3,7 @@ import {
     NOTICE_DEFAULT, noticeDays, noticeBlocks, daysBefore, noticeProblem,
     isPartDay, requestLabel, partWords, hitsShift, shiftsHit, partDaySpans,
     isCovered, openGaps, waiting, askedOff,
-} from './timeOff'
+} from '@/lib/timeOff'
 
 const TODAY = '2026-09-04'
 

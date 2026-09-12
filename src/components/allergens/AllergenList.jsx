@@ -1,5 +1,5 @@
-import { ALLERGEN_KEYS, ALLERGEN_LABELS, allergenLook } from '../../lib/allergens'
-import { card } from '../../lib/controlStyles'
+import { ALLERGEN_KEYS, ALLERGEN_LABELS, allergenLook } from '@/lib/allergens'
+import { card } from '@/lib/controlStyles'
 
 // The allergen list itself, category by category.
 //

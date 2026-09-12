@@ -120,6 +120,11 @@ They never create anything. Reads are harmless, and a write that is meant to be 
         layout/          the sidebar and page shell
       context/           the signed-in user and the active restaurant
       lib/               logic with no interface: costing, allergens, dates, formatting
+      components/
+        ui/              used everywhere: Modal, TimeField, DateStepper, ErrorBanner
+        auth/            the two route guards
+        roster/ team/ inventory/ settings/ reports/
+        costs/ forecast/ invoices/ allergens/ layout/
       pages/
         auth/            login
         inventory/       catalogue, menu, stock takes, allergens
@@ -128,6 +133,7 @@ They never create anything. Reads are harmless, and a write that is meant to be 
         invoices/        entry and history
         costs/           labour and the cost dashboard
         waste/           logging and the weekly summary
+        public/          the allergen page a customer scans
     tests/
       rls/               the database access tests
     supabase/
@@ -139,6 +145,10 @@ They never create anything. Reads are harmless, and a write that is meant to be 
       local-db.mjs       builds a local database from the two files above
 
 Anything in `lib` is a plain function with no React in it, which is why those are the parts with tests.
+
+`components/` mirrors `pages/`. A component used by one feature lives with that feature; one used across features lives in `ui/`. It was 55 loose files at the top level with six subfolders used inconsistently, so `allergens/` held one file while `AllergenPicker` sat beside it in the root and there was no `roster/` at all, despite roster being the biggest cluster in the app.
+
+Imports are written from the root: `@/lib/dates`, `@/components/ui/Modal`. `@` is `src`, set in `vite.config.js` and again in `jsconfig.json` for the editor.
 
 ## Who can do what
 

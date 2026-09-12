@@ -9,9 +9,9 @@
 // Only the series, the scale and the words. Where they sit on the page and how
 // tall they are is the page's business, and the mail's.
 
-import { CHART_TOTAL } from './reportChart'
-import { brandFor } from './platformBrand'
-import { fmtMoney } from './format'
+import { CHART_TOTAL } from '@/lib/reportChart'
+import { brandFor } from '@/lib/platformBrand'
+import { fmtMoney } from '@/lib/format'
 
 // The axis wants €14,750 rather than €14,750.00. Four gridlines each carrying
 // two zeroes nobody reads is width taken off the chart itself.

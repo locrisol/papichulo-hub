@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
     heldFor, partiesIn, canBeMenuComponent, countName,
     inCountOrder,
-} from './products'
+} from '@/lib/products'
 
 const PRODUCTS = [
     { id: 'p1', name: 'Pineapple' },

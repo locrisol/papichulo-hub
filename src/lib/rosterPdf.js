@@ -1,4 +1,4 @@
-import { sheetLayout, shareName, wrapLines, AWAY } from './rosterShare'
+import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
 
 // jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
 //

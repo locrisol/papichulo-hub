@@ -1,5 +1,5 @@
-import { fmtMoney } from '../../lib/format'
-import AutoTextarea from '../AutoTextarea'
+import { fmtMoney } from '@/lib/format'
+import AutoTextarea from '@/components/ui/AutoTextarea'
 
 // Corporate sales.
 //

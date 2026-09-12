@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle, agendaRows } from './events'
+import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle, agendaRows } from '@/lib/events'
 
 const on = date => ({ id: date, event_date: date })
 

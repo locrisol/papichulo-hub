@@ -3,8 +3,8 @@
 // Everything in here is arithmetic and rules, kept out of the pages so it can
 // be tested without a database or a browser. The pages fetch, this decides.
 
-import { weekDates, weekStartOf, todayISO, addDays } from './dates'
-import { tendersToShow, tenderVariance, num } from './salesTenders'
+import { weekDates, weekStartOf, todayISO, addDays } from '@/lib/dates'
+import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
 
 // The sections every report starts with, in the order they are read.
 //

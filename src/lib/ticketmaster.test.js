@@ -5,7 +5,7 @@
  * is plain functions and runs faster without one.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mapEvent, syncIsDue, markSynced } from './ticketmaster'
+import { mapEvent, syncIsDue, markSynced } from '@/lib/ticketmaster'
 
 // mapEvent is the only part worth testing on its own: everything else talks to
 // the network or the database.

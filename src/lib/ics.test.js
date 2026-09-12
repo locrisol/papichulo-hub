@@ -3,7 +3,7 @@ import {
     foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
     hoursForDate as feedHours, closesStore, TZID,
 } from '../../supabase/functions/roster-calendar/ics'
-import { hoursForDate as appHours } from './roster'
+import { hoursForDate as appHours } from '@/lib/roster'
 
 const shift = (extra = {}) => ({
     id: 'abc',

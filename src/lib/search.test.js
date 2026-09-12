@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fold, matches } from './search'
+import { fold, matches } from '@/lib/search'
 
 describe('fold', () => {
     it('takes the accents off', () => {

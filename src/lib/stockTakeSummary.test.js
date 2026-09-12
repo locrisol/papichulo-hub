@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bySection, summarise, FOOD_SECTIONS } from './stockTakeSummary'
+import { bySection, summarise, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 
 const product = (id, name, section, extra = {}) =>
     ({ id, name, section, unit: 'KG', ...extra })

@@ -10,9 +10,9 @@
 // the accounts for itself. All this posts is which report, and for a test the
 // figures the screen is showing, because a draft has none frozen to read.
 
-import { supabase } from './supabase'
-import { chartToBlob, MAIL_WIDTH } from './reportChartImage'
-import { chartSpecs, MAIL_CHART_ORDER } from './reportCharts'
+import { supabase } from '@/lib/supabase'
+import { chartToBlob, MAIL_WIDTH } from '@/lib/reportChartImage'
+import { chartSpecs, MAIL_CHART_ORDER } from '@/lib/reportCharts'
 
 const BUCKET = 'report-charts'
 

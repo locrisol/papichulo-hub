@@ -18,8 +18,8 @@
 // place's lines behind each, and nothing is counted twice, because a line
 // belongs to one place and no more.
 
-import { sectionRank, sectionColour } from './sections'
-import { heldFor, compareForCount } from './products'
+import { sectionRank, sectionColour } from '@/lib/sections'
+import { heldFor, compareForCount } from '@/lib/products'
 
 // The three the accountant adds together. Packaging and cleaning are stock but
 // they are not food cost, and that split is the first thing anybody does to

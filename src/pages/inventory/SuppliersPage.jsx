@@ -1,13 +1,13 @@
 import { useState, useEffect, Fragment } from 'react'
-import { useConfirm } from '../../context/ConfirmContext'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { can, MANAGERS } from '../../lib/access'
-import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle, primaryButton } from '../../lib/controlStyles'
-import SupplierForm from '../../components/SupplierForm'
-import Modal from '../../components/Modal'
-import ErrorBanner from '../../components/ErrorBanner'
+import { useConfirm } from '@/context/ConfirmContext'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
+import { can, MANAGERS } from '@/lib/access'
+import { friendlyError } from '@/lib/errors'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import SupplierForm from '@/components/inventory/SupplierForm'
+import Modal from '@/components/ui/Modal'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Who we buy from.
 //

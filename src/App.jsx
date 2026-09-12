@@ -14,14 +14,14 @@
 // scanning a QR code has no account and never will.
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import ProtectedRoute from './components/ProtectedRoute'
-import AppLayout from './components/layout/AppLayout'
-import LoginPage from './pages/auth/LoginPage'
-import UnauthorisedPage from './pages/auth/UnauthorisedPage'
-import RequireRole from './components/RequireRole'
-import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from './lib/access'
-import { useAuth } from './context/AuthContext'
-import { homeFor } from './lib/access'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
+import AppLayout from '@/components/layout/AppLayout'
+import LoginPage from '@/pages/auth/LoginPage'
+import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
+import RequireRole from '@/components/auth/RequireRole'
+import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
+import { useAuth } from '@/context/AuthContext'
+import { homeFor } from '@/lib/access'
 
 // Every screen is fetched when somebody actually opens it.
 //
@@ -33,36 +33,36 @@ import { homeFor } from './lib/access'
 //
 // Login and the unauthorised page stay eager. They are tiny, and they are
 // the two screens somebody might see before anything else has loaded.
-const UsersPage = lazy(() => import('./pages/settings/UsersPage'))
-const ChangesPage = lazy(() => import('./pages/settings/ChangesPage'))
-const RestaurantPage = lazy(() => import('./pages/settings/RestaurantPage'))
-const SuppliersPage = lazy(() => import('./pages/inventory/SuppliersPage'))
-const ProductsPage = lazy(() => import('./pages/inventory/ProductsPage'))
-const ProductPricesPage = lazy(() => import('./pages/inventory/ProductPricesPage'))
-const RecipePage = lazy(() => import('./pages/inventory/RecipePage'))
-const AllergenPage = lazy(() => import('./pages/inventory/AllergenPage'))
-const MenuItemsPage = lazy(() => import('./pages/inventory/MenuItemsPage'))
-const MenuItemPage = lazy(() => import('./pages/inventory/MenuItemPage'))
-const PublicAllergensPage = lazy(() => import('./pages/PublicAllergensPage'))
-const PublicAllergensPreviewPage = lazy(() => import('./pages/inventory/PublicAllergensPreviewPage'))
-const StockTakesListPage = lazy(() => import('./pages/inventory/StockTakesListPage'))
-const StockTakeCountPage = lazy(() => import('./pages/inventory/StockTakeCountPage'))
-const StockTakeReviewPage = lazy(() => import('./pages/inventory/StockTakeReviewPage'))
-const StockTakeSummaryPage = lazy(() => import('./pages/inventory/StockTakeSummaryPage'))
-const SalesPage = lazy(() => import('./pages/sales/SalesPage'))
-const WeeklySalesPage = lazy(() => import('./pages/sales/WeeklySalesPage'))
-const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage'))
-const InvoiceHistoryPage = lazy(() => import('./pages/invoices/InvoiceHistoryPage'))
-const LabourPage = lazy(() => import('./pages/costs/LabourPage'))
-const WasteLogPage = lazy(() => import('./pages/waste/WasteLogPage'))
-const WasteSummaryPage = lazy(() => import('./pages/waste/WasteSummaryPage'))
-const CostDashboardPage = lazy(() => import('./pages/costs/CostDashboardPage'))
-const ReportsListPage = lazy(() => import('./pages/reports/ReportsListPage'))
-const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
-const EventCalendarPage = lazy(() => import('./pages/forecast/EventCalendarPage'))
-const EmployeesPage = lazy(() => import('./pages/team/EmployeesPage'))
-const RosterPage = lazy(() => import('./pages/roster/RosterPage'))
-const MyShiftsPage = lazy(() => import('./pages/roster/MyShiftsPage'))
+const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
+const ChangesPage = lazy(() => import('@/pages/settings/ChangesPage'))
+const RestaurantPage = lazy(() => import('@/pages/settings/RestaurantPage'))
+const SuppliersPage = lazy(() => import('@/pages/inventory/SuppliersPage'))
+const ProductsPage = lazy(() => import('@/pages/inventory/ProductsPage'))
+const ProductPricesPage = lazy(() => import('@/pages/inventory/ProductPricesPage'))
+const RecipePage = lazy(() => import('@/pages/inventory/RecipePage'))
+const AllergenPage = lazy(() => import('@/pages/inventory/AllergenPage'))
+const MenuItemsPage = lazy(() => import('@/pages/inventory/MenuItemsPage'))
+const MenuItemPage = lazy(() => import('@/pages/inventory/MenuItemPage'))
+const PublicAllergensPage = lazy(() => import('@/pages/public/PublicAllergensPage'))
+const PublicAllergensPreviewPage = lazy(() => import('@/pages/inventory/PublicAllergensPreviewPage'))
+const StockTakesListPage = lazy(() => import('@/pages/inventory/StockTakesListPage'))
+const StockTakeCountPage = lazy(() => import('@/pages/inventory/StockTakeCountPage'))
+const StockTakeReviewPage = lazy(() => import('@/pages/inventory/StockTakeReviewPage'))
+const StockTakeSummaryPage = lazy(() => import('@/pages/inventory/StockTakeSummaryPage'))
+const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
+const WeeklySalesPage = lazy(() => import('@/pages/sales/WeeklySalesPage'))
+const InvoicesPage = lazy(() => import('@/pages/invoices/InvoicesPage'))
+const InvoiceHistoryPage = lazy(() => import('@/pages/invoices/InvoiceHistoryPage'))
+const LabourPage = lazy(() => import('@/pages/costs/LabourPage'))
+const WasteLogPage = lazy(() => import('@/pages/waste/WasteLogPage'))
+const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
+const CostDashboardPage = lazy(() => import('@/pages/costs/CostDashboardPage'))
+const ReportsListPage = lazy(() => import('@/pages/reports/ReportsListPage'))
+const ReportPage = lazy(() => import('@/pages/reports/ReportPage'))
+const EventCalendarPage = lazy(() => import('@/pages/forecast/EventCalendarPage'))
+const EmployeesPage = lazy(() => import('@/pages/team/EmployeesPage'))
+const RosterPage = lazy(() => import('@/pages/roster/RosterPage'))
+const MyShiftsPage = lazy(() => import('@/pages/roster/MyShiftsPage'))
 
 
 

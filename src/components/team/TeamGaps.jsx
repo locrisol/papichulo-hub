@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { teamGaps, countGaps } from '../../lib/teamGaps'
+import { teamGaps, countGaps } from '@/lib/teamGaps'
 
 // What is missing from the team list, as one line you can open.
 //

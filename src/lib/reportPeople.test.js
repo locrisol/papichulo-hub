@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workingThatWeek, paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from './reportPeople'
+import { workingThatWeek, paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '@/lib/reportPeople'
 
 const WEEK = '2026-08-09'
 

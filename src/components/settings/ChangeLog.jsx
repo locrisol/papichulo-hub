@@ -1,7 +1,7 @@
 import {
     tableWords, changedFields, whoWords, throughTheApp, actionWords, actionTone, dayOf,
-} from '../../lib/changeLog'
-import { tableHeadRow, tableCard, card } from '../../lib/controlStyles'
+} from '@/lib/changeLog'
+import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 
 // The change log as a list.
 //

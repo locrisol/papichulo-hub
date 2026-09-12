@@ -3,7 +3,7 @@ import {
     tableWords, fieldWords, valueWords, changedFields, deletedFields,
     whoWords, throughTheApp, summarise, actionWords, actionTone, byDay,
     aOrAn, dayOf,
-} from './changeLog'
+} from '@/lib/changeLog'
 
 describe('tableWords', () => {
     it('uses the name the app calls it', () => {

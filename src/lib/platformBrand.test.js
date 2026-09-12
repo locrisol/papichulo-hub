@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { brandFor, NEUTRAL } from './platformBrand'
+import { brandFor, NEUTRAL } from '@/lib/platformBrand'
 
 describe('brandFor', () => {
     it('gives each of the three its own colour', () => {

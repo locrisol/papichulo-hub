@@ -8,14 +8,14 @@
 // The image is the one that matters. The roster goes to a WhatsApp group, and
 // everything else here is for the wall and for the accountant.
 
-import { DAY_NAMES } from './events'
-import { dayState, availabilityOn, availabilityStart } from './availability'
-import { fullDate, shortDate } from './dates'
+import { DAY_NAMES } from '@/lib/events'
+import { dayState, availabilityOn, availabilityStart } from '@/lib/availability'
+import { fullDate, shortDate } from '@/lib/dates'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
-} from './roster'
-import { wholeDaysOn, holidayHoursInWeek } from './absences'
-import { extrasFor, extraLabel } from './dayExtras'
+} from '@/lib/roster'
+import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
+import { extrasFor, extraLabel } from '@/lib/dayExtras'
 
 // A day somebody is not there, as it goes out.
 //

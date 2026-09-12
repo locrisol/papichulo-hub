@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { weeksOpen } from '../../lib/weeklyReport'
-import { useRemoveCard } from './useRemoveCard'
-import { removeButton } from '../../lib/controlStyles'
-import AutoTextarea from '../AutoTextarea'
-import AddButton from '../AddButton'
+import { weeksOpen } from '@/lib/weeklyReport'
+import { useRemoveCard } from '@/components/reports/useRemoveCard'
+import { removeButton } from '@/lib/controlStyles'
+import AutoTextarea from '@/components/ui/AutoTextarea'
+import AddButton from '@/components/ui/AddButton'
 
 // Support and actions needed: the running list.
 //

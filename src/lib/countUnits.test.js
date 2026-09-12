@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderFormats } from './countUnits'
+import { orderFormats } from '@/lib/countUnits'
 
 const fmt = (label, factor, sort_order = 0) => ({ label, factor, sort_order })
 const labels = formats => orderFormats(formats).map(f => f.label)

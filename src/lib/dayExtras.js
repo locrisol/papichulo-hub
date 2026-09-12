@@ -13,7 +13,7 @@
 // copies the name and the time rather than pointing at them, so renaming Feedr
 // next year does not quietly rewrite last March.
 
-import { toMinutes, shortTime } from './roster'
+import { toMinutes, shortTime } from '@/lib/roster'
 
 // Tidy up whatever came back from the database.
 //

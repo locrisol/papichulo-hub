@@ -15,11 +15,11 @@
 // current guidance. They are here as settings rather than as constants for
 // exactly that reason.
 
-import { shiftHours, shiftMinutes, toMinutes, shortTime } from './roster'
-import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from './availability'
-import { absencesOn, kindPhrase, isPartDay } from './absences'
-import { hitsShift, partWords } from './timeOff'
-import { shortDate, fullDate, addDays } from './dates'
+import { shiftHours, shiftMinutes, toMinutes, shortTime } from '@/lib/roster'
+import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabilityStart } from '@/lib/availability'
+import { absencesOn, kindPhrase, isPartDay } from '@/lib/absences'
+import { hitsShift, partWords } from '@/lib/timeOff'
+import { shortDate, fullDate, addDays } from '@/lib/dates'
 
 // What each immigration stamp allows, in hours a week.
 //

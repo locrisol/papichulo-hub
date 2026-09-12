@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, num } from '../../lib/format'
-import { todayISO, addDays, shortDate } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
-import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
-import ErrorBanner from '../../components/ErrorBanner'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { fmtMoney, num } from '@/lib/format'
+import { todayISO, addDays, shortDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '@/lib/controlStyles'
+import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '@/lib/invoiceCategories'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for

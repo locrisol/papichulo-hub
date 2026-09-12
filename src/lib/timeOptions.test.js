@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { timeOptions, onTheGrid, END_OF_DAY } from './timeOptions'
+import { timeOptions, onTheGrid, END_OF_DAY } from '@/lib/timeOptions'
 
 const values = opts => opts.map(o => o.value)
 

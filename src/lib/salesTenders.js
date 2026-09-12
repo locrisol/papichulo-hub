@@ -1,7 +1,7 @@
 // num lives in format.js now, with the money and the percentages. It is
 // re-exported because the weekly report and this file's own tests have
 // always got it from here, and moving a name is not worth a bigger diff.
-import { num } from './format'
+import { num } from '@/lib/format'
 export { num }
 // The till receipt rows.
 //

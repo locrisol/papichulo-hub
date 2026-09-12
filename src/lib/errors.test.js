@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { friendlyError, isPermissionError } from './errors'
+import { friendlyError, isPermissionError } from '@/lib/errors'
 
 describe('friendlyError', () => {
     it('gives nothing when there is no error', () => {

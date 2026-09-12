@@ -17,11 +17,11 @@
 // width, because a mail has no ResizeObserver and no idea how wide the window
 // is, and the labels placed by measureText rather than by a text anchor.
 
-import { shortDate } from './dates'
+import { shortDate } from '@/lib/dates'
 import {
     inRange, fromFirstFigure, scaleFor, ticks, segments, isMissing, labelIndices, DEFAULT_RANGE,
-} from './reportChart'
-import { num } from './format'
+} from '@/lib/reportChart'
+import { num } from '@/lib/format'
 
 // The width the mail's own tables are built to, so a chart is exactly as wide
 // as the figures above it rather than being scaled down to fit and going soft.

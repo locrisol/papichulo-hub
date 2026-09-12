@@ -1,5 +1,5 @@
-import { shortDate } from '../../lib/dates'
-import { paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '../../lib/reportPeople'
+import { shortDate } from '@/lib/dates'
+import { paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '@/lib/reportPeople'
 
 // The team's paperwork, read straight off the employee records.
 //
