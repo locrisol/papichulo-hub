@@ -4,7 +4,6 @@ import Modal from './Modal'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { DAY_NAMES } from '../lib/events'
 import { BANK_HOLIDAY } from '../lib/roster'
 import { modalFooter, removeButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
@@ -105,12 +104,21 @@ export default function OpeningHoursModal({ onClose }) {
 
                 {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
 
-                <div className="space-y-2 mb-4">
+                <div className="space-y-3 sm:space-y-2 mb-4">
                     {FULL_DAYS.map((day, i) => (
-                        <div key={day} className="flex items-center gap-2">
-                            <span className="w-9 sm:w-24 flex-shrink-0 text-sm text-gray-700">
-                                <span className="sm:hidden">{DAY_NAMES[i]}</span>
-                                <span className="hidden sm:inline">{day}</span>
+                        <div key={day} className="flex flex-wrap items-center gap-2">
+                            {/* The day sits over its own times on a phone
+                                rather than beside them.
+
+                                Three letters in a 38 pixel column, a "to" and a
+                                remove left the two time boxes 89 pixels each
+                                out of the 305 a row has. They fit, but only
+                                just, and only while nothing else is ever added
+                                to the row. Given the line to itself the name
+                                can be the whole word, and each box goes to
+                                about 112. */}
+                            <span className="w-full sm:w-24 flex-shrink-0 text-sm text-gray-700">
+                                {day}
                             </span>
                             <TimeField
                                 value={hours[i].open}
