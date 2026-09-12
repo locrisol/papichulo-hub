@@ -8,6 +8,7 @@ import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
 } from '../lib/roster'
 import { modalFooter, labelClass, fieldClass } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // One shift: making it, changing it, removing it.
 //
@@ -165,7 +166,7 @@ export default function ShiftDialog({
                 </div>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner>{problem}</ErrorBanner>
                 )}
                 </div>
 

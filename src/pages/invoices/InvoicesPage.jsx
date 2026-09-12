@@ -13,6 +13,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
 import { orderByUse, USE_WINDOW_DAYS } from '../../lib/supplierOrder'
+import ErrorBanner from '../../components/ErrorBanner'
 
 
 // Nothing chosen to start with. The category used to default to food, which is
@@ -379,7 +380,7 @@ export default function InvoicesPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* The week, the same control the other eight screens use. */}

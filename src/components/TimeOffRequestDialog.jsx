@@ -7,6 +7,7 @@ import { todayISO } from '../lib/dates'
 import { noticeProblem, noticeDays } from '../lib/timeOff'
 import { emailTheAsk } from '../lib/timeOffMail'
 import { modalFooter, secondaryButton } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // Asking for time off.
 //
@@ -180,9 +181,9 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                 )}
 
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+                    <ErrorBanner>
                         {error}
-                    </div>
+                    </ErrorBanner>
                 )}
             </div>
 

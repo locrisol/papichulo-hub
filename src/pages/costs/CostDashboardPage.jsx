@@ -13,6 +13,7 @@ import { tendersToShow } from '../../lib/salesTenders'
 import WeekTakenChart from '../../components/WeekTakenChart'
 import { DAY_NAMES } from '../../lib/events'
 import { can, RESTAURANT_CONFIG } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -364,7 +365,7 @@ export default function CostDashboardPage() {
                 </div>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {!loading && netSales === 0 && (
                 <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">

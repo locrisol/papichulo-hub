@@ -8,6 +8,7 @@ import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Waste for a week, grouped by product.
 //
@@ -149,7 +150,7 @@ export default function WasteSummaryPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {/* Week and filter */}
             <div className={`${card} p-4 mb-4`}>

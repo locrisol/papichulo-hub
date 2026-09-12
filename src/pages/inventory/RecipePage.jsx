@@ -12,6 +12,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
 import BackButton from '../../components/BackButton'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -327,7 +328,7 @@ export default function RecipePage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {product && !product.is_mix && (

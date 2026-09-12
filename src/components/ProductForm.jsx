@@ -19,6 +19,7 @@ import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
 import { nameClashMessage, declaresAllergens } from '../lib/products'
 import { sectionColour } from '../lib/sections'
+import ErrorBanner from './ErrorBanner'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -626,7 +627,7 @@ export default function ProductForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">

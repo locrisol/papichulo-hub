@@ -2,6 +2,7 @@ import { labelClass, fieldClass } from '../lib/controlStyles'
 import { INVOICE_CATEGORIES } from '../lib/invoiceCategories'
 import { numberField } from '../lib/numberInput'
 import { shortDate } from '../lib/dates'
+import ErrorBanner from './ErrorBanner'
 
 // The add and edit form for an invoice.
 //
@@ -121,9 +122,9 @@ export default function InvoiceForm({
                 the page behind it is covered: a message up there was never seen
                 at all, on any device. */}
             {problem && (
-                <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">
+                <ErrorBanner className="mb-3">
                     {problem}
-                </p>
+                </ErrorBanner>
             )}
 
             <div className="flex justify-end gap-3">

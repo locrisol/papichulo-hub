@@ -2,6 +2,7 @@ import { labelClass } from '../lib/controlStyles'
 import { useRef, useEffect } from 'react'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
+import ErrorBanner from './ErrorBanner'
 
 // One ingredient line on a MIX recipe.
 //
@@ -68,7 +69,7 @@ export default function RecipeIngredientForm({ problem, formData, onChange, onSu
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">

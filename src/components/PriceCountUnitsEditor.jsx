@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { orderFormats } from '../lib/countUnits'
 import { rowButton, checkbox } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
 //
@@ -145,7 +146,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             </p>
 
             {error && (
-                <div className="bg-red-50 text-red-600 text-xs rounded-lg p-2">{error}</div>
+                <ErrorBanner className="text-xs">{error}</ErrorBanner>
             )}
 
             {/* Existing formats */}

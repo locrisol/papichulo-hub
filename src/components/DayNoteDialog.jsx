@@ -12,6 +12,7 @@ import ModalSection from './ModalSection'
 import {
     cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
 } from '../lib/dayExtras'
+import ErrorBanner from './ErrorBanner'
 
 // When one day is not like the others.
 //
@@ -121,7 +122,7 @@ export default function DayNoteDialog({
             onClose={onClose}
         >
             <div>
-                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+                {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
                 {show('hours') && (
                 <ModalSection
@@ -343,7 +344,7 @@ export default function DayNoteDialog({
                 )}
 
                 {problem && (
-                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
                 )}
 
                 <div className={modalFooter}>

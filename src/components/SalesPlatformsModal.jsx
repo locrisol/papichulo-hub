@@ -7,6 +7,7 @@ import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass } fro
 import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
+import ErrorBanner from './ErrorBanner'
 
 // The stored value stays 'catering'. Only what you read changes, so nothing
 // already recorded against it has to move.
@@ -354,7 +355,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
         <div className="px-6 py-4 overflow-y-auto flex-1">
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
           )}
 
           <p className="text-xs text-gray-500 mb-4">

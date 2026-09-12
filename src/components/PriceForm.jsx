@@ -18,6 +18,7 @@ import { fmtUnitCost } from '../lib/format'
 import { labelClass } from '../lib/controlStyles'
 import { numberField } from '../lib/numberInput'
 import { perUnitPreview } from '../lib/productPrice'
+import ErrorBanner from './ErrorBanner'
 
 // The boxes on their own, with no form around them.
 //
@@ -163,7 +164,7 @@ export default function PriceForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">

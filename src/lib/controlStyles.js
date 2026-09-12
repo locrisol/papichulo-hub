@@ -59,6 +59,19 @@ export const compactField =
     'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
     + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// Something went wrong.
+//
+// Red 700 rather than 600, which is what the majority already used and the one
+// that clears the contrast ratio against the pale red behind it. No border: the
+// colour is doing that job and the bordered versions were a third of the sites
+// disagreeing with the other two thirds.
+//
+// No margin. Where one of these sits is genuinely different from screen to
+// screen, so that is the caller's to say. Use the ErrorBanner component rather
+// than this string, because it also carries role="alert", which fifty of the
+// sixty five hand written ones were missing.
+export const errorBanner = 'text-sm text-red-700 bg-red-50 rounded-lg p-3'
+
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".

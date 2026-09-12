@@ -7,6 +7,7 @@ import { friendlyError } from '../../lib/errors'
 import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle } from '../../lib/controlStyles'
 import SupplierForm from '../../components/SupplierForm'
 import Modal from '../../components/Modal'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Who we buy from.
 //
@@ -199,7 +200,7 @@ export default function SuppliersPage() {
             </div>
 
             {error && (
-                <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+                <ErrorBanner className="mb-4">{error}</ErrorBanner>
             )}
 
             {isManager && showForm && !editingSupplier && (

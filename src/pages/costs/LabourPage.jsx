@@ -10,6 +10,7 @@ import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from 
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
 import { DAY_NAMES } from '../../lib/events'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Labour hours, entered a week at a time.
 //
@@ -270,7 +271,7 @@ export default function LabourPage() {
                 cost, so you have to scroll sideways to reach the cost column.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {!currentRate && (
@@ -412,7 +413,7 @@ export default function LabourPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">

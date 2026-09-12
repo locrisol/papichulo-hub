@@ -6,6 +6,7 @@ import { friendlyError } from '../../lib/errors'
 import { ALLERGENS, emptyAllergens } from '../../lib/allergens'
 import AllergenPicker from '../../components/AllergenPicker'
 import BackButton from '../../components/BackButton'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Tagging the 14 allergens on one product.
 //
@@ -140,7 +141,7 @@ export default function AllergenPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
@@ -157,7 +158,7 @@ export default function AllergenPage() {
               button it sat beside it on one line, which squeezes both on a
               phone and is not where the eye goes after a press. */}
           {formProblem && (
-            <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
           )}
 
           <div className="flex items-center gap-3">

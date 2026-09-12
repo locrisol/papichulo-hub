@@ -12,6 +12,7 @@ import { friendlyError } from '../../lib/errors'
 import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -411,7 +412,7 @@ export default function SalesPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. The left is the day
@@ -579,7 +580,7 @@ export default function SalesPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">

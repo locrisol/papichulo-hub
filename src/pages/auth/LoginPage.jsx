@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import logo from '../../assets/PapiChuloLogo.png'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The sign in screen.
 //
@@ -50,9 +51,9 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">
+          <ErrorBanner className="mb-4">
             {error}
-          </div>
+          </ErrorBanner>
         )}
 
         <form onSubmit={handleLogin}>

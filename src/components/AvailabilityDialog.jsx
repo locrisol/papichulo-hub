@@ -10,6 +10,7 @@ import {
     DAY_START, DAY_END, patternOn,
 } from '../lib/availability'
 import { todayISO, fullDate, addDays } from '../lib/dates'
+import ErrorBanner from './ErrorBanner'
 
 // When somebody can work.
 //
@@ -275,7 +276,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
             </ModalSection>
 
             {(problem || error) && (
-                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem || error}</p>
+                <ErrorBanner className="mx-6 mb-4">{problem || error}</ErrorBanner>
             )}
 
             <div className={modalFooter}>

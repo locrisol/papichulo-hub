@@ -7,6 +7,7 @@ import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -110,7 +111,7 @@ export default function InvoiceHistoryPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {/* Filters */}
             <div className={`${card} p-4 mb-4`}>

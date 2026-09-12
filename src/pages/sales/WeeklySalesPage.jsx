@@ -12,6 +12,7 @@ import { numberField } from '../../lib/numberInput'
 import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { DAY_NAMES } from '../../lib/events'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -850,7 +851,7 @@ export default function WeeklySalesPage() {
                 at a time and saves to exactly the same place, so it makes no difference which one you use.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Week navigation */}
@@ -1056,7 +1057,7 @@ export default function WeeklySalesPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">

@@ -9,6 +9,7 @@ import { numberField } from '../lib/numberInput'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
 import { modalFooter, removeButton, checkbox, labelClass, fieldClass } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -143,7 +144,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     return (
         <Modal title={`${TYPE_LABELS[targetType]} target`} onClose={onClose}>
                 <div className="px-6 py-4">
-                    {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+                    {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                     <form onSubmit={handleSave}>
                         <div className="mb-3">

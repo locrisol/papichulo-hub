@@ -34,6 +34,7 @@ import RequestDeskModal from '../../components/RequestDeskModal'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Building the week.
 //
@@ -766,10 +767,10 @@ export default function RosterPage() {
             )}
 
             {clashes.length > 0 && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">
+                <ErrorBanner className="mb-4">
                     {clashes.length === 1 ? 'One person is' : `${clashes.length} people are`} rostered in two places at
                     once this week: {clashes.map(([a]) => employeesById[a.employee_id]?.full_name).join(', ')}.
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Day tabs. */}

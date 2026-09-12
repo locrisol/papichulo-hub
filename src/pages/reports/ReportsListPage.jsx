@@ -15,6 +15,7 @@ import {
     DEFAULT_OVERHEADS,
 } from '../../lib/weeklyReport'
 import { can, RESTAURANT_CONFIG } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The way in to the weekly report: the weeks that have finished, and what state
 // each one is in.
@@ -262,9 +263,9 @@ export default function ReportsListPage() {
             </div>
 
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Below md this is a list of cards rather than a table.

@@ -21,6 +21,7 @@ import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { orderFormats } from '../../lib/countUnits'
 import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle } from '../../lib/controlStyles'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Every column in the table, in the order it appears.
 //
@@ -1013,7 +1014,7 @@ export default function ProductsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {/* The whole form takes the lightest shade of whatever section is chosen,

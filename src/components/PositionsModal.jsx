@@ -6,6 +6,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { POSITION_COLOURS, nextColour } from '../lib/team'
 import { badge, rowButton, fieldClass } from '../lib/controlStyles'
 import { ModalSectionBar } from './ModalSection'
+import ErrorBanner from './ErrorBanner'
 
 // The positions a restaurant uses: Kitchen, Counter, Delivery, whatever they
 // call them.
@@ -99,7 +100,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
     return (
         <Modal title="Positions" onClose={onClose}>
             <div className="px-6 py-4">
-                {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
+                {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                 {positions.length === 0 ? (
                     <p className="text-sm text-gray-400 italic mb-5">

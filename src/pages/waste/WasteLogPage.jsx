@@ -15,6 +15,7 @@ import { heldFor } from '../../lib/products'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
 import { can, MANAGERS } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -267,7 +268,7 @@ export default function WasteLogPage() {
                 )}
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. What you are adding
@@ -387,7 +388,7 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end">
@@ -450,7 +451,7 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end gap-2">

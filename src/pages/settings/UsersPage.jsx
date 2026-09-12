@@ -8,6 +8,7 @@ import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '../../lib/
 import { latestByUser, lastUsed, agoWords } from '../../lib/loginEvents'
 import { fullDate } from '../../lib/dates'
 import SignInHistory from '../../components/settings/SignInHistory'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -158,9 +159,9 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">
+        <ErrorBanner className="mb-4">
           {error}
-        </div>
+        </ErrorBanner>
       )}
 
       {loading ? (

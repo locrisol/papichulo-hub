@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { modalFooter, secondaryButton } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // The link somebody subscribes their phone's calendar to.
 //
@@ -159,7 +160,7 @@ export default function CalendarLinkDialog({ employee, onClose, onChanged }) {
                 </>
             )}
 
-            {error && <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+            {error && <ErrorBanner className="mx-6 mb-4">{error}</ErrorBanner>}
 
             <div className={modalFooter}>
                 <button

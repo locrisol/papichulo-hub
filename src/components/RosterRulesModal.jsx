@@ -8,6 +8,7 @@ import { NOTICE_DEFAULT } from '../lib/timeOff'
 import { modalFooter, checkbox } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import { DEFAULT_RULES } from '../lib/workRules'
+import ErrorBanner from './ErrorBanner'
 
 // What the roster checks a week against.
 //
@@ -91,7 +92,7 @@ export default function RosterRulesModal({ onClose }) {
     return (
         <Modal title="Roster rules" onClose={onClose} width="max-w-xl">
             <div>
-                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+                {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
                 <ModalSection
                     title="Warnings"
