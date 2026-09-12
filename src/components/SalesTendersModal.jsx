@@ -3,7 +3,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, card, modalFooter, rowButton, secondaryButton } from '../lib/controlStyles'
+import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass } from '../lib/controlStyles'
 import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
@@ -295,7 +295,65 @@ export default function SalesTendersModal({ onClose, onChange }) {
                 </button>
               </div>
             )}
-            <div className={`${card} overflow-x-auto overflow-y-hidden`}>
+            {/* A card each on a phone. Three columns inside a dialog put
+                Rename and Retire off the side, and the status column stacked
+                "Counts toward gross" into three lines to fit what was left. */}
+            <div className="sm:hidden space-y-2">
+              {ordered.map(t => (
+                <div
+                  key={t.id}
+                  className={`rounded-lg border border-border p-3 ${t.is_active ? 'bg-white' : 'bg-red-50'}`}
+                >
+                  {editingId === t.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editLabel}
+                        onChange={e => setEditLabel(e.target.value)}
+                        className={fieldClass}
+                        aria-label="Row name"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Stored as {t.key}, which does not change. Every figure already entered stays with it.
+                      </p>
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        <button onClick={() => saveEdit(t)} className={rowButton('good')}>Save</button>
+                        <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className={`text-sm font-semibold ${t.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                          {t.label}
+                        </span>
+                        <span className={`text-xs whitespace-nowrap ${t.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                          {t.is_active ? 'Active' : 'Retired'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">{t.key}</p>
+                      <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                        <button onClick={() => startEdit(t)} className={rowButton('edit')}>Rename</button>
+                        <button
+                          onClick={() => toggleCounts(t)}
+                          className={rowButton(t.counts_toward_gross ? 'plain' : 'danger')}
+                        >
+                          {t.counts_toward_gross ? 'Counts toward gross' : 'Not counted'}
+                        </button>
+                        <button
+                          onClick={() => toggleActive(t)}
+                          className={rowButton(t.is_active ? 'danger' : 'good')}
+                        >
+                          {t.is_active ? 'Retire' : 'Bring back'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className={`hidden sm:block ${card} overflow-x-auto overflow-y-hidden`}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className={tableHeadRow}>

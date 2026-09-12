@@ -3,7 +3,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, modalFooter, rowButton, secondaryButton } from '../lib/controlStyles'
+import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass } from '../lib/controlStyles'
 import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
@@ -276,7 +276,64 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         {rows.length === 0 ? (
           <p className="text-xs text-gray-400 italic mb-2">No platforms in this bucket yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          {/* A card each on a phone. Three columns inside a dialog put Retire
+              half off the side of the screen, and retiring is most of what this
+              list is for. */}
+          <div className="sm:hidden space-y-2">
+            {rows.map(p => (
+              <div
+                key={p.id}
+                className={`rounded-lg border border-border p-3 ${p.is_active ? 'bg-white' : 'bg-red-50'}`}
+              >
+                {editingId === p.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className={`${fieldClass} mb-2`}
+                      aria-label="Platform name"
+                    />
+                    <select
+                      value={editBucket}
+                      onChange={e => setEditBucket(e.target.value)}
+                      className={fieldClass}
+                      aria-label="Which group"
+                    >
+                      {BUCKETS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                    </select>
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      <button onClick={() => saveEdit(p)} className={rowButton('good')}>Save</button>
+                      <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {p.name}
+                      </span>
+                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                        {p.is_active ? 'Active' : 'Retired'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                      <button onClick={() => startEdit(p)} className={rowButton('edit')}>Edit</button>
+                      <button
+                        onClick={() => toggleActive(p)}
+                        className={rowButton(p.is_active ? 'danger' : 'good')}
+                      >
+                        {p.is_active ? 'Retire' : 'Bring back'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <table className="hidden sm:table w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Name</th>
@@ -286,6 +343,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
             </thead>
             <tbody>{rows.map(renderRow)}</tbody>
           </table>
+          </>
         )}
       </div>
     )
@@ -300,7 +358,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
 
           <p className="text-xs text-gray-500 mb-4">
-            Platforms feed the Online Platform and Catering totals on the sales entry form. Deactivate a platform instead of deleting it so past sales records keep their reference. Use the arrows to set the order they appear in.
+            Platforms feed the Online Platform and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
           </p>
 
           {loading ? (
@@ -314,8 +372,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
           <div className="bg-gray-50 rounded-lg p-4">
             <ModalSectionBar title="Add a platform" />
-            <form onSubmit={handleAdd} className="flex gap-2 items-start">
-              <div className="flex-1">
+            <form onSubmit={handleAdd} className="flex flex-wrap gap-2 items-start">
+              <div className="flex-1 min-w-[9rem]">
                 <input
                   type="text"
                   value={newName}

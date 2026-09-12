@@ -108,7 +108,7 @@ export default function OpeningHoursModal({ onClose }) {
                 <div className="space-y-2 mb-4">
                     {FULL_DAYS.map((day, i) => (
                         <div key={day} className="flex items-center gap-2">
-                            <span className="w-12 sm:w-24 flex-shrink-0 text-sm text-gray-700">
+                            <span className="w-9 sm:w-24 flex-shrink-0 text-sm text-gray-700">
                                 <span className="sm:hidden">{DAY_NAMES[i]}</span>
                                 <span className="hidden sm:inline">{day}</span>
                             </span>
@@ -116,6 +116,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 value={hours[i].open}
                                 onChange={v => set(i, "open", v)}
                                 compact
+                                className="flex-1 min-w-0"
                                 aria-label={`${day} opens`}
                                 />
                             <span className="text-gray-400 text-sm">to</span>
@@ -123,6 +124,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 value={hours[i].close}
                                 onChange={v => set(i, "close", v)}
                                 compact
+                                className="flex-1 min-w-0"
                                 aria-label={`${day} closes`}
                                 />
                             <button
@@ -157,6 +159,8 @@ export default function OpeningHoursModal({ onClose }) {
                             value={bank.open}
                             onChange={v => setBank(b => ({ ...b, open: v }))}
                             compact
+                            className="flex-1 min-w-0"
+                            placeholder="Not set"
                             aria-label="Bank holidays open"
                             />
                         <span className="text-gray-400 text-sm">to</span>
@@ -164,6 +168,8 @@ export default function OpeningHoursModal({ onClose }) {
                             value={bank.close}
                             onChange={v => setBank(b => ({ ...b, close: v }))}
                             compact
+                            className="flex-1 min-w-0"
+                            placeholder="Not set"
                             aria-label="Bank holidays close"
                             />
                         <button

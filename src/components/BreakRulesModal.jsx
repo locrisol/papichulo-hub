@@ -94,7 +94,7 @@ export default function BreakRulesModal({ onClose }) {
 
                 <div className="space-y-2 mb-3">
                     {rules.map((rule, i) => (
-                        <div key={i} className="flex items-center gap-2">
+                        <div key={i} className="flex flex-wrap items-center gap-2">
                             <input
                                 {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
                                 className={`${fieldClass} w-16 text-right`}
@@ -105,7 +105,7 @@ export default function BreakRulesModal({ onClose }) {
                             <select
                                 value={rule.operator}
                                 onChange={e => set(i, 'operator', e.target.value)}
-                                className={`${fieldClass} flex-1 min-w-0`}
+                                className={`${fieldClass} flex-1 min-w-[7rem]`}
                                 aria-label="Operator"
                             >
                                 {OPERATORS.map(o => (
