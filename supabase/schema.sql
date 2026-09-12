@@ -4919,3 +4919,235 @@ where action = 'update'
   );
 
 notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 063: a public link is not the same as a public index
+-- Branch: fix/security-hardening
+--
+-- 050 made the report chart bucket public and gave storage.objects a
+-- select policy with no TO clause, which means it applies to anon. Its
+-- reasoning was that the path is the report's uuid, so a link cannot be
+-- guessed or walked.
+--
+-- The reasoning is right about guessing and wrong about walking. A select
+-- grant on storage.objects is exactly what makes list() work, and list()
+-- does not guess: it enumerates. Tested against the live project with
+-- nothing but the anon key out of the built bundle, anonymously:
+--
+--   list('')           -> the report's uuid
+--   list('<uuid>')     -> test-sales.png, test-earnings.png,
+--                         test-online.png, test-corporate.png,
+--                         test-delivery.png, with their sizes
+--
+-- and the bucket is public, so each one then downloads. Nothing published
+-- for real is in there yet, so nothing has leaked. The first real publish
+-- would put a week's sales, earnings and platform splits behind a link
+-- anyone can find.
+--
+-- The mail still works, and this is the part worth being sure about
+-- rather than hopeful. What the mail embeds is the public object path,
+-- and a public bucket serves that without consulting row level security
+-- at all. Confirmed by fetching a chart with no key and no Authorization
+-- header: HTTP 200, 156938 bytes. So the bucket stays public, the link
+-- stays permanent, and a mail opened next year still shows its charts.
+-- What goes is the ability to ask the bucket what is in it.
+-- =====================================================================
+
+-- Reading a row of storage.objects is now the same question as reading
+-- the report it belongs to: the report's own people, and nobody else.
+drop policy if exists report_charts_read on storage.objects;
+create policy report_charts_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'report-charts'
+    and exists (
+      select 1 from public.weekly_reports r
+      where r.id::text = split_part(name, '/', 1)
+        and ((get_my_role() = 'super_admin')
+             or (get_my_role() in ('store_manager', 'owner')
+                 and r.restaurant_id = get_my_restaurant_id()))
+    )
+  );
+
+-- Wrapped, because storage.objects belongs to the storage owner and not
+-- to whoever runs migrations. Creating the policy is allowed, labelling it
+-- is not, and a comment is not worth failing a migration over. 054 does the
+-- same thing around its event trigger for the same reason.
+do $$
+begin
+    comment on policy report_charts_read on storage.objects is
+        'Listing the report charts needs an account that can read the report. '
+        'Fetching one by its public url does not go through here, which is '
+        'what keeps the mail working.';
+exception when insufficient_privilege then
+    raise notice 'could not label report_charts_read, which is cosmetic only';
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 064: a price belongs to the restaurant that pays it
+-- Branch: fix/security-hardening
+--
+-- product_supplier_prices_select, written in 002, asks what role you are
+-- and nothing else:
+--
+--   USING (get_my_role() IN ('super_admin','owner','store_manager','employee'))
+--
+-- The table has had a restaurant_id since day one and every query in the
+-- app filters on it. The policy never did. So the lowest role in the
+-- building, at either site, could open the console and read the other
+-- site's entire cost base: price per case, price per unit, units per
+-- case, supplier code, which supplier is preferred.
+--
+-- The child table knows better. price_count_units, written in 014, joins
+-- up to the parent and checks psp.restaurant_id = get_my_restaurant_id().
+-- The parent is the one that was never scoped.
+--
+-- This is the same shape as sales_records, invoices, labour and every
+-- other restaurant-scoped table: super admin sees everything, everybody
+-- else sees their own. Nothing in the app loses a row, because nothing
+-- in the app ever asked for another restaurant's prices.
+-- =====================================================================
+
+drop policy if exists product_supplier_prices_select on product_supplier_prices;
+create policy product_supplier_prices_select on product_supplier_prices
+  for select
+  using (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager', 'employee')
+        and restaurant_id = get_my_restaurant_id())
+  );
+
+-- Writing was already restricted by role. It was not restricted by
+-- restaurant either, which means a manager could have written a price
+-- onto the other site. Same clause, same reason.
+drop policy if exists product_supplier_prices_write on product_supplier_prices;
+create policy product_supplier_prices_write on product_supplier_prices
+  for all
+  using (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager')
+        and restaurant_id = get_my_restaurant_id())
+  )
+  with check (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager')
+        and restaurant_id = get_my_restaurant_id())
+  );
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 065: the allergen page gets what it needs and nothing else
+-- Branch: fix/security-hardening
+--
+-- 011 opened six tables to anonymous readers so a customer scanning the
+-- QR code could be told what is in a dish. The page asks for a handful of
+-- columns. The policies grant every column, because row level security
+-- cannot restrict columns and PostgREST lets the caller pick them.
+--
+-- Tested against the live project with nothing but the anon key out of
+-- the built bundle, no login:
+--
+--   restaurants            every column, including hourly_rate, the three
+--                          cost targets, mail_from and report_recipients
+--   mix_recipes            every column, so the recipe book with its
+--                          quantities
+--   menu_item_components   every dish's exact build, with quantities
+--   products               the whole catalogue with notes
+--
+-- No money leaked: product_supplier_prices and sales_records were both
+-- refused, which is the part that was built right. What leaked is the
+-- recipe book, which is the most valuable thing the business owns.
+--
+-- So the tables stop being readable and seven views take their place,
+-- each carrying only the columns the allergen page actually reads. The
+-- quantities do not appear in any of them: how much coriander is in the
+-- slaw is not something a customer needs in order to be told it contains
+-- celery.
+--
+-- These are deliberately not security_invoker views. A view that runs as
+-- its owner is the only way to answer "these columns and no others" to a
+-- caller who has no row level access at all, and it is the same mechanism
+-- roster_colleagues already uses to keep pay rates away from staff.
+--
+-- One thing changes for the better on the way past. products_public_select
+-- required is_active, and the page says in its own comment that products
+-- are deliberately not filtered, because a dish can contain something
+-- since deactivated and dropping it would drop its allergens from the
+-- answer. The policy was quietly doing the thing the code was trying not
+-- to do. The view has no is_active condition, so a retired ingredient in
+-- a live dish is still declared.
+-- =====================================================================
+
+-- ── The views ────────────────────────────────────────────────────────────────
+
+-- Name and slug. Not the pay rate, not the cost targets, not the address
+-- the reports are mailed to.
+create or replace view public.public_restaurants as
+  select r.id, r.name, r.slug
+  from public.restaurants r
+  where r.is_active = true;
+
+create or replace view public.public_menu_categories as
+  select c.id, c.name, c.sort_order, c.on_allergen_sheet
+  from public.menu_categories c
+  where c.is_active = true;
+
+-- No selling price, no VAT rate.
+create or replace view public.public_menu_items as
+  select m.id, m.name, m.category_id, m.sheet_name, m.sort_order
+  from public.menu_items m
+  where m.is_active = true;
+
+-- Which product is in which dish, and whether it is a choice. Not how much.
+create or replace view public.public_menu_item_components as
+  select k.id, k.menu_item_id, k.product_id, k.choice_group, k.list_separately
+  from public.menu_item_components k;
+
+-- Deliberately unfiltered. A dish can contain something that has since
+-- been retired, and its allergens still count.
+create or replace view public.public_products as
+  select p.id, p.name, p.is_mix
+  from public.products p;
+
+-- Which ingredient is in which mix. Not how much, which is the recipe.
+create or replace view public.public_mix_recipes as
+  select x.id, x.mix_product_id, x.ingredient_product_id
+  from public.mix_recipes x;
+
+create or replace view public.public_product_allergens as
+  select a.product_id,
+         a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts,
+         a.soybeans, a.milk, a.nuts, a.celery, a.mustard,
+         a.sesame, a.sulphites, a.lupin, a.molluscs
+  from public.product_allergens a;
+
+grant select on public.public_restaurants           to anon, authenticated;
+grant select on public.public_menu_categories       to anon, authenticated;
+grant select on public.public_menu_items            to anon, authenticated;
+grant select on public.public_menu_item_components  to anon, authenticated;
+grant select on public.public_products              to anon, authenticated;
+grant select on public.public_mix_recipes           to anon, authenticated;
+grant select on public.public_product_allergens     to anon, authenticated;
+
+-- ── The tables stop answering to strangers ───────────────────────────────────
+
+drop policy if exists restaurants_public_select          on public.restaurants;
+drop policy if exists products_public_select             on public.products;
+drop policy if exists mix_recipes_public_select          on public.mix_recipes;
+drop policy if exists menu_categories_public_select      on public.menu_categories;
+drop policy if exists menu_items_public_select           on public.menu_items;
+drop policy if exists menu_item_components_public_select on public.menu_item_components;
+
+-- product_allergens carried its public read inside the staff select policy
+-- rather than beside it, which is why it is the only one of the seven that
+-- has to be rewritten instead of dropped.
+drop policy if exists product_allergens_select on public.product_allergens;
+create policy product_allergens_select on public.product_allergens
+  for select
+  using (get_my_role() in ('super_admin', 'owner', 'store_manager', 'employee'));
+
+notify pgrst, 'reload schema';
