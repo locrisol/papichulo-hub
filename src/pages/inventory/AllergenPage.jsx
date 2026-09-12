@@ -1,69 +1,39 @@
+import { pageTitle } from '../../lib/controlStyles'
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
+import { ALLERGENS, emptyAllergens } from '../../lib/allergens'
+import AllergenPicker from '../../components/AllergenPicker'
+import BackButton from '../../components/BackButton'
 
 // Tagging the 14 allergens on one product.
 //
-// This is where the raw answers are set, and it is the only place they are typed
-// in by a person. Everything else in the app derives from these: a dish works out
-// its own allergens from the products it is made of, so nobody tags a menu item.
+// This is where the raw answers are set for a product that already exists. The
+// same fourteen can now be answered while the product is being added, on the
+// product form, which is where you would rather say it. Both draw the list, the
+// three states and the boxes from the same place.
 //
 // The 14 are fixed by EU 1169 and cannot be added to or renamed. A product with
 // no record yet is treated as Not Present for all of them, which is why the form
 // opens filled in rather than empty.
 //
 // One row per product, so saving is an insert the first time and an update after.
-const ALLERGENS = [
-  { key: 'gluten', label: 'Gluten' },
-  { key: 'crustaceans', label: 'Crustaceans' },
-  { key: 'eggs', label: 'Eggs' },
-  { key: 'fish', label: 'Fish' },
-  { key: 'peanuts', label: 'Peanuts' },
-  { key: 'soybeans', label: 'Soybeans' },
-  { key: 'milk', label: 'Milk' },
-  { key: 'nuts', label: 'Nuts' },
-  { key: 'celery', label: 'Celery' },
-  { key: 'mustard', label: 'Mustard' },
-  { key: 'sesame', label: 'Sesame' },
-  { key: 'sulphites', label: 'Sulphites' },
-  { key: 'lupin', label: 'Lupin' },
-  { key: 'molluscs', label: 'Molluscs' },
-]
-
-const STATES = [
-  {
-    value: 'none',
-    label: 'Not Present',
-    activeClass: 'bg-gray-200 text-gray-700 border-gray-300',
-  },
-  {
-    value: 'may_contain',
-    label: 'May Contain',
-    activeClass: 'bg-amber-100 text-amber-800 border-amber-300',
-  },
-  {
-    value: 'contains',
-    label: 'Contains',
-    activeClass: 'bg-red-100 text-red-800 border-red-300',
-  },
-]
-
-function emptyAllergens() {
-  const obj = {}
-  for (const a of ALLERGENS) obj[a.key] = 'none'
-  return obj
-}
 
 export default function AllergenPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
 
   const [product, setProduct] = useState(null)
   const [values, setValues] = useState(emptyAllergens())
   const [existing, setExisting] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load, which belongs at the top of the page because there is
+  // nothing else up there to read. This is for a save that would not go
+  // through, and that belongs beside the button you pressed: at the foot of
+  // a form on a phone, the top of the page is not on the screen at all.
+  const [formProblem, setFormProblem] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
 
@@ -120,7 +90,7 @@ export default function AllergenPage() {
   }
 
   async function handleSave() {
-    setError('')
+    setFormProblem('')
     setSavedMessage('')
     setSaving(true)
 
@@ -138,7 +108,7 @@ export default function AllergenPage() {
       .upsert(payload, { onConflict: 'product_id' })
 
     if (error) {
-      setError(friendlyError(error))
+      setFormProblem(friendlyError(error))
     } else {
       setSavedMessage('Saved')
       // Refetch so the "Last updated" timestamp shown is the one
@@ -155,15 +125,10 @@ export default function AllergenPage() {
 
   return (
     <div>
-      <button
-        onClick={() => navigate('/catalogue/products')}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-      >
-        <span>←</span> Back to products
-      </button>
+      <BackButton to="/catalogue/products" className="mb-4">Back to products</BackButton>
 
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className={pageTitle}>
           Allergens: {product?.name || '...'}
         </h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -186,37 +151,14 @@ export default function AllergenPage() {
         <div className="text-sm text-gray-500">Loading allergens...</div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-border overflow-hidden mb-6">
-            {ALLERGENS.map((allergen, i) => (
-              <div
-                key={allergen.key}
-                className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 ${
-                  i < ALLERGENS.length - 1 ? 'border-b border-border' : ''
-                } ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-              >
-                <p className="text-sm font-medium text-gray-900">{allergen.label}</p>
-                <div className="flex gap-2">
-                  {STATES.map(state => {
-                    const isActive = values[allergen.key] === state.value
-                    return (
-                      <button
-                        key={state.value}
-                        type="button"
-                        onClick={() => setAllergenState(allergen.key, state.value)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                          isActive
-                            ? state.activeClass
-                            : 'bg-white text-gray-500 border-border hover:bg-gray-50'
-                        }`}
-                      >
-                        {state.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AllergenPicker values={values} onChange={setAllergenState} className="mb-6" />
+
+          {/* Above the button row rather than inside it. As a sibling of the
+              button it sat beside it on one line, which squeezes both on a
+              phone and is not where the eye goes after a press. */}
+          {formProblem && (
+            <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+          )}
 
           <div className="flex items-center gap-3">
             <button

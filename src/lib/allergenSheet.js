@@ -1,0 +1,128 @@
+import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from './allergens'
+
+// The rows of the allergen sheet for one category.
+//
+// The sheet's unit is not the menu item. It is a thing a customer is handed,
+// and those are not the same:
+//
+//   4 Churros and 7 Churros are one thing in two sizes. Two rows saying the
+//   same fourteen answers is a sheet that looks longer than it is and gives
+//   somebody two places to check instead of one.
+//
+//   Churros with a choice of chocolate or caramel is three things. The sauce is
+//   picked at the counter, so folding both sauces into the churros row would
+//   warn about nuts to a person who took the other one.
+//
+// So a row comes from one of two places: a group of menu items sharing a name,
+// or a component that is served alongside rather than mixed in.
+//
+// Written once because the customer page and the printed sheet both ask, and
+// the two must never answer differently. One of them being right is worse than
+// both being wrong, because nobody would think to check.
+
+// What a menu item is called on the sheet. Its own name unless it has been
+// given one, which is how two portion sizes become one row.
+export function sheetName(item) {
+    const given = (item?.sheet_name || '').trim()
+    return given || item?.name || ''
+}
+
+// Whether everything this row is built from actually arrived.
+//
+// A customer is not signed in and only gets active products, so an ingredient
+// deactivated while the dish is still on sale simply does not come back. The
+// page has to say "ask staff" rather than show a list that looks whole.
+//
+// Deliberately stricter than the row's own allergens: a missing sauce does not
+// change the churros row, but it does mean a sauce that should have had a line
+// of its own has silently no line at all, and nobody reading the sheet could
+// know. So anything unreadable on any of the dish's components marks it.
+function everythingArrived(components, products) {
+    return components.every(c => (products || []).some(p => p.id === c.product_id))
+}
+
+export function sheetRows(menuItems, allComponents, products, recipeLines, allergens) {
+    const rows = []
+
+    // ---- the dishes, merged by the name they go under ----
+    //
+    // Matched without regard to capitals or stray spaces. "Churros" and
+    // "churros" are one thing to anybody reading the sheet, and two rows saying
+    // the same fourteen answers is exactly what this is here to stop. The
+    // spelling shown is the first one seen.
+    const byName = new Map()
+    for (const item of menuItems || []) {
+        const name = sheetName(item)
+        if (!name) continue
+        const key = name.toLowerCase()
+        if (!byName.has(key)) byName.set(key, { name, items: [] })
+        byName.get(key).items.push(item)
+    }
+
+    // A merged row sits where the earliest of its items sits. Two sizes of one
+    // dish should be next to each other in the list anyway, and if they are not,
+    // the row goes where the first of them was rather than somewhere neither of
+    // them is.
+    const orderOf = items => Math.min(...items.map(i => i.sort_order ?? 0))
+
+    for (const { name, items } of byName.values()) {
+        const ids = new Set(items.map(i => i.id))
+        const all = (allComponents || []).filter(c => ids.has(c.menu_item_id))
+
+        rows.push({
+            key: `item:${name}`,
+            name,
+            order: orderOf(items),
+            complete: everythingArrived(all, products),
+            // The choices are dropped by deriveMenuItemAllergens itself, so
+            // this hands it everything rather than filtering here as well. Two
+            // places doing the same job is two places to forget it.
+            //
+            // Two sizes of the same dish should hold the same things, and if
+            // they ever do not, the worst of the two is the safe answer and
+            // the one this already gives.
+            allergens: deriveMenuItemAllergens(all, products, recipeLines, allergens),
+        })
+    }
+
+    // ---- the things handed over beside them ----
+    //
+    // Only the ones asked for. A salsa that already has a row of its own in the
+    // Salsa category does not want a second one here, and printing it twice is
+    // how a sheet stops being read.
+    const listed = new Map()
+    const mine = new Set((menuItems || []).map(i => i.id))
+
+    for (const c of allComponents || []) {
+        if (!c.list_separately || !mine.has(c.menu_item_id)) continue
+        // Deduplicated by product, so a sauce on both sizes of a dish, or on
+        // three dishes in the category, is one line rather than three.
+        if (!listed.has(c.product_id)) listed.set(c.product_id, c)
+    }
+
+    for (const productId of listed.keys()) {
+        const product = (products || []).find(p => p.id === productId)
+        if (!product) continue
+
+        rows.push({
+            key: `product:${productId}`,
+            name: product.name,
+            // After the dishes. These are the things handed over beside them,
+            // and a sauce sitting between two dishes reads as a dish.
+            order: Infinity,
+            complete: true,
+            allergens: deriveProductAllergens(product, products, recipeLines, allergens)
+                || emptyAllergens(),
+        })
+    }
+
+    // The order the category was arranged in, and the name where two things
+    // have never been arranged against each other. Everything starts at zero,
+    // so a category nobody has touched still comes out alphabetically, exactly
+    // as it always did.
+    //
+    // The separately listed sauces come after all the dishes rather than being
+    // sorted in among them.
+    return rows.sort((a, b) =>
+        (a.order - b.order) || a.name.localeCompare(b.name))
+}

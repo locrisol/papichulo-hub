@@ -5,8 +5,8 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
-import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
+import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -15,22 +15,6 @@ import { secondaryButton, tableHeadRow } from '../../lib/controlStyles'
 // Line items are not shown. They only exist once AI extraction fills them in,
 // and that is deferred (#48), so expanding a row would open onto nothing. The
 // same goes for a manual or AI badge: everything is manual at the moment.
-
-const CATEGORIES = [
-    { value: 'food', label: 'Food' },
-    { value: 'packaging', label: 'Packaging' },
-    { value: 'cleaning', label: 'Cleaning' },
-    { value: 'other', label: 'Other' },
-]
-
-// Packaging and cleaning are shown together, because that is how the weekly
-// report treats them, against one 2.5% target. They are stored separately, so
-// splitting them later is a change here rather than a migration.
-const SUMMARY_GROUPS = [
-    { label: 'Food', cats: ['food'] },
-    { label: 'Packaging and cleaning', cats: ['packaging', 'cleaning'] },
-    { label: 'Other', cats: ['other'] },
-]
 
 function num(v) {
     if (v === '' || v == null) return 0
@@ -115,14 +99,12 @@ export default function InvoiceHistoryPage() {
         setCategory('')
     }
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
-        <PageContainer>
+        <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Invoice history</h2>
+                    <h2 className={pageTitle}>Invoice history</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 <button
@@ -136,30 +118,30 @@ export default function InvoiceHistoryPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
             {/* Filters */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 {/* Two across on a phone. Four across gave each date box a
                     quarter of the screen, which showed a single digit. */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                     <div>
-                        <label className={labelCls}>From</label>
-                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={fieldCls} />
+                        <label className={labelClass}>From</label>
+                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={fieldClass} />
                     </div>
                     <div>
-                        <label className={labelCls}>To</label>
-                        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={fieldCls} />
+                        <label className={labelClass}>To</label>
+                        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={fieldClass} />
                     </div>
                     <div>
-                        <label className={labelCls}>Supplier</label>
-                        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldCls}>
+                        <label className={labelClass}>Supplier</label>
+                        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={fieldClass}>
                             <option value="">All suppliers</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Category</label>
-                        <select value={category} onChange={e => setCategory(e.target.value)} className={fieldCls}>
+                        <label className={labelClass}>Category</label>
+                        <select value={category} onChange={e => setCategory(e.target.value)} className={fieldClass}>
                             <option value="">All categories</option>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                            {INVOICE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
                     </div>
                 </div>
@@ -168,30 +150,37 @@ export default function InvoiceHistoryPage() {
                     <button type="button" onClick={() => setRange(7)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 7 days</button>
                     <button type="button" onClick={() => setRange(30)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 30 days</button>
                     <button type="button" onClick={() => setRange(90)} className="px-3 py-1.5 border border-border rounded-lg text-xs text-gray-600 hover:bg-gray-50">Last 90 days</button>
-                    <button type="button" onClick={clearFilters} className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium">Clear</button>
-                    <span className="ml-auto text-xs text-gray-500">
-                        {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'}
-                    </span>
+                    <button type="button" onClick={clearFilters} className={rowButton('edit')}>Clear</button>
                 </div>
             </div>
 
             {/* Totals for whatever is showing. Two across on a phone, same as
                 the invoices screen. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                {SUMMARY_GROUPS.map(g => (
-                    <div key={g.label} className="bg-white rounded-xl border border-border p-4">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">{g.label}</p>
+                {INVOICE_SUMMARY_CARDS.map(g => (
+                    <div
+                        key={g.label}
+                        className={`${cardEdge} p-4 ${g.tint || 'bg-white'}`}
+                        style={g.split ? { backgroundImage: g.split } : undefined}
+                    >
+                        <p className={`text-xs uppercase tracking-wider ${g.labelText}`}>{g.label}</p>
                         <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(totalFor(g.cats))}</p>
                     </div>
                 ))}
-                <div className="bg-white rounded-xl border border-border p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Total</p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">{fmtMoney(total)}</p>
+                {/* The sum of the three, so it is the dark one rather than a
+                    fourth colour competing with them. */}
+                <div className={`${cardEdge} p-4 bg-sidebar`}>
+                    <p className="text-xs text-green-300 uppercase tracking-wider">Total</p>
+                    <p className="text-lg font-semibold text-white mt-1">{fmtMoney(total)}</p>
                 </div>
             </div>
 
             {/* The invoices */}
-            <div className="bg-white rounded-xl border border-border p-5">
+            <div className={`${card} overflow-hidden`}>
+                <h3 className={cardHeader}>
+                    {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'} found
+                </h3>
+                <div className="p-5">
                 {loading ? (
                     <p className="text-sm text-gray-400">Loading...</p>
                 ) : invoices.length === 0 ? (
@@ -215,28 +204,38 @@ export default function InvoiceHistoryPage() {
                                         Date {sortDesc ? '↓' : '↑'}
                                     </button>
                                 </th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Category</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Total</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Supplier</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Category</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Total</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {invoices.map(inv => (
-                                <tr key={inv.id} className="border-b border-border hover:bg-gray-50">
+                            {invoices.map(inv => {
+                                const cat = invoiceCategory(inv.category)
+                                return (
+                                <tr key={inv.id} className={`border-b border-border hover:bg-gray-50 border-l-4 ${cat.stripe}`}>
                                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{shortDate(inv.invoice_date)}</td>
                                     <td className="px-3 py-2 text-gray-900">
                                         {inv.suppliers?.name || 'Unknown supplier'}
                                         {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
                                     </td>
-                                    <td className="px-3 py-2 text-gray-500 capitalize">{inv.category}</td>
+                                    <td className="px-3 py-2">
+                                        {/* Same colours as the entry screen, so a
+                                            category means one thing everywhere. */}
+                                        <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                            {cat.label}
+                                        </span>
+                                    </td>
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                         </tbody>
                     </table>
                     </div>
                 )}
+                </div>
             </div>
-        </PageContainer>
+        </>
     )
 }

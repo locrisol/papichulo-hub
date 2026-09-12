@@ -6,9 +6,11 @@ import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
-import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton } from '../../lib/controlStyles'
+import { dateField, jumpButton, card, rowButton, jumpLabel } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
+import { tendersToShow } from '../../lib/salesTenders'
+import WeekTakenChart from '../../components/WeekTakenChart'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -35,6 +37,16 @@ function num(v) {
     return isNaN(n) ? 0 : n
 }
 
+// The colour of a figure on the gross profit run down, from the same verdict
+// the cards at the top of the page use. Grey where there is no target to judge
+// it against, which is waste and nothing else.
+const LINE_TONE = {
+    green: 'text-green-700',
+    amber: 'text-amber-700',
+    red: 'text-red-600',
+    none: 'text-muted',
+}
+
 // One cost, as a percentage of net sales, against its target.
 //
 // The bar fills toward the target rather than toward 100%, so being at 29 of 30
@@ -59,17 +71,17 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: { text: 'On track', cls: 'bg-green-50 text-green-700' },
         amber: { text: 'Near limit', cls: 'bg-amber-50 text-amber-700' },
         red: { text: 'Over target', cls: 'bg-red-50 text-red-700' },
-        none: { text: 'No data', cls: 'bg-gray-100 text-gray-500' },
+        none: { text: 'No data', cls: 'bg-gray-100 text-gray-600' },
     }[status]
 
     const fill = pct != null && target ? Math.min((pct / target) * 100, 100) : 0
 
     return (
-        <div className="bg-white rounded-xl border border-border p-5">
+        <div className={`${card} p-5`}>
             <div className="flex items-start justify-between mb-2">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider">{label}</p>
                 {onEdit && (
-                    <button onClick={onEdit} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                    <button onClick={onEdit} className={rowButton('edit')}>
                         Edit target
                     </button>
                 )}
@@ -122,8 +134,24 @@ export default function CostDashboardPage() {
     const [labourCost, setLabourCost] = useState(0)
     const [wasteCost, setWasteCost] = useState(0)
     const [overrides, setOverrides] = useState([])
+    // The till rows, so the split below can name them. Retired ones included, so
+    // a week from before the till changed still splits the way it was taken.
+    const [tenders, setTenders] = useState([])
 
     const [loading, setLoading] = useState(true)
+    // Whether this page has ever finished loading, which is not the same
+    // question as whether it is loading now.
+    //
+    // The first arrival painted the week picker and the cards straight away and
+    // then dropped a notice in above them once the figures came back, shoving
+    // everything down the page while somebody was already reading it. Waiting
+    // for the first load means the page arrives once, in the shape it is going
+    // to stay in.
+    //
+    // Only the first. Stepping to another week keeps what is on screen and
+    // swaps the numbers underneath it, the same as the roster does, because
+    // blanking the page on every press is how you lose your place in it.
+    const [ready, setReady] = useState(false)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
     const [editing, setEditing] = useState(null)
@@ -134,6 +162,11 @@ export default function CostDashboardPage() {
     useEffect(() => {
         if (!restaurantId) return
 
+        function finishLoading() {
+            setLoading(false)
+            setReady(true)
+        }
+
         async function load() {
             setLoading(true)
             setError('')
@@ -142,13 +175,23 @@ export default function CostDashboardPage() {
 
             const { data: sales, error: sErr } = await supabase
                 .from('sales_records')
-                .select('sale_date, net_sales, gross_sales, cash_sales, card_sales, kiosk_sales, online_sales, catering_sales, is_closed')
+                .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
                 .eq('restaurant_id', restaurantId)
                 .gte('sale_date', weekStart)
                 .lte('sale_date', end)
 
-            if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
+            if (sErr) { setError(friendlyError(sErr)); finishLoading(); return }
             setSalesRows(sales || [])
+
+            const { data: tends, error: tErr } = await supabase
+                .from('sales_tenders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order')
+                .order('label')
+
+            if (tErr) { setError(friendlyError(tErr)); finishLoading(); return }
+            setTenders(tends || [])
 
             const { data: invoices, error: iErr } = await supabase
                 .from('invoices')
@@ -157,7 +200,7 @@ export default function CostDashboardPage() {
                 .gte('invoice_date', weekStart)
                 .lte('invoice_date', end)
 
-            if (iErr) { setError(friendlyError(iErr)); setLoading(false); return }
+            if (iErr) { setError(friendlyError(iErr)); finishLoading(); return }
 
             setFoodCost((invoices || [])
                 .filter(i => i.category === 'food')
@@ -177,7 +220,7 @@ export default function CostDashboardPage() {
                 .gte('entry_date', weekStart)
                 .lte('entry_date', end)
 
-            if (lErr) { setError(friendlyError(lErr)); setLoading(false); return }
+            if (lErr) { setError(friendlyError(lErr)); finishLoading(); return }
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
 
             const { data: waste, error: wErr } = await supabase
@@ -187,7 +230,7 @@ export default function CostDashboardPage() {
                 .gte('log_date', weekStart)
                 .lte('log_date', end)
 
-            if (wErr) { setError(friendlyError(wErr)); setLoading(false); return }
+            if (wErr) { setError(friendlyError(wErr)); finishLoading(); return }
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
 
             const { data: overrideRows, error: oErr } = await supabase
@@ -195,10 +238,10 @@ export default function CostDashboardPage() {
                 .select('*')
                 .eq('restaurant_id', restaurantId)
 
-            if (oErr) { setError(friendlyError(oErr)); setLoading(false); return }
+            if (oErr) { setError(friendlyError(oErr)); finishLoading(); return }
             setOverrides(overrideRows || [])
 
-            setLoading(false)
+            finishLoading()
         }
 
         load()
@@ -208,12 +251,23 @@ export default function CostDashboardPage() {
     // drag the denominator down.
     const trading = salesRows.filter(s => !s.is_closed)
     const netSales = trading.reduce((t, s) => t + num(s.net_sales), 0)
-    const grossSales = trading.reduce((t, s) => t + num(s.gross_sales), 0)
-    const cashSales = trading.reduce((t, s) => t + num(s.cash_sales), 0)
-    const cardSales = trading.reduce((t, s) => t + num(s.card_sales), 0)
-    const kioskSales = trading.reduce((t, s) => t + num(s.kiosk_sales), 0)
-    const onlineSales = trading.reduce((t, s) => t + num(s.online_sales), 0)
-    const cateringSales = trading.reduce((t, s) => t + num(s.catering_sales), 0)
+    // How the week was taken, one figure per till row. Built from whatever rows
+    // the week actually has rather than a fixed five, so a week entered before
+    // the till split Outside Catering still splits the way it was taken, and a
+    // week entered after it shows Clockmeal, Lunch Team, Feedr and Catering
+    // separately. Nothing here needs changing when the till changes again.
+    const weekTenders = tendersToShow(tenders, trading.map(s => s.tender_sales))
+    const takenBy = weekTenders
+        // Only the rows that make up the takings. Every row on the till counts
+        // today, so this drops nothing, but a POS that prints a subtotal line
+        // would have one that does not, and a subtotal drawn beside the rows it
+        // is the total of would count the same money twice and leave the shares
+        // adding up to well over a hundred.
+        .filter(t => t.counts_toward_gross)
+        .map(t => ({
+            label: t.label,
+            amount: trading.reduce((total, s) => total + num(s.tender_sales?.[t.key]), 0),
+        }))
 
     function pct(amount) {
         return netSales > 0 ? (amount / netSales) * 100 : null
@@ -266,8 +320,12 @@ export default function CostDashboardPage() {
 
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
+    if (!ready) {
+        return <p className="text-sm text-gray-400">Loading...</p>
+    }
+
     return (
-        <PageContainer>
+        <>
             {/* Header: the week, and what it has done so far */}
             <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
                 <div>
@@ -288,20 +346,17 @@ export default function CostDashboardPage() {
                     easy to hit with a thumb. On anything wider it goes back to
                     being one row. */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => shiftWeek(-1)}
-                            className={`${iconButton} text-sm font-semibold`}>
-                            ‹ Previous
-                        </button>
+                    <DateStepper
+                        onBack={() => shiftWeek(-1)}
+                        onNext={() => shiftWeek(1)}
+                        backLabel="Previous week"
+                        nextLabel="Next week"
+                    >
                         <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className={jumpButton(isThisWeek)}>
-                            This week
+                            className={`${jumpButton(isThisWeek)} w-full sm:w-auto`}>
+                            {jumpLabel(isThisWeek)}
                         </button>
-                        <button type="button" onClick={() => shiftWeek(1)}
-                            className={`${iconButton} text-sm font-semibold`}>
-                            Next ›
-                        </button>
-                    </div>
+                    </DateStepper>
                     <input type="date" value={pickerDate}
                         onChange={e => {
                             const v = e.target.value
@@ -381,56 +436,76 @@ export default function CostDashboardPage() {
                 />
             </div>
 
-            {/* How the week was taken. Not costs: this is the same money as net
-                sales, split by how it came in, straight from what was entered on
-                the weekly sales grid. */}
-            <div className="bg-white rounded-xl border border-border p-6 mb-6">
-                <h3 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h3>
+            {/* How the week was taken. Not costs: this is the takings split by
+                the way they came in, straight from what was entered on the
+                weekly sales grid. */}
+            <div className={`${card} p-6 mb-6`}>
+                <h2 className="font-serif text-base font-bold text-gray-900 mb-1">How the week was taken</h2>
                 <p className="text-xs text-muted mb-4">
-                    Shares of gross sales. Online Sales and Outside Catering are what came through third parties.
+                    One share for every row on the till receipt. Change what the till takes and this follows it.
                 </p>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    {[
-                        { label: 'Cash', amount: cashSales },
-                        { label: 'Card', amount: cardSales },
-                        { label: 'Kiosk', amount: kioskSales },
-                        { label: 'Online Sales', amount: onlineSales },
-                        { label: 'Outside Catering', amount: cateringSales },
-                    ].map(c => (
-                        <div key={c.label}>
-                            <p className="text-xs font-semibold text-muted uppercase tracking-wider">{c.label}</p>
-                            <p className="font-serif text-2xl font-bold text-gray-900 mt-1">
-                                {grossSales > 0 ? `${((c.amount / grossSales) * 100).toFixed(1)}%` : '-'}
-                            </p>
-                            <p className="text-sm text-muted">{fmtMoney(c.amount)}</p>
-                        </div>
-                    ))}
-                </div>
+                <WeekTakenChart rows={takenBy} />
             </div>
 
             {/* Gross profit and the week day by day */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl border border-border p-6">
-                    <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h3>
+                <div className={`${card} p-6`}>
+                    <h2 className="font-serif text-base font-bold text-gray-900 mb-4">Gross profit this week</h2>
                     <div className="flex flex-col">
-                        <div className="flex justify-between text-sm py-2 border-b border-border">
+                        {/* gap-3 on every row, not just space-between.
+                            Between them the label and the figure sit on the two
+                            edges, and when the pair happens to fill the card
+                            they touch: Packaging and cleaning ran straight into
+                            its own number, and Gross profit into its total. */}
+                        <div className="flex justify-between gap-3 text-sm py-2 border-b border-border">
                             <span className="text-muted">Net sales</span>
-                            <span className="font-semibold text-gray-900">{fmtMoney(netSales)}</span>
+                            <span className="font-semibold text-gray-900 whitespace-nowrap">{fmtMoney(netSales)}</span>
                         </div>
+                        {/* Each cost against the target already in force for this
+                            week, in the colour the cards above it use.
+
+                            Every line used to be red, which told you nothing you
+                            did not know from the minus sign: they are costs, all
+                            money going out. The one week where food is comfortably
+                            inside target and packaging is at four percent against
+                            two and a half looked exactly like the week where it is
+                            the other way round, and the line worth acting on was
+                            the same colour as the three that are fine.
+
+                            The share is here for the same reason. €586 means
+                            nothing without the sales it came out of, and a week
+                            where sales doubled would show every cost rising and
+                            nothing wrong. Waste stays grey rather than green
+                            because there is no configurable target for it, and a
+                            colour would be inventing one. */}
                         {[
-                            { label: 'Food purchases', value: foodCost },
-                            { label: 'Packaging and cleaning', value: packagingCost },
-                            { label: 'Labour', value: labourCost },
-                            { label: 'Waste', value: wasteCost },
-                        ].map(r => (
-                            <div key={r.label} className="flex justify-between text-sm py-2 border-b border-border">
-                                <span className="text-muted">{r.label}</span>
-                                <span className="font-semibold text-red-600">− {fmtMoney(r.value)}</span>
-                            </div>
-                        ))}
-                        <div className="flex justify-between text-base py-3 font-bold">
+                            { label: 'Food purchases', value: foodCost, target: foodTarget },
+                            { label: 'Packaging and cleaning', value: packagingCost, target: packagingTarget },
+                            { label: 'Labour', value: labourCost, target: labourTarget },
+                            { label: 'Waste', value: wasteCost, target: null },
+                        ].map(r => {
+                            const share = pct(r.value)
+                            const tone = LINE_TONE[r.target ? statusFor(share, r.target) : 'none']
+                            return (
+                                <div key={r.label} className="flex justify-between gap-3 text-sm py-2 border-b border-border">
+                                    <span className="text-muted">
+                                        {r.label}
+                                        {share != null && (
+                                            <span className="block text-xs text-gray-400 tabular-nums">
+                                                {share.toFixed(1)}% of net
+                                                {r.target ? ` · target ${r.target}%` : ' · no target set'}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className={`font-semibold whitespace-nowrap tabular-nums ${tone}`}>
+                                        − {fmtMoney(r.value)}
+                                    </span>
+                                </div>
+                            )
+                        })}
+                        <div className="flex justify-between gap-3 text-base py-3 font-bold">
                             <span className="text-gray-900">Gross profit</span>
-                            <span className={grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}>
+                            <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                                 {fmtMoney(grossProfit)}
                                 {pct(grossProfit) != null && (
                                     <span className="font-normal text-sm ml-2">({pct(grossProfit).toFixed(0)}%)</span>
@@ -440,22 +515,30 @@ export default function CostDashboardPage() {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-border p-6">
-                    <h3 className="font-serif text-base font-bold text-gray-900 mb-4">Sales day by day</h3>
+                <div className={`${card} p-6`}>
+                    <h2 className="font-serif text-base font-bold text-gray-900 mb-4">Sales day by day</h2>
                     {dates.map((d, i) => {
                         const row = salesByDate[d]
                         return (
-                            <div key={d} className="flex justify-between items-center py-1.5 border-b border-border text-sm last:border-0">
-                                <span className="text-muted w-24">{DAY_NAMES[i]} {shortDate(d)}</span>
+                            <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
+                                <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
                                 {!row ? (
                                     <span className="text-gray-300 italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (
                                     <span className="text-gray-400 text-xs">closed</span>
                                 ) : (
-                                    <>
-                                        <span className="text-gray-900 font-medium">{fmtMoney(row.net_sales)}</span>
-                                        <span className="text-muted text-xs">gross {fmtMoney(row.gross_sales)}</span>
-                                    </>
+                                    /* Net over gross on a phone, side by side once
+                                       there is room. Three things on one line put
+                                       the word gross on top of the figure beside
+                                       it and neither could be read. */
+                                    <span className="flex flex-col items-end sm:flex-row sm:items-baseline sm:gap-3 leading-tight">
+                                        <span className="text-gray-900 font-medium whitespace-nowrap">
+                                            {fmtMoney(row.net_sales)}
+                                        </span>
+                                        <span className="text-muted text-xs whitespace-nowrap">
+                                            gross {fmtMoney(row.gross_sales)}
+                                        </span>
+                                    </span>
                                 )}
                             </div>
                         )
@@ -477,6 +560,6 @@ export default function CostDashboardPage() {
                     onSaved={() => setRefresh(n => n + 1)}
                 />
             )}
-        </PageContainer>
+        </>
     )
 }

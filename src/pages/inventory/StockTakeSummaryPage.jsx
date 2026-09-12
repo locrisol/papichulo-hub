@@ -5,8 +5,15 @@ import { useAuth } from '../../context/AuthContext'
 import { exportStockTakePdf } from '../../lib/stockTakePdf'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney, fmtQty } from '../../lib/format'
+import { monthYearOf, stampDateTime } from '../../lib/dates'
+import { sectionColour } from '../../lib/sections'
+import { countName } from '../../lib/products'
+import { bySection, summarise } from '../../lib/stockTakeSummary'
+import StockTakeValue from '../../components/StockTakeValue'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
+import { card } from '../../lib/controlStyles'
+import BackButton from '../../components/BackButton'
+import Modal from '../../components/Modal'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -23,21 +30,26 @@ import PageContainer from '../../components/layout/PageContainer'
 // This is also where the PDF comes from, which is the format the owner is used
 // to seeing.
 
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-const SECTION_COLOURS = {
-  'Freezer': { text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', solid: 'bg-blue-600' },
-  'Cold Room': { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', solid: 'bg-green-600' },
-  'Dry': { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', solid: 'bg-amber-600' },
-  'Packaging': { text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', solid: 'bg-red-600' },
-  'Cleaning': { text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', solid: 'bg-purple-600' },
-  'Other': { text: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', solid: 'bg-gray-600' },
-}
-function sectionColour(s) { return SECTION_COLOURS[s] || SECTION_COLOURS['Other'] }
-function sectionRank(s) { const i = SECTION_ORDER.indexOf(s); return i === -1 ? SECTION_ORDER.length : i }
 function fmtDateTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return stampDateTime(iso) || '—'
+}
+
+// What a stock take is called, for any of them rather than only the one on
+// screen. A session can be given a name when it is started, and where it was
+// not it is named after the month it was counted in.
+function titleOf(session) {
+  if (!session) return 'the open stock take'
+  if (session.notes && session.notes.trim()) return session.notes.trim()
+  const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
+  const monthYear = monthYearOf(session.started_at)
+  return `${typeWord} Stock Take (${monthYear})`
+}
+
+// One loose entry is its own total, so "4.27 KG = 4.27 KG" says the same number
+// twice. The equals sign is there to show the arithmetic when somebody counted
+// in packs, and with a single loose entry there is no arithmetic to show.
+function justLoose(parts) {
+    return parts.length === 1 && parts[0].isLoose
 }
 
 export default function StockTakeSummaryPage() {
@@ -54,6 +66,9 @@ export default function StockTakeSummaryPage() {
   const [error, setError] = useState('')
 
   const [showReopen, setShowReopen] = useState(false)
+  // The stock take standing in the way of this one being reopened, once we
+  // know there is one. Only ever set by a failed reopen.
+  const [blocker, setBlocker] = useState(null)
   const [reopenReason, setReopenReason] = useState('')
   const [reopening, setReopening] = useState(false)
 
@@ -98,23 +113,6 @@ export default function StockTakeSummaryPage() {
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
-  function getProductLines(productId) {
-    return lines.filter(l => l.product_id === productId).sort((a, b) => new Date(a.counted_at) - new Date(b.counted_at))
-  }
-  function getProductTotal(productId) {
-    return lines.filter(l => l.product_id === productId).reduce((s, l) => s + Number(l.quantity_counted || 0), 0)
-  }
-
-  function getProductValue(productId) {
-    return lines
-      .filter(l => l.product_id === productId)
-      .reduce((s, l) => s + Number(l.line_total || 0), 0)
-  }
-
-  function getSectionValue(items) {
-    return items.reduce((s, p) => s + getProductValue(p.id), 0)
-  }
-
   // Return a line's unit_breakdown as sorted parts (biggest format left,
   // loose last), or null for old-style lines without a breakdown.
   function breakdownParts(line, product) {
@@ -140,29 +138,16 @@ export default function StockTakeSummaryPage() {
     return parts
   }
 
-  // Sections containing only counted products, grouped and ordered
-  const sections = useMemo(() => {
-    const countedProducts = products.filter(p => countedProductIds.has(p.id))
-    const grouped = {}
-    for (const p of countedProducts) {
-      const s = p.section || 'Other'
-      if (!grouped[s]) grouped[s] = []
-      grouped[s].push(p)
-    }
-    return Object.entries(grouped)
-      .map(([section, items]) => ({ section, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
-      .sort((a, b) => sectionRank(a.section) - sectionRank(b.section))
-  }, [products, countedProductIds])
-
-  const uncountedProducts = useMemo(() => {
-    return products.filter(p => !countedProductIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
-  }, [products, countedProductIds])
+  // Where everything was counted and what each place came to, both worked out
+  // in lib so the PDF gets the same answer. See stockTakeSummary for why a
+  // line belongs to the place it was written down in and not to the product's
+  // own section.
+  const places = useMemo(() => bySection(products, lines), [products, lines])
+  const summary = useMemo(() => summarise(products, lines), [products, lines])
+  const rowFor = useMemo(() => new Map(summary.sections.map(s => [s.section, s])), [summary])
 
   function sessionTitle() {
-    if (session.notes && session.notes.trim()) return session.notes.trim()
-    const typeWord = session.type ? session.type.charAt(0).toUpperCase() + session.type.slice(1) : 'Stock'
-    const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', { month: 'long', year: 'numeric' })
-    return `${typeWord} Stock Take (${monthYear})`
+    return titleOf(session)
   }
 
   function handleExportPdf() {
@@ -174,6 +159,15 @@ export default function StockTakeSummaryPage() {
       generatedBy: user?.full_name || 'Unknown',
       title: sessionTitle(),
     })
+  }
+
+  // Shutting the dialog takes its message with it, so a failed reopen does
+  // not leave a red bar sitting on the page after you have walked away from it.
+  function closeReopen() {
+    if (reopening) return
+    setShowReopen(false)
+    setError('')
+    setBlocker(null)
   }
 
   async function handleReopen() {
@@ -194,7 +188,17 @@ export default function StockTakeSummaryPage() {
 
     if (updateErr) {
       if (updateErr.code === '23505') {
-        setError('There is already an active stock take for this restaurant. Close it before reopening this one.')
+        setError('There is already a stock take open. Close it before reopening this one.')
+        // Which one, so it is somewhere to go rather than something to go and
+        // look for. Only asked for when the reopen has already failed, and if
+        // the lookup itself fails the message above still stands on its own.
+        const { data: open } = await supabase
+          .from('stock_takes')
+          .select('id, notes, type, started_at')
+          .eq('restaurant_id', session.restaurant_id)
+          .eq('status', 'in_progress')
+          .maybeSingle()
+        setBlocker(open || null)
       } else {
         setError(friendlyError(updateErr))
       }
@@ -212,7 +216,7 @@ export default function StockTakeSummaryPage() {
     return (
       <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent">← Back</button>
+        <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
   }
@@ -220,7 +224,7 @@ export default function StockTakeSummaryPage() {
   const isClosed = session.status !== 'in_progress'
 
   return (
-    <PageContainer>
+    <>
       <button
         type="button"
         onClick={() => navigate('/inventory/stock-takes')}
@@ -243,7 +247,7 @@ export default function StockTakeSummaryPage() {
       )}
 
       <header className="mb-5">
-        <h1 className="font-serif text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
+        <h1 className="font-serif text-xl sm:text-2xl font-bold text-gray-900">{sessionTitle()}</h1>
         <p className="text-sm text-muted mt-1">
           Started by {starter?.full_name || 'Unknown'} on {fmtDateTime(session.started_at)}
           {session.completed_at && ` · Closed ${fmtDateTime(session.completed_at)}`}
@@ -269,54 +273,107 @@ export default function StockTakeSummaryPage() {
         </button>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-white border border-border rounded-xl p-4">
+      {/* The three numbers.
+          One card the width of the screen on a phone, split in two lines with
+          the label beside the figure. Three across a phone gave each of them
+          about a hundred points, which "Total value" cannot fit a heading in
+          let alone a number, so the money ran off the edge of its own card. */}
+      <div className={`${card} divide-y divide-border sm:divide-y-0 sm:grid sm:grid-cols-3 sm:divide-x mb-6`}>
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{countedProductIds.size}<span className="text-base text-muted">/{products.length}</span></p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">
+            {countedProductIds.size}<span className="text-base text-muted">/{products.length}</span>
+          </p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Lines</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{lines.length}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1">{lines.length}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className="flex items-baseline justify-between gap-3 px-4 py-3 sm:block">
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(session.total_value)}</p>
+          <p className="text-2xl font-bold text-gray-900 sm:mt-1 whitespace-nowrap">
+            {fmtMoney(session.total_value)}
+          </p>
         </div>
       </div>
 
-      {error && (
+      {/* The answer, above the working.
+          A hundred and sixty products is a long way to scroll for five numbers
+          and a total, and those are what anybody opening a finished count came
+          for. Same block, same figures and the same order as the first page of
+          the PDF. */}
+      {lines.length > 0 && (
+        <div className={`${card} p-4 sm:p-5 mb-6`}>
+          <StockTakeValue summary={summary} />
+        </div>
+      )}
+
+      {/* Not while the reopen dialog is up. The dialog covers the whole
+          screen, so a message drawn out here is behind it and the reopen looks
+          like it did nothing at all. It goes inside the dialog instead. */}
+      {error && !showReopen && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
       {/* Counted products by section */}
       <div className="space-y-5 mb-6">
-        {sections.map(({ section, items }) => {
+        {places.map(({ section, items }) => {
           const colour = sectionColour(section)
-          const sectionValue = getSectionValue(items)
+          const row = rowFor.get(section)
+          const parties = row?.parties
           return (
             <div key={section}>
               <div className={`${colour.solid} rounded-lg px-3 py-2 mb-2 flex items-center justify-between`}>
                 <h2 className="font-serif text-base font-bold text-white">{section}</h2>
                 <span className="text-sm font-semibold text-white bg-white/20 px-2.5 py-0.5 rounded-full">
-                  {fmtMoney(sectionValue)}
+                  {fmtMoney(row?.value || 0)}
                 </span>
               </div>
+
+              {/* Split, but only where a section actually holds somebody
+                  else's stock. Packaging does, because Pita Pit keep their
+                  boxes in our cupboard; nothing else does, and putting a
+                  breakdown under every heading to say one line would be noise
+                  on five of them. The heading keeps the combined figure, since
+                  that is what was counted off the shelf. */}
+              {parties && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 px-1">
+                  {parties.map(party => (
+                    <span key={party.who || 'ours'} className="text-xs text-gray-600">
+                      {section} ({party.who || 'ours'}){' '}
+                      <span className="font-semibold text-gray-900">{fmtMoney(party.value)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className={`${colour.bg} border ${colour.border} rounded-xl overflow-hidden`}>
-                {items.map((product, i) => {
-                  const productLines = getProductLines(product.id)
-                  const total = getProductTotal(product.id)
-                  const value = getProductValue(product.id)
+                {items.map(({ product, lines: productLines, qty: total, value }, i) => {
                   return (
-                    <div key={product.id} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-gray-900 flex-1 min-w-0">
-                          {product.name}
+                    <div key={`${section}-${product.id}`} className={`px-4 py-3 ${i < items.length - 1 ? 'border-b border-border' : ''}`}>
+                      {/* The name above the numbers on a phone, side by side
+                          on anything wider. Squeezed side by side on a small
+                          screen the name wrapped onto three lines and the
+                          quantity onto two, and neither read as a row. */}
+                      <div className="sm:flex sm:items-center sm:justify-between sm:gap-3">
+                        <p className="font-medium text-gray-900 sm:flex-1 sm:min-w-0">
+                          {countName(product)}
+                          {/* Something we make ourselves. It is the one thing on a
+                              stock take line that changes what the cost means: a MIX
+                              is priced off its recipe and everything else off a
+                              supplier invoice. Same badge the report prints and the
+                              same amber the catalogue has always used. */}
+                          {product.is_mix && (
+                            <span className="ml-2 align-middle inline-block px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[0.65rem] font-bold tracking-wide">
+                              MIX
+                            </span>
+                          )}
                           <span className="text-xs text-muted ml-2">{product.unit}</span>
                         </p>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-semibold text-gray-900">{fmtQty(total)} {product.unit}</p>
-                          <p className="text-xs text-muted">{fmtMoney(value)}</p>
+                        <div className="flex items-baseline gap-2 mt-0.5 sm:mt-0 sm:block sm:text-right sm:flex-shrink-0">
+                          <p className="font-semibold text-gray-900 whitespace-nowrap">
+                            {fmtQty(total)} {product.unit}
+                          </p>
+                          <p className="text-xs text-muted whitespace-nowrap">{fmtMoney(value)}</p>
                         </div>
                       </div>
                       {(productLines.length > 1 || productLines.some(l => breakdownParts(l, product))) && (
@@ -332,7 +389,9 @@ export default function StockTakeSummaryPage() {
                                         {part.text}
                                       </span>
                                     ))}
-                                    <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    {!justLoose(parts) && (
+                                      <span className="text-muted">= {fmtQty(line.quantity_counted)} {product.unit}</span>
+                                    )}
                                   </>
                                 ) : (
                                   <span className="bg-white border border-border rounded-full px-2 py-0.5 text-gray-600">
@@ -356,17 +415,20 @@ export default function StockTakeSummaryPage() {
         })}
       </div>
 
-      {/* Uncounted products note */}
-      {uncountedProducts.length > 0 && (
-        <div className="bg-gray-50 border border-border rounded-xl p-4 mb-6">
-          <p className="text-sm font-semibold text-gray-700 mb-1">
-            {uncountedProducts.length} {uncountedProducts.length === 1 ? 'product was' : 'products were'} not counted this session
-          </p>
-          <p className="text-xs text-muted">
-            {uncountedProducts.map(p => p.name).join(', ')}
-          </p>
-        </div>
-      )}
+      {/* What the count does not cover, in two lists rather than one.
+          A zero means somebody looked and there was none, which is an order to
+          place. No line at all means nobody went to that shelf. Same two lists
+          and the same words as the report, off the same figures. */}
+      <NameList
+        title="Counted as none in stock"
+        note="Somebody looked and there was none. Worth an order."
+        products={summary.noneInStock}
+      />
+      <NameList
+        title="Not counted"
+        note="No count was recorded this session, so nothing here is known either way."
+        products={summary.notCounted}
+      />
 
       {/* Reopen (managers, closed sessions only) */}
       {isManager && isClosed && (
@@ -379,11 +441,12 @@ export default function StockTakeSummaryPage() {
         </button>
       )}
 
-      {/* Reopen confirmation */}
+      {/* Reopen confirmation, in the shared shell rather than its own overlay.
+          The hand rolled one had no Escape key, did not stop the page scrolling
+          underneath it and told a screen reader nothing. */}
       {showReopen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => !reopening && setShowReopen(false)}>
-          <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Reopen this stock take?</h2>
+        <Modal title="Reopen this stock take?" onClose={closeReopen} width="max-w-md">
+          <div className="p-6">
             <p className="text-sm text-gray-700 mb-3">
               This returns the stock take to in-progress so counts can be edited. The reopen is recorded with your name and the reason.
             </p>
@@ -392,12 +455,31 @@ export default function StockTakeSummaryPage() {
               type="text"
               value={reopenReason}
               onChange={e => setReopenReason(e.target.value)}
-              placeholder="e.g. accountant flagged a discrepancy"
+              placeholder="Why it was reopened"
               maxLength={200}
               className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent mb-4"
             />
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowReopen(false)} disabled={reopening} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+
+            {/* Why it did not work, where you are looking when it does not. The
+                commonest reason is another stock take already open, which the
+                database refuses outright. */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">
+                <p>{error}</p>
+                {blocker && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/inventory/stock-takes/${blocker.id}`)}
+                    className="mt-1.5 font-semibold underline text-left"
+                  >
+                    Go to {titleOf(blocker)}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button type="button" onClick={closeReopen} disabled={reopening} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={handleReopen} disabled={reopening} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">
@@ -405,8 +487,70 @@ export default function StockTakeSummaryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
-    </PageContainer>
+    </>
+  )
+}
+
+// A list of names under a heading, grouped by where they belong.
+//
+// Names only, because there are no figures to give: that is the point of both
+// of the lists that use this. Grouped by section so it reads as somewhere to
+// walk back to rather than as a paragraph of product names, which is what the
+// uncounted note used to be.
+function NameList({ title, note, products }) {
+  if (!products || products.length === 0) return null
+
+  const groups = []
+  for (const product of products) {
+    const place = product.section || 'Other'
+    const found = groups.find(g => g.place === place)
+    if (found) found.items.push(product)
+    else groups.push({ place, items: [product] })
+  }
+
+  return (
+    <div className="bg-gray-50 border border-border rounded-xl p-4 mb-6">
+      <div className="flex items-center gap-2 mb-1">
+        <p className="text-sm font-semibold text-gray-700">{title}</p>
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white border border-border text-gray-700">
+          {products.length}
+        </span>
+      </div>
+      <p className="text-xs text-muted mb-2.5">{note}</p>
+
+      <div className="space-y-2 sm:space-y-1.5">
+        {groups.map(({ place, items }) => (
+          <div key={place} className="sm:flex sm:gap-3 text-xs">
+            {/* Its own line on a phone, beside the names on anything wider.
+                Sharing the line on a narrow screen there is no gap to put
+                between them, so the section ran straight into the first
+                product. */}
+            <span
+              className="block font-bold whitespace-nowrap sm:w-24 sm:flex-shrink-0 sm:pt-0.5"
+              style={{ color: sectionColour(place).ink }}
+            >
+              {place}
+            </span>
+
+            {/* A box each rather than commas between them. A product name can
+                be one word or five, and run together with commas there was
+                nothing saying where one stopped and the next started. These
+                are the same boxes the counts use further up the page. */}
+            <span className="flex flex-wrap gap-1">
+              {items.map(product => (
+                <span
+                  key={product.id}
+                  className="bg-white border border-border rounded-md px-2 py-0.5 text-gray-700"
+                >
+                  {countName(product)}
+                </span>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

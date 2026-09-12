@@ -1,3 +1,4 @@
+import { labelClass } from '../../lib/controlStyles'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -56,7 +57,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <label className={labelClass}>
               Email Address
             </label>
             <input
@@ -70,7 +71,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <label className={labelClass}>
               Password
             </label>
             <input

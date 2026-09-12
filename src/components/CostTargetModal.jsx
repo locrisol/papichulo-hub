@@ -4,6 +4,11 @@ import { useAuth } from '../context/AuthContext'
 import { weekStartOf, shortDate, todayISO } from '../lib/dates'
 import { describeTargets } from '../lib/costTargets'
 import { friendlyError } from '../lib/errors'
+import { useConfirm } from '../context/ConfirmContext'
+import { numberField } from '../lib/numberInput'
+import Modal from './Modal'
+import { ModalSectionBar } from './ModalSection'
+import { modalFooter, removeButton, checkbox, labelClass, fieldClass } from '../lib/controlStyles'
 
 // Setting a cost target, and seeing what has been set before.
 //
@@ -23,6 +28,7 @@ const TYPE_LABELS = {
 
 export default function CostTargetModal({ targetType, restaurantId, currentValue, weekStart, onClose, onSaved }) {
     const { user } = useAuth()
+    const confirm = useConfirm()
     const week = weekStart || weekStartOf(todayISO())
 
     const [value, setValue] = useState(currentValue != null ? String(currentValue) : '')
@@ -89,10 +95,16 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     // a mistake, and it is easy to end up with several set on the same week
     // that never applied to anything.
     async function handleDelete(t) {
-        const ok = window.confirm(
-            `Delete the ${t.value}% target starting the week of ${shortDate(t.from)}?\n\n` +
-            'Weeks that were using it will fall back to whatever was set before.'
-        )
+        const ok = await confirm({
+            title: 'Delete this target?',
+            message: 'Weeks that were using it will fall back to whatever was set before.',
+            details: [
+                { label: 'Target', value: `${t.value}%` },
+                { label: 'From', value: `week of ${shortDate(t.from)}` },
+            ],
+            confirmLabel: 'Delete target',
+            tone: 'danger',
+        })
         if (!ok) return
 
         const { error: e1 } = await supabase
@@ -107,8 +119,6 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
 
     const timeline = describeTargets(history, targetType, week)
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     const badge = {
         current: { text: 'In force this week', cls: 'bg-green-100 text-green-800' },
@@ -131,30 +141,21 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
     }
 
     return (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
-                onClick={e => e.stopPropagation()}>
-
-                <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">{TYPE_LABELS[targetType]} target</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
-                </div>
-
-                <div className="px-6 py-4 overflow-y-auto flex-1">
+        <Modal title={`${TYPE_LABELS[targetType]} target`} onClose={onClose}>
+                <div className="px-6 py-4">
                     {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
 
                     <form onSubmit={handleSave}>
                         <div className="mb-3">
-                            <label className={labelCls}>Target as a percentage of net sales</label>
-                            <input type="number" step="0.1" min="0" max="100" inputMode="decimal"
-                                value={value} onChange={e => setValue(e.target.value)}
-                                className={`${fieldCls} text-right`} placeholder="30" />
+                            <label className={labelClass}>Target as a percentage of net sales</label>
+                            <input {...numberField({ value, onChange: setValue })}
+                                className={`${fieldClass} text-right`} placeholder="30" />
                         </div>
 
                         <label className="flex items-center gap-3 cursor-pointer mb-3">
                             <input type="checkbox" checked={isTemporary}
                                 onChange={e => setIsTemporary(e.target.checked)}
-                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
+                                className={checkbox} />
                             <div>
                                 <span className="text-sm font-medium text-gray-900">Only for a while</span>
                                 <p className="text-xs text-gray-500 mt-0.5">
@@ -163,16 +164,16 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                             </div>
                         </label>
 
-                        <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                             <div>
-                                <label className={labelCls}>From the week of</label>
-                                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldCls} />
+                                <label className={labelClass}>From the week of</label>
+                                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldClass} />
                                 <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(from))}</p>
                             </div>
                             {isTemporary && (
                                 <div>
-                                    <label className={labelCls}>Until the week of</label>
-                                    <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldCls} />
+                                    <label className={labelClass}>Until the week of</label>
+                                    <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldClass} />
                                     {until && <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(until))}</p>}
                                 </div>
                             )}
@@ -189,7 +190,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                     {/* A timeline rather than a list. A target with no end week is
                         really ended by the next one that starts, so each gets a
                         real range instead of everything saying ongoing. */}
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Target history</h3>
+                    <ModalSectionBar title="Target history" />
                     {timeline.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">
                             Nothing set yet, so the restaurant default is being used.
@@ -209,7 +210,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                                             <button
                                                 type="button"
                                                 onClick={() => handleDelete(t)}
-                                                className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+                                                className={removeButton}
                                                 aria-label={`Delete the ${t.value}% target`}
                                             >
                                                 ×
@@ -223,13 +224,12 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                     )}
                 </div>
 
-                <div className="px-6 py-3 border-t border-border bg-gray-50 flex justify-end">
+                <div className={modalFooter}>
                     <button onClick={onClose}
                         className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
                         Done
                     </button>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

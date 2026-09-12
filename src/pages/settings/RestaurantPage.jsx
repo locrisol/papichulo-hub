@@ -3,12 +3,18 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import SalesPlatformsModal from '../../components/SalesPlatformsModal'
+import SalesTendersModal from '../../components/SalesTendersModal'
 import CostTargetModal from '../../components/CostTargetModal'
-import { RECEIPT_ROWS, resolveRowOrder } from '../sales/WeeklySalesPage'
-import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
+import OpeningHoursModal from '../../components/OpeningHoursModal'
+import BreakRulesModal from '../../components/BreakRulesModal'
+import RosterRulesModal from '../../components/RosterRulesModal'
+import { todayISO, weekStartOf, shortDate, stampDateTime } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
+import { DEFAULT_BREAK_RULES } from '../../lib/roster'
+import { DEFAULT_RULES } from '../../lib/workRules'
+import { numberField } from '../../lib/numberInput'
+import { card, rowButton, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -34,19 +40,28 @@ export default function RestaurantPage() {
     const [formData, setFormData] = useState({
         hourly_rate: '',
         forecasting_enabled: false,
+        mail_from: '',
     })
 
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
+    const [showTendersModal, setShowTendersModal] = useState(false)
+    const [showHoursModal, setShowHoursModal] = useState(false)
+    const [showBreaksModal, setShowBreaksModal] = useState(false)
+    const [showRulesModal, setShowRulesModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
     const [refresh, setRefresh] = useState(0)
-
-    // Order of the till receipt rows in the weekly sales grid.
-    const [rowOrder, setRowOrder] = useState(RECEIPT_ROWS.map(r => r.key))
-    const [orderSaving, setOrderSaving] = useState(false)
+    // The sending address shows locked once it has one. This opens it.
+    const [editingMailFrom, setEditingMailFrom] = useState(false)
 
     const week = weekStartOf(todayISO())
 
@@ -55,8 +70,8 @@ export default function RestaurantPage() {
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
+            mail_from: activeRestaurant.mail_from || '',
         })
-        setRowOrder(resolveRowOrder(activeRestaurant.sales_row_order).map(r => r.key))
     }, [activeRestaurant])
 
     useEffect(() => {
@@ -78,32 +93,10 @@ export default function RestaurantPage() {
 
     // Swap a row with its neighbour. Arrows rather than drag and drop: this is
     // set once and rarely revisited, and arrows work on touch without a library.
-    function moveRow(index, direction) {
-        const target = index + direction
-        if (target < 0 || target >= rowOrder.length) return
-        const next = [...rowOrder]
-        const [moved] = next.splice(index, 1)
-        next.splice(target, 0, moved)
-        setRowOrder(next)
-    }
-
-    async function saveRowOrder() {
-        setOrderSaving(true)
-        setError('')
-        setSuccess('')
-        const { error: e1 } = await supabase
-            .from('restaurants')
-            .update({ sales_row_order: rowOrder })
-            .eq('id', activeRestaurant.id)
-        setOrderSaving(false)
-        if (e1) setError(friendlyError(e1))
-        else setSuccess('Sales row order saved. Reload the weekly sales page to see it.')
-    }
-
     async function handleSave(e) {
         e.preventDefault()
         setLoading(true)
-        setError('')
+        setFormProblem('')
         setSuccess('')
 
         const { data, error: e1 } = await supabase
@@ -111,18 +104,49 @@ export default function RestaurantPage() {
             .update({
                 hourly_rate: parseFloat(formData.hourly_rate),
                 forecasting_enabled: formData.forecasting_enabled,
+                // Empty is null, not an empty string. Null means "no
+                // address of its own", which is what the mail falls back
+                // on; an empty string would read as an address that is
+                // blank.
+                mail_from: formData.mail_from.trim() || null,
             })
             .eq('id', activeRestaurant.id)
             .select()
             .single()
 
         setLoading(false)
-        if (e1) setError(friendlyError(e1))
+        if (e1) setFormProblem(friendlyError(e1))
         else {
+            setEditingMailFrom(false)
             setActiveRestaurant(data)
             setSuccess('Settings saved.')
         }
     }
+
+    // Enough of each setting to see at a glance whether it has been done,
+    // without opening the dialog to find out.
+    const openDays = Object.values(activeRestaurant?.opening_hours || {})
+        .filter(d => d?.open && d?.close).length
+    const openingSummary = openDays === 0
+        ? 'Not set yet. Until they are, the roster cannot mark opening or closing shifts.'
+        : `Open ${openDays} ${openDays === 1 ? 'day' : 'days'} a week. Used by the roster to mark opening and closing shifts.`
+
+    const ladder = activeRestaurant?.break_rules?.length
+        ? [...activeRestaurant.break_rules].sort((a, b) => b.hours - a.hours)
+        : DEFAULT_BREAK_RULES
+    // The same words the dialog uses, so the summary and the thing it
+    // summarises do not describe the same rule two different ways. It read
+    // "8h up gives 60 min", which is not a sentence anybody says.
+    const breakSummary = ladder
+        .map(r => `${r.operator === 'gt' ? 'more than' : 'at least'} ${r.hours}h gives ${r.minutes} min`)
+        .join(', ')
+
+    // How many checks are switched on, so it is obvious at a glance whether
+    // anybody has been through them.
+    const rules = { ...DEFAULT_RULES, ...(activeRestaurant?.roster_rules || {}) }
+    const warnCount = ['dailyRest', 'weeklyRest', 'daysOff', 'maxWeek'].filter(k => rules[k]?.on).length
+    const blockCount = ['visaCap', 'underAge'].filter(k => rules[k]?.on).length
+    const rulesSummary = `${warnCount} of 4 warnings on, and ${blockCount} of 2 checks that hold a week back. Rest, days off, visa hours, under 18s, food safety expiry and how wide the grid is drawn.`
 
     // What is in force this week for one target, and how long it runs.
     function targetSummary(type) {
@@ -135,18 +159,15 @@ export default function RestaurantPage() {
     }
 
     return (
-        <PageContainer width="form">
+        <>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
+                <h2 className={pageTitle}>Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     Cost targets and settings for {activeRestaurant?.name}
                 </p>
                 {activeRestaurant?.updated_at && (
                     <p className="text-xs text-gray-400 mt-1">
-                        Last updated: {new Date(activeRestaurant.updated_at).toLocaleDateString('en-IE', {
-                            day: '2-digit', month: '2-digit', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit'
-                        })}
+                        Last updated: {stampDateTime(activeRestaurant.updated_at)}
                     </p>
                 )}
             </div>
@@ -162,7 +183,7 @@ export default function RestaurantPage() {
                 <div>
                     {/* Cost targets. Changed through the same modal the dashboard uses,
                         so a target is only ever set in one place. */}
-                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                    <div className={`${card} p-6 mb-4`}>
                         <h3 className="text-sm font-semibold text-gray-900">Cost targets</h3>
                         <p className="text-xs text-gray-500 mt-1 mb-4">
                             What each target is for the week of {shortDate(week)}. Setting a new one starts from the week you
@@ -173,27 +194,22 @@ export default function RestaurantPage() {
                             {TARGET_TYPES.map(type => {
                                 const s = targetSummary(type)
                                 return (
+                                    // The name and the figure on one line, the
+                                    // sentence about it underneath.
+                                    //
+                                    // This was a single row with the wording on
+                                    // the left carrying min-w-0 and the figure
+                                    // and button pinned flex-shrink-0 on the
+                                    // right. Since only the left was allowed to
+                                    // give way, on a phone it gave way to about
+                                    // one word, and "The restaurant default.
+                                    // Nothing has been set for a particular
+                                    // week" came out reading straight down the
+                                    // page. Same fault as the actions list on
+                                    // the weekly report, same fix.
                                     <div key={type.key} className="px-4 py-3">
                                         <div className="flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-900">{type.label}</p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {s.current ? (
-                                                        s.current.until
-                                                            ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
-                                                            : `Running since the week of ${shortDate(s.current.from)}`
-                                                    ) : (
-                                                        'The restaurant default. Nothing has been set for a particular week'
-                                                    )}
-                                                </p>
-                                                {s.upcoming.length > 0 && (
-                                                    <p className="text-xs text-blue-600 mt-0.5">
-                                                        {s.upcoming.length === 1
-                                                            ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
-                                                            : `${s.upcoming.length} more changes already set for later weeks`}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            <p className="text-sm font-medium text-gray-900">{type.label}</p>
                                             <div className="flex items-center gap-3 flex-shrink-0">
                                                 <span className="font-serif text-xl font-bold text-gray-900">
                                                     {s.value != null ? `${s.value}%` : '-'}
@@ -201,12 +217,28 @@ export default function RestaurantPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setEditingTarget(type.key)}
-                                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                                                    className={rowButton('edit')}
                                                 >
                                                     Change
                                                 </button>
                                             </div>
                                         </div>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {s.current ? (
+                                                s.current.until
+                                                    ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
+                                                    : `Running since the week of ${shortDate(s.current.from)}`
+                                            ) : (
+                                                'The restaurant default. Nothing has been set for a particular week'
+                                            )}
+                                        </p>
+                                        {s.upcoming.length > 0 && (
+                                            <p className="text-xs text-blue-600 mt-0.5">
+                                                {s.upcoming.length === 1
+                                                    ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
+                                                    : `${s.upcoming.length} more changes already set for later weeks`}
+                                            </p>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -215,19 +247,18 @@ export default function RestaurantPage() {
 
                     {/* Everything saved straight onto the restaurant row */}
                     <form onSubmit={handleSave}>
-                        <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                        <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    <label className={labelClass}>
                                         Hourly rate (€)
                                     </label>
                                     <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.hourly_rate}
-                                        onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })}
+                                        {...numberField({
+                                            value: formData.hourly_rate,
+                                            onChange: v => setFormData({ ...formData, hourly_rate: v }),
+                                        })}
                                         className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                         required
                                     />
@@ -241,15 +272,81 @@ export default function RestaurantPage() {
                             </div>
                         </div>
 
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
+                            <label className={labelClass}>
+                                Sent from
+                            </label>
+                            {/* Locked once it is set, like an overhead line on the
+                                report. An address that is already working is not
+                                something to leave a cursor sitting in: changing it
+                                needs a matching alias or relay rule in Google, and a
+                                stray keystroke here would send the next report from
+                                an address that Google quietly rewrites, which looks
+                                like nothing at all going wrong. */}
+                            {formData.mail_from && !editingMailFrom ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* The same box, greyed and disabled, rather than the
+                                        value as loose text. A field that turns into a line
+                                        of writing when it is locked reads as a different
+                                        thing from the one you typed into, and a bare
+                                        address sitting in a span gets linkified blue by
+                                        the browser, which makes it look like something to
+                                        click. */}
+                                    <input
+                                        type="text"
+                                        value={formData.mail_from}
+                                        disabled
+                                        readOnly
+                                        aria-label="Sending address, locked"
+                                        className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm
+                                            bg-app-bg text-muted cursor-not-allowed"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingMailFrom(true)}
+                                        aria-label="Edit the sending address"
+                                        className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-accent-ink transition-colors"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-3.5 h-3.5">
+                                            <rect x="4" y="10" width="16" height="11" rx="2" />
+                                            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                                        </svg>
+                                        Edit
+                                    </button>
+                                </div>
+                            ) : (
+                                <input
+                                    type="email"
+                                    inputMode="email"
+                                    autoComplete="off"
+                                    value={formData.mail_from}
+                                    onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
+                                    placeholder="name@papichulo.ie"
+                                    autoFocus={editingMailFrom}
+                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                />
+                            )}
+                            {/* The address only. The name in front of it is this
+                                restaurant own name, so renaming it renames the sender
+                                and there is no second place to keep in step. */}
+                            <p className="text-xs text-gray-400 mt-1">
+                                The address Papi Chulo Hub emails come from for this restaurant.
+                                Leave it empty and they come from the account the Hub sends with.
+                                Replies never come back here: they go to whoever sent it, with
+                                everyone else copied.
+                            </p>
+                        </div>
+
                         {user?.role === 'super_admin' && (
-                            <div className="bg-white rounded-xl border border-border p-6 mb-4">
+                            <div className={`${card} p-6 mb-4`}>
                                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Forecasting</h3>
                                 <label className="flex items-center gap-3 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={formData.forecasting_enabled}
                                         onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
-                                        className="w-4 h-4 accent-accent"
+                                        className={checkbox}
                                     />
                                     <div>
                                         <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
@@ -257,6 +354,13 @@ export default function RestaurantPage() {
                                     </div>
                                 </label>
                             </div>
+                        )}
+
+                        {/* Above the button row rather than inside it. As a sibling of the
+                            button it sat beside it on one line, which squeezes both on a
+                            phone and is not where the eye goes after a press. */}
+                        {formProblem && (
+                          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
                         )}
 
                         <button
@@ -271,8 +375,12 @@ export default function RestaurantPage() {
 
                 <div>
                     {/* Sales platforms management */}
-                    <div className="bg-white rounded-xl border border-border p-6 mb-4">
-                        <div className="flex items-center justify-between">
+                    <div className={`${card} p-6 mb-4`}>
+                        {/* Same shape as Opening hours below, which already had
+                            the gap and the wrap. Without them the sentence was
+                            squeezed against a button that refuses to wrap, and
+                            on a phone it came out a word per line. */}
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
                                 <p className="text-xs text-gray-500 mt-1">
@@ -289,64 +397,92 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
-                    {/* Order of the receipt rows in the weekly sales grid */}
-                    <div className="bg-white rounded-xl border border-border p-6">
-                        <h3 className="text-sm font-semibold text-gray-900">Weekly sales row order</h3>
-                        <p className="text-xs text-gray-500 mt-1 mb-4">
-                            Arrange the till receipt rows to match how you read the POS receipt. Platform rows are ordered
-                            separately, in Manage platforms.
-                        </p>
+                    {/* Opening hours and break rules.
 
-                        <ul className="border border-border rounded-lg divide-y divide-border mb-3">
-                            {rowOrder.map((key, i) => {
-                                const row = RECEIPT_ROWS.find(r => r.key === key)
-                                if (!row) return null
-                                return (
-                                    <li key={key} className="flex items-center justify-between px-3 py-2">
-                                        <span className="text-sm text-gray-700">{row.label}</span>
-                                        <div className="flex gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => moveRow(i, -1)}
-                                                disabled={i === 0}
-                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                                aria-label={`Move ${row.label} up`}
-                                            >
-                                                &uarr;
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => moveRow(i, 1)}
-                                                disabled={i === rowOrder.length - 1}
-                                                className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                                                aria-label={`Move ${row.label} down`}
-                                            >
-                                                &darr;
-                                            </button>
-                                        </div>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-
-                        <div className="flex justify-end gap-2">
+                        Both are here rather than on the roster because they are
+                        properties of a restaurant, not of a week. Both are also
+                        the two things the roster cannot work out for itself:
+                        what counts as an opening or closing shift, and what
+                        break somebody has earned. */}
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Opening hours</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {openingSummary}
+                                </p>
+                            </div>
                             <button
                                 type="button"
-                                onClick={() => setRowOrder(RECEIPT_ROWS.map(r => r.key))}
-                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                onClick={() => setShowHoursModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
                             >
-                                Reset to default
-                            </button>
-                            <button
-                                type="button"
-                                onClick={saveRowOrder}
-                                disabled={orderSaving}
-                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
-                            >
-                                {orderSaving ? 'Saving...' : 'Save order'}
+                                Set hours
                             </button>
                         </div>
                     </div>
+
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Break rules</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {breakSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowBreaksModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set breaks
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Roster rules</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {rulesSummary}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowRulesModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Set rules
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* The till receipt rows.
+
+                        Super Admin only, and the database says so too rather
+                        than this just being a hidden button. Changing these
+                        changes the shape of every day entered afterwards. */}
+                    {user?.role === 'super_admin' && (
+                        <div className={`${card} p-6`}>
+                            <div className="flex items-center justify-between gap-4 flex-wrap">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900">Till receipt rows</h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        The rows on the sales screens, in the order the till prints them. Add one when
+                                        the till starts taking money a new way, retire one when it stops.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTendersModal(true)}
+                                    className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                >
+                                    Manage rows
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -366,6 +502,16 @@ export default function RestaurantPage() {
                     onClose={() => setShowPlatformsModal(false)}
                 />
             )}
-        </PageContainer>
+
+            {showTendersModal && (
+                <SalesTendersModal
+                    onClose={() => setShowTendersModal(false)}
+                />
+            )}
+
+            {showHoursModal && <OpeningHoursModal onClose={() => setShowHoursModal(false)} />}
+            {showBreaksModal && <BreakRulesModal onClose={() => setShowBreaksModal(false)} />}
+            {showRulesModal && <RosterRulesModal onClose={() => setShowRulesModal(false)} />}
+        </>
     )
 }

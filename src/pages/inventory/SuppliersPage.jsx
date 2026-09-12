@@ -1,9 +1,12 @@
 import { useState, useEffect, Fragment } from 'react'
+import { useConfirm } from '../../context/ConfirmContext'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { can, MANAGERS } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle } from '../../lib/controlStyles'
+import SupplierForm from '../../components/SupplierForm'
+import Modal from '../../components/Modal'
 
 // Who we buy from.
 //
@@ -20,6 +23,7 @@ import { tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/control
 // Suppliers are deactivated and never deleted. Old invoices and prices point at
 // them, and those have to keep making sense.
 export default function SuppliersPage() {
+    const confirm = useConfirm()
     const { user } = useAuth()
 
     // Employees can see this page on purpose: if a delivery is wrong they need
@@ -31,6 +35,13 @@ export default function SuppliersPage() {
     const [suppliers, setSuppliers] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top because there is nothing else up
+    // there to read. This is for a save that would not go through, and it
+    // belongs beside the button that was pressed: at the foot of a form on a
+    // phone, the top of the page is not on the screen, and inside a dialog it
+    // is behind the dialog.
+    const [formProblem, setFormProblem] = useState('')
     const [showForm, setShowForm] = useState(false)
     const [editingSupplier, setEditingSupplier] = useState(null)
     const [formData, setFormData] = useState({
@@ -75,7 +86,8 @@ export default function SuppliersPage() {
 
     async function handleSave(e) {
         e.preventDefault()
-        setError('')
+
+        setFormProblem('')
 
         if (editingSupplier) {
             const { error } = await supabase
@@ -83,7 +95,7 @@ export default function SuppliersPage() {
                 .update(formData)
                 .eq('id', editingSupplier.id)
 
-            if (error) setError(friendlyError(error))
+            if (error) setFormProblem(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -93,7 +105,7 @@ export default function SuppliersPage() {
                 .from('suppliers')
                 .insert(formData)
 
-            if (error) setError(friendlyError(error))
+            if (error) setFormProblem(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -101,13 +113,21 @@ export default function SuppliersPage() {
         }
     }
 
+    // The form hands back the field and the value rather than an event, the
+    // same as every other form in the app.
+    function handleFieldChange(field, value) {
+        setFormData(prev => ({ ...prev, [field]: value }))
+    }
+
     function resetForm() {
+        setFormProblem('')
         setFormData({ name: '', category: 'food', contact_email: '', contact_phone: '', notes: '' })
         setEditingSupplier(null)
         setShowForm(false)
     }
 
     function startEdit(supplier) {
+        setFormProblem('')
         setFormData({
             name: supplier.name,
             category: supplier.category,
@@ -119,7 +139,19 @@ export default function SuppliersPage() {
         setShowForm(true)
     }
 
+    // Only on the way out. Bringing one back is not a loss and needs no dialog.
     async function toggleActive(supplier) {
+        if (supplier.is_active) {
+            const ok = await confirm({
+                title: `Deactivate ${supplier.name}?`,
+                message: 'They stop being offered when you enter an invoice or add a price. Prices already '
+                    + 'saved against them keep working, and nothing costed from those prices changes.',
+                confirmLabel: 'Deactivate',
+                tone: 'danger',
+            })
+            if (!ok) return
+        }
+
         const { error } = await supabase
             .from('suppliers')
             .update({ is_active: !supplier.is_active })
@@ -133,12 +165,12 @@ export default function SuppliersPage() {
         <div>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Suppliers</h2>
+                    <h2 className={pageTitle}>Suppliers</h2>
                     <p className="text-sm text-gray-500 mt-1">
                         {isManager ? 'Manage your supplier directory' : 'Who we buy from, and how to reach them'}
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-2">
                     {/* Show Inactive is a filter rather than a change, so anyone
                         can use it. There is nothing to hide in a deactivated
                         supplier that is not already on screen. */}
@@ -171,84 +203,102 @@ export default function SuppliersPage() {
             )}
 
             {isManager && showForm && !editingSupplier && (
-                <div className="bg-white rounded-xl border border-border p-6 mb-6">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">New Supplier</h3>
-                    <form onSubmit={handleSave}>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                                <select
-                                    value={formData.category}
-                                    onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                >
-                                    <option value="food">Food</option>
-                                    <option value="packaging">Packaging</option>
-                                    <option value="cleaning">Cleaning</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Email</label>
-                                <input
-                                    type="email"
-                                    value={formData.contact_email}
-                                    onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Phone</label>
-                                <input
-                                    type="text"
-                                    value={formData.contact_phone}
-                                    onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                    className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
-                            </div>
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-                            <textarea
-                                value={formData.notes}
-                                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                rows={2}
-                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                type="submit"
-                                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                            >
-                                Add Supplier
-                            </button>
-                            <button
-                                type="button"
-                                onClick={resetForm}
-                                className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </form>
+                <div className={`${card} overflow-hidden mb-6`}>
+                    <h3 className={cardHeader}>New supplier</h3>
+                    <div className="p-6">
+                        <SupplierForm
+                          problem={formProblem}
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Add supplier"
+                        />
+                    </div>
                 </div>
             )}
 
             {loading ? (
                 <div className="text-sm text-gray-500">Loading suppliers...</div>
             ) : (
-                <div className={tableCard}>
+                <>
+                {/* Cards on a phone, the table on anything wider.
+                    A table that scrolls sideways puts its last columns out of
+                    reach, and on this one that was the status and the buttons.
+                    Products and menu items already do this; suppliers now
+                    matches them. */}
+                <div className="md:hidden space-y-3">
+                    {filteredSuppliers.map(s => (
+                        <div
+                            key={s.id}
+                            className={`rounded-xl border p-4 ${
+                                s.is_active ? 'bg-white border-border' : 'bg-red-100 border-red-200'
+                            }`}
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <p className={`font-semibold ${s.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                                    {s.name}
+                                </p>
+                                <span className={`${badge} flex-shrink-0 ${
+                                    s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                                }`}>
+                                    {s.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+
+                            {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className={`${badge} capitalize ${
+                                    s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                    {s.category}
+                                </span>
+                            </div>
+
+                            {/* The address and the number are the reason
+                                anybody opens this list on a phone, so they are
+                                links rather than text to copy out by hand. */}
+                            <dl className="mt-3 space-y-1.5 text-sm">
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <dt className="text-gray-500">Email</dt>
+                                    <dd className="text-right min-w-0 truncate">
+                                        {s.contact_email
+                                            ? <a href={`mailto:${s.contact_email}`} className="text-blue-700 underline">{s.contact_email}</a>
+                                            : <span className="text-gray-400">-</span>}
+                                    </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <dt className="text-gray-500">Phone</dt>
+                                    <dd className="text-right">
+                                        {s.contact_phone
+                                            ? <a href={`tel:${s.contact_phone}`} className="text-blue-700 underline">{s.contact_phone}</a>
+                                            : <span className="text-gray-400">-</span>}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            {isManager && (
+                                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
+                                    <button
+                                        onClick={() => editingSupplier?.id === s.id ? resetForm() : startEdit(s)}
+                                        className={rowButton('edit')}
+                                    >
+                                        {editingSupplier?.id === s.id ? 'Cancel' : 'Edit'}
+                                    </button>
+                                    <button
+                                        onClick={() => toggleActive(s)}
+                                        className={rowButton(s.is_active ? 'danger' : 'good')}
+                                    >
+                                        {s.is_active ? 'Deactivate' : 'Reactivate'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`${tableCard} hidden md:block`}>
                     <table className="w-full text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
@@ -286,17 +336,16 @@ export default function SuppliersPage() {
                                         </td>
                                         {isManager && (
                                             <td className="px-4 py-3">
-                                                <div className="flex gap-3">
+                                                <div className="flex flex-wrap gap-2">
                                                     <button
                                                         onClick={() => editingSupplier?.id === s.id ? resetForm() : startEdit(s)}
-                                                        className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                                        className={rowButton('edit')}
                                                     >
                                                         {editingSupplier?.id === s.id ? 'Cancel' : 'Edit'}
                                                     </button>
                                                     <button
                                                         onClick={() => toggleActive(s)}
-                                                        className={`text-xs font-medium ${s.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-                                                            }`}
+                                                        className={rowButton(s.is_active ? 'danger' : 'good')}
                                                     >
                                                         {s.is_active ? 'Deactivate' : 'Reactivate'}
                                                     </button>
@@ -304,86 +353,30 @@ export default function SuppliersPage() {
                                             </td>
                                         )}
                                     </tr>
-                                    {isManager && editingSupplier?.id === s.id && (
-                                        <tr>
-                                            <td colSpan={6} className="px-4 py-4 bg-amber-50 border-b border-border">
-                                                <form onSubmit={handleSave}>
-                                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
-                                                            <input
-                                                                type="text"
-                                                                value={formData.name}
-                                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                                required
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                                                            <select
-                                                                value={formData.category}
-                                                                onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            >
-                                                                <option value="food">Food</option>
-                                                                <option value="packaging">Packaging</option>
-                                                                <option value="cleaning">Cleaning</option>
-                                                                <option value="other">Other</option>
-                                                            </select>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Email</label>
-                                                            <input
-                                                                type="email"
-                                                                value={formData.contact_email}
-                                                                onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contact Phone</label>
-                                                            <input
-                                                                type="text"
-                                                                value={formData.contact_phone}
-                                                                onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="mb-4">
-                                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
-                                                        <textarea
-                                                            value={formData.notes}
-                                                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                                            rows={2}
-                                                            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
-                                                        />
-                                                    </div>
-                                                    <div className="flex gap-3">
-                                                        <button
-                                                            type="submit"
-                                                            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                                                        >
-                                                            Save Changes
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={resetForm}
-                                                            className="px-4 py-2 border border-border text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 bg-white transition-colors"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                    )}
                                 </Fragment>
                             ))}
                         </tbody>
                     </table>
                 </div>
+                </>
+            )}
+            {/* Editing opens in a dialog rather than pushing a form into the
+                middle of the table, where the row being changed was hard to
+                pick out from the rows around it and everything below it jumped
+                down the page. */}
+            {editingSupplier && (
+                <Modal title={`Edit ${editingSupplier.name}`} onClose={resetForm} width="max-w-2xl">
+                    <div className="p-6">
+                        <SupplierForm
+                          problem={formProblem}
+                            formData={formData}
+                            onChange={handleFieldChange}
+                            onSubmit={handleSave}
+                            onCancel={resetForm}
+                            submitLabel="Save changes"
+                        />
+                    </div>
+                </Modal>
             )}
         </div>
     )

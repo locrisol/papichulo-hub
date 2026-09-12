@@ -21,11 +21,15 @@ export function can(user, allowed) {
     return allowed.includes(user.role)
 }
 
-// Where a role should land when it signs in. An employee goes to waste because
-// that is the screen they use every shift; stock takes only happen monthly.
+// Where a role should land when it signs in.
+//
+// An employee lands on their own shifts. It used to be waste, on the grounds
+// that it is the screen they use every shift, and the roster beats it: waste is
+// something you open when you have something to log, and the roster is the
+// question somebody opens the app to answer.
 export function homeFor(user) {
     if (!user?.role) return '/login'
-    return user.role === 'employee' ? '/waste' : '/dashboard'
+    return user.role === 'employee' ? '/my-shifts' : '/dashboard'
 }
 
 // Whether one person can turn another person's account on or off.

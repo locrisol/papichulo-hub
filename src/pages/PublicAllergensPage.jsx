@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../lib/allergens'
+import { sheetRows } from '../lib/allergenSheet'
+import AllergenList from '../components/allergens/AllergenList'
+import { card } from '../lib/controlStyles'
+import { stampDate } from '../lib/dates'
 
-const ALLERGEN_LABELS = {
-  gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
-  peanuts: 'Peanuts', soybeans: 'Soybeans', milk: 'Milk', nuts: 'Nuts',
-  celery: 'Celery', mustard: 'Mustard', sesame: 'Sesame', sulphites: 'Sulphites',
-  lupin: 'Lupin', molluscs: 'Molluscs',
-}
 
 // The allergen page customers see, at /allergens/[slug]. No login.
 //
@@ -107,52 +104,38 @@ export default function PublicAllergensPage({ slugOverride }) {
     setLoading(false)
   }
 
-  function getItemComponents(itemId) {
-    return components.filter(c => c.menu_item_id === itemId)
-  }
-
-  function getItemAllergens(item) {
-    return deriveMenuItemAllergens(getItemComponents(item.id), products, recipeLines, allergens)
-  }
-
-  // Whether every ingredient in this dish actually arrived.
+  // Which rows there are, what each one carries, and whether everything it is
+  // built from actually arrived, all worked out in lib/allergenSheet. It used
+  // to be three functions here, and the printed sheet had its own copy of the
+  // same reasoning a few hundred lines away in another file.
   //
-  // A customer is not signed in, and the database only hands an anonymous reader
-  // active products. So if an ingredient is deactivated while the dish is still
-  // on sale, its row never arrives. deriveMenuItemAllergens skips a component it
-  // cannot find, which would quietly turn "we do not know" into "no declared
-  // allergens", and that is the worst way to be wrong on this page in
-  // particular.
-  //
-  // The components themselves are always readable, so the gap can be spotted
-  // even though the missing product cannot be fetched. When it happens the dish
-  // says to ask staff instead of showing a list that looks complete.
-  //
-  // A manager viewing this through the preview is signed in and gets every
-  // product, so this reads false for them and nothing changes.
-  function allIngredientsReadable(item) {
-    return getItemComponents(item.id).every(c => products.some(p => p.id === c.product_id))
-  }
+  // The one worth keeping in mind: a customer is not signed in, so the database
+  // only hands an anonymous reader active products. An ingredient deactivated
+  // while the dish is still on sale simply does not arrive, and a list that
+  // looks whole is the worst way to be wrong on this page in particular. When
+  // that happens the row says to ask staff. A manager viewing this through the
+  // preview is signed in and gets everything, so it never fires for them.
 
-  function getAllergenSummary(state) {
-    if (state === 'contains') {
-      return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
-    }
-    if (state === 'may_contain') {
-      return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
-    }
-    return null
-  }
 
   // Build the grouped, ordered, filtered structure for rendering.
+  //
+  // Rows rather than menu items. Two sizes of one dish are one row, and
+  // something handed over beside it gets a row of its own. Worked out in
+  // lib/allergenSheet so the printed sheet cannot come out saying anything
+  // different from this.
   const itemsByCategory = categories
+    // A category can be kept off the sheet: cans and bottled water carry none
+    // of the fourteen and fill it with rows saying so. Older rows have no
+    // answer here, and no answer means shown.
+    .filter(c => c.on_allergen_sheet !== false)
     .map(c => ({
       category: c,
-      items: menuItems
-        .filter(i => i.category_id === c.id)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      rows: sheetRows(
+        menuItems.filter(i => i.category_id === c.id),
+        components, products, recipeLines, allergens,
+      ),
     }))
-    .filter(group => group.items.length > 0)
+    .filter(group => group.rows.length > 0)
 
   // Find the most recent update across all allergen rows so we can show
   // a "last updated" timestamp. If no allergens have ever been edited,
@@ -163,9 +146,10 @@ export default function PublicAllergensPage({ slugOverride }) {
     return latest
   }, null)
 
+  // The day the sheet was last touched. Falls back to today, because a sheet
+  // with no date on it reads as one nobody has checked.
   function formatDate(iso) {
-    if (!iso) return new Date().toLocaleDateString('en-IE', { dateStyle: 'long' })
-    return new Date(iso).toLocaleDateString('en-IE', { dateStyle: 'long' })
+    return stampDate(iso || new Date().toISOString())
   }
 
   if (loading) {
@@ -192,7 +176,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     <div className="min-h-screen bg-app-bg">
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <header className="mb-6">
-          <p className="text-xs font-bold text-accent uppercase tracking-widest mb-1">Allergen Information</p>
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
           <p className="text-xs text-gray-500 mt-2">Last updated: {formatDate(lastUpdated)}</p>
         </header>
@@ -202,7 +186,7 @@ export default function PublicAllergensPage({ slugOverride }) {
           <p>If you have a severe allergy, please speak to a member of staff before ordering. While we take great care, our kitchen handles many allergens and we cannot guarantee zero cross-contamination.</p>
         </div>
 
-        <div className="bg-white border border-border rounded-xl p-4 mb-6 text-xs text-gray-600">
+        <div className={`${card} p-4 mb-6 text-xs text-gray-600`}>
           <p className="mb-2">Tap a dish to see its full allergen breakdown. The summary shows allergens that the dish either contains or may contain.</p>
           <div className="flex flex-wrap gap-3 text-xs">
             <span className="inline-flex items-center gap-1.5">
@@ -221,112 +205,15 @@ export default function PublicAllergensPage({ slugOverride }) {
         </div>
 
         {itemsByCategory.length === 0 ? (
-          <div className="bg-white border border-border rounded-xl p-8 text-center">
+          <div className={`${card} p-8 text-center`}>
             <p className="text-sm text-gray-500">No menu items available.</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {itemsByCategory.map(({ category, items }) => (
-              <div key={category.id}>
-                <h2 className="font-serif text-lg font-bold text-gray-900 mb-2 px-1">{category.name}</h2>
-                <div className="bg-white border border-border rounded-xl overflow-hidden">
-                  {items.map((item, i) => {
-                    const itemAllergens = getItemAllergens(item)
-                    const present = ALLERGEN_KEYS
-                      .map(key => ({ key, state: itemAllergens[key] }))
-                      .filter(a => a.state !== 'none')
-                    const isExpanded = expandedId === item.id
-                    const complete = allIngredientsReadable(item)
-
-                    return (
-                      <div
-                        key={item.id}
-                        className={i < items.length - 1 ? 'border-b border-border' : ''}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                          className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900">{item.name}</p>
-                              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                {!complete ? (
-                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                    Please ask a member of staff
-                                  </span>
-                                ) : present.length === 0 ? (
-                                  <span className="text-xs text-gray-500">No declared allergens</span>
-                                ) : (
-                                  present.map(({ key, state }) => {
-                                    const s = getAllergenSummary(state)
-                                    return (
-                                      <span
-                                        key={key}
-                                        className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}
-                                      >
-                                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}></span>
-                                        {ALLERGEN_LABELS[key]}
-                                      </span>
-                                    )
-                                  })
-                                )}
-                              </div>
-                            </div>
-                            <span className="text-gray-400 text-lg leading-none mt-1">
-                              {isExpanded ? '−' : '+'}
-                            </span>
-                          </div>
-                        </button>
-
-                        {isExpanded && (
-                          <div className="px-4 pb-4 bg-gray-50">
-                            {/* The breakdown below is worked out from the
-                                ingredients, so if one of them could not be read
-                                it is incomplete and saying nothing about that
-                                would be worse than saying nothing at all. */}
-                            {!complete && (
-                              <div className="bg-amber-100 border border-amber-300 text-amber-900 text-xs rounded-lg p-3 mt-2">
-                                We cannot confirm the full allergen list for this dish right now. Please ask a member of staff before ordering it.
-                              </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              {ALLERGEN_KEYS.map(key => {
-                                const state = itemAllergens[key]
-                                const s = getAllergenSummary(state)
-                                const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-gray-400 border border-gray-200'
-                                const label = s ? s.label : 'Not present'
-                                return (
-                                  // Stacked on a phone, side by side from the
-                                  // small breakpoint up. Two of these fit across
-                                  // a phone, and at that width a long name like
-                                  // Crustaceans and a long state like Not
-                                  // present were pushed into each other with
-                                  // nothing between them. This is an allergen
-                                  // list, so a customer being unsure which word
-                                  // goes with which allergen is the one thing it
-                                  // must never do.
-                                  <div
-                                    key={key}
-                                    className={`flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 text-xs px-3 py-2 rounded-lg ${colour}`}
-                                  >
-                                    <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
-                                    <span>{label}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AllergenList
+            groups={itemsByCategory}
+            expandedId={expandedId}
+            onToggle={setExpandedId}
+          />
         )}
 
         <footer className="mt-8 text-center">

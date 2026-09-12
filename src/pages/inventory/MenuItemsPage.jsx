@@ -1,12 +1,17 @@
+import { fmtMoney } from '../../lib/format'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { calculateMixCost } from '../../lib/mixCost'
+import { useConfirm } from '../../context/ConfirmContext'
+import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
+import { useKeepScroll } from '../../context/ScrollContext'
+import ArrangeList from '../../components/ArrangeList'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
+import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -26,10 +31,15 @@ const MARGIN_GREEN = 65   // >= 65% net margin = green
 const MARGIN_AMBER = 60   // 60-65% = amber, < 60% = red
 
 export default function MenuItemsPage() {
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const { activeRestaurant } = useRestaurant()
 
   const [menuItems, setMenuItems] = useState([])
+  // Which row is being moved, so its arrows stop taking presses while the
+  // writes are going out. Pressing down four times fast on a category that
+  // has never been arranged sends four sets of renumbering at once.
+  const [arranging, setArranging] = useState(null)
   const [categories, setCategories] = useState([])
   const [components, setComponents] = useState([])
   const [products, setProducts] = useState([])
@@ -39,6 +49,12 @@ export default function MenuItemsPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load, which belongs at the top of the page because there is
+  // nothing else up there to read. This is for a save that would not go
+  // through, and that belongs beside the button you pressed: at the foot of
+  // a form on a phone, the top of the page is not on the screen at all.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
 
   const [showForm, setShowForm] = useState(false)
@@ -68,8 +84,21 @@ export default function MenuItemsPage() {
     fetchPrices()
   }, [activeRestaurant])
 
-  async function fetchAll() {
-    setLoading(true)
+  // quiet is for reading the same page again after changing something on it:
+  // arranging a category, turning a dish off. Blanking the list for a moment
+  // collapses the page, the browser clamps the scroll to the top, and you come
+  // back to the beginning of a list you were halfway down.
+  //
+  // The first load is not quiet, because there is genuinely nothing to show
+  // yet and a page with no word on it is worse than the word Loading.
+  // Stepping into a dish and coming back is one errand, so it lands where it
+  // left off. Going anywhere else and coming back later is a new visit, and
+  // being dropped halfway down a list nobody has looked at since this morning
+  // is a page that has lost its place rather than one being helpful.
+  useKeepScroll('menu-items', !loading, to => to.startsWith('/catalogue/menu-items/'))
+
+  async function fetchAll({ quiet = false } = {}) {
+    if (!quiet) setLoading(true)
     const [
       menuItemsRes, categoriesRes, componentsRes, productsRes,
       recipeLinesRes, allergensRes,
@@ -120,7 +149,7 @@ export default function MenuItemsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+    setFormProblem('')
     const v = validate()
     if (Object.keys(v).length) { setErrors(v); return }
     setErrors({})
@@ -139,7 +168,7 @@ export default function MenuItemsPage() {
       .select()
       .single()
 
-    if (error) setError(friendlyError(error))
+    if (error) setFormProblem(friendlyError(error))
     else {
       // Jump straight into the editor for the new item so the user can
       // start adding components immediately.
@@ -154,30 +183,47 @@ export default function MenuItemsPage() {
   }
 
   async function toggleActive(item) {
+    // Same as the products list: taking something off the menu is worth one
+    // question, putting it back is not.
+    if (item.is_active) {
+      const ok = await confirm({
+        title: `Deactivate ${item.name}?`,
+        message: 'It comes off the menu and off the allergen sheet. Everything already recorded against it stays as it is.',
+        confirmLabel: 'Deactivate it',
+        tone: 'danger',
+        dangerNote: 'You can put it back at any time.',
+      })
+      if (!ok) return
+    }
+
     const { error } = await supabase
       .from('menu_items')
       .update({ is_active: !item.is_active })
       .eq('id', item.id)
     if (error) setError(friendlyError(error))
-    else fetchAll()
+    else fetchAll({ quiet: true })
   }
 
   function getItemComponents(itemId) {
     return components.filter(c => c.menu_item_id === itemId)
   }
 
-  function getItemCost(item) {
-    const lines = getItemComponents(item.id)
-    if (lines.length === 0) return null
-    let total = 0
-    for (const line of lines) {
-      const ingredient = products.find(p => p.id === line.product_id)
-      if (!ingredient) return null
-      const result = calculateMixCost(ingredient, products, recipeLines, prices)
-      if (result.cost === null) return null
-      total += parseFloat(line.quantity) * result.cost
+  // What is in it, and how many choices sit beside that.
+  //
+  // The options are not ingredients. A burrito with eleven ingredients and a
+  // choice of five salsas is not a sixteen ingredient burrito: only one of the
+  // five is ever in it. Counting them together made it read as far more of a
+  // job to build than it is.
+  function countsFor(itemId) {
+    const mine = getItemComponents(itemId)
+    return {
+      components: mine.filter(c => !c.choice_group).length,
+      choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
     }
-    return total
+  }
+
+  function getItemCost(item) {
+    return menuItemCost(getItemComponents(item.id), products, recipeLines, prices)
   }
 
   function getItemAllergens(item) {
@@ -208,20 +254,49 @@ export default function MenuItemsPage() {
   // the two cannot end up offering different things. A plain function rather
   // than a component, since a component declared in here would be a new type on
   // every render and get rebuilt each time.
+  // The real order of a category, whatever the page happens to be showing. A
+  // filter hiding half of them must not change what "up" means.
+  function orderedCategory(categoryId) {
+    return menuItems
+      .filter(i => i.category_id === categoryId)
+      .sort((a, b) =>
+        ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name))
+  }
+
+  // The order the arrange dialog settled on, written in one go.
+  //
+  // Renumbered from the top rather than two rows swapped, because everything
+  // starts at zero and swapping two zeros does nothing at all. Only the rows
+  // whose number actually changed are written: on a category nobody has
+  // arranged that is all of them once, and a handful every time after.
+  async function saveOrder(ordered) {
+    const writes = ordered
+      .map((item, n) => ({ id: item.id, sort_order: n }))
+      .filter(({ id, sort_order }) =>
+        (menuItems.find(i => i.id === id)?.sort_order ?? 0) !== sort_order)
+
+    const results = await Promise.all(writes.map(w =>
+      supabase.from('menu_items').update({ sort_order: w.sort_order }).eq('id', w.id)))
+
+    const failed = results.find(r => r.error)
+    if (failed) { setError(friendlyError(failed.error)); return }
+
+    setArranging(null)
+    fetchAll({ quiet: true })
+  }
+
   function rowActions(item) {
     return (
       <>
         <button
           onClick={() => navigate(`/catalogue/menu-items/${item.id}`)}
-          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+          className={rowButton('edit')}
         >
           Edit
         </button>
         <button
           onClick={() => toggleActive(item)}
-          className={`text-xs font-medium ${
-            item.is_active ? 'text-red-500 hover:text-red-700' : 'text-green-600 hover:text-green-800'
-          }`}
+          className={rowButton(item.is_active ? 'danger' : 'good')}
         >
           {item.is_active ? 'Deactivate' : 'Reactivate'}
         </button>
@@ -237,6 +312,16 @@ export default function MenuItemsPage() {
     return s
   }
 
+  // Every category is its own table, so without this each one sizes its columns
+  // to its own contents and Cost lands in a different place in every one. Read
+  // down the page it looked like a different table each time.
+  //
+  // Percentages with table-fixed, because the widths have to be decided before
+  // the contents are looked at, which is the whole point. Name gets the most,
+  // the figures get what a figure needs, and Allergens gets room to wrap rather
+  // than pushing everything else around.
+  const COLUMNS = ['22%', '10%', '9%', '11%', '9%', '9%', '15%', '15%']
+
   // Filter, group, sort
   const filteredItems = menuItems.filter(i => showInactive || i.is_active)
   const itemsByCategory = categories
@@ -245,7 +330,11 @@ export default function MenuItemsPage() {
       category: c,
       items: filteredItems
         .filter(i => i.category_id === c.id)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        // Arranged order first, then the name. Everything starts at zero, so a
+        // category nobody has arranged is alphabetical exactly as before, and
+        // the printed allergen sheet reads in the same order as this.
+        .sort((a, b) =>
+          ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.name.localeCompare(b.name)),
     }))
     .filter(group => group.items.length > 0 || showInactive)
 
@@ -256,7 +345,7 @@ export default function MenuItemsPage() {
           narrow column while the last button hung off the right edge. */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+          <h2 className={pageTitle}>Menu Items</h2>
           <p className="text-sm text-gray-500 mt-1">
             Costs and margins for {activeRestaurant?.name}
           </p>
@@ -296,12 +385,12 @@ export default function MenuItemsPage() {
       )}
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Menu Item</h3>
           <form onSubmit={handleSave}>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+                <label className={labelClass}>Name</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -311,7 +400,7 @@ export default function MenuItemsPage() {
                 {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+                <label className={labelClass}>Category</label>
                 <select
                   value={formData.category_id}
                   onChange={e => handleFieldChange('category_id', e.target.value)}
@@ -325,26 +414,23 @@ export default function MenuItemsPage() {
                 {errors.category_id && <p className="text-xs text-red-600 mt-1">{errors.category_id}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
+                <label className={labelClass}>Selling Price (€, gross)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.selling_price}
-                  onChange={e => handleFieldChange('selling_price', e.target.value)}
+                  {...numberField({
+                    value: formData.selling_price,
+                    onChange: v => handleFieldChange('selling_price', v),
+                  })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.selling_price && <p className="text-xs text-red-600 mt-1">{errors.selling_price}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
+                <label className={labelClass}>VAT Rate (%)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={formData.vat_rate}
-                  onChange={e => handleFieldChange('vat_rate', e.target.value)}
+                  {...numberField({
+                    value: formData.vat_rate,
+                    onChange: v => handleFieldChange('vat_rate', v),
+                  })}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.vat_rate && <p className="text-xs text-red-600 mt-1">{errors.vat_rate}</p>}
@@ -352,7 +438,7 @@ export default function MenuItemsPage() {
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+              <label className={labelClass}>Notes (optional)</label>
               <textarea
                 value={formData.notes}
                 onChange={e => handleFieldChange('notes', e.target.value)}
@@ -360,6 +446,13 @@ export default function MenuItemsPage() {
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
               />
             </div>
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
+
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -382,7 +475,7 @@ export default function MenuItemsPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading menu items...</div>
       ) : itemsByCategory.every(g => g.items.length === 0) ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center">
+        <div className={`${card} p-8 text-center`}>
           <p className="text-sm text-gray-500">No menu items yet. Click "+ Add Menu Item" to add your first.</p>
         </div>
       ) : (
@@ -410,9 +503,19 @@ export default function MenuItemsPage() {
                   <h3 className="font-serif text-base font-bold text-white md:text-gray-900">
                     {category.name}
                   </h3>
-                  <span className={`${badge} bg-white/20 text-white md:hidden`}>
-                    {items.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`${badge} bg-white/20 text-white md:hidden`}>
+                      {items.length}
+                    </span>
+                    {/* Beside the heading it belongs to, so it is pressed where
+                        you are already looking. */}
+                    <button
+                      onClick={() => setArranging(category.id)}
+                      className={`${rowButton('plain')} md:mt-1`}
+                    >
+                      Arrange
+                    </button>
+                  </div>
                 </div>
 
                 {/* Phone: one card per dish instead of eight columns to swipe
@@ -425,7 +528,7 @@ export default function MenuItemsPage() {
                     const cost = getItemCost(item)
                     const m = getMargin(item)
                     const allergens = allergenText(item)
-                    const componentCount = getItemComponents(item.id).length
+                    const counts = countsFor(item.id)
 
                     return (
                       <div
@@ -445,7 +548,9 @@ export default function MenuItemsPage() {
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {componentCount} {componentCount === 1 ? 'component' : 'components'}
+                          {counts.components} {counts.components === 1 ? 'component' : 'components'}
+                          {counts.choices > 0
+                            && `, ${counts.choices} ${counts.choices === 1 ? 'choice' : 'choices'}`}
                         </p>
 
                         <dl className="mt-3 space-y-1.5 text-sm">
@@ -453,14 +558,14 @@ export default function MenuItemsPage() {
                             <dt className="text-gray-500">Cost</dt>
                             <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                               {cost !== null
-                                ? `€${cost.toFixed(2)}`
+                                ? fmtMoney(cost)
                                 : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Price (gross)</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">
                                 (VAT {parseFloat(item.vat_rate)}%)
                               </span>
@@ -469,7 +574,7 @@ export default function MenuItemsPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Net</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
@@ -477,7 +582,7 @@ export default function MenuItemsPage() {
                             <dd className="text-right">
                               {m ? (
                                 <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                  €{m.margin.toFixed(2)}
+                                  {fmtMoney(m.margin)}
                                   <span className="text-xs ml-1">
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
                                   </span>
@@ -504,7 +609,7 @@ export default function MenuItemsPage() {
                           </div>
                         </dl>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-black/10">
+                        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                           {rowActions(item)}
                         </div>
                       </div>
@@ -513,7 +618,10 @@ export default function MenuItemsPage() {
                 </div>
 
                 <div className={`${tableCard} hidden md:block`}>
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      {COLUMNS.map((w, n) => <col key={n} style={{ width: w }} />)}
+                    </colgroup>
                     <thead>
                       <tr className={tableHeadRow}>
                         <th className={`text-left px-4 py-3 ${tableHeadCell}`}>Name</th>
@@ -531,7 +639,7 @@ export default function MenuItemsPage() {
                         const cost = getItemCost(item)
                         const m = getMargin(item)
                         const allergenSummary = summariseAllergens(getItemAllergens(item))
-                        const componentCount = getItemComponents(item.id).length
+                        const counts = countsFor(item.id)
 
                         return (
                           <tr
@@ -544,23 +652,28 @@ export default function MenuItemsPage() {
                               {item.name}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {componentCount}
+                              {counts.components}
+                              {counts.choices > 0 && (
+                                <span className="text-xs text-muted">
+                                  {' '}+ {counts.choices} {counts.choices === 1 ? 'choice' : 'choices'}
+                                </span>
+                              )}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              {cost !== null ? `€${cost.toFixed(2)}` : <span className="text-amber-600 text-xs">Incomplete</span>}
+                              {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </td>
                             <td className="px-4 py-3">
                               {m ? (
                                 <>
                                   <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                    €{m.margin.toFixed(2)}
+                                    {fmtMoney(m.margin)}
                                   </span>
                                   <span className={`text-xs ml-1 ${marginColour(m.marginPct)}`}>
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
@@ -585,7 +698,7 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex gap-3">{rowActions(item)}</div>
+                              <div className="flex flex-wrap gap-2">{rowActions(item)}</div>
                             </td>
                           </tr>
                         )
@@ -603,7 +716,16 @@ export default function MenuItemsPage() {
         <CategoryManagerModal
           categories={categories}
           onClose={() => setShowCategoryModal(false)}
-          onChange={fetchAll}
+          onChange={() => fetchAll({ quiet: true })}
+        />
+      )}
+
+      {arranging && (
+        <ArrangeList
+          categoryName={categories.find(c => c.id === arranging)?.name || 'category'}
+          items={orderedCategory(arranging)}
+          onSave={saveOrder}
+          onClose={() => setArranging(null)}
         />
       )}
     </div>

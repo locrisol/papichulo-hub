@@ -6,8 +6,9 @@ import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
-import { iconButton, dateField, jumpButton, tableHeadRow } from '../../lib/controlStyles'
+import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
+import { numberField } from '../../lib/numberInput'
 
 // Labour hours, entered a week at a time.
 //
@@ -45,6 +46,12 @@ export default function LabourPage() {
     const [saving, setSaving] = useState(false)
     const [dirty, setDirty] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
     const [overrides, setOverrides] = useState([])
 
@@ -195,7 +202,7 @@ export default function LabourPage() {
     // ---- saving ----------------------------------------------------------
 
     async function handleSave() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
         setSaving(true)
 
         const toInsert = []
@@ -225,11 +232,11 @@ export default function LabourPage() {
 
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('labour_entries').insert(toInsert)
-            if (e1) { setError(friendlyError(e1)); setSaving(false); return }
+            if (e1) { setFormProblem(friendlyError(e1)); setSaving(false); return }
         }
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('labour_entries').update(u.payload).eq('id', u.id)
-            if (e2) { setError(friendlyError(e2)); setSaving(false); return }
+            if (e2) { setFormProblem(friendlyError(e2)); setSaving(false); return }
         }
 
         setSaving(false)
@@ -252,9 +259,9 @@ export default function LabourPage() {
     }
 
     return (
-        <PageContainer>
+        <>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Labour</h2>
+                <h2 className={pageTitle}>Labour</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     {activeRestaurant?.name} · hours and cost, Sunday to Saturday
                 </p>
@@ -279,19 +286,34 @@ export default function LabourPage() {
             )}
 
             {/* Week navigation */}
-            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+            <div className={`${card} p-4 mb-4`}>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button type="button" onClick={() => shiftWeek(-1)} className={iconButton} aria-label="Previous week">‹</button>
-                    {/* Fixed width, or the arrows shift sideways every time the
-                        text changes length. "3 Aug - 9 Aug" is a lot narrower
-                        than "31 Aug - 6 Sept", and clicking back through weeks
-                        moved the button out from under the mouse. The width is
-                        set for the longest case, a range crossing a month. */}
-                    <span className="text-sm font-medium text-gray-900 text-center w-44 flex-shrink-0">
-                        {shortDate(dates[0])} - {shortDate(dates[6])}
-                    </span>
-                    <button type="button" onClick={() => shiftWeek(1)} className={iconButton} aria-label="Next week">›</button>
-                    <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))} className={`ml-1 ${jumpButton(weekStart === weekStartOf(todayISO()))}`}>This week</button>
+                    <DateStepper
+                        onBack={() => shiftWeek(-1)}
+                        onNext={() => shiftWeek(1)}
+                        backLabel="Previous week"
+                        nextLabel="Next week"
+                        jump={(
+                            <button
+                                type="button"
+                                onClick={() => goToWeek(weekStartOf(todayISO()))}
+                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
+                            >
+                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
+                            </button>
+                        )}
+                    >
+                        {/* A set width on a wide screen, so the arrows do not
+                            shift sideways when the text changes length: 3 Aug -
+                            9 Aug is a lot narrower than 31 Aug - 6 Sept, and
+                            clicking back through weeks moved the button out from
+                            under the mouse. On a phone the arrows are pinned to
+                            the edges instead, so they cannot move whatever the
+                            date says, and the text takes the room between. */}
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap sm:w-44">
+                            {shortDate(dates[0])} - {shortDate(dates[6])}
+                        </span>
+                    </DateStepper>
 
                     {dirty && <span className="text-xs text-amber-600 font-medium ml-2">Unsaved changes</span>}
 
@@ -311,17 +333,17 @@ export default function LabourPage() {
             </div>
 
             {/* The week */}
-            <div className="bg-white rounded-xl border border-border overflow-hidden mb-4">
+            <div className={`${card} overflow-hidden mb-4`}>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[760px] text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Day</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Hours</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">People</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Labour</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Net sales</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Labour %</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Day</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Hours</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">People</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Labour</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Net sales</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Labour %</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -336,15 +358,18 @@ export default function LabourPage() {
                                             <div className="text-xs text-gray-400">{fullDate(d)}</div>
                                         </td>
                                         <td className="px-2 py-2">
-                                            <input type="number" step="0.25" min="0" inputMode="decimal"
-                                                value={days[d]?.hours ?? ''}
-                                                onChange={e => setField(d, 'hours', e.target.value)}
+                                            <input {...numberField({
+                                                value: days[d]?.hours,
+                                                onChange: v => setField(d, 'hours', v),
+                                            })}
                                                 className={inputCls} placeholder="0" />
                                         </td>
                                         <td className="px-2 py-2">
-                                            <input type="number" step="1" min="0" inputMode="numeric"
-                                                value={days[d]?.staff ?? ''}
-                                                onChange={e => setField(d, 'staff', e.target.value)}
+                                            <input {...numberField({
+                                                value: days[d]?.staff,
+                                                onChange: v => setField(d, 'staff', v),
+                                                whole: true,
+                                            })}
                                                 className={inputCls} placeholder="0" />
                                         </td>
                                         <td className={`${calcCellCls} text-gray-700`}>{fmtMoney(costFor(d))}</td>
@@ -388,12 +413,19 @@ export default function LabourPage() {
                     : ''}
             </p>
 
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
+
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving}
                     className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
-        </PageContainer>
+        </>
     )
 }

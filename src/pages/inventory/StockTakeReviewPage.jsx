@@ -5,7 +5,11 @@ import { useAuth } from '../../context/AuthContext'
 import { resolveUnitCost } from '../../lib/mixCost'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { friendlyError } from '../../lib/errors'
-import PageContainer from '../../components/layout/PageContainer'
+import { countName } from '../../lib/products'
+import { sectionRank, sectionColour } from '../../lib/sections'
+import { card } from '../../lib/controlStyles'
+import BackButton from '../../components/BackButton'
+import Modal from '../../components/Modal'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -23,13 +27,6 @@ import PageContainer from '../../components/layout/PageContainer'
 // zero, because zero means somebody looked and there was none, and those two
 // things lead to completely different decisions about ordering.
 
-const SECTION_ORDER = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
-
-function sectionRank(section) {
-  const i = SECTION_ORDER.indexOf(section)
-  return i === -1 ? SECTION_ORDER.length : i
-}
-
 export default function StockTakeReviewPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -44,6 +41,9 @@ export default function StockTakeReviewPage() {
   const [error, setError] = useState('')
 
   const [expandedProductId, setExpandedProductId] = useState(null)
+  // Folded to three, because the block has to be the same height holding
+  // two of these or forty.
+  const [allPlaces, setAllPlaces] = useState(false)
   const [draftQty, setDraftQty] = useState('')
   const [draftLocation, setDraftLocation] = useState('')
   const [savingLine, setSavingLine] = useState(false)
@@ -100,6 +100,29 @@ export default function StockTakeReviewPage() {
       })
   }, [products, countedProductIds])
 
+  // Kept in more than one place, counted in some of them.
+  //
+  // A second place is a might be there, so it does not hold the count up and it
+  // is not treated as missing. It is worth one look before closing though, in
+  // case the other shelf was not empty after all, which is why it says which
+  // place was counted and which was not rather than only that something is odd.
+  const partlyCounted = useMemo(() => {
+    return products
+      .map(product => {
+        const places = [product.section || 'Other', ...(product.also_in || [])]
+          .filter((place, i, all) => place && all.indexOf(place) === i)
+        if (places.length < 2) return null
+
+        const counted = places.filter(place =>
+          lines.some(l => l.product_id === product.id && (l.section || 'Other') === place))
+        if (counted.length === 0 || counted.length === places.length) return null
+
+        return { product, counted, missing: places.filter(place => !counted.includes(place)) }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.product.name.localeCompare(b.product.name))
+  }, [products, lines])
+
   const totalValue = useMemo(() => {
     return lines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
   }, [lines])
@@ -151,6 +174,14 @@ export default function StockTakeReviewPage() {
     setDraftLocation('')
   }
 
+  // Shutting the dialog takes its message with it, so a failed close does not
+  // leave a red bar sitting on the page after you have walked away from it.
+  function closeConfirm() {
+    if (closing) return
+    setShowCloseConfirm(false)
+    setError('')
+  }
+
   async function handleCloseSession() {
     setClosing(true)
     setError('')
@@ -181,7 +212,7 @@ export default function StockTakeReviewPage() {
     return (
       <div>
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-        <button type="button" onClick={() => navigate('/inventory/stock-takes')} className="mt-4 text-sm font-semibold text-accent">← Back</button>
+        <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
   }
@@ -192,7 +223,7 @@ export default function StockTakeReviewPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           Only managers can review and close a stock take.
         </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}`)} className="mt-4 text-sm font-semibold text-accent">← Back to counting</button>
+        <BackButton to={`/inventory/stock-takes/${id}`} className="mt-4">Back to counting</BackButton>
       </div>
     )
   }
@@ -203,7 +234,7 @@ export default function StockTakeReviewPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
           This stock take is already closed.
         </div>
-        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent">View summary →</button>
+        <button type="button" onClick={() => navigate(`/inventory/stock-takes/${id}/summary`)} className="mt-4 text-sm font-semibold text-accent-ink">View summary →</button>
       </div>
     )
   }
@@ -211,7 +242,7 @@ export default function StockTakeReviewPage() {
   const countedCount = products.length - uncountedProducts.length
 
   return (
-    <PageContainer>
+    <>
       <button
         type="button"
         onClick={() => navigate(`/inventory/stock-takes/${id}`)}
@@ -232,22 +263,90 @@ export default function StockTakeReviewPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Counted</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{countedCount}<span className="text-base text-muted">/{products.length}</span></p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4">
+        <div className={`${card} p-4`}>
           <p className="text-xs text-muted uppercase tracking-wide">Uncounted</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{uncountedProducts.length}</p>
         </div>
-        <div className="bg-white border border-border rounded-xl p-4 col-span-2 sm:col-span-1">
+        <div className={`${card} p-4 col-span-2 sm:col-span-1`}>
           <p className="text-xs text-muted uppercase tracking-wide">Total value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmtMoney(totalValue)}</p>
         </div>
       </div>
 
-      {error && (
+      {/* Not while the closing dialog is up, which covers the whole screen
+          and would hide it. It goes inside the dialog instead. */}
+      {error && !showCloseConfirm && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+      )}
+
+      {/* Counted in one place only.
+          Above the uncounted list because it is the shorter and stranger of the
+          two, and it never blocks closing. */}
+      {partlyCounted.length > 0 && (
+        <section className="mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">
+              Counted in one place only
+            </h2>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+              {partlyCounted.length}
+            </span>
+          </div>
+
+          <div className={`${card} p-4`}>
+            <p className="text-xs text-muted mb-3">
+              These are kept in more than one place and you counted them in one of them. Worth a
+              look before closing, in case the other shelf was not empty. It does not stop you
+              closing.
+            </p>
+
+            <div className="space-y-2">
+              {(allPlaces ? partlyCounted : partlyCounted.slice(0, 3)).map(({ product, counted, missing }) => (
+                <div key={product.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium text-gray-900 flex-1 min-w-0">{countName(product)}</span>
+                  {/* Filled where it was counted, outlined where it was not,
+                      each in that section's own colour, so the pair reads
+                      without being read. */}
+                  {counted.map(place => (
+                    <span
+                      key={place}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{
+                        color: sectionColour(place).ink,
+                        backgroundColor: `${sectionColour(place).ink}1a`,
+                      }}
+                    >
+                      {place}
+                    </span>
+                  ))}
+                  {missing.map(place => (
+                    <span
+                      key={place}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-white"
+                      style={{ color: sectionColour(place).ink, borderColor: sectionColour(place).ink }}
+                    >
+                      not {place}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {partlyCounted.length > 3 && (
+              <button
+                type="button"
+                onClick={() => setAllPlaces(!allPlaces)}
+                className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+              >
+                {allPlaces ? 'Show fewer' : `Show the other ${partlyCounted.length - 3}`}
+              </button>
+            )}
+          </div>
+        </section>
       )}
 
       {/* Uncounted products */}
@@ -265,7 +364,7 @@ export default function StockTakeReviewPage() {
             <p className="text-xs text-muted mb-3">
               These have no count for this session. You can count them now, or close without them (they will be left uncounted, not recorded as zero).
             </p>
-            <div className="bg-white border border-border rounded-xl overflow-hidden">
+            <div className={`${card} overflow-hidden`}>
               {uncountedProducts.map((product, i) => {
                 const isExpanded = expandedProductId === product.id
                 const productLines = getProductLines(product.id)
@@ -279,7 +378,7 @@ export default function StockTakeReviewPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-medium text-gray-900">
-                          {product.name}
+                          {countName(product)}
                           <span className="text-xs text-muted ml-2">{product.section} · {product.unit}</span>
                         </p>
                         <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -304,7 +403,7 @@ export default function StockTakeReviewPage() {
                           <div className="flex-1">
                             <label className="block text-xs font-medium text-muted mb-1">Quantity ({product.unit})</label>
                             <input
-                              type="text" inputMode="decimal" value={draftQty}
+                              type="text" inputMode="decimal" onFocus={e => e.target.select()} value={draftQty}
                               onChange={e => setDraftQty(e.target.value.replace(/[^0-9.]/g, ''))}
                               placeholder="0"
                               className="w-full px-3 py-2.5 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
@@ -348,11 +447,15 @@ export default function StockTakeReviewPage() {
         Close stock take
       </button>
 
-      {/* Close confirmation */}
+      {/* Close confirmation.
+
+          In the shared shell rather than its own overlay. The hand rolled one
+          had no Escape key, did not stop the page scrolling underneath it and
+          told a screen reader nothing, all of which the shell has had for
+          months. */}
       {showCloseConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => !closing && setShowCloseConfirm(false)}>
-          <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl font-bold text-gray-900 mb-2">Close this stock take?</h2>
+        <Modal title="Close this stock take?" onClose={closeConfirm} width="max-w-md">
+          <div className="p-6">
             <p className="text-sm text-gray-700 mb-3">
               Once closed, counts become read-only. You can reopen it later if a correction is needed.
             </p>
@@ -364,8 +467,13 @@ export default function StockTakeReviewPage() {
             <p className="text-sm text-gray-700 mb-4">
               Total value: <strong>{fmtMoney(totalValue)}</strong>
             </p>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowCloseConfirm(false)} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button type="button" onClick={closeConfirm} disabled={closing} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={handleCloseSession} disabled={closing} className="px-5 py-2 text-sm font-semibold bg-green-brand hover:bg-green-brand/90 text-white rounded-lg disabled:opacity-50">
@@ -373,8 +481,8 @@ export default function StockTakeReviewPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
-    </PageContainer>
+    </>
   )
 }

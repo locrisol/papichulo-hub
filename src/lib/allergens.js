@@ -19,14 +19,145 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
-const ALLERGEN_KEYS = [
-  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soybeans',
-  'milk', 'nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs'
+// The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
+// why the list is here rather than in a settings screen.
+//
+// also is the other names the same allergen goes by on a supplier's spec
+// sheet. It is not decoration: a sheet says SOY where the law says Soybeans,
+// and Wheat where the law says Gluten, and somebody reading one at the back
+// door should not have to know that the two are the same thing. Peanuts and
+// Nuts are the pair that catches people, so both of them say so.
+//
+// The labelled version and the three states used to live inside the allergen
+// page. Two screens ask these questions now, the page and the product form, so
+// they moved here rather than being written out twice.
+export const ALLERGENS = [
+  {
+    key: 'gluten',
+    label: 'Gluten',
+    also: 'Wheat, rye, barley, oats, spelt, kamut, semolina, couscous',
+  },
+  {
+    key: 'crustaceans',
+    label: 'Crustaceans',
+    also: 'Prawn, shrimp, crab, lobster, langoustine, crayfish',
+  },
+  {
+    key: 'eggs',
+    label: 'Eggs',
+    also: 'Albumen, mayonnaise, meringue',
+  },
+  {
+    key: 'fish',
+    label: 'Fish',
+    also: 'Anchovy, fish sauce, Worcestershire sauce',
+  },
+  {
+    key: 'peanuts',
+    label: 'Peanuts',
+    also: 'Groundnut, monkey nut, arachis oil. A legume, so it is not covered by Nuts',
+  },
+  {
+    key: 'soybeans',
+    label: 'Soybeans',
+    also: 'Soy, soya, soja, edamame, tofu, miso, soy lecithin (E322)',
+  },
+  {
+    key: 'milk',
+    label: 'Milk',
+    also: 'Dairy, lactose, casein, whey, butter, cheese, cream',
+  },
+  {
+    key: 'nuts',
+    label: 'Nuts',
+    also: 'Tree nuts only: almond, hazelnut, walnut, cashew, pecan, pistachio, macadamia, Brazil',
+  },
+  {
+    key: 'celery',
+    label: 'Celery',
+    also: 'Celeriac, celery salt, celery seed',
+  },
+  {
+    key: 'mustard',
+    label: 'Mustard',
+    also: 'Mustard seed, mustard powder, mustard oil',
+  },
+  {
+    key: 'sesame',
+    label: 'Sesame',
+    also: 'Sesame seed, tahini, benne, gomasio',
+  },
+  {
+    key: 'sulphites',
+    label: 'Sulphites',
+    also: 'Sulphur dioxide, E220 to E228. Only counts above 10mg per kg or litre',
+  },
+  {
+    key: 'lupin',
+    label: 'Lupin',
+    also: 'Lupin flour, lupin seed, lupini beans',
+  },
+  {
+    key: 'molluscs',
+    label: 'Molluscs',
+    also: 'Mussel, oyster, clam, scallop, squid, octopus, snail',
+  },
 ]
+
+export const ALLERGEN_STATES = [
+  { value: 'none', label: 'Not Present', activeClass: 'bg-gray-200 text-gray-700 border-gray-300' },
+  { value: 'may_contain', label: 'May Contain', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'contains', label: 'Contains', activeClass: 'bg-red-100 text-red-800 border-red-300' },
+]
+
+const ALLERGEN_KEYS = ALLERGENS.map(a => a.key)
+
+// The same fourteen names, keyed, for the screens that have an allergen and
+// want the word. Built from the list above rather than written out again: two
+// copies of the fourteen is two things to keep in step, and the law fixes both.
+export const ALLERGEN_LABELS = Object.fromEntries(ALLERGENS.map(a => [a.key, a.label]))
+
+// The printed sheet: the order the columns go in, and the one word each gets.
+//
+// Here rather than in the page that draws it, because the keys have to be the
+// real ones. Renaming soybeans to soya to make the heading read better printed
+// an empty column, and an empty column on this sheet says there is no soya in
+// anything. The test below holds these against the fourteen.
+//
+// The long legal wording is not lost, it is printed once in the legend. Three
+// lines of 7.5pt saying "Sulphur dioxide & Sulphites" in a 16mm column was not
+// easier to read for being longer.
+export const SHEET_ORDER = [
+  'celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk',
+  'molluscs', 'mustard', 'nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites',
+]
+
+export const ALLERGEN_SHORT = {
+  ...ALLERGEN_LABELS,
+  gluten: 'Gluten',
+  soybeans: 'Soya',
+  sesame: 'Sesame',
+  sulphites: 'Sulphites',
+}
+
+// How a state looks wherever it is shown. Here rather than in a component so
+// the customer page and anything printed cannot colour the same word
+// differently.
+export function allergenLook(state) {
+  if (state === 'contains') {
+    return { label: 'Contains', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' }
+  }
+  if (state === 'may_contain') {
+    return { label: 'May contain', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' }
+  }
+  return null
+}
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-function emptyAllergens() {
+// A product with no record yet is Not Present for all fourteen, which is why
+// the form opens filled in rather than empty.
+export function emptyAllergens() {
   const obj = {}
   for (const key of ALLERGEN_KEYS) obj[key] = 'none'
   return obj
@@ -100,12 +231,21 @@ export function deriveProductAllergens(product, allProducts, allRecipeLines, all
 // when the caller could not read that product rather than because it does not
 // exist. See the note on deriveProductAllergens above: the caller has to notice
 // that and say so.
+//
+// A component in a choice group contributes nothing here, and that is the rule
+// rather than something each screen remembers. The customer picks one of them,
+// so the dish itself carries none: warning about the nuts in the chocolate
+// sauce on a plate of churros somebody took caramel with is the kind of
+// over-warning that makes people stop reading the sheet at all. Those options
+// are shown in their own right, either on rows of their own or under whatever
+// category they already belong to.
 export function deriveMenuItemAllergens(menuItemComponents, allProducts, allRecipeLines, allAllergens) {
   // For a menu item: combine the allergens of every component product.
   // Components themselves never have allergen overrides at the component
   // level. Each component contributes its product's full derived allergens.
   const result = emptyAllergens()
   for (const component of menuItemComponents) {
+    if (component.choice_group) continue
     const product = allProducts.find(p => p.id === component.product_id)
     if (!product) continue
     const componentAllergens = deriveProductAllergens(product, allProducts, allRecipeLines, allAllergens)
@@ -127,3 +267,10 @@ export function summariseAllergens(allergens) {
 }
 
 export { ALLERGEN_KEYS }
+
+// How many of the fourteen are set to anything other than Not Present. It is
+// what a collapsed section says about itself, and what tells a save whether
+// somebody has answered the question or skipped it.
+export function declaredCount(values) {
+  return ALLERGEN_KEYS.filter(key => values?.[key] && values[key] !== 'none').length
+}

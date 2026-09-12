@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from './dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -210,5 +210,71 @@ describe('weekMonthLabel', () => {
     it('uses the end year when the week crosses a month but not a year', () => {
         // Sunday 29 November 2026 to Saturday 5 December 2026
         expect(weekMonthLabel('2026-11-29')).toBe('November to December 2026')
+    })
+})
+
+describe('weekNumber', () => {
+    it('numbers the week the reports have always numbered it', () => {
+        expect(weekNumber('2026-08-09')).toBe(32)
+    })
+
+    it('starts at one on the first Sunday of the year', () => {
+        expect(weekNumber('2026-01-04')).toBe(1)
+        expect(weekNumber('2026-01-11')).toBe(2)
+    })
+
+    it('gives a week that began in the old year that year, not this one', () => {
+        expect(weekNumber('2025-12-28')).toBe(52)
+    })
+})
+
+describe('weekRange', () => {
+    it('puts the year on the week', () => {
+        expect(weekRange('2026-08-09')).toBe('9 Aug to 15 Aug 2026')
+    })
+
+    it('shows both years on a week that crosses into a new one', () => {
+        expect(weekRange('2025-12-28')).toBe('28 Dec 2025 to 3 Jan 2026')
+    })
+})
+
+describe('stampDate', () => {
+    it('reads a database timestamp as a date', () => {
+        expect(stampDate('2026-08-23T14:05:00Z')).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
+    })
+
+    it('is the same shape as fullDate, so a screen mixing the two matches', () => {
+        expect(stampDate('2026-08-23T00:00:00')).toBe('23/08/2026')
+        expect(stampDate('2026-08-23T00:00:00')).toBe(fullDate('2026-08-23'))
+    })
+
+    it('gives nothing for nothing rather than Invalid Date', () => {
+        expect(stampDate(null)).toBe('')
+        expect(stampDate('')).toBe('')
+        expect(stampDate('not a date')).toBe('')
+    })
+})
+
+describe('stampDateTime', () => {
+    it('puts the time after the date', () => {
+        expect(stampDateTime('2026-08-23T14:05:00')).toBe('23/08/2026, 14:05')
+    })
+
+    it('pads a single digit hour, so a column of them lines up', () => {
+        expect(stampDateTime('2026-08-23T09:05:00')).toBe('23/08/2026, 09:05')
+    })
+
+    it('gives nothing for nothing', () => {
+        expect(stampDateTime(null)).toBe('')
+    })
+})
+
+describe('monthYearOf', () => {
+    it('writes the month out', () => {
+        expect(monthYearOf('2026-09-11T00:00:00')).toBe('September 2026')
+    })
+
+    it('gives nothing for nothing', () => {
+        expect(monthYearOf(undefined)).toBe('')
     })
 })

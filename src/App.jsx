@@ -18,11 +18,12 @@ import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/auth/LoginPage'
 import UnauthorisedPage from './pages/auth/UnauthorisedPage'
 import RequireRole from './components/RequireRole'
-import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from './lib/access'
+import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from './lib/access'
 import { useAuth } from './context/AuthContext'
 import { homeFor } from './lib/access'
 
 import UsersPage from './pages/settings/UsersPage'
+import ChangesPage from './pages/settings/ChangesPage'
 import RestaurantPage from './pages/settings/RestaurantPage'
 import SuppliersPage from './pages/inventory/SuppliersPage'
 import ProductsPage from './pages/inventory/ProductsPage'
@@ -45,7 +46,12 @@ import LabourPage from './pages/costs/LabourPage'
 import WasteLogPage from './pages/waste/WasteLogPage'
 import WasteSummaryPage from './pages/waste/WasteSummaryPage'
 import CostDashboardPage from './pages/costs/CostDashboardPage'
+import ReportsListPage from './pages/reports/ReportsListPage'
+import ReportPage from './pages/reports/ReportPage'
 import EventCalendarPage from './pages/forecast/EventCalendarPage'
+import EmployeesPage from './pages/team/EmployeesPage'
+import RosterPage from './pages/roster/RosterPage'
+import MyShiftsPage from './pages/roster/MyShiftsPage'
 
 export default function App() {
   return (
@@ -66,6 +72,12 @@ export default function App() {
                 <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
                 <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
                 <Route path="/costs/labour" element={<RequireRole allowed={MANAGERS}><LabourPage /></RequireRole>} />
+
+                {/* The weekly report. Managers read it, store managers write it,
+                    and which of those you are is settled in the database rather
+                    than by which page you reached. */}
+                <Route path="/reports" element={<RequireRole allowed={MANAGERS}><ReportsListPage /></RequireRole>} />
+                <Route path="/reports/:id" element={<RequireRole allowed={MANAGERS}><ReportPage /></RequireRole>} />
 
                 {/* Anyone logs waste; only managers see the week. */}
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />
@@ -100,8 +112,16 @@ export default function App() {
 
                 <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
 
+                {/* The people who work here. Managers and above, and nothing
+                    below that: the row carries what somebody costs per hour, and
+                    the database refuses the whole table to anyone else. */}
+                <Route path="/team" element={<RequireRole allowed={MANAGERS}><EmployeesPage /></RequireRole>} />
+                <Route path="/roster" element={<RequireRole allowed={MANAGERS}><RosterPage /></RequireRole>} />
+                <Route path="/my-shifts" element={<MyShiftsPage />} />
+
                 {/* Settings. Restaurant configuration excludes owners. */}
-                <Route path="/settings/users" element={<RequireRole allowed={MANAGERS}><UsersPage /></RequireRole>} />
+                <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
+                <Route path="/settings/changes" element={<RequireRole allowed={ADMIN_ONLY}><ChangesPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />

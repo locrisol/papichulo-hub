@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
+import BackToTop from './BackToTop'
+import { ScrollProvider } from '../../context/ScrollContext'
+import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '../../lib/access'
 
 // Sidebar navigation.
 //
@@ -18,6 +20,7 @@ import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG } from '../../lib/access'
 // link that goes nowhere is worse than no link.
 const navItems = [
     { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
+    { path: '/reports', label: 'Reports', icon: 'weekly', section: 'Overview', roles: MANAGERS },
 
     // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
     // Sunday to Saturday grid where a whole week can be entered in one pass.
@@ -45,7 +48,20 @@ const navItems = [
     // concert night are the ones who most need to know it is happening.
     { path: '/forecast', label: 'Events', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES, needsForecasting: true },
 
-    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: MANAGERS },
+    { path: '/my-shifts', label: 'My shifts', icon: 'weekly', section: 'People', roles: ALL_ROLES },
+    { path: '/roster', label: 'Roster', icon: 'weekly', section: 'People', roles: MANAGERS },
+    { path: '/team', label: 'Team', icon: 'users', section: 'People', roles: MANAGERS },
+
+
+    // Accounts and the sign in record. Everything a manager needs to do with a
+    // person lives under Team; this page is only about who can get in, so it is
+    // Super Admin's. Team keeps working either way, it reads the users table
+    // itself and the policy decides what comes back.
+    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
+
+    // What the database recorded, which is a different question from who got
+    // in and belongs beside it rather than inside it.
+    { path: '/settings/changes', label: 'Changes', icon: 'weekly', section: 'Settings', roles: ADMIN_ONLY },
     { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
 ]
 
@@ -82,7 +98,43 @@ export default function AppLayout({ children }) {
     const navigate = useNavigate()
     const location = useLocation()
     const { restaurants, activeRestaurant, switchRestaurant } = useRestaurant()
+
+    // Anything on the roster waiting on an answer, counted on the menu so it is
+    // visible from wherever you happen to be. Swaps and time off together,
+    // because from where a manager is standing they are the same job.
+    //
+    // Counted rather than listed, and read again whenever the page changes, so
+    // it goes back down as soon as it has been dealt with.
+    const [waitingCount, setWaitingCount] = useState(0)
+
+    useEffect(() => {
+        let live = true
+        async function count() {
+            if (!activeRestaurant?.id || !MANAGERS.includes(user?.role)) {
+                if (live) setWaitingCount(0)
+                return
+            }
+            const [swaps, off] = await Promise.all([
+                supabase.from('shift_requests')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .eq('status', 'accepted'),
+                supabase.from('absences')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .eq('status', 'requested'),
+            ])
+            if (live) setWaitingCount((swaps.count || 0) + (off.count || 0))
+        }
+        count()
+        return () => { live = false }
+    }, [activeRestaurant?.id, user?.role, location.pathname])
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    // Two, because which one scrolls depends on the screen. On a computer the
+    // header stays put and main scrolls under it; on a phone the header goes up
+    // with the page, so the column holding both is the one that moves.
+    const mainRef = useRef(null)
+    const shellRef = useRef(null)
 
     async function handleSignOut() {
         await supabase.auth.signOut()
@@ -137,7 +189,7 @@ export default function AppLayout({ children }) {
                     </p>
                 </div>
 
-                <nav className="flex-1 py-4 overflow-y-auto">
+                <nav className="flex-1 py-4 overflow-y-auto sidebar-scroll">
                     {sections.map(section => (
                         <div key={section} className="mb-2">
                             <p className="px-5 py-2 text-xs font-semibold text-green-700 uppercase tracking-widest">
@@ -157,7 +209,12 @@ export default function AppLayout({ children }) {
                                         <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d={icons[item.icon]} />
                                         </svg>
-                                        {item.label}
+                                        <span className="flex-1 text-left">{item.label}</span>
+                                        {item.path === '/roster' && waitingCount > 0 && (
+                                            <span className="bg-amber-500 text-white text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 rounded-full grid place-items-center flex-shrink-0">
+                                                {waitingCount}
+                                            </span>
+                                        )}
                                     </button>
                                 )
                             })}
@@ -186,15 +243,34 @@ export default function AppLayout({ children }) {
             </aside>
 
             {/* Main area */}
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <header className="h-16 bg-white border-b border-border flex items-center justify-between px-4 md:px-7 flex-shrink-0">
-                    <div className="flex items-center gap-3">
+            {/* On a phone this column is the thing that scrolls, so the header
+                goes up and out of the way with the page and stops costing a
+                hundred and thirty pixels of a small screen. On anything wider
+                the header stays put and the body scrolls under it, which is
+                what a mouse expects. */}
+            <div ref={shellRef} className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-w-0">
+                {/* Two lines on a phone, one on anything wider.
+                    Side by side, the title and the restaurant switcher were
+                    fighting over about three hundred pixels: Cost Dashboard and
+                    Menu Items broke onto two lines and the switcher was pushed
+                    half off the right edge with the restaurant name cut in the
+                    middle. Neither of them is optional, so they get a line
+                    each. */}
+                <header className="bg-white border-b border-border flex-shrink-0 px-4 md:px-7 py-3 md:py-0 md:h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
                         {/* Hamburger: mobile only */}
+                        {/* Three lines and nothing else in it, so to
+                            anything that cannot see the drawing this button had
+                            no name at all. It is the only way into the menu on
+                            a phone, which makes it the worst one to leave
+                            unnamed. */}
                         <button
                             onClick={() => setSidebarOpen(!sidebarOpen)}
+                            aria-label={sidebarOpen ? 'Close the menu' : 'Open the menu'}
+                            aria-expanded={sidebarOpen}
                             className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
                         >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg aria-hidden="true" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
                         </button>
@@ -207,11 +283,15 @@ export default function AppLayout({ children }) {
                         easy to miss, and being on the wrong restaurant means
                         every number on every page is the wrong one. */}
                     {(user?.role === 'super_admin' || user?.role === 'owner') && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full md:w-auto">
                             <span className="hidden sm:block text-xs font-bold uppercase tracking-widest text-muted">
                                 Restaurant
                             </span>
-                            <div className="relative">
+                            {/* Full width on a phone. It is the control that
+                                decides what every number on the page is about,
+                                so it is worth the whole line rather than
+                                whatever is left of one. */}
+                            <div className="relative flex-1 md:flex-none">
                                 {/* The native arrow goes with appearance-none, so
                                     both icons are drawn here instead. */}
                                 <svg
@@ -225,7 +305,7 @@ export default function AppLayout({ children }) {
                                     value={activeRestaurant?.id || ''}
                                     onChange={e => switchRestaurant(restaurants.find(r => r.id === e.target.value))}
                                     aria-label="Active restaurant"
-                                    className="appearance-none text-sm font-semibold border-2 border-accent/40 rounded-lg pl-9 pr-9 py-2 bg-white text-gray-900 cursor-pointer transition-colors hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                                    className="w-full appearance-none text-sm font-semibold border-2 border-accent/40 rounded-lg pl-9 pr-9 py-2 bg-white text-gray-900 cursor-pointer transition-colors hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                                 >
                                     {restaurants.map(r => (
                                         <option key={r.id} value={r.id}>{r.name}</option>
@@ -242,9 +322,35 @@ export default function AppLayout({ children }) {
                         </div>
                     )}
                 </header>
-                <main className="flex-1 overflow-y-auto p-4 md:p-7">
-                    {children}
+                <main
+                    ref={mainRef}
+                    // Room at the bottom on a phone so the last card clears the
+                    // way back up rather than sitting under it.
+                    className="flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
+                >
+                    {/* Which of the two is scrolling, handed down rather than
+                        hunted for, so a page can remember where somebody was. */}
+                    <ScrollProvider mainRef={mainRef} shellRef={shellRef}>
+                        {/* How wide a page is allowed to get, for every page,
+                            decided here rather than by each page remembering to
+                            ask for it. It used to be a PageContainer component a
+                            page wrapped itself in, and thirteen of the
+                            twenty six pages never did, so the app had three
+                            different widths depending on which one you were
+                            looking at. A page cannot forget this one.
+
+                            1600 because a table row stretched the whole way
+                            across a big monitor puts long gaps between the
+                            columns and makes your eye travel further to read a
+                            single row. The seven day grids on the roster and
+                            the weekly sales are the widest things in here and
+                            both still fit inside it. */}
+                        <div className="max-w-[1600px]">
+                            {children}
+                        </div>
+                    </ScrollProvider>
                 </main>
+                <BackToTop scrollers={[mainRef, shellRef]} />
             </div>
         </div>
     )

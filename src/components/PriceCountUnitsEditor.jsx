@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
+import { orderFormats } from '../lib/countUnits'
+import { rowButton, checkbox } from '../lib/controlStyles'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
 //
@@ -16,6 +19,7 @@ import { friendlyError } from '../lib/errors'
 // Formats belong to a price rather than to a product on purpose: two suppliers
 // sell the same thing in different sized boxes.
 export default function PriceCountUnitsEditor({ price, unit, onClose }) {
+    const confirm = useConfirm()
     const [formats, setFormats] = useState([])
     const [allowLoose, setAllowLoose] = useState(price.allow_loose_count ?? true)
     const [looseLoaded, setLooseLoaded] = useState(false)
@@ -51,7 +55,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
         ])
 
         if (formatsErr) setError(friendlyError(formatsErr))
-        else setFormats(formatsData || [])
+        else setFormats(orderFormats(formatsData))
 
         if (!priceErr && priceData) {
             setAllowLoose(priceData.allow_loose_count ?? true)
@@ -87,6 +91,20 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
     }
 
     async function handleDelete(formatId) {
+        const format = formats.find(f => f.id === formatId)
+        const ok = await confirm({
+            title: 'Remove this pack format?',
+            message: 'It stops being offered as a way of counting this product on a stock take. Counts '
+                + 'already taken keep the figures they were saved with.',
+            details: format ? [
+                { label: 'Format', value: format.label || '' },
+                { label: 'Holds', value: `${format.factor} ${unit || ''}` },
+            ] : undefined,
+            confirmLabel: 'Remove it',
+            tone: 'danger',
+        })
+        if (!ok) return
+
         const { error } = await supabase
             .from('price_count_units')
             .delete()
@@ -115,7 +133,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
             <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-gray-900">Count formats</h4>
                 {onClose && (
-                    <button onClick={onClose} className="text-xs font-medium text-gray-500 hover:text-gray-700">
+                    <button onClick={onClose} className={rowButton()}>
                         Close
                     </button>
                 )}
@@ -145,7 +163,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                             </span>
                             <button
                                 onClick={() => handleDelete(f.id)}
-                                className="text-xs font-medium text-red-500 hover:text-red-700"
+                                className={rowButton('danger')}
                             >
                                 Delete
                             </button>
@@ -173,6 +191,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     <input
                         type="text"
                         inputMode="decimal"
+                        onFocus={e => e.target.select()}
                         value={factor}
                         onChange={e => setFactor(e.target.value.replace(/[^0-9.]/g, ''))}
                         placeholder="e.g. 6"
@@ -195,7 +214,7 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
                     checked={allowLoose}
                     onChange={toggleLoose}
                     disabled={!looseLoaded}
-                    className="accent-accent"
+                    className={checkbox}
                 />
                 <span className="text-sm text-gray-700">
                     Allow loose counting in {unit} (for opened boxes / partial stock)
