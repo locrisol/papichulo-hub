@@ -4,7 +4,6 @@ import {
     employeeStatus,
     sortEmployees,
     nextSortOrder,
-    moveEmployee,
     linkableUsers,
     employeeProblem,
     employeeNote,
@@ -116,56 +115,6 @@ describe('nextSortOrder', () => {
     })
 })
 
-describe('moveEmployee', () => {
-    const list = [emp('a', 'Ana', 0), emp('b', 'Bea', 1), emp('c', 'Cal', 2)]
-
-    it('swaps a person with the one above', () => {
-        const changes = moveEmployee(list, 'c', 'up')
-        expect(changes).toHaveLength(2)
-        const byId = Object.fromEntries(changes.map(c => [c.id, c.sort_order]))
-        expect(byId.c).toBe(1)
-        expect(byId.b).toBe(2)
-    })
-
-    it('swaps a person with the one below', () => {
-        const changes = moveEmployee(list, 'a', 'down')
-        const byId = Object.fromEntries(changes.map(c => [c.id, c.sort_order]))
-        expect(byId.a).toBe(1)
-        expect(byId.b).toBe(0)
-    })
-
-    it('does nothing at the top or the bottom', () => {
-        expect(moveEmployee(list, 'a', 'up')).toEqual([])
-        expect(moveEmployee(list, 'c', 'down')).toEqual([])
-    })
-
-    it('does nothing for somebody who is not in the list', () => {
-        expect(moveEmployee(list, 'nobody', 'up')).toEqual([])
-    })
-
-    it('only ever writes the two that moved', () => {
-        const long = Array.from({ length: 12 }, (_, i) => emp(String(i), `P${i}`, i))
-        expect(moveEmployee(long, '7', 'up')).toHaveLength(2)
-    })
-
-    it('still moves a list that has never been arranged', () => {
-        // Everybody on nought, so the order comes from the names alone. Ana,
-        // Bea, Cal, and moving Cal up has to put it above Bea.
-        const flat = [emp('a', 'Ana'), emp('b', 'Bea'), emp('c', 'Cal')]
-        const changes = moveEmployee(flat, 'c', 'up')
-        const byId = Object.fromEntries(changes.map(c => [c.id, c.sort_order]))
-        expect(byId.c).toBeLessThan(byId.b)
-    })
-
-    it('lands where you would expect after applying what it returned', () => {
-        const changes = moveEmployee(list, 'c', 'up')
-        const applied = list.map(e => {
-            const change = changes.find(c => c.id === e.id)
-            return change ? { ...e, sort_order: change.sort_order } : e
-        })
-        expect(sortEmployees(applied).map(e => e.full_name)).toEqual(['Ana', 'Cal', 'Bea'])
-    })
-})
 
 describe('linkableUsers', () => {
     const users = [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }]

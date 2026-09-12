@@ -12,7 +12,6 @@ import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
 import {
     sortEmployees,
     nextSortOrder,
-    moveEmployee,
     employeeStatus,
     employeeProblem,
     employeeNote,
@@ -26,6 +25,7 @@ import CalendarLinkDialog from '../../components/CalendarLinkDialog'
 import AvailabilityDialog from '../../components/AvailabilityDialog'
 import TimeOffDialog from '../../components/TimeOffDialog'
 import TeamGaps from '../../components/team/TeamGaps'
+import ArrangeList from '../../components/ArrangeList'
 
 // Who works here.
 //
@@ -63,6 +63,7 @@ export default function EmployeesPage() {
     const [calendarFor, setCalendarFor] = useState(null)
     const [availabilityFor, setAvailabilityFor] = useState(null)
     const [timeOffFor, setTimeOffFor] = useState(null)
+    const [arranging, setArranging] = useState(false)
     const [form, setForm] = useState(EMPTY)
 
     const today = todayISO()
@@ -180,20 +181,23 @@ export default function EmployeesPage() {
         load({ quiet: true })
     }
 
-    // Moving somebody writes the two rows that swapped, not the whole list.
-    async function move(id, direction) {
-        const changes = moveEmployee(shown, id, direction)
-        if (changes.length === 0) return
-
-        // Moved on screen first so the list does not sit still while two round
-        // trips happen. If either fails, reloading puts it back.
-        setEmployees(prev => prev.map(emp => {
-            const change = changes.find(c => c.id === emp.id)
-            return change ? { ...emp, sort_order: change.sort_order } : emp
-        }))
+    // The whole order written at once, from the arrange dialog.
+    //
+    // It arranges whatever is on screen, which is current staff unless the past
+    // ones are being shown. The arrows it replaces worked the same way, moving
+    // only within the visible list, so this is no different in what it can
+    // reach: it just writes the lot in one go instead of two rows at a time.
+    async function saveOrder(order) {
+        // Moved on screen first so the list does not sit still while the writes
+        // happen. If any of them fail, reloading puts it back.
+        const byId = new Map(order.map((e, i) => [e.id, i]))
+        setEmployees(prev => prev.map(emp => (
+            byId.has(emp.id) ? { ...emp, sort_order: byId.get(emp.id) } : emp
+        )))
+        setArranging(false)
 
         const results = await Promise.all(
-            changes.map(c => supabase.from('employees').update({ sort_order: c.sort_order }).eq('id', c.id)),
+            order.map((e, i) => supabase.from('employees').update({ sort_order: i }).eq('id', e.id)),
         )
         const failed = results.find(r => r.error)
         if (failed) { setError(friendlyError(failed.error)); load({ quiet: true }) }
@@ -290,6 +294,18 @@ export default function EmployeesPage() {
                     </p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                    {/* Arranging is a button rather than arrows on every row.
+                        The order matters, it is the order people appear in on
+                        the roster, but it is set once and then left alone, and
+                        the arrows were a whole column and two more controls on
+                        a card that already carries plenty. */}
+                    <button
+                        onClick={() => setArranging(true)}
+                        disabled={shown.length < 2}
+                        className={secondaryButton}
+                    >
+                        Arrange
+                    </button>
                     <button onClick={() => setShowPositions(true)} className={secondaryButton}>
                         Positions
                     </button>
@@ -330,7 +346,7 @@ export default function EmployeesPage() {
                         out of reach, and this is the list most likely to be
                         opened standing in the shop. */}
                     <div className="md:hidden space-y-3">
-                        {shown.map((employee, i) => {
+                        {shown.map(employee => {
                             const position = positionOf(employee.position_id)
                             const account = userOf(employee.user_id)
                             const gone = employeeStatus(employee, today).state === 'left'
@@ -402,31 +418,6 @@ export default function EmployeesPage() {
                                     <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-black/10">
                                         {rowActions(employee)}
                                     </div>
-
-                                    {/* The order they appear in on the roster is
-                                        a real preference, so it has to be
-                                        changeable here too rather than only on a
-                                        computer. */}
-                                    <div className="flex gap-2 mt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => move(employee.id, 'up')}
-                                            disabled={i === 0}
-                                            aria-label={`Move ${employee.full_name} up`}
-                                            className={`${rowButton()} disabled:opacity-30`}
-                                        >
-                                            &uarr; Move up
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => move(employee.id, 'down')}
-                                            disabled={i === shown.length - 1}
-                                            aria-label={`Move ${employee.full_name} down`}
-                                            className={`${rowButton()} disabled:opacity-30`}
-                                        >
-                                            &darr; Move down
-                                        </button>
-                                    </div>
                                 </div>
                             )
                         })}
@@ -436,7 +427,6 @@ export default function EmployeesPage() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className={tableHeadRow}>
-                                    <th className="px-3 py-3 text-left text-xs uppercase tracking-wider w-16">Order</th>
                                     <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Name</th>
                                     <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Position</th>
                                     <th className="px-3 py-3 text-left text-xs uppercase tracking-wider">Status</th>
@@ -446,7 +436,7 @@ export default function EmployeesPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {shown.map((employee, i) => {
+                                {shown.map(employee => {
                                     const position = positionOf(employee.position_id)
                                     const account = userOf(employee.user_id)
                                     const gone = employeeStatus(employee, today).state === 'left'
@@ -455,32 +445,6 @@ export default function EmployeesPage() {
                                             key={employee.id}
                                             className={`border-b border-border last:border-b-0 ${gone ? 'bg-gray-50' : ''}`}
                                         >
-                                            {/* Up and down rather than dragging. Dragging a
-                                                row on a phone means holding still on a thing
-                                                that scrolls, and this list gets arranged
-                                                once and then left alone. */}
-                                            <td className="px-3 py-2">
-                                                <div className="flex gap-0.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => move(employee.id, 'up')}
-                                                        disabled={i === 0}
-                                                        aria-label={`Move ${employee.full_name} up`}
-                                                        className="px-1.5 py-0.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-25"
-                                                    >
-                                                        ↑
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => move(employee.id, 'down')}
-                                                        disabled={i === shown.length - 1}
-                                                        aria-label={`Move ${employee.full_name} down`}
-                                                        className="px-1.5 py-0.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-25"
-                                                    >
-                                                        ↓
-                                                    </button>
-                                                </div>
-                                            </td>
                                             <td className="px-3 py-2">
                                                 <span className={`font-medium ${gone ? 'text-gray-500' : 'text-gray-900'}`}>
                                                     {employee.full_name}
@@ -593,6 +557,17 @@ export default function EmployeesPage() {
                     userId={user?.id}
                     onClose={() => setTimeOffFor(null)}
                     onChanged={() => load({ quiet: true })}
+                />
+            )}
+
+            {arranging && (
+                <ArrangeList
+                    title="Arrange the team"
+                    note="This is the order people appear in on the roster."
+                    items={shown}
+                    nameOf={e => e.full_name}
+                    onSave={saveOrder}
+                    onClose={() => setArranging(false)}
                 />
             )}
 

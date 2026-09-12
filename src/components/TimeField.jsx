@@ -1,5 +1,5 @@
 import { timeOptions } from '../lib/timeOptions'
-import { fieldClass } from '../lib/controlStyles'
+import { fieldClass, compactField } from '../lib/controlStyles'
 
 // Picking a time, anywhere in the app.
 //
@@ -29,14 +29,8 @@ import { fieldClass } from '../lib/controlStyles'
 // standard field. Two classes both setting padding do not resolve by the order
 // they are written in the attribute, they resolve by the order they happen to
 // sit in the compiled stylesheet, so an override like that works by luck and
-// stops working when something unrelated is added.
-//
-// text-sm is safe here where it would not be on a text box: an iPhone zooms the
-// page in when you focus something under 16px and it is a keyboard that brings
-// it on. A select opens a list instead, so there is no keyboard and no zoom.
-const compactClass =
-    'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
-    + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
+// stops working when something unrelated is added. The style itself lives in
+// controlStyles, because the availability dialog wanted the same box.
 
 export default function TimeField({
     value = '',
@@ -55,7 +49,7 @@ export default function TimeField({
         <select
             value={value}
             onChange={e => onChange(e.target.value)}
-            className={`${compact ? compactClass : fieldClass} ${className}`}
+            className={`${compact ? compactField : fieldClass} ${className}`}
             {...rest}
         >
             {/* Normally only while nothing is chosen, because offering "no time"

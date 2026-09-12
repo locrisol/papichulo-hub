@@ -8,7 +8,7 @@ import { menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
 import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
-import ArrangeItems from '../../components/menu/ArrangeItems'
+import ArrangeList from '../../components/ArrangeList'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
@@ -721,7 +721,7 @@ export default function MenuItemsPage() {
       )}
 
       {arranging && (
-        <ArrangeItems
+        <ArrangeList
           categoryName={categories.find(c => c.id === arranging)?.name || 'category'}
           items={orderedCategory(arranging)}
           onSave={saveOrder}

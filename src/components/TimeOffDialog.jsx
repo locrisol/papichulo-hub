@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TimeField from './TimeField'
 import Modal from './Modal'
 import ModalSection from './ModalSection'
@@ -37,6 +37,7 @@ export default function TimeOffDialog({
     const [absences, setAbsences] = useState([])
     const [form, setForm] = useState(EMPTY)
     const [editing, setEditing] = useState(null)
+    const formRef = useRef(null)
     const [saving, setSaving] = useState(false)
     // What they are already on for inside the dates being typed. Only for a new
     // one: editing the dates of something already recorded is a correction, and
@@ -112,9 +113,18 @@ export default function TimeOffDialog({
         setForm(EMPTY)
     }
 
+    // Pressing Edit down in the list fills the form, and the form is at the top
+    // of the dialog. On a phone that is off the screen, so the press read as
+    // having done nothing at all: he pressed it, saw no change, and assumed it
+    // was broken.
+    //
+    // So the form is brought to him. The heading says which entry it is holding
+    // as well, because a form that quietly swapped from adding to changing is
+    // the other half of the same confusion.
     function openEdit(absence) {
         setEditing(absence)
         setEmployeeId(absence.employee_id)
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         setForm({
             kind: absence.kind,
             startsOn: absence.starts_on,
@@ -224,7 +234,12 @@ export default function TimeOffDialog({
                 </select>
             </ModalSection>
 
-            <ModalSection title={editing ? 'Change this one' : 'Add time off'}>
+            <div ref={formRef}>
+            <ModalSection
+                title={editing
+                    ? `Change the ${kindLabel(editing.kind).toLowerCase()} on ${absenceRange(editing, shortDate)}`
+                    : 'Add time off'}
+            >
                 <form onSubmit={save}>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                         <div className="sm:col-span-1">
@@ -394,6 +409,7 @@ export default function TimeOffDialog({
                     </div>
                 </form>
             </ModalSection>
+            </div>
 
             <ModalSection title={person ? `${person.full_name}'s time off` : 'Time off'}>
                 {mine.length === 0 ? (

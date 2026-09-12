@@ -91,37 +91,6 @@ export function nextSortOrder(employees) {
     return Math.max(...employees.map(e => e.sort_order ?? 0)) + 1
 }
 
-// Moving somebody up or down.
-//
-// Returns only the rows whose order actually changed, so the page writes two
-// records instead of rewriting the whole list every time somebody nudges a
-// name. Returns nothing at all at the ends, so the page has nothing to save
-// rather than saving the same thing back.
-//
-// The positions are swapped by value rather than recalculated from scratch,
-// which means a list that has never been arranged, where everybody is still 0,
-// still moves correctly: the pair get their index numbers on the way past.
-export function moveEmployee(employees, id, direction) {
-    const sorted = sortEmployees(employees)
-    const from = sorted.findIndex(e => e.id === id)
-    if (from === -1) return []
-
-    const to = direction === 'up' ? from - 1 : from + 1
-    if (to < 0 || to >= sorted.length) return []
-
-    const reordered = sorted.slice()
-    reordered[from] = sorted[to]
-    reordered[to] = sorted[from]
-
-    // Number the two that moved by where they now sit. Everyone else is left
-    // alone, and their existing order still separates them correctly because
-    // the swap happened inside a sorted list.
-    return [
-        { id: reordered[from].id, sort_order: from },
-        { id: reordered[to].id, sort_order: to },
-    ]
-}
-
 // Which accounts can still be linked to a person.
 //
 // An account already attached to somebody is not offered again, because one

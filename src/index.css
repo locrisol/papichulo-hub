@@ -106,16 +106,31 @@
  * The second is what happens to a placeholder too long for its box. Left alone
  * it is chopped mid letter, which reads as a rendering fault. Now it ends in an
  * ellipsis, which reads as a sentence that carries on.
+ *
+ * IN A LAYER, AND IT HAS TO BE
+ *
+ * Written plainly, these sat outside every cascade layer, and unlayered CSS
+ * beats layered CSS however the specificity falls. Tailwind puts its utilities
+ * in @layer utilities, so this min-width: 0 was quietly beating every min-w-*
+ * in the app: nine of them, on a select and eight inputs, were doing nothing at
+ * all. Nothing said so, they simply had no effect, and the one that mattered
+ * was the operator on a break rule collapsing to its own arrow.
+ *
+ * Inside @layer base it still applies to everything that asks for nothing, and
+ * a utility written on a field now wins, which is the whole point of writing
+ * one.
  */
-input,
-select,
-textarea {
-  min-width: 0;
-}
+@layer base {
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
 
-input::placeholder,
-textarea::placeholder {
-  text-overflow: ellipsis;
+  input::placeholder,
+  textarea::placeholder {
+    text-overflow: ellipsis;
+  }
 }
 
 /* The scrollbar down the side menu.

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, rowButton, tableHeadRow } from '../lib/controlStyles'
+import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass } from '../lib/controlStyles'
+import ArrangeList from './ArrangeList'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
 
@@ -12,40 +13,39 @@ import { ModalSectionBar } from './ModalSection'
 // group the menu items list for the manager, and they are also the headings a
 // customer sees on the public allergen page, in the same order.
 //
-// sort_order decides that order, lowest first, and it is typed in rather than
-// set with arrows. Categories are deactivated and never deleted, because menu
-// items point at one by id and deleting would leave them pointing at nothing.
+// sort_order decides that order, lowest first, and it is set in the Arrange
+// dialog rather than typed or nudged with arrows on every row. Categories are
+// deactivated and never deleted, because menu items point at one by id and
+// deleting would leave them pointing at nothing.
 export default function CategoryManagerModal({ categories, onClose, onChange }) {
   const confirm = useConfirm()
   const [error, setError] = useState('')
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
+  const [arranging, setArranging] = useState(false)
 
   // The name breaks a tie, so two categories that have never been arranged
   // against each other still come out the same way every time.
   const sorted = [...categories].sort((a, b) =>
     (a.sort_order - b.sort_order) || a.name.localeCompare(b.name))
 
-  // Up and down rather than a number you type, the same as the sales platforms
-  // and the till rows. A typed number was slower, and let two categories end up
-  // holding the same one with nothing saying which came first.
-  async function moveCategory(index, direction) {
-    const target = index + direction
-    if (target < 0 || target >= sorted.length) return
-
+  // The whole order written at once, from the arrange dialog.
+  //
+  // Renumbered from zero rather than swapping two numbers. The order used to be
+  // typed by hand, so nothing ever stopped two categories sharing a number or
+  // the numbers having gaps, and swapping two equal ones looked like nothing
+  // had happened. Rewriting the lot makes what is stored match what is shown.
+  async function saveOrder(order) {
     setError('')
 
-    const reordered = sorted.slice()
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(target, 0, moved)
-
-    const results = await Promise.all(reordered.map((c, i) =>
+    const results = await Promise.all(order.map((c, i) =>
       supabase.from('menu_categories').update({ sort_order: i }).eq('id', c.id)))
 
     const failed = results.find(r => r.error)
     if (failed) { setError(friendlyError(failed.error)); return }
 
+    setArranging(false)
     onChange()
   }
 
@@ -58,8 +58,8 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
       setError('Name is required')
       return
     }
-    // Onto the end. Somewhere is where a new one goes, and the arrows are how
-    // it gets anywhere else.
+    // Onto the end. Somewhere is where a new one goes, and Arrange is how it
+    // gets anywhere else.
     const { error: e1 } = await supabase
       .from('menu_categories')
       .insert({ name, sort_order: sorted.length })
@@ -155,21 +155,101 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
           )}
 
           <p className="text-xs text-gray-500 mb-4">
-            Categories control how menu items are grouped on the menu items list and the public allergen page. Lower sort order appears first. Deactivate a category instead of deleting it so existing menu items keep their reference.
+            Categories group the menu items list, and they are the headings customers read on the
+            allergen page, in the same order. Turn one off rather than deleting it, so the dishes in it
+            keep pointing at something.
           </p>
 
-          <table className="w-full text-sm mb-6">
+          {/* Arranging is a button rather than a pair of arrows on every row.
+              A row here carries a name, an order, a status, the allergen sheet
+              switch and two buttons, and on a phone the arrows were taking
+              width from the only thing you read while arranging, the name. The
+              same dialog the menu items list uses. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="text-xs text-muted">
+              {sorted.length} {sorted.length === 1 ? 'category' : 'categories'}, in the order they are read in.
+            </p>
+            <button
+              type="button"
+              onClick={() => setArranging(true)}
+              disabled={sorted.length < 2}
+              className={secondaryButton}
+            >
+              Arrange
+            </button>
+          </div>
+
+          {/* A card each on a phone. Five columns inside a dialog left the
+              allergen sheet switch and both buttons off the side of the
+              screen, so the two things this dialog exists for could not be
+              reached there at all. */}
+          <div className="sm:hidden space-y-2 mb-6">
+            {sorted.map(c => (
+              <div
+                key={c.id}
+                className={`rounded-lg border border-border p-3 ${c.is_active ? 'bg-white' : 'bg-red-50'}`}
+              >
+                {editingId === c.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className={fieldClass}
+                      aria-label="Category name"
+                    />
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      <button onClick={() => saveEdit(c)} className={rowButton('good')}>Save</button>
+                      <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className={`text-sm font-semibold ${c.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {c.name}
+                      </span>
+                      <span className={`text-xs whitespace-nowrap ${c.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                        {c.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted mt-0.5">
+                      {c.on_allergen_sheet === false
+                        ? 'Not on the allergen sheet'
+                        : 'On the allergen sheet'}
+                    </p>
+                    <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                      <button onClick={() => startEdit(c)} className={rowButton('edit')}>Edit</button>
+                      <button
+                        onClick={() => toggleSheet(c)}
+                        className={rowButton(c.on_allergen_sheet === false ? 'plain' : 'good')}
+                      >
+                        {c.on_allergen_sheet === false ? 'Put on the sheet' : 'Take off the sheet'}
+                      </button>
+                      <button
+                        onClick={() => toggleActive(c)}
+                        className={rowButton(c.is_active ? 'danger' : 'good')}
+                      >
+                        {c.is_active ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <table className="hidden sm:table w-full text-sm mb-6">
             <thead>
               <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Name</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Order</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Status</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Allergen sheet</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((c, i) => (
+              {sorted.map(c => (
                 <tr key={c.id} className={`border-b border-border ${!c.is_active ? 'bg-red-50' : ''}`}>
                   {editingId === c.id ? (
                     <>
@@ -181,9 +261,6 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                           className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                         />
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-400">
-                        Use the arrows
-                      </td>
                       <td className={`px-3 py-2 ${c.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
                       </td>
@@ -192,18 +269,8 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => saveEdit(c)}
-                            className={rowButton('good')}
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className={rowButton()}
-                          >
-                            Cancel
-                          </button>
+                          <button onClick={() => saveEdit(c)} className={rowButton('good')}>Save</button>
+                          <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
                         </div>
                       </td>
                     </>
@@ -211,30 +278,6 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                     <>
                       <td className={`px-3 py-2 font-medium ${c.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                         {c.name}
-                      </td>
-                      {/* Up and down rather than a number you type, the same as
-                          the sales platforms and the till rows. */}
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => moveCategory(i, -1)}
-                            disabled={i === 0}
-                            className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                            aria-label={`Move ${c.name} up`}
-                          >
-                            &uarr;
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveCategory(i, 1)}
-                            disabled={i === sorted.length - 1}
-                            className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-                            aria-label={`Move ${c.name} down`}
-                          >
-                            &darr;
-                          </button>
-                        </div>
                       </td>
                       <td className={`px-3 py-2 text-xs ${c.is_active ? 'text-green-700' : 'text-gray-400'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
@@ -249,12 +292,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-3">
-                          <button
-                            onClick={() => startEdit(c)}
-                            className={rowButton('edit')}
-                          >
-                            Edit
-                          </button>
+                          <button onClick={() => startEdit(c)} className={rowButton('edit')}>Edit</button>
                           <button
                             onClick={() => toggleActive(c)}
                             className={rowButton(c.is_active ? 'danger' : 'good')}
@@ -291,7 +329,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
               </button>
             </form>
             <p className="text-xs text-gray-400 mt-2">
-              Suggested gaps of 10 (e.g. 10, 20, 30) so you can insert a category between two existing ones without renumbering.
+              It goes on the end. Use Arrange to move it.
             </p>
           </div>
         </div>
@@ -304,6 +342,16 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
             Done
           </button>
         </div>
+
+        {arranging && (
+          <ArrangeList
+            title="Arrange categories"
+            note="This is the order they are listed in, and the order they print in on the allergen sheet."
+            items={sorted}
+            onSave={saveOrder}
+            onClose={() => setArranging(false)}
+          />
+        )}
     </Modal>
   )
 }

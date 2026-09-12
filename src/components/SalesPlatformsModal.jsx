@@ -3,7 +3,8 @@ import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, modalFooter, rowButton } from '../lib/controlStyles'
+import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass } from '../lib/controlStyles'
+import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
@@ -35,6 +36,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editBucket, setEditBucket] = useState('online_platform')
+  const [arranging, setArranging] = useState(null)
 
   useEffect(() => {
     if (activeRestaurant) fetchPlatforms()
@@ -73,8 +75,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       return
     }
 
-    // Goes on the end of its bucket. There is no number to type any more, you
-    // move it up with the arrows once it is in the list.
+    // Goes on the end of its bucket. Arrange is how it gets anywhere else.
     const sortOrder = platformsForBucket(newBucket).length
 
     const { error: e1 } = await supabase
@@ -96,26 +97,17 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     onChange && onChange()
   }
 
-  // Moves a platform one place up or down inside its own bucket.
+  // One bucket reordered, written in one go from the arrange dialog.
   //
-  // The whole bucket is renumbered from zero rather than swapping two numbers.
-  // The order used to be typed by hand, so nothing ever stopped two platforms
-  // sharing a number or the numbers having gaps, and swapping two equal ones
-  // would look like the arrow had done nothing. Rewriting the lot makes the
-  // stored order match what is on screen.
-  async function movePlatform(bucket, index, direction) {
-    const rows = platformsForBucket(bucket)
-    const target = index + direction
-    if (target < 0 || target >= rows.length) return
-
+  // Renumbered from zero rather than swapping two numbers. The order used to be
+  // typed by hand, so nothing ever stopped two platforms sharing a number or
+  // the numbers having gaps, and swapping two equal ones looked like nothing
+  // had happened. Rewriting the lot makes what is stored match what is shown.
+  async function saveOrder(order) {
     setError('')
 
-    const reordered = rows.slice()
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(target, 0, moved)
-
     const results = await Promise.all(
-      reordered.map((p, i) =>
+      order.map((p, i) =>
         supabase.from('sales_platforms').update({ sort_order: i }).eq('id', p.id)
       )
     )
@@ -126,6 +118,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       return
     }
 
+    setArranging(null)
     fetchPlatforms()
     onChange && onChange()
   }
@@ -192,7 +185,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     }
   }
 
-  function renderRow(p, index, rows) {
+  function renderRow(p) {
     if (editingId === p.id) {
       return (
         <tr key={p.id} className="border-b border-border">
@@ -215,8 +208,6 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               ))}
             </select>
           </td>
-          {/* Nothing to edit here any more. The order is set with the arrows. */}
-          <td className="px-3 py-2 w-24"></td>
           <td className="px-3 py-2 w-32">
             <div className="flex gap-2">
               <button
@@ -245,31 +236,6 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
         <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
           {p.is_active ? 'Active' : 'Inactive'}
         </td>
-        {/* Up and down arrows, the same as the weekly sales row order list in
-            restaurant settings. It used to be a number you typed in, which was
-            slower and let two platforms end up with the same one. */}
-        <td className="px-3 py-2 w-24">
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => movePlatform(p.bucket, index, -1)}
-              disabled={index === 0}
-              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-              aria-label={`Move ${p.name} up`}
-            >
-              &uarr;
-            </button>
-            <button
-              type="button"
-              onClick={() => movePlatform(p.bucket, index, 1)}
-              disabled={index === rows.length - 1}
-              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-              aria-label={`Move ${p.name} down`}
-            >
-              &darr;
-            </button>
-          </div>
-        </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
             <button
@@ -294,23 +260,90 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     const rows = platformsForBucket(bucket)
     return (
       <div className="mb-6">
-        <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
-          {BUCKET_LABEL[bucket]}
-        </h2>
+        {/* Arranging is a button per group rather than arrows on every row.
+            Each group keeps its own order, so it is the same shape as
+            arranging one category of the menu. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider">
+            {BUCKET_LABEL[bucket]}
+          </h2>
+          {rows.length > 1 && (
+            <button type="button" onClick={() => setArranging(bucket)} className={secondaryButton}>
+              Arrange
+            </button>
+          )}
+        </div>
         {rows.length === 0 ? (
           <p className="text-xs text-gray-400 italic mb-2">No platforms in this bucket yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          {/* A card each on a phone. Three columns inside a dialog put Retire
+              half off the side of the screen, and retiring is most of what this
+              list is for. */}
+          <div className="sm:hidden space-y-2">
+            {rows.map(p => (
+              <div
+                key={p.id}
+                className={`rounded-lg border border-border p-3 ${p.is_active ? 'bg-white' : 'bg-red-50'}`}
+              >
+                {editingId === p.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className={`${fieldClass} mb-2`}
+                      aria-label="Platform name"
+                    />
+                    <select
+                      value={editBucket}
+                      onChange={e => setEditBucket(e.target.value)}
+                      className={fieldClass}
+                      aria-label="Which group"
+                    >
+                      {BUCKETS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                    </select>
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      <button onClick={() => saveEdit(p)} className={rowButton('good')}>Save</button>
+                      <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {p.name}
+                      </span>
+                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                        {p.is_active ? 'Active' : 'Retired'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                      <button onClick={() => startEdit(p)} className={rowButton('edit')}>Edit</button>
+                      <button
+                        onClick={() => toggleActive(p)}
+                        className={rowButton(p.is_active ? 'danger' : 'good')}
+                      >
+                        {p.is_active ? 'Retire' : 'Bring back'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <table className="hidden sm:table w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Name</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Status</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Order</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Actions</th>
               </tr>
             </thead>
             <tbody>{rows.map(renderRow)}</tbody>
           </table>
+          </>
         )}
       </div>
     )
@@ -325,7 +358,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
 
           <p className="text-xs text-gray-500 mb-4">
-            Platforms feed the Online Platform and Catering totals on the sales entry form. Deactivate a platform instead of deleting it so past sales records keep their reference. Use the arrows to set the order they appear in.
+            Platforms feed the Online Platform and Corporate totals on the sales entry form. Retire one rather than deleting it, so weeks already entered keep their figures. Arrange sets the order they appear in.
           </p>
 
           {loading ? (
@@ -339,8 +372,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
           <div className="bg-gray-50 rounded-lg p-4">
             <ModalSectionBar title="Add a platform" />
-            <form onSubmit={handleAdd} className="flex gap-2 items-start">
-              <div className="flex-1">
+            <form onSubmit={handleAdd} className="flex flex-wrap gap-2 items-start">
+              <div className="flex-1 min-w-[9rem]">
                 <input
                   type="text"
                   value={newName}
@@ -368,7 +401,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
               </button>
             </form>
             <p className="text-xs text-gray-400 mt-2">
-              A new platform goes on the end of its group. Use the arrows to move it up.
+              A new platform goes on the end of its group. Use Arrange to move it.
             </p>
           </div>
         </div>
@@ -381,6 +414,16 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
             Done
           </button>
         </div>
+
+        {arranging && (
+          <ArrangeList
+            title={`Arrange ${BUCKET_LABEL[arranging]}`}
+            note="This is the order these rows appear in on the sales screens."
+            items={platformsForBucket(arranging)}
+            onSave={saveOrder}
+            onClose={() => setArranging(null)}
+          />
+        )}
     </Modal>
   )
 }

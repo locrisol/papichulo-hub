@@ -3,7 +3,8 @@ import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, card, modalFooter, rowButton } from '../lib/controlStyles'
+import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass } from '../lib/controlStyles'
+import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
 
@@ -45,6 +46,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
   const [editingId, setEditingId] = useState(null)
   const [editLabel, setEditLabel] = useState('')
+  const [arranging, setArranging] = useState(false)
 
   useEffect(() => {
     if (activeRestaurant) fetchTenders()
@@ -83,8 +85,8 @@ export default function SalesTendersModal({ onClose, onChange }) {
       return
     }
 
-    // Goes on the end. The order is set with the arrows afterwards, rather than
-    // asking anyone to type a number and work out where it lands.
+    // Goes on the end. Arrange sets the order afterwards, rather than asking
+    // anyone to type a number and work out where it lands.
     const nextOrder = ordered.length ? Math.max(...ordered.map(t => t.sort_order)) + 1 : 0
 
     const { error: e1 } = await supabase
@@ -107,20 +109,15 @@ export default function SalesTendersModal({ onClose, onChange }) {
     onChange?.()
   }
 
-  // Moves a row one place. The whole list is renumbered from zero rather than
-  // two rows swapping numbers, so a list that has drifted sorts itself out.
-  async function moveTender(index, direction) {
-    const target = index + direction
-    if (target < 0 || target >= ordered.length) return
-
-    const next = [...ordered]
-    const [moved] = next.splice(index, 1)
-    next.splice(target, 0, moved)
-
-    setTenders(next.map((t, i) => ({ ...t, sort_order: i })))
+  // The whole order written at once, from the arrange dialog. Renumbered from
+  // zero rather than two rows swapping numbers, so a list that has drifted
+  // sorts itself out.
+  async function saveOrder(order) {
+    setTenders(order.map((t, i) => ({ ...t, sort_order: i })))
+    setArranging(false)
 
     const results = await Promise.all(
-      next.map((t, i) => supabase.from('sales_tenders').update({ sort_order: i }).eq('id', t.id))
+      order.map((t, i) => supabase.from('sales_tenders').update({ sort_order: i }).eq('id', t.id))
     )
     const failed = results.find(r => r.error)
     if (failed) {
@@ -200,7 +197,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
     onChange?.()
   }
 
-  function renderRow(t, index) {
+  function renderRow(t) {
     if (editingId === t.id) {
       return (
         <tr key={t.id} className="border-b border-border">
@@ -215,7 +212,6 @@ export default function SalesTendersModal({ onClose, onChange }) {
               Stored as {t.key}, which does not change. Every figure already entered stays with this row.
             </p>
           </td>
-          <td className="px-3 py-2 w-24"></td>
           <td className="px-3 py-2 w-40">
             <div className="flex gap-2">
               <button onClick={() => saveEdit(t)} className={rowButton('good')}>
@@ -246,28 +242,6 @@ export default function SalesTendersModal({ onClose, onChange }) {
           >
             {t.counts_toward_gross ? 'Counts toward gross' : 'Not counted'}
           </button>
-        </td>
-        <td className="px-3 py-2 w-24">
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => moveTender(index, -1)}
-              disabled={index === 0}
-              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-              aria-label={`Move ${t.label} up`}
-            >
-              &uarr;
-            </button>
-            <button
-              type="button"
-              onClick={() => moveTender(index, 1)}
-              disabled={index === ordered.length - 1}
-              className="px-2 py-1 border border-border rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30"
-              aria-label={`Move ${t.label} down`}
-            >
-              &darr;
-            </button>
-          </div>
         </td>
         <td className="px-3 py-2">
           <div className="flex gap-3">
@@ -311,19 +285,87 @@ export default function SalesTendersModal({ onClose, onChange }) {
           ) : ordered.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No rows yet. Add the first one below.</p>
           ) : (
-            <div className={`${card} overflow-x-auto overflow-y-hidden`}>
+            <>
+            {/* Arranging is a button rather than arrows on every row. This is
+                the order the rows print in on the weekly grid. */}
+            {ordered.length > 1 && (
+              <div className="flex justify-end mb-2">
+                <button type="button" onClick={() => setArranging(true)} className={secondaryButton}>
+                  Arrange
+                </button>
+              </div>
+            )}
+            {/* A card each on a phone. Three columns inside a dialog put
+                Rename and Retire off the side, and the status column stacked
+                "Counts toward gross" into three lines to fit what was left. */}
+            <div className="sm:hidden space-y-2">
+              {ordered.map(t => (
+                <div
+                  key={t.id}
+                  className={`rounded-lg border border-border p-3 ${t.is_active ? 'bg-white' : 'bg-red-50'}`}
+                >
+                  {editingId === t.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editLabel}
+                        onChange={e => setEditLabel(e.target.value)}
+                        className={fieldClass}
+                        aria-label="Row name"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Stored as {t.key}, which does not change. Every figure already entered stays with it.
+                      </p>
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        <button onClick={() => saveEdit(t)} className={rowButton('good')}>Save</button>
+                        <button onClick={cancelEdit} className={rowButton()}>Cancel</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className={`text-sm font-semibold ${t.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                          {t.label}
+                        </span>
+                        <span className={`text-xs whitespace-nowrap ${t.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                          {t.is_active ? 'Active' : 'Retired'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">{t.key}</p>
+                      <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                        <button onClick={() => startEdit(t)} className={rowButton('edit')}>Rename</button>
+                        <button
+                          onClick={() => toggleCounts(t)}
+                          className={rowButton(t.counts_toward_gross ? 'plain' : 'danger')}
+                        >
+                          {t.counts_toward_gross ? 'Counts toward gross' : 'Not counted'}
+                        </button>
+                        <button
+                          onClick={() => toggleActive(t)}
+                          className={rowButton(t.is_active ? 'danger' : 'good')}
+                        >
+                          {t.is_active ? 'Retire' : 'Bring back'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className={`hidden sm:block ${card} overflow-x-auto overflow-y-hidden`}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className={tableHeadRow}>
                     <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Row</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Status</th>
-                    <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Order</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody>{ordered.map((t, i) => renderRow(t, i))}</tbody>
+                <tbody>{ordered.map(renderRow)}</tbody>
               </table>
             </div>
+            </>
           )}
 
           <form onSubmit={handleAdd} className="mt-4 flex flex-wrap items-end gap-2">
@@ -354,6 +396,17 @@ export default function SalesTendersModal({ onClose, onChange }) {
             Done
           </button>
         </div>
+
+        {arranging && (
+          <ArrangeList
+            title="Arrange the till rows"
+            note="This is the order they appear in on the weekly sales grid."
+            items={ordered}
+            nameOf={t => t.label}
+            onSave={saveOrder}
+            onClose={() => setArranging(false)}
+          />
+        )}
     </Modal>
   )
 }

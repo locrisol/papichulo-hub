@@ -4,7 +4,7 @@ import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton, captionClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, captionClass, compactField } from '../lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
@@ -165,9 +165,6 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
         onClose()
     }
 
-    const timeCls =
-        'border border-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-
     return (
         <Modal title={`When ${employee.full_name} can work`} onClose={onClose} width="max-w-xl">
             {/* One grid, and a switch above it saying which week it is.
@@ -202,7 +199,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                             will never question, so there is no need to fill in a whole week to record
                             one afternoon off.
                         </p>
-                        <DayRows rows={rows} on={nowRows} timeCls={timeCls} />
+                        <DayRows rows={rows} on={nowRows} />
                     </>
                 ) : !changing ? (
                     <div className="text-center py-6">
@@ -225,19 +222,34 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                                 <label htmlFor="availability-from" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                                     Starting on
                                 </label>
-                                <input
-                                    id="availability-from"
-                                    type="date"
-                                    value={from}
-                                    min={tomorrow}
-                                    onChange={e => setFrom(e.target.value)}
-                                    className="border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                                />
+                                {/* The same box as every other box in this
+                                    dialog. It had a fourth hand written style
+                                    of its own, taller than the time boxes on
+                                    the tab beside it, which read as the two
+                                    tabs deliberately looking different when
+                                    nothing of the sort was meant. */}
+                                <div className="w-44">
+                                    <input
+                                        id="availability-from"
+                                        type="date"
+                                        value={from}
+                                        min={tomorrow}
+                                        onChange={e => setFrom(e.target.value)}
+                                        className={compactField}
+                                    />
+                                </div>
                             </div>
+                            {/* The other half of Add a change above, so it is
+                                the same kind of button. It was wearing the
+                                style the small crosses use, which is built for
+                                one glyph in a round target: five words in it
+                                came out oversized, with no edge and with the
+                                negative margins of a control a fifth the size,
+                                and with nothing for a screen reader either. */}
                             <button
                                 type="button"
                                 onClick={() => { setChanging(false); setFrom('') }}
-                                className={removeButton}
+                                className={secondaryButton}
                             >
                                 Remove this change
                             </button>
@@ -249,7 +261,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
                             </p>
                         )}
 
-                        <DayRows rows={nextRows} on={laterRows} timeCls={timeCls} />
+                        <DayRows rows={nextRows} on={laterRows} />
                     </>
                 )}
             </ModalSection>
@@ -290,7 +302,7 @@ export default function AvailabilityDialog({ employee, onClose, onChanged }) {
 // quietly had fewer features than the first, no copy-to-the-week and no second
 // stretch in a day, which is the sort of difference nobody notices until they
 // need the thing that is missing.
-function DayRows({ rows, on, timeCls }) {
+function DayRows({ rows, on }) {
     const { patch, setTime, setShape, copyRow, addWindow, removeWindow } = on
 
     return (
@@ -329,8 +341,15 @@ function DayRows({ rows, on, timeCls }) {
                                     Only on a day that says something, since
                                     there is nothing to copy off a day left on
                                     any time. */}
+                                {/* Its own line on a phone. Sharing one with
+                                    the three way switch left it about eighty
+                                    pixels to put a label and three buttons in,
+                                    so every one of them broke in half: "COPY
+                                    TO" over two lines, then "Mon to" over
+                                    "Fri". Given the width it needs nothing
+                                    breaks at all. */}
                                 {row.state !== 'any' && (
-                                    <span className="flex items-center gap-1 ml-auto">
+                                    <span className="w-full sm:w-auto flex items-center gap-1 sm:ml-auto">
                                         <span className="text-[0.625rem] text-gray-400 uppercase tracking-wider">
                                             Copy to
                                         </span>
@@ -385,60 +404,97 @@ function DayRows({ rows, on, timeCls }) {
                                                 {STRETCH_NAMES[i] || `Stretch ${i + 1}`}
                                             </p>
                                         )}
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <select
-                                                value={shape}
-                                                onChange={e => setShape(row.key, i, e.target.value)}
-                                                aria-label={`${row.name}, how the hours are set`}
-                                                className={timeCls}
-                                            >
-                                                {SHAPES.map(o => (
-                                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                                ))}
-                                            </select>
-                                            {/* The whole day, not the trading
-                                                day: somebody saying they
-                                                cannot start before 06:00 is
-                                                talking about their life, not
-                                                about when we open. */}
-                                            {shape !== 'until' && (
-                                                <TimeField
-                                                    value={window[0]}
-                                                    onChange={v => setTime(row.key, i, 'from', v)}
-                                                    aria-label={`${row.name} from`}
-                                                    compact
-                                                />
-                                            )}
-                                            {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
-                                            {/* endOfDay so 24:00 is a thing the
-                                                list can hold. It should never
-                                                arrive here, because a window
-                                                ending at 24:00 reads as "from"
-                                                and this box is not drawn for
-                                                that shape. But a select with no
-                                                option matching its value shows
-                                                the first one instead, which
-                                                would quietly turn the end of
-                                                the day into midnight. */}
-                                            {shape !== 'from' && (
-                                                <TimeField
-                                                    value={window[1]}
-                                                    onChange={v => setTime(row.key, i, 'to', v)}
-                                                    endOfDay
-                                                    aria-label={`${row.name} to`}
-                                                    compact
-                                                />
-                                            )}
-                                            {row.windows.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeWindow(row.key, i)}
-                                                    className={removeButton}
-                                                    aria-label={`Remove that stretch from ${row.name}`}
-                                                >
-                                                    ×
-                                                </button>
-                                            )}
+                                        {/* Two lines, the same shape a break
+                                            rule uses: what kind of stretch it
+                                            is, then the times.
+
+                                            One line with everything on it was
+                                            never going to hold. A stretch is a
+                                            shape box, two time boxes, the word
+                                            to and a remove, and a phone row is
+                                            about 305 pixels. It wrapped, and
+                                            because a time box carries w-full
+                                            with nothing containing it, each one
+                                            asked for the whole width and took a
+                                            line of its own: three lines for one
+                                            stretch, with the boxes stretched
+                                            right across the dialog.
+
+                                            The wrappers are what fixes that. A
+                                            box sized by the thing around it
+                                            cannot fight the shared field style
+                                            for the same property, and the cap
+                                            keeps them from stretching on a wide
+                                            screen where there is room to spare.
+                                            Ten rem is the widest option, End of
+                                            day, with room around it. */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                    <select
+                                                        value={shape}
+                                                        onChange={e => setShape(row.key, i, e.target.value)}
+                                                        aria-label={`${row.name}, how the hours are set`}
+                                                        className={compactField}
+                                                    >
+                                                        {SHAPES.map(o => (
+                                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                {row.windows.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeWindow(row.key, i)}
+                                                        className={`${removeButton} ml-auto`}
+                                                        aria-label={`Remove that stretch from ${row.name}`}
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* The whole day, not the
+                                                    trading day: somebody saying
+                                                    they cannot start before
+                                                    06:00 is talking about their
+                                                    life, not about when we
+                                                    open. */}
+                                                {shape !== 'until' && (
+                                                    <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                        <TimeField
+                                                            value={window[0]}
+                                                            onChange={v => setTime(row.key, i, 'from', v)}
+                                                            aria-label={`${row.name} from`}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
+                                                {shape === 'between' && <span className="text-sm text-gray-500">to</span>}
+                                                {/* endOfDay so 24:00 is a thing
+                                                    the list can hold. It should
+                                                    never arrive here, because a
+                                                    window ending at 24:00 reads
+                                                    as "from" and this box is
+                                                    not drawn for that shape.
+                                                    But a select with no option
+                                                    matching its value shows the
+                                                    first one instead, which
+                                                    would quietly turn the end
+                                                    of the day into midnight. */}
+                                                {shape !== 'from' && (
+                                                    <div className="flex-1 min-w-0 max-w-[10rem]">
+                                                        <TimeField
+                                                            value={window[1]}
+                                                            onChange={v => setTime(row.key, i, 'to', v)}
+                                                            endOfDay
+                                                            aria-label={`${row.name} to`}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         </div>
                                         )
