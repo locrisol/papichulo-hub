@@ -44,15 +44,15 @@ vi.mock('@/lib/supabase', () => {
     }
 })
 
-vi.mock('@/context/AuthContext', () => ({
+vi.mock('@/context/auth', () => ({
     useAuth: () => ({ user: { id: 'u1', role: 'store_manager', restaurant_id: 'r1' }, loading: false }),
 }))
 
-vi.mock('@/context/RestaurantContext', () => ({
+vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' }, loading: false }),
 }))
 
-vi.mock('@/context/ConfirmContext', () => ({
+vi.mock('@/context/confirm', () => ({
     useConfirm: () => () => Promise.resolve(true),
 }))
 

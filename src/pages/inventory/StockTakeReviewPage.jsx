@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/auth'
 import { resolveUnitCost } from '@/lib/mixCost'
 import { fmtMoney, fmtQty } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'

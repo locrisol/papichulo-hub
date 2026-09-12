@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { orderFormats } from '@/lib/countUnits'

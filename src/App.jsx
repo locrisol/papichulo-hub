@@ -20,7 +20,7 @@ import LoginPage from '@/pages/auth/LoginPage'
 import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
 import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/auth'
 import { homeFor } from '@/lib/access'
 
 // Every screen is fetched when somebody actually opens it.

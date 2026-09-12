@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/context/RestaurantContext'
+import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtQty, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '@/lib/dates'
 import { REASONS, reasonLabel } from '@/lib/wasteReasons'

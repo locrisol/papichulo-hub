@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/auth'
+import { RestaurantContext } from '@/context/restaurant'
 
 // Which restaurant you are working in.
 //
@@ -16,7 +17,7 @@ import { useAuth } from '@/context/AuthContext'
 // The choice is kept in localStorage rather than in the database, because it is
 // about the browser you are sitting at, not about the person. A manager checking
 // something on the office laptop should not change what their phone opens on.
-const RestaurantContext = createContext(null)
+
 
 export function RestaurantProvider({ children }) {
     const { user } = useAuth()
@@ -81,8 +82,4 @@ export function RestaurantProvider({ children }) {
             {children}
         </RestaurantContext.Provider>
     )
-}
-
-export function useRestaurant() {
-    return useContext(RestaurantContext)
 }

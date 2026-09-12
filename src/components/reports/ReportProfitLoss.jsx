@@ -3,7 +3,7 @@ import { fmtMoney, fmtPct } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { wasChanged, platformShare, startsOpen, figureGaps } from '@/lib/weeklyReport'
 import { removeButton, secondaryButton } from '@/lib/controlStyles'
-import { useConfirm } from '@/context/ConfirmContext'
+import { useConfirm } from '@/context/confirm'
 import AddButton from '@/components/ui/AddButton'
 
 // The weekly profit and loss.

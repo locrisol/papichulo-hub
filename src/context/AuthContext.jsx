@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { AuthContext } from '@/context/auth'
 
 // Who is signed in.
 //
@@ -10,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 //
 // So there is a moment on every sign-in where there is a session but no user
 // yet. RequireRole has to allow for that gap or it refuses people at random.
-const AuthContext = createContext(null)
+
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
@@ -56,8 +57,4 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  return useContext(AuthContext)
 }

@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase', () => ({
     },
 }))
 
-vi.mock('@/context/RestaurantContext', () => ({
+vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
         activeRestaurant: {
             id: 'r1',

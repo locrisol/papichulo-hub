@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ConfirmProvider, useConfirm } from './ConfirmContext'
+import { ConfirmProvider } from './ConfirmContext'
+import { useConfirm } from './confirm'
 
 // Every destructive action in the app goes through this: deleting a rung,
 // deactivating a user, taking somebody off a day. It replaced window.confirm,
