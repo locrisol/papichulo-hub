@@ -49,6 +49,12 @@ export default function MenuItemsPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load, which belongs at the top of the page because there is
+  // nothing else up there to read. This is for a save that would not go
+  // through, and that belongs beside the button you pressed: at the foot of
+  // a form on a phone, the top of the page is not on the screen at all.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
 
   const [showForm, setShowForm] = useState(false)
@@ -143,7 +149,7 @@ export default function MenuItemsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+    setFormProblem('')
     const v = validate()
     if (Object.keys(v).length) { setErrors(v); return }
     setErrors({})
@@ -162,7 +168,7 @@ export default function MenuItemsPage() {
       .select()
       .single()
 
-    if (error) setError(friendlyError(error))
+    if (error) setFormProblem(friendlyError(error))
     else {
       // Jump straight into the editor for the new item so the user can
       // start adding components immediately.
@@ -440,6 +446,13 @@ export default function MenuItemsPage() {
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
               />
             </div>
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
+
             <div className="flex gap-3">
               <button
                 type="submit"

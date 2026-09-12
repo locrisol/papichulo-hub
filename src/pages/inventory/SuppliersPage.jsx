@@ -33,6 +33,13 @@ export default function SuppliersPage() {
     const [suppliers, setSuppliers] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top because there is nothing else up
+    // there to read. This is for a save that would not go through, and it
+    // belongs beside the button that was pressed: at the foot of a form on a
+    // phone, the top of the page is not on the screen, and inside a dialog it
+    // is behind the dialog.
+    const [formProblem, setFormProblem] = useState('')
     const [showForm, setShowForm] = useState(false)
     const [editingSupplier, setEditingSupplier] = useState(null)
     const [formData, setFormData] = useState({
@@ -77,7 +84,8 @@ export default function SuppliersPage() {
 
     async function handleSave(e) {
         e.preventDefault()
-        setError('')
+
+        setFormProblem('')
 
         if (editingSupplier) {
             const { error } = await supabase
@@ -85,7 +93,7 @@ export default function SuppliersPage() {
                 .update(formData)
                 .eq('id', editingSupplier.id)
 
-            if (error) setError(friendlyError(error))
+            if (error) setFormProblem(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -95,7 +103,7 @@ export default function SuppliersPage() {
                 .from('suppliers')
                 .insert(formData)
 
-            if (error) setError(friendlyError(error))
+            if (error) setFormProblem(friendlyError(error))
             else {
                 fetchSuppliers()
                 resetForm()
@@ -110,12 +118,14 @@ export default function SuppliersPage() {
     }
 
     function resetForm() {
+        setFormProblem('')
         setFormData({ name: '', category: 'food', contact_email: '', contact_phone: '', notes: '' })
         setEditingSupplier(null)
         setShowForm(false)
     }
 
     function startEdit(supplier) {
+        setFormProblem('')
         setFormData({
             name: supplier.name,
             category: supplier.category,
@@ -183,6 +193,7 @@ export default function SuppliersPage() {
                     <h3 className={cardHeader}>New supplier</h3>
                     <div className="p-6">
                         <SupplierForm
+                          problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}
@@ -343,6 +354,7 @@ export default function SuppliersPage() {
                 <Modal title={`Edit ${editingSupplier.name}`} onClose={resetForm} width="max-w-2xl">
                     <div className="p-6">
                         <SupplierForm
+                          problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}

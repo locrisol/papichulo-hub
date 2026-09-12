@@ -46,6 +46,12 @@ export default function RestaurantPage() {
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
     const [showTendersModal, setShowTendersModal] = useState(false)
@@ -90,7 +96,7 @@ export default function RestaurantPage() {
     async function handleSave(e) {
         e.preventDefault()
         setLoading(true)
-        setError('')
+        setFormProblem('')
         setSuccess('')
 
         const { data, error: e1 } = await supabase
@@ -109,7 +115,7 @@ export default function RestaurantPage() {
             .single()
 
         setLoading(false)
-        if (e1) setError(friendlyError(e1))
+        if (e1) setFormProblem(friendlyError(e1))
         else {
             setEditingMailFrom(false)
             setActiveRestaurant(data)
@@ -345,6 +351,13 @@ export default function RestaurantPage() {
                                     </div>
                                 </label>
                             </div>
+                        )}
+
+                        {/* Above the button row rather than inside it. As a sibling of the
+                            button it sat beside it on one line, which squeezes both on a
+                            phone and is not where the eye goes after a press. */}
+                        {formProblem && (
+                          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
                         )}
 
                         <button

@@ -19,7 +19,7 @@ const CATEGORIES = [
     { value: 'other', label: 'Other' },
 ]
 
-export default function SupplierForm({ formData, onChange, onSubmit, onCancel, submitLabel }) {
+export default function SupplierForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel }) {
 
     return (
         <form onSubmit={onSubmit}>
@@ -75,6 +75,14 @@ export default function SupplierForm({ formData, onChange, onSubmit, onCancel, s
                     className={fieldClass}
                 />
             </div>
+
+            {/* Beside the button that caused it. A message written at the top of
+                the page is off the screen when you press Save at the foot of a form
+                on a phone, and inside a dialog it is behind the dialog, where it is
+                never seen at all. */}
+            {problem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+            )}
 
             <div className="flex justify-end gap-3">
                 <button

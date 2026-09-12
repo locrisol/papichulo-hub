@@ -40,6 +40,11 @@ export default function RecipePage() {
   const [prices, setPrices] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load; this is for a save that would not go through, and it
+  // belongs beside the button that was pressed rather than at the top of a
+  // page that is not on screen when you press it.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
   const [showForm, setShowForm] = useState(false)
   const [editingLine, setEditingLine] = useState(null)
@@ -167,7 +172,8 @@ export default function RecipePage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+
+    setFormProblem('')
 
     const newErrors = validate()
     if (Object.keys(newErrors).length > 0) {
@@ -189,14 +195,14 @@ export default function RecipePage() {
         .update(payload)
         .eq('id', editingLine.id)
 
-      if (error) setError(friendlyError(error))
+      if (error) setFormProblem(friendlyError(error))
       else { fetchRecipeLines(); resetForm() }
     } else {
       const { error } = await supabase
         .from('mix_recipes')
         .insert(payload)
 
-      if (error) setError(friendlyError(error))
+      if (error) setFormProblem(friendlyError(error))
       else {
         fetchRecipeLines()
         setFormData(emptyForm())
@@ -207,6 +213,7 @@ export default function RecipePage() {
   }
 
   function resetForm() {
+    setFormProblem('')
     setFormData(emptyForm())
     setEditingLine(null)
     setShowForm(false)
@@ -214,6 +221,7 @@ export default function RecipePage() {
   }
 
   function startEdit(line) {
+    setFormProblem('')
     setFormData({
       ingredient_product_id: line.ingredient_product_id,
       quantity: line.quantity ?? '',
@@ -369,6 +377,7 @@ export default function RecipePage() {
         <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Ingredient</h3>
           <RecipeIngredientForm
+            problem={formProblem}
             formData={formData}
             onChange={handleFieldChange}
             onSubmit={handleSave}
@@ -546,6 +555,7 @@ export default function RecipePage() {
         >
           <div className="px-6 py-4">
             <RecipeIngredientForm
+              problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
               onSubmit={handleSave}

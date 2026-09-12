@@ -65,6 +65,12 @@ export default function SalesPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
     // Id of the existing record for this date, if any. Drives insert vs update.
@@ -242,7 +248,7 @@ export default function SalesPage() {
     // ---- saving ---------------------------------------------------------
 
     async function handleSave() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
 
         // One record per date per restaurant, so confirm before replacing one.
         if (recordId) {
@@ -306,14 +312,14 @@ export default function SalesPage() {
         }
 
         setSaving(false)
-        if (resErr) { setError(friendlyError(resErr)); return }
+        if (resErr) { setFormProblem(friendlyError(resErr)); return }
         // And the roster's day is told, so it is one tick rather than two.
         const noteErr = await applyNoteWrites(supabase, {
             restaurantId,
             userId: user.id,
             plan: planNoteWrites(dayNote ? [dayNote] : [], [{ date: saleDate, closed: isClosed }]),
         })
-        if (noteErr) { setError(friendlyError(noteErr)); return }
+        if (noteErr) { setFormProblem(friendlyError(noteErr)); return }
 
         setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
         loadDay()
@@ -574,6 +580,13 @@ export default function SalesPage() {
                     </div>
                 )}
             </div>
+
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">

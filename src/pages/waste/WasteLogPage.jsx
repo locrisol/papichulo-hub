@@ -51,6 +51,12 @@ export default function WasteLogPage() {
     const [loadingEntries, setLoadingEntries] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
     const [refresh, setRefresh] = useState(0)
 
@@ -159,11 +165,11 @@ export default function WasteLogPage() {
 
     function addToBasket(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
 
-        if (!selectedProduct) { setError('Pick a product'); return }
+        if (!selectedProduct) { setFormProblem('Pick a product'); return }
         const qty = parseFloat(quantity)
-        if (isNaN(qty) || qty <= 0) { setError('The quantity has to be above zero'); return }
+        if (isNaN(qty) || qty <= 0) { setFormProblem('The quantity has to be above zero'); return }
 
         setBasket(prev => [...prev, {
             // Only used as a React key while the item is unsaved.
@@ -192,7 +198,7 @@ export default function WasteLogPage() {
 
     async function confirmSave() {
         setSaving(true)
-        setError('')
+        setFormProblem('')
 
         // unit_cost and waste_value are stored as they are today, so a later
         // price change does not rewrite what the waste was worth on the day.
@@ -210,7 +216,7 @@ export default function WasteLogPage() {
         const { error: e1 } = await supabase.from('waste_logs').insert(rows)
 
         setSaving(false)
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setFormProblem(friendlyError(e1)); return }
 
         const count = rows.length
         setBasket([])
@@ -376,6 +382,13 @@ export default function WasteLogPage() {
                                 </div>
                             )}
 
+                            {/* Above the button row rather than inside it. As a sibling of the
+                                button it sat beside it on one line, which squeezes both on a
+                                phone and is not where the eye goes after a press. */}
+                            {formProblem && (
+                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                            )}
+
                             <div className="flex justify-end">
                                 <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
                                     Add to list
@@ -430,6 +443,13 @@ export default function WasteLogPage() {
                                     {basketMissingPrices} {basketMissingPrices === 1 ? 'item has' : 'items have'} no price set, so
                                     the total is lower than the real cost. They will still be logged.
                                 </p>
+                            )}
+
+                            {/* Above the button row rather than inside it. As a sibling of the
+                                button it sat beside it on one line, which squeezes both on a
+                                phone and is not where the eye goes after a press. */}
+                            {formProblem && (
+                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
                             )}
 
                             <div className="flex justify-end gap-2">

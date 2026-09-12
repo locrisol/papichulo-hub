@@ -89,6 +89,12 @@ export default function WeeklySalesPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
     // True once something has been edited but not yet saved.
@@ -414,7 +420,7 @@ export default function WeeklySalesPage() {
     // is why it stops at the first error rather than carrying on, and why the
     // local draft is only cleared once everything has gone through.
     async function handleSaveWeek() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
         setSaving(true)
 
         const toInsert = []
@@ -483,7 +489,7 @@ export default function WeeklySalesPage() {
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('sales_records').insert(toInsert)
             if (e1) {
-                setError(friendlyError(e1))
+                setFormProblem(friendlyError(e1))
                 discardDraftIfRefused(e1)
                 setSaving(false)
                 return
@@ -492,7 +498,7 @@ export default function WeeklySalesPage() {
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('sales_records').update(u.payload).eq('id', u.id)
             if (e2) {
-                setError(friendlyError(e2))
+                setFormProblem(friendlyError(e2))
                 discardDraftIfRefused(e2)
                 setSaving(false)
                 return
@@ -509,7 +515,7 @@ export default function WeeklySalesPage() {
         const noteErr = await applyNoteWrites(supabase, {
             restaurantId, userId: user.id, plan: notePlan,
         })
-        if (noteErr) { setSaving(false); setError(friendlyError(noteErr)); return }
+        if (noteErr) { setSaving(false); setFormProblem(friendlyError(noteErr)); return }
 
         setSaving(false)
         setDirty(false)
@@ -1031,6 +1037,13 @@ export default function WeeklySalesPage() {
                 Amber figures under the tracked rows show the difference against the till receipt. Platforms report
                 commission and VAT differently, so a gap is expected and does not affect the reconciliation above.
             </p>
+
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
 
             <div className="flex justify-end">
                 <button

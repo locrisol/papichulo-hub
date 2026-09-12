@@ -37,6 +37,13 @@ export default function ProductPricesPage() {
     const [suppliers, setSuppliers] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top because there is nothing else up
+    // there to read. This is for a save that would not go through, and it
+    // belongs beside the button that was pressed: at the foot of a form on a
+    // phone, the top of the page is not on the screen, and inside a dialog it
+    // is behind the dialog.
+    const [formProblem, setFormProblem] = useState('')
     const [errors, setErrors] = useState({})
     const [showForm, setShowForm] = useState(false)
     const [editingPrice, setEditingPrice] = useState(null)
@@ -112,7 +119,8 @@ export default function ProductPricesPage() {
 
     async function handleSave(e) {
         e.preventDefault()
-        setError('')
+
+        setFormProblem('')
 
         const newErrors = validate()
         if (Object.keys(newErrors).length > 0) {
@@ -154,16 +162,17 @@ export default function ProductPricesPage() {
         // 23505 is the PostgreSQL unique-violation code
         if (err.code === '23505') {
             if (formData.purchase_type === 'case') {
-                setError('A case price link with this pack size for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('A case price link with this pack size for this supplier already exists. Edit the existing one instead.')
             } else {
-                setError('A loose price link for this supplier already exists. Edit the existing one instead.')
+                setFormProblem('A loose price link for this supplier already exists. Edit the existing one instead.')
             }
         } else {
-            setError(friendlyError(err))
+            setFormProblem(friendlyError(err))
         }
     }
 
     function resetForm() {
+        setFormProblem('')
         setFormData(emptyForm())
         setEditingPrice(null)
         setShowForm(false)
@@ -171,6 +180,7 @@ export default function ProductPricesPage() {
     }
 
     function startEdit(price) {
+        setFormProblem('')
         setFormData({
             supplier_id: price.supplier_id,
             purchase_type: price.purchase_type,
@@ -288,6 +298,7 @@ export default function ProductPricesPage() {
                 <div className={`${card} p-6 mb-6`}>
                     <h3 className="text-sm font-semibold text-gray-900 mb-4">New Price Link</h3>
                     <PriceForm
+                      problem={formProblem}
                         formData={formData}
                         onChange={handleFieldChange}
                         onSubmit={handleSave}
@@ -484,6 +495,7 @@ export default function ProductPricesPage() {
                 <Modal title={`Edit the ${getSupplierName(editingPrice.supplier_id)} price`} onClose={resetForm} width="max-w-2xl">
                     <div className="p-5">
                         <PriceForm
+                          problem={formProblem}
                             formData={formData}
                             onChange={handleFieldChange}
                             onSubmit={handleSave}

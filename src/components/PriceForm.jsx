@@ -145,6 +145,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
 // The database has a check constraint on purchase_type allowing only case and
 // loose, and the arithmetic behind both lives in lib/productPrice.
 export default function PriceForm({
+  problem,
   formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit,
 }) {
   return (
@@ -156,6 +157,14 @@ export default function PriceForm({
         suppliers={suppliers}
         unit={unit}
       />
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button

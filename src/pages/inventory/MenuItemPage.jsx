@@ -103,6 +103,12 @@ export default function MenuItemPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load; these two are for a save that would not go through, and
+  // each belongs beside its own button. The component one matters most: its
+  // form is in a dialog, so anything written to the page was behind it.
+  const [formProblem, setFormProblem] = useState('')
+  const [headerProblem, setHeaderProblem] = useState('')
 
   const [headerForm, setHeaderForm] = useState(emptyHeaderForm(null))
   const [headerErrors, setHeaderErrors] = useState({})
@@ -195,7 +201,7 @@ export default function MenuItemPage() {
   }
 
   async function saveHeader() {
-    setError('')
+    setHeaderProblem('')
     setHeaderSavedMessage('')
     const e = validateHeader()
     if (Object.keys(e).length) { setHeaderErrors(e); return }
@@ -217,7 +223,7 @@ export default function MenuItemPage() {
       .update(payload)
       .eq('id', id)
 
-    if (err) setError(friendlyError(err))
+    if (err) setHeaderProblem(friendlyError(err))
     else {
       setHeaderSavedMessage('Saved')
       fetchAll()
@@ -244,7 +250,7 @@ export default function MenuItemPage() {
 
   async function handleComponentSave(e) {
     e.preventDefault()
-    setError('')
+    setFormProblem('')
     const v = validateComponent()
     if (Object.keys(v).length) { setComponentErrors(v); return }
     setComponentErrors({})
@@ -300,11 +306,11 @@ export default function MenuItemPage() {
 
   function handleSupabaseError(err) {
     if (err.code === '23505') {
-      setError(componentForm.choice_group
+      setFormProblem(componentForm.choice_group
         ? `${getProduct(componentForm.product_id)?.name || 'That product'} is already an option in ${componentForm.choice_group}. Edit the existing row instead.`
         : 'This product is already an ingredient of this menu item. Edit the existing row instead.')
     } else {
-      setError(friendlyError(err))
+      setFormProblem(friendlyError(err))
     }
   }
 
@@ -317,6 +323,7 @@ export default function MenuItemPage() {
   }
 
   function resetComponentForm() {
+    setFormProblem('')
     setComponentForm(emptyComponentForm())
     setEditingComponent(null)
     setShowComponentForm(false)
@@ -646,6 +653,12 @@ export default function MenuItemPage() {
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
         </div>
+        {/* Beside the button, not at the top of the page. This form sits a long
+            way down a long screen and on a phone the top of it is nowhere near
+            the Save. */}
+        {headerProblem && (
+          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{headerProblem}</p>
+        )}
         <div className="flex items-center gap-3">
           <button
             onClick={saveHeader}
@@ -683,6 +696,7 @@ export default function MenuItemPage() {
         <div className={`${card} p-6 mb-6`}>
           <h4 className="text-sm font-semibold text-gray-900 mb-4">New Component</h4>
           <ComponentForm
+            problem={formProblem}
             formData={componentForm}
             onChange={handleComponentChange}
             onSubmit={handleComponentSave}
@@ -869,6 +883,7 @@ export default function MenuItemPage() {
         >
           <div className="px-6 py-4">
             <ComponentForm
+              problem={formProblem}
               formData={componentForm}
               onChange={handleComponentChange}
               onSubmit={handleComponentSave}
@@ -901,6 +916,7 @@ export default function MenuItemPage() {
 }
 
 function ComponentForm({
+  problem,
   formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts,
   productSelectRef, existingGroups, editing,
 }) {
@@ -1024,6 +1040,14 @@ function ComponentForm({
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
       </div>
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button

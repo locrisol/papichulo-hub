@@ -210,6 +210,11 @@ export default function ProductsPage() {
   // hundred rows down a list you have not seen since is not helpful.
   useKeepScroll('products', !loading, to => to.startsWith('/catalogue/products/'))
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load; this is for a save that would not go through, and it
+  // belongs beside the button that was pressed rather than at the top of a
+  // page that is not on screen when you press it.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
   // Which sections are showing. Empty means all of them, which is the same
@@ -404,7 +409,8 @@ export default function ProductsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+
+    setFormProblem('')
 
     const newErrors = validate()
     // The price block is only checked if somebody started filling it in. Left
@@ -510,7 +516,7 @@ export default function ProductsPage() {
         .update(payload)
         .eq('id', editingProduct.id)
 
-      if (error) { setError(friendlyError(error)); return }
+      if (error) { setFormProblem(friendlyError(error)); return }
 
       // The price, the packs and the allergens, the same three things creating
       // a product asks for. Written here so changing any of them is done where
@@ -535,7 +541,7 @@ export default function ProductsPage() {
               }).select().single()
 
         if (priceErr) {
-          setError(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
           fetchProducts()
           return
         }
@@ -569,7 +575,7 @@ export default function ProductsPage() {
             { onConflict: 'product_id' })
 
         if (allergenErr) {
-          setError(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
           fetchProducts()
           return
         }
@@ -585,7 +591,7 @@ export default function ProductsPage() {
         .select()
         .single()
 
-      if (error) { setError(friendlyError(error)); return }
+      if (error) { setFormProblem(friendlyError(error)); return }
 
       // The supplier and the cost on this screen are read out of prices,
       // which is its own fetch. Refetching the products alone left a product
@@ -627,7 +633,7 @@ export default function ProductsPage() {
         // would be worse than saying the price did not take: the product would
         // be entered twice.
         if (priceErr) {
-          setError(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
           fetchProducts()
           return
         }
@@ -659,7 +665,7 @@ export default function ProductsPage() {
           })))
 
         if (recipeErr) {
-          setError(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
+          setFormProblem(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
           refresh()
           return
         }
@@ -676,7 +682,7 @@ export default function ProductsPage() {
           .insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
-          setError(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
           refresh()
           return
         }
@@ -688,6 +694,7 @@ export default function ProductsPage() {
   }
 
   function resetForm() {
+    setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
       unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
@@ -715,6 +722,7 @@ export default function ProductsPage() {
   // The price and the packs are already on this screen. The allergens are their
   // own row and their own fetch, which is why this waits.
   async function startEdit(product) {
+    setFormProblem('')
     setFormData({
       name: product.name,
       section: product.section,
@@ -1015,6 +1023,7 @@ export default function ProductsPage() {
         <div className={`${cardEdge} ${sectionColour(formData.section).bg} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
           <ProductForm
+            problem={formProblem}
             formData={formData}
             onChange={handleFieldChange}
             onSubmit={handleSave}
@@ -1195,6 +1204,7 @@ export default function ProductsPage() {
                 {editingProduct?.id === p.id && (
                   <div className={`mt-3 pt-3 border-t border-black/10 ${sectionColour(formData.section).bg} -mx-4 -mb-4 px-4 pb-4 rounded-b-xl`}>
                     <ProductForm
+                      problem={formProblem}
                       formData={formData}
                       onChange={handleFieldChange}
                       onSubmit={handleSave}
@@ -1396,6 +1406,7 @@ export default function ProductsPage() {
         <Modal title={`Edit ${editingProduct.name}`} onClose={resetForm} width="max-w-2xl">
           <div className={`px-6 py-4 ${sectionColour(formData.section).bg}`}>
             <ProductForm
+              problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
               onSubmit={handleSave}

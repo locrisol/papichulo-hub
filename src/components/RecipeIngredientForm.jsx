@@ -12,7 +12,7 @@ import QuantityInUnit from './QuantityInUnit'
 // Typing it in grams rather than in fractions of a kilo is QuantityInUnit's
 // job, which the product form uses as well so a recipe reads the same wherever
 // it is written.
-export default function RecipeIngredientForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
+export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
   const ingredientSelectRef = useRef(null)
@@ -62,6 +62,14 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
       </div>
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button
