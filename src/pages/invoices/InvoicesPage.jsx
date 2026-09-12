@@ -12,6 +12,7 @@ import InvoiceForm from '../../components/InvoiceForm'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
+import { orderByUse, USE_WINDOW_DAYS } from '../../lib/supplierOrder'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -142,7 +143,23 @@ export default function InvoicesPage() {
                 .order('name')
 
             if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
-            setSuppliers(sup || [])
+
+            // Who we actually buy from, so the dropdown can lead with them
+            // rather than with whoever the alphabet favours. One column and a
+            // year of it, which is a few hundred rows at the volume this runs
+            // at, and it is re-read whenever the list reloads so saving an
+            // invoice moves that supplier up straight away.
+            //
+            // Ordered here rather than in the query because Postgres cannot
+            // sort one table by a count taken from another without a view or an
+            // RPC, and neither is worth it for a list this size.
+            const { data: history } = await supabase
+                .from('invoices')
+                .select('supplier_id')
+                .eq('restaurant_id', restaurantId)
+                .gte('invoice_date', addDays(todayISO(), -USE_WINDOW_DAYS))
+
+            setSuppliers(orderByUse(sup || [], history || []))
 
             // The week runs Sunday to Saturday, so the end is six days on.
             const end = addDays(weekStart, 6)
