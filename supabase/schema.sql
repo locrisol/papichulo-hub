@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
 
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_users_restaurant" ON "public"."users" USING "btree" ("restaurant_id");
 
 CREATE TABLE IF NOT EXISTS "public"."positions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -184,9 +185,7 @@ ALTER TABLE ONLY "public"."employees"
     ADD CONSTRAINT "employees_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."employees"
     ADD CONSTRAINT "employees_user_id_key" UNIQUE ("user_id");
-CREATE INDEX "idx_employees_calendar_token" ON "public"."employees" USING "btree" ("calendar_token") WHERE ("calendar_token" IS NOT NULL);
 CREATE INDEX "idx_employees_restaurant" ON "public"."employees" USING "btree" ("restaurant_id");
-CREATE INDEX "idx_employees_user" ON "public"."employees" USING "btree" ("user_id");
 
 
 -- -- The catalogue -----------------------------------------------------
@@ -261,6 +260,7 @@ ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case");
+CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 
 CREATE TABLE IF NOT EXISTS "public"."price_count_units" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -300,6 +300,8 @@ CREATE TABLE IF NOT EXISTS "public"."mix_recipes" (
 
 ALTER TABLE ONLY "public"."mix_recipes"
     ADD CONSTRAINT "mix_recipes_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_mix_recipes_mix" ON "public"."mix_recipes" USING "btree" ("mix_product_id");
+CREATE INDEX "idx_mix_recipes_ingredient" ON "public"."mix_recipes" USING "btree" ("ingredient_product_id");
 
 CREATE TABLE IF NOT EXISTS "public"."product_allergens" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -407,6 +409,7 @@ ALTER TABLE ONLY "public"."menu_item_components"
 CREATE INDEX "idx_components_choice" ON "public"."menu_item_components" USING "btree" ("menu_item_id", "choice_group") WHERE ("choice_group" IS NOT NULL);
 CREATE UNIQUE INDEX "menu_item_components_once_as_ingredient" ON "public"."menu_item_components" USING "btree" ("menu_item_id", "product_id") WHERE ("choice_group" IS NULL);
 CREATE UNIQUE INDEX "menu_item_components_once_per_choice" ON "public"."menu_item_components" USING "btree" ("menu_item_id", "product_id", "choice_group") WHERE ("choice_group" IS NOT NULL);
+CREATE INDEX "idx_components_menu_item" ON "public"."menu_item_components" USING "btree" ("menu_item_id");
 
 
 -- -- What was sold -----------------------------------------------------
@@ -558,6 +561,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_invoices_restaurant_date" ON "public"."invoices" USING "btree" ("restaurant_id", "invoice_date");
 
 CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -574,6 +578,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btree" ("invoice_id");
 
 CREATE TABLE IF NOT EXISTS "public"."labour_entries" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -607,6 +612,7 @@ CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
 
 ALTER TABLE ONLY "public"."cost_target_overrides"
     ADD CONSTRAINT "cost_target_overrides_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_cost_targets_restaurant" ON "public"."cost_target_overrides" USING "btree" ("restaurant_id");
 
 CREATE TABLE IF NOT EXISTS "public"."waste_logs" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -624,6 +630,8 @@ CREATE TABLE IF NOT EXISTS "public"."waste_logs" (
 
 ALTER TABLE ONLY "public"."waste_logs"
     ADD CONSTRAINT "waste_logs_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_waste_logs_restaurant_date" ON "public"."waste_logs" USING "btree" ("restaurant_id", "log_date");
+CREATE INDEX "idx_waste_logs_product" ON "public"."waste_logs" USING "btree" ("product_id");
 
 
 -- -- Counting the stock ------------------------------------------------
@@ -671,6 +679,8 @@ CREATE TABLE IF NOT EXISTS "public"."stock_take_lines" (
 
 ALTER TABLE ONLY "public"."stock_take_lines"
     ADD CONSTRAINT "stock_take_lines_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_stock_take_lines_take" ON "public"."stock_take_lines" USING "btree" ("stock_take_id");
+CREATE INDEX "idx_stock_take_lines_product" ON "public"."stock_take_lines" USING "btree" ("product_id");
 
 
 -- -- The roster --------------------------------------------------------
@@ -734,7 +744,6 @@ ALTER TABLE ONLY "public"."day_notes"
     ADD CONSTRAINT "day_notes_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."day_notes"
     ADD CONSTRAINT "day_notes_restaurant_id_note_date_key" UNIQUE ("restaurant_id", "note_date");
-CREATE INDEX "idx_day_notes_restaurant" ON "public"."day_notes" USING "btree" ("restaurant_id", "note_date");
 
 CREATE TABLE IF NOT EXISTS "public"."absences" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -841,7 +850,6 @@ ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_restaurant_id_week_start_key" UNIQUE ("restaurant_id", "week_start");
-CREATE INDEX "idx_weekly_reports_restaurant_week" ON "public"."weekly_reports" USING "btree" ("restaurant_id", "week_start" DESC);
 
 CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -915,6 +923,7 @@ ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_ticketmaster_id_key" UNIQUE ("ticketmaster_id");
+CREATE INDEX "idx_events_date" ON "public"."events" USING "btree" ("event_date");
 
 
 -- -- The record of what happened ---------------------------------------
@@ -1514,7 +1523,7 @@ begin
 
   insert into public.change_log (
     table_name, row_id, action, user_id, email, via, restaurant_id,
-    changes, deleted_row
+    label, changes, deleted_row
   ) values (
     tg_table_name,
     subject ->> 'id',
@@ -1523,6 +1532,9 @@ begin
     who_email,
     arrived,
     rest_id,
+    -- What the row is called, worked out once here rather than by the
+    -- screen every time somebody reads the log. row_label never raises.
+    public.row_label(tg_table_name, subject),
     case when tg_op = 'UPDATE' then diff end,
     -- The whole row, with any oversized column briefed the same way.
     case when tg_op = 'DELETE' then (
@@ -2191,6 +2203,10 @@ create policy report_charts_replace on storage.objects
 
 CREATE OR REPLACE TRIGGER "restaurants_settings_guard" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."restaurant_settings_guard"();
 CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 
