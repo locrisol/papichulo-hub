@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter, removeButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, fieldClass } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // The break ladder.
@@ -77,9 +77,6 @@ export default function BreakRulesModal({ onClose }) {
         onClose()
     }
 
-    const fieldCls =
-        'border border-border rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-
     // A few real shifts run through the ladder as it currently stands, so the
     // effect of a change is visible before it is saved rather than turning up
     // on next week's roster.
@@ -100,7 +97,7 @@ export default function BreakRulesModal({ onClose }) {
                         <div key={i} className="flex items-center gap-2">
                             <input
                                 {...numberField({ value: rule.hours, onChange: v => set(i, 'hours', v) })}
-                                className={`${fieldCls} w-16 text-right`}
+                                className={`${fieldClass} w-16 text-right`}
                                 aria-label="Hours"
                                 placeholder="8"
                             />
@@ -108,7 +105,7 @@ export default function BreakRulesModal({ onClose }) {
                             <select
                                 value={rule.operator}
                                 onChange={e => set(i, 'operator', e.target.value)}
-                                className={`${fieldCls} flex-1 min-w-0`}
+                                className={`${fieldClass} flex-1 min-w-0`}
                                 aria-label="Operator"
                             >
                                 {OPERATORS.map(o => (
@@ -117,7 +114,7 @@ export default function BreakRulesModal({ onClose }) {
                             </select>
                             <input
                                 {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
-                                className={`${fieldCls} w-16 text-right`}
+                                className={`${fieldClass} w-16 text-right`}
                                 aria-label="Minutes"
                                 placeholder="60"
                             />

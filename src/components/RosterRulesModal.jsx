@@ -5,7 +5,7 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { NOTICE_DEFAULT } from '../lib/timeOff'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, checkbox } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import { DEFAULT_RULES } from '../lib/workRules'
 
@@ -66,7 +66,7 @@ export default function RosterRulesModal({ onClose }) {
                     type="checkbox"
                     checked={!!rules[key]?.on}
                     onChange={e => set(key, { on: e.target.checked })}
-                    className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                    className={`${checkbox} mt-0.5`}
                 />
                 <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium text-gray-900">{title}</span>
@@ -140,7 +140,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.availability?.on}
                                 onChange={e => set('availability', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
@@ -162,7 +162,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.timeOff?.on}
                                 onChange={e => set('timeOff', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
@@ -203,7 +203,7 @@ export default function RosterRulesModal({ onClose }) {
                             type="checkbox"
                             checked={rules.holidayNoticeBlocks === true}
                             onChange={e => setRules(r => ({ ...r, holidayNoticeBlocks: e.target.checked }))}
-                            className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                            className={`${checkbox} mt-0.5`}
                         />
                         <span className="flex-1 min-w-0">
                             <span className="block text-sm font-medium text-gray-900">
@@ -230,7 +230,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.visaCap?.on}
                                 onChange={e => set('visaCap', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
@@ -279,7 +279,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.permissionGrace?.on}
                                 onChange={e => set('permissionGrace', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
@@ -333,7 +333,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.underAge?.on}
                                 onChange={e => set('underAge', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">
@@ -358,7 +358,7 @@ export default function RosterRulesModal({ onClose }) {
                                 type="checkbox"
                                 checked={!!rules.foodSafety?.on}
                                 onChange={e => set('foodSafety', { on: e.target.checked })}
-                                className="w-4 h-4 mt-0.5 accent-accent flex-shrink-0"
+                                className={`${checkbox} mt-0.5`}
                             />
                             <span>
                                 <span className="block text-sm font-medium text-gray-900">

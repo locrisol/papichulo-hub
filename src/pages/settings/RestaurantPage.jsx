@@ -8,13 +8,13 @@ import CostTargetModal from '../../components/CostTargetModal'
 import OpeningHoursModal from '../../components/OpeningHoursModal'
 import BreakRulesModal from '../../components/BreakRulesModal'
 import RosterRulesModal from '../../components/RosterRulesModal'
-import { todayISO, weekStartOf, shortDate } from '../../lib/dates'
+import { todayISO, weekStartOf, shortDate, stampDateTime } from '../../lib/dates'
 import { resolveTarget, describeTargets } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
 import { DEFAULT_BREAK_RULES } from '../../lib/roster'
 import { DEFAULT_RULES } from '../../lib/workRules'
 import { numberField } from '../../lib/numberInput'
-import { card, rowButton } from '../../lib/controlStyles'
+import { card, rowButton, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
 
 // Restaurant settings.
 //
@@ -46,6 +46,12 @@ export default function RestaurantPage() {
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [overrides, setOverrides] = useState([])
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
     const [showTendersModal, setShowTendersModal] = useState(false)
@@ -90,7 +96,7 @@ export default function RestaurantPage() {
     async function handleSave(e) {
         e.preventDefault()
         setLoading(true)
-        setError('')
+        setFormProblem('')
         setSuccess('')
 
         const { data, error: e1 } = await supabase
@@ -109,7 +115,7 @@ export default function RestaurantPage() {
             .single()
 
         setLoading(false)
-        if (e1) setError(friendlyError(e1))
+        if (e1) setFormProblem(friendlyError(e1))
         else {
             setEditingMailFrom(false)
             setActiveRestaurant(data)
@@ -152,16 +158,13 @@ export default function RestaurantPage() {
     return (
         <>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Restaurant Settings</h2>
+                <h2 className={pageTitle}>Restaurant Settings</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     Cost targets and settings for {activeRestaurant?.name}
                 </p>
                 {activeRestaurant?.updated_at && (
                     <p className="text-xs text-gray-400 mt-1">
-                        Last updated: {new Date(activeRestaurant.updated_at).toLocaleDateString('en-IE', {
-                            day: '2-digit', month: '2-digit', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit'
-                        })}
+                        Last updated: {stampDateTime(activeRestaurant.updated_at)}
                     </p>
                 )}
             </div>
@@ -188,27 +191,22 @@ export default function RestaurantPage() {
                             {TARGET_TYPES.map(type => {
                                 const s = targetSummary(type)
                                 return (
+                                    // The name and the figure on one line, the
+                                    // sentence about it underneath.
+                                    //
+                                    // This was a single row with the wording on
+                                    // the left carrying min-w-0 and the figure
+                                    // and button pinned flex-shrink-0 on the
+                                    // right. Since only the left was allowed to
+                                    // give way, on a phone it gave way to about
+                                    // one word, and "The restaurant default.
+                                    // Nothing has been set for a particular
+                                    // week" came out reading straight down the
+                                    // page. Same fault as the actions list on
+                                    // the weekly report, same fix.
                                     <div key={type.key} className="px-4 py-3">
                                         <div className="flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-900">{type.label}</p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {s.current ? (
-                                                        s.current.until
-                                                            ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
-                                                            : `Running since the week of ${shortDate(s.current.from)}`
-                                                    ) : (
-                                                        'The restaurant default. Nothing has been set for a particular week'
-                                                    )}
-                                                </p>
-                                                {s.upcoming.length > 0 && (
-                                                    <p className="text-xs text-blue-600 mt-0.5">
-                                                        {s.upcoming.length === 1
-                                                            ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
-                                                            : `${s.upcoming.length} more changes already set for later weeks`}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            <p className="text-sm font-medium text-gray-900">{type.label}</p>
                                             <div className="flex items-center gap-3 flex-shrink-0">
                                                 <span className="font-serif text-xl font-bold text-gray-900">
                                                     {s.value != null ? `${s.value}%` : '-'}
@@ -222,6 +220,22 @@ export default function RestaurantPage() {
                                                 </button>
                                             </div>
                                         </div>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {s.current ? (
+                                                s.current.until
+                                                    ? `Running since the week of ${shortDate(s.current.from)}, until the week of ${shortDate(s.current.until)}`
+                                                    : `Running since the week of ${shortDate(s.current.from)}`
+                                            ) : (
+                                                'The restaurant default. Nothing has been set for a particular week'
+                                            )}
+                                        </p>
+                                        {s.upcoming.length > 0 && (
+                                            <p className="text-xs text-blue-600 mt-0.5">
+                                                {s.upcoming.length === 1
+                                                    ? `Changes to ${s.upcoming[s.upcoming.length - 1].value}% from the week of ${shortDate(s.upcoming[s.upcoming.length - 1].from)}`
+                                                    : `${s.upcoming.length} more changes already set for later weeks`}
+                                            </p>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -232,9 +246,9 @@ export default function RestaurantPage() {
                     <form onSubmit={handleSave}>
                         <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                    <label className={labelClass}>
                                         Hourly rate (€)
                                     </label>
                                     <input
@@ -257,7 +271,7 @@ export default function RestaurantPage() {
 
                         <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Email</h3>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            <label className={labelClass}>
                                 Sent from
                             </label>
                             {/* Locked once it is set, like an overhead line on the
@@ -305,7 +319,7 @@ export default function RestaurantPage() {
                                     autoComplete="off"
                                     value={formData.mail_from}
                                     onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
-                                    placeholder="restaurant_name@papichulo.ie"
+                                    placeholder="name@papichulo.ie"
                                     autoFocus={editingMailFrom}
                                     className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
@@ -329,7 +343,7 @@ export default function RestaurantPage() {
                                         type="checkbox"
                                         checked={formData.forecasting_enabled}
                                         onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
-                                        className="w-4 h-4 accent-accent"
+                                        className={checkbox}
                                     />
                                     <div>
                                         <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
@@ -337,6 +351,13 @@ export default function RestaurantPage() {
                                     </div>
                                 </label>
                             </div>
+                        )}
+
+                        {/* Above the button row rather than inside it. As a sibling of the
+                            button it sat beside it on one line, which squeezes both on a
+                            phone and is not where the eye goes after a press. */}
+                        {formProblem && (
+                          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
                         )}
 
                         <button
@@ -352,7 +373,11 @@ export default function RestaurantPage() {
                 <div>
                     {/* Sales platforms management */}
                     <div className={`${card} p-6 mb-4`}>
-                        <div className="flex items-center justify-between">
+                        {/* Same shape as Opening hours below, which already had
+                            the gap and the wrap. Without them the sentence was
+                            squeezed against a button that refuses to wrap, and
+                            on a phone it came out a word per line. */}
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div>
                                 <h3 className="text-sm font-semibold text-gray-900">Sales platforms</h3>
                                 <p className="text-xs text-gray-500 mt-1">

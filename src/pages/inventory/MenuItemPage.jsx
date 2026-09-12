@@ -6,13 +6,14 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
 import ProductSelect from '../../components/ProductSelect'
 import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
+import { fmtMoney, fmtUnitCost } from '../../lib/format'
 import BackButton from '../../components/BackButton'
 
 // One dish: what it is made of, what it costs, and what it contains.
@@ -33,6 +34,31 @@ import BackButton from '../../components/BackButton'
 
 const MARGIN_GREEN = 65
 const MARGIN_AMBER = 60
+
+// What the colour means, said in words.
+//
+// A number going amber tells you something is wrong with it and not what, and
+// on a phone the target it is being judged against is nowhere on the screen to
+// compare it with. Saying the target out loud costs one line and saves the trip
+// to Restaurant settings to remember what it was.
+function marginWords(pct) {
+  if (pct === null) return ''
+  if (pct >= MARGIN_GREEN) return `Above the ${MARGIN_GREEN}% this kitchen aims at`
+  if (pct >= MARGIN_AMBER) return `Under the ${MARGIN_GREEN}% this kitchen aims at`
+  return `Below the ${MARGIN_AMBER}% floor`
+}
+
+// One line of the working under the margin: what it is, and the figure.
+function SummaryLine({ label, value, tone, muted, last }) {
+  return (
+    <div className={`flex justify-between gap-3 text-sm py-2 ${last ? '' : 'border-b border-border'}`}>
+      <span className="text-muted">{label}</span>
+      <span className={`font-semibold tabular-nums whitespace-nowrap ${tone || (muted ? 'text-muted' : 'text-gray-900')}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
 
 const ALLERGEN_LABELS = {
   gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
@@ -77,6 +103,12 @@ export default function MenuItemPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load; these two are for a save that would not go through, and
+  // each belongs beside its own button. The component one matters most: its
+  // form is in a dialog, so anything written to the page was behind it.
+  const [formProblem, setFormProblem] = useState('')
+  const [headerProblem, setHeaderProblem] = useState('')
 
   const [headerForm, setHeaderForm] = useState(emptyHeaderForm(null))
   const [headerErrors, setHeaderErrors] = useState({})
@@ -169,7 +201,7 @@ export default function MenuItemPage() {
   }
 
   async function saveHeader() {
-    setError('')
+    setHeaderProblem('')
     setHeaderSavedMessage('')
     const e = validateHeader()
     if (Object.keys(e).length) { setHeaderErrors(e); return }
@@ -191,7 +223,7 @@ export default function MenuItemPage() {
       .update(payload)
       .eq('id', id)
 
-    if (err) setError(friendlyError(err))
+    if (err) setHeaderProblem(friendlyError(err))
     else {
       setHeaderSavedMessage('Saved')
       fetchAll()
@@ -218,7 +250,7 @@ export default function MenuItemPage() {
 
   async function handleComponentSave(e) {
     e.preventDefault()
-    setError('')
+    setFormProblem('')
     const v = validateComponent()
     if (Object.keys(v).length) { setComponentErrors(v); return }
     setComponentErrors({})
@@ -274,11 +306,11 @@ export default function MenuItemPage() {
 
   function handleSupabaseError(err) {
     if (err.code === '23505') {
-      setError(componentForm.choice_group
+      setFormProblem(componentForm.choice_group
         ? `${getProduct(componentForm.product_id)?.name || 'That product'} is already an option in ${componentForm.choice_group}. Edit the existing row instead.`
         : 'This product is already an ingredient of this menu item. Edit the existing row instead.')
     } else {
-      setError(friendlyError(err))
+      setFormProblem(friendlyError(err))
     }
   }
 
@@ -291,6 +323,7 @@ export default function MenuItemPage() {
   }
 
   function resetComponentForm() {
+    setFormProblem('')
     setComponentForm(emptyComponentForm())
     setEditingComponent(null)
     setShowComponentForm(false)
@@ -488,7 +521,7 @@ export default function MenuItemPage() {
       <BackButton to="/catalogue/menu-items" className="mb-4">Back to menu items</BackButton>
 
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">Menu Item: {item?.name}</h2>
+        <h2 className={pageTitle}>Menu Item: {item?.name}</h2>
         <p className="text-sm text-gray-500 mt-1">Costs and margins for {activeRestaurant?.name}</p>
       </div>
 
@@ -497,9 +530,9 @@ export default function MenuItemPage() {
       {/* Header form: name, category, price, VAT, notes */}
       <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Details</h3>
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+            <label className={labelClass}>Name</label>
             <input
               type="text"
               value={headerForm.name}
@@ -561,7 +594,7 @@ export default function MenuItemPage() {
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+            <label className={labelClass}>Category</label>
             <select
               value={headerForm.category_id}
               onChange={e => handleHeaderChange('category_id', e.target.value)}
@@ -589,7 +622,7 @@ export default function MenuItemPage() {
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
+            <label className={labelClass}>Selling Price (€, gross)</label>
             <input
               {...numberField({
                 value: headerForm.selling_price,
@@ -600,7 +633,7 @@ export default function MenuItemPage() {
             {headerErrors.selling_price && <p className="text-xs text-red-600 mt-1">{headerErrors.selling_price}</p>}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
+            <label className={labelClass}>VAT Rate (%)</label>
             <input
               {...numberField({
                 value: headerForm.vat_rate,
@@ -612,7 +645,7 @@ export default function MenuItemPage() {
           </div>
         </div>
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+          <label className={labelClass}>Notes (optional)</label>
           <textarea
             value={headerForm.notes}
             onChange={e => handleHeaderChange('notes', e.target.value)}
@@ -620,6 +653,12 @@ export default function MenuItemPage() {
             className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
           />
         </div>
+        {/* Beside the button, not at the top of the page. This form sits a long
+            way down a long screen and on a phone the top of it is nowhere near
+            the Save. */}
+        {headerProblem && (
+          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{headerProblem}</p>
+        )}
         <div className="flex items-center gap-3">
           <button
             onClick={saveHeader}
@@ -632,8 +671,14 @@ export default function MenuItemPage() {
         </div>
       </div>
 
-      {/* Components section */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Components section.
+
+          The heading gets its own line on a phone. This was one row with
+          justify-between and no gap, so on a narrow screen the two buttons were
+          pushed straight into the word Components and sat on top of it: the
+          inner group could wrap but the row it was in could not, and nothing
+          was holding the two apart. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Components</h3>
         <div className="flex flex-wrap gap-2">
           <button
@@ -657,6 +702,7 @@ export default function MenuItemPage() {
         <div className={`${card} p-6 mb-6`}>
           <h4 className="text-sm font-semibold text-gray-900 mb-4">New Component</h4>
           <ComponentForm
+            problem={formProblem}
             formData={componentForm}
             onChange={handleComponentChange}
             onSubmit={handleComponentSave}
@@ -683,7 +729,6 @@ export default function MenuItemPage() {
           {ingredients.length > 0 && (
             <div className={`${cardEdge} bg-white overflow-hidden mb-6`}>
               <div className={cardHeader}>Ingredients</div>
-              <div className="overflow-x-auto">
               <ComponentTable
                 rows={ingredients}
                 counting={counting}
@@ -695,7 +740,6 @@ export default function MenuItemPage() {
                 onCancelEdit={resetComponentForm}
                 onRemove={removeComponent}
               />
-              </div>
             </div>
           )}
 
@@ -707,8 +751,7 @@ export default function MenuItemPage() {
                   The customer picks one. Only the most expensive is counted.
                 </span>
               </div>
-              <div className="overflow-x-auto">
-                <ComponentTable
+              <ComponentTable
                   rows={rows}
                   counting={counting}
                   getProduct={getProduct}
@@ -719,7 +762,6 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
-              </div>
             </div>
           ))}
           {/* Last, because it is the part you look at least. On a burrito with
@@ -736,11 +778,10 @@ export default function MenuItemPage() {
                 <span className="normal-case tracking-normal font-normal text-white/70 text-xs">
                   {packagingCost === null
                     ? 'Counted in the cost'
-                    : `€${packagingCost.toFixed(2)} of the cost`}
+                    : `${fmtMoney(packagingCost)} of the cost`}
                 </span>
               </div>
-              <div className="overflow-x-auto">
-                <ComponentTable
+              <ComponentTable
                   rows={packaging}
                   counting={counting}
                   getProduct={getProduct}
@@ -751,7 +792,6 @@ export default function MenuItemPage() {
                   onCancelEdit={resetComponentForm}
                   onRemove={removeComponent}
                 />
-              </div>
             </div>
           )}
 
@@ -761,34 +801,35 @@ export default function MenuItemPage() {
       {/* Summary */}
       <div className={`${card} p-6 mb-6`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Summary</h3>
-        <div className="grid grid-cols-5 gap-4">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Cost</p>
-            <p className="text-xl font-semibold text-gray-900">
-              {totalCost !== null ? `€${totalCost.toFixed(2)}` : <span className="text-amber-600 text-base">—</span>}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Price (gross)</p>
-            <p className="text-xl font-semibold text-gray-900">€{grossPrice.toFixed(2)}</p>
-            <p className="text-xs text-gray-400">VAT {vatRate.toFixed(1)}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Net Price</p>
-            <p className="text-xl font-semibold text-gray-900">€{netPrice.toFixed(2)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin</p>
-            <p className={`text-xl font-semibold ${marginColour(marginPct)}`}>
-              {margin !== null ? `€${margin.toFixed(2)}` : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin %</p>
-            <p className={`text-xl font-semibold ${marginColour(marginPct)}`}>
-              {marginPct !== null ? `${marginPct.toFixed(1)}%` : '—'}
-            </p>
-          </div>
+        {/* The margin percentage, and then the working.
+
+            This was five equal columns, which on a phone is about forty pixels
+            each: the headings ran into one another and Margin printed on top of
+            Margin %. Stacking five identical boxes would have fixed the
+            collision and kept the real problem, which is that the panel had not
+            decided what it was for.
+
+            The percentage is what it is for. It means something on its own,
+            where the euro margin does not: the same €3.73 is a healthy margin
+            on a side and a poor one on a burrito. So the percentage gets the
+            space, and the four figures it was worked out from become a short
+            list underneath, in the order you would check them. */}
+        <div className="bg-app-bg rounded-lg p-4 mb-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Margin</p>
+          <p className={`font-serif text-3xl font-bold leading-none ${marginColour(marginPct)}`}>
+            {marginPct !== null ? `${marginPct.toFixed(1)}%` : '—'}
+          </p>
+          {marginPct !== null && (
+            <p className={`text-sm mt-1 ${marginColour(marginPct)}`}>{marginWords(marginPct)}</p>
+          )}
+        </div>
+
+        <div>
+          <SummaryLine label="Margin in money" value={margin !== null ? fmtMoney(margin) : '—'} tone={marginColour(marginPct)} />
+          <SummaryLine label="Cost" value={totalCost !== null ? fmtMoney(totalCost) : '—'} tone={totalCost === null ? 'text-amber-600' : ''} />
+          <SummaryLine label="Price (gross)" value={fmtMoney(grossPrice)} />
+          <SummaryLine label={`VAT ${vatRate.toFixed(1)}%`} value={fmtMoney(grossPrice - netPrice)} muted />
+          <SummaryLine label="Net price" value={fmtMoney(netPrice)} last />
         </div>
         {totalCost === null && components.length > 0 && (
           <p className="text-xs text-amber-700 mt-3">
@@ -813,7 +854,16 @@ export default function MenuItemPage() {
                 : 'bg-gray-100 text-gray-500 border-gray-300'
             const label = state === 'contains' ? 'Contains' : state === 'may_contain' ? 'May Contain' : 'Not Present'
             return (
-              <div key={key} className={`px-3 py-2 rounded-lg border text-sm flex items-center justify-between ${colour}`}>
+              // The name over the state on a phone, side by side from small up.
+              // Two of these fit across a phone, and at that width Crustaceans
+              // and Not Present were pushed into each other with nothing
+              // between them, so the reader had to guess which word belonged to
+              // which allergen. The customer facing list was fixed for this
+              // months ago; this is the same chip and it was missed.
+              <div
+                key={key}
+                className={`px-3 py-2 rounded-lg border text-sm flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 ${colour}`}
+              >
                 <span className="font-medium">{ALLERGEN_LABELS[key]}</span>
                 <span className="text-xs">{label}</span>
               </div>
@@ -833,6 +883,7 @@ export default function MenuItemPage() {
         >
           <div className="px-6 py-4">
             <ComponentForm
+              problem={formProblem}
               formData={componentForm}
               onChange={handleComponentChange}
               onSubmit={handleComponentSave}
@@ -865,6 +916,7 @@ export default function MenuItemPage() {
 }
 
 function ComponentForm({
+  problem,
   formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts,
   productSelectRef, existingGroups, editing,
 }) {
@@ -873,9 +925,9 @@ function ComponentForm({
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Component</label>
+          <label className={labelClass}>Component</label>
           <ProductSelect
             inputRef={productSelectRef}
             value={formData.product_id}
@@ -886,7 +938,7 @@ function ComponentForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
+          <label className={labelClass}>Quantity</label>
           <QuantityInUnit
             value={formData.quantity}
             onChange={v => onChange('quantity', v)}
@@ -905,7 +957,7 @@ function ComponentForm({
               type="checkbox"
               checked={!!formData.no_quantity}
               onChange={e => onChange('no_quantity', e.target.checked)}
-              className="w-4 h-4 accent-accent mt-0.5"
+              className={`${checkbox} mt-0.5`}
             />
             <span className="text-sm text-gray-700">
               No specific quantity
@@ -945,7 +997,7 @@ function ComponentForm({
           list="choice-groups"
           value={formData.choice_group || ''}
           onChange={e => onChange('choice_group', e.target.value)}
-          placeholder="e.g. Sauce, Salsa, Free drink"
+          placeholder="e.g. Sauce"
           className="w-full sm:max-w-xs border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
         {/* The groups already on this item, so the second sauce does not end
@@ -965,7 +1017,7 @@ function ComponentForm({
             type="checkbox"
             checked={!!formData.list_separately}
             onChange={e => onChange('list_separately', e.target.checked)}
-            className="w-4 h-4 accent-accent mt-0.5"
+            className={`${checkbox} mt-0.5`}
           />
           <span className="text-sm text-gray-700">
             List it separately on the allergen sheet
@@ -979,15 +1031,23 @@ function ComponentForm({
       )}
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+        <label className={labelClass}>Notes (optional)</label>
         <input
           type="text"
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
-          placeholder="e.g. on top, on the side"
+          placeholder="e.g. on the side"
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
       </div>
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button
@@ -1011,20 +1071,96 @@ function ComponentForm({
 // The rows of one table: either the ingredients that are always in the dish,
 // or the options of one choice. The same six columns either way, because they
 // are the same six questions.
+// The chips that say what kind of component a line is, shared by both the card
+// and the table so they cannot drift apart.
+function ComponentChips({ product, component }) {
+  return (
+    <>
+      {product?.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
+      {component.choice_group && (
+        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+          {component.choice_group}
+        </span>
+      )}
+      {component.list_separately && (
+        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+          Listed separately
+        </span>
+      )}
+    </>
+  )
+}
+
 function ComponentTable({
   rows, counting, getProduct, getIngredientUnitCost, getLineCost,
   editingComponent, onEdit, onCancelEdit, onRemove,
 }) {
   return (
+    <>
+      {/* A card each on a phone.
+          Six columns will not fit on a 390px screen, so this was a sideways
+          scroll, and it was the worst one in the app: Line Cost, Notes and both
+          buttons were all off the right hand edge, which meant a component
+          could not be edited or removed on a phone at all without dragging the
+          table sideways first. The line cost and the name are the pair worth
+          reading, so they share the top line, and the buttons come back into
+          reach at the bottom of the card. */}
+      <div className="sm:hidden">
+        {rows.map(c => {
+          const product = getProduct(c.product_id)
+          const unitCost = getIngredientUnitCost(product)
+          const lineCost = getLineCost(c)
+          const counted = counting.has(c.id)
+          return (
+            <div key={c.id} className="border-b border-border last:border-b-0 px-3 py-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-medium text-gray-900">
+                  {product ? product.name : <span className="text-red-600">Missing product</span>}
+                  <ComponentChips product={product} component={c} />
+                </span>
+                <span className={`text-sm font-semibold whitespace-nowrap tabular-nums text-right ${
+                  counted ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {lineCost === null ? '—' : fmtMoney(lineCost)}
+                  {lineCost !== null && !counted && (
+                    <span className="block text-xs font-normal">not the most expensive</span>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs text-muted mt-0.5">
+                {c.no_quantity
+                  ? <span className="italic">Used, not measured</span>
+                  : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
+                {unitCost !== null
+                  ? ` at ${fmtUnitCost(unitCost)} / ${product?.unit}`
+                  : <span className="text-amber-600"> · no cost available</span>}
+              </p>
+              {c.notes && <p className="text-xs text-gray-400 mt-0.5">{c.notes}</p>}
+              <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                <button
+                  onClick={() => editingComponent?.id === c.id ? onCancelEdit() : onEdit(c)}
+                  className={rowButton('edit')}
+                >
+                  {editingComponent?.id === c.id ? 'Cancel' : 'Edit'}
+                </button>
+                <button onClick={() => onRemove(c)} className={rowButton('danger')}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Component</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Cost</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Notes</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Component</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Quantity</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Unit Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Line Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Notes</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1036,22 +1172,8 @@ function ComponentTable({
                   <Fragment key={c.id}>
                     <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {product ? (
-                          <>
-                            {product.name}
-                            {product.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
-                          </>
-                        ) : <span className="text-red-600">Missing product</span>}
-                        {c.choice_group && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                            {c.choice_group}
-                          </span>
-                        )}
-                        {c.list_separately && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
-                            Listed separately
-                          </span>
-                        )}
+                        {product ? product.name : <span className="text-red-600">Missing product</span>}
+                        <ComponentChips product={product} component={c} />
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {c.no_quantity
@@ -1059,17 +1181,17 @@ function ComponentTable({
                           : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
-                        {unitCost !== null ? `€${unitCost.toFixed(4)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
+                        {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {lineCost === null ? '—' : counting.has(c.id) ? (
-                          `€${lineCost.toFixed(2)}`
+                          fmtMoney(lineCost)
                         ) : (
                           // Shown rather than hidden. What the other options
                           // come to is worth seeing, and a blank here would
                           // read as a line that costs nothing.
                           <span className="font-normal text-gray-400">
-                            €{lineCost.toFixed(2)}
+                            {fmtMoney(lineCost)}
                             <span className="block text-xs">not the most expensive</span>
                           </span>
                         )}
@@ -1097,6 +1219,7 @@ function ComponentTable({
               })}
             </tbody>
           </table>
-
+      </div>
+    </>
   )
 }

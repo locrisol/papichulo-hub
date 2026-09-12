@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
@@ -93,8 +94,6 @@ export default function OpeningHoursModal({ onClose }) {
         onClose()
     }
 
-    const timeCls =
-        'w-full border border-border rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
 
     return (
         <Modal title="Opening hours" onClose={onClose}>
@@ -113,21 +112,19 @@ export default function OpeningHoursModal({ onClose }) {
                                 <span className="sm:hidden">{DAY_NAMES[i]}</span>
                                 <span className="hidden sm:inline">{day}</span>
                             </span>
-                            <input
-                                type="time"
+                            <TimeField
                                 value={hours[i].open}
-                                onChange={e => set(i, 'open', e.target.value)}
-                                className={timeCls}
+                                onChange={v => set(i, "open", v)}
+                                compact
                                 aria-label={`${day} opens`}
-                            />
+                                />
                             <span className="text-gray-400 text-sm">to</span>
-                            <input
-                                type="time"
+                            <TimeField
                                 value={hours[i].close}
-                                onChange={e => set(i, 'close', e.target.value)}
-                                className={timeCls}
+                                onChange={v => set(i, "close", v)}
+                                compact
                                 aria-label={`${day} closes`}
-                            />
+                                />
                             <button
                                 type="button"
                                 onClick={() => { set(i, 'open', ''); set(i, 'close', '') }}
@@ -156,21 +153,19 @@ export default function OpeningHoursModal({ onClose }) {
                     description="One setting for all of them, since they open the same here. Tick a day as a bank holiday on the roster and it uses these instead of its usual hours. Leave empty to treat them like any other day."
                 >
                     <div className="flex items-center gap-2">
-                        <input
-                            type="time"
+                        <TimeField
                             value={bank.open}
-                            onChange={e => setBank(b => ({ ...b, open: e.target.value }))}
-                            className={timeCls}
+                            onChange={v => setBank(b => ({ ...b, open: v }))}
+                            compact
                             aria-label="Bank holidays open"
-                        />
+                            />
                         <span className="text-gray-400 text-sm">to</span>
-                        <input
-                            type="time"
+                        <TimeField
                             value={bank.close}
-                            onChange={e => setBank(b => ({ ...b, close: e.target.value }))}
-                            className={timeCls}
+                            onChange={v => setBank(b => ({ ...b, close: v }))}
+                            compact
                             aria-label="Bank holidays close"
-                        />
+                            />
                         <button
                             type="button"
                             onClick={() => setBank({ open: '', close: '' })}

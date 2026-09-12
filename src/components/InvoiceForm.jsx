@@ -1,3 +1,4 @@
+import { labelClass, fieldClass } from '../lib/controlStyles'
 import { INVOICE_CATEGORIES } from '../lib/invoiceCategories'
 import { numberField } from '../lib/numberInput'
 import { shortDate } from '../lib/dates'
@@ -19,21 +20,19 @@ export default function InvoiceForm({
     submitLabel,
     saving,
     suppliers,
+    problem,
     weekStart,
 }) {
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     return (
         <form onSubmit={onSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
-                    <label className={labelCls}>Supplier</label>
+                    <label className={labelClass}>Supplier</label>
                     <select
                         value={formData.supplierId}
                         onChange={e => onChange('supplierId', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     >
                         <option value="">Pick a supplier</option>
                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -46,7 +45,7 @@ export default function InvoiceForm({
                     on. With four buttons all the colours are visible while you
                     are choosing, and on a phone it is one tap instead of two. */}
                 <div>
-                    <label className={labelCls}>Category</label>
+                    <label className={labelClass}>Category</label>
                     <div className="flex flex-wrap gap-2">
                         {INVOICE_CATEGORIES.map(c => (
                             <button
@@ -73,7 +72,7 @@ export default function InvoiceForm({
                 rows read fine; a date nobody can read does not. */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                 <div>
-                    <label className={labelCls}>Week starting</label>
+                    <label className={labelClass}>Week starting</label>
                     {/* Worked out from the date, not typed, so it always matches
                         the sales week. It sits first because it is the thing the
                         invoice is being filed into, and the invoice date is what
@@ -83,37 +82,49 @@ export default function InvoiceForm({
                     </div>
                 </div>
                 <div>
-                    <label className={labelCls}>Invoice date</label>
+                    <label className={labelClass}>Invoice date</label>
                     <input
                         type="date"
                         value={formData.invoiceDate}
                         onChange={e => onChange('invoiceDate', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     />
                 </div>
                 <div>
-                    <label className={labelCls}>Total</label>
+                    <label className={labelClass}>Total</label>
                     <input
                         {...numberField({
                             value: formData.totalAmount,
                             onChange: v => onChange('totalAmount', v),
                         })}
-                        className={`${fieldCls} text-right`}
+                        className={`${fieldClass} text-right`}
                         placeholder="0.00"
                     />
                 </div>
             </div>
 
             <div className="mb-3">
-                <label className={labelCls}>Notes</label>
+                <label className={labelClass}>Notes</label>
                 <input
                     type="text"
                     value={formData.notes}
                     onChange={e => onChange('notes', e.target.value)}
-                    className={fieldCls}
-                    placeholder="Anything worth remembering about this one"
+                    className={fieldClass}
+                    placeholder="Optional note"
                 />
             </div>
+
+            {/* Beside the button that caused it, not at the top of the page.
+                On a phone you press Save at the bottom of a form and a message
+                written above the form is simply not on screen, so the press
+                reads as having done nothing. Worse in the edit dialog, where
+                the page behind it is covered: a message up there was never seen
+                at all, on any device. */}
+            {problem && (
+                <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">
+                    {problem}
+                </p>
+            )}
 
             <div className="flex justify-end gap-3">
                 {onCancel && (

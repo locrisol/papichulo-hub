@@ -1,3 +1,4 @@
+import { monthYearOf } from '../../lib/dates'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -211,10 +212,7 @@ export default function StockTakeCountPage() {
         const typeWord = session.type
             ? session.type.charAt(0).toUpperCase() + session.type.slice(1)
             : 'Stock'
-        const monthYear = new Date(session.started_at).toLocaleDateString('en-IE', {
-            month: 'long',
-            year: 'numeric',
-        })
+        const monthYear = monthYearOf(session.started_at)
         return `${typeWord} Stock Take (${monthYear})`
     }
 
@@ -631,7 +629,7 @@ export default function StockTakeCountPage() {
                 {isManager && totalValue > 0 && (
                     <div className="pt-4">
                         <div className={`${card} p-4`}>
-                            <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center justify-between gap-3 mb-3">
                                 <p className="text-xs font-bold uppercase tracking-widest text-muted">Value counted</p>
                                 <p className="text-lg font-bold text-gray-900">{fmtMoney(totalValue)}</p>
                             </div>

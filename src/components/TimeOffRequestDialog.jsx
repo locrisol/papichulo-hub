@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
@@ -131,12 +132,16 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                 {isPart && (
                     <div>
                         <label className="block text-xs font-medium text-muted mb-1">I can work</label>
+                        {/* allowEmpty on both, because empty is an answer here
+                            rather than a gap: it means from opening, or until
+                            closing. Without it, picking a time once would make
+                            that state unreachable. */}
                         <div className="flex items-center gap-2">
-                            <input type="time" value={canFrom} onChange={e => setCanFrom(e.target.value)}
-                                className={field} placeholder="From opening" />
+                            <TimeField value={canFrom} onChange={setCanFrom} allowEmpty
+                                placeholder="From opening" aria-label="I can work from" />
                             <span className="text-xs text-muted flex-shrink-0">to</span>
-                            <input type="time" value={canTo} onChange={e => setCanTo(e.target.value)}
-                                className={field} placeholder="Until closing" />
+                            <TimeField value={canTo} onChange={setCanTo} allowEmpty
+                                placeholder="Until closing" aria-label="I can work until" />
                         </div>
                         <p className="text-xs text-muted mt-1">
                             Leave one empty if only the other changes. Empty means opening or closing.
@@ -148,7 +153,7 @@ export default function TimeOffRequestDialog({ me, rules, onClose, onSaved }) {
                     <label className="block text-xs font-medium text-muted mb-1">Add a note (optional)</label>
                     <input type="text" value={note} maxLength={200}
                         onChange={e => setNote(e.target.value)} className={field}
-                        placeholder="Anything they should know" />
+                        placeholder="Optional note" />
                 </div>
 
                 {/* How long it is and how far off, once there is enough to say

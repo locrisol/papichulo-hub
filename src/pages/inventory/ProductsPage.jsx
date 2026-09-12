@@ -1,3 +1,4 @@
+import { fmtUnitCost } from '../../lib/format'
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -19,7 +20,7 @@ import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { orderFormats } from '../../lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle } from '../../lib/controlStyles'
 
 // Every column in the table, in the order it appears.
 //
@@ -209,6 +210,11 @@ export default function ProductsPage() {
   // hundred rows down a list you have not seen since is not helpful.
   useKeepScroll('products', !loading, to => to.startsWith('/catalogue/products/'))
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load; this is for a save that would not go through, and it
+  // belongs beside the button that was pressed rather than at the top of a
+  // page that is not on screen when you press it.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
   // Which sections are showing. Empty means all of them, which is the same
@@ -403,7 +409,8 @@ export default function ProductsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+
+    setFormProblem('')
 
     const newErrors = validate()
     // The price block is only checked if somebody started filling it in. Left
@@ -509,7 +516,7 @@ export default function ProductsPage() {
         .update(payload)
         .eq('id', editingProduct.id)
 
-      if (error) { setError(friendlyError(error)); return }
+      if (error) { setFormProblem(friendlyError(error)); return }
 
       // The price, the packs and the allergens, the same three things creating
       // a product asks for. Written here so changing any of them is done where
@@ -534,7 +541,7 @@ export default function ProductsPage() {
               }).select().single()
 
         if (priceErr) {
-          setError(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(`${formData.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
           fetchProducts()
           return
         }
@@ -568,7 +575,7 @@ export default function ProductsPage() {
             { onConflict: 'product_id' })
 
         if (allergenErr) {
-          setError(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(`${formData.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
           fetchProducts()
           return
         }
@@ -584,7 +591,7 @@ export default function ProductsPage() {
         .select()
         .single()
 
-      if (error) { setError(friendlyError(error)); return }
+      if (error) { setFormProblem(friendlyError(error)); return }
 
       // The supplier and the cost on this screen are read out of prices,
       // which is its own fetch. Refetching the products alone left a product
@@ -626,7 +633,7 @@ export default function ProductsPage() {
         // would be worse than saying the price did not take: the product would
         // be entered twice.
         if (priceErr) {
-          setError(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
+          setFormProblem(`${data.name} was saved, but the price was not: ${friendlyError(priceErr)}`)
           fetchProducts()
           return
         }
@@ -658,7 +665,7 @@ export default function ProductsPage() {
           })))
 
         if (recipeErr) {
-          setError(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
+          setFormProblem(`${data.name} was saved, but the recipe was not: ${friendlyError(recipeErr)}`)
           refresh()
           return
         }
@@ -675,7 +682,7 @@ export default function ProductsPage() {
           .insert({ product_id: data.id, ...allergens })
 
         if (allergenErr) {
-          setError(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
+          setFormProblem(`${data.name} was saved, but the allergens were not: ${friendlyError(allergenErr)}`)
           refresh()
           return
         }
@@ -687,6 +694,7 @@ export default function ProductsPage() {
   }
 
   function resetForm() {
+    setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
       unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
@@ -714,6 +722,7 @@ export default function ProductsPage() {
   // The price and the packs are already on this screen. The allergens are their
   // own row and their own fetch, which is why this waits.
   async function startEdit(product) {
+    setFormProblem('')
     setFormData({
       name: product.name,
       section: product.section,
@@ -854,8 +863,8 @@ export default function ProductsPage() {
       // Null means we could not work it out: a MIX with an ingredient that has
       // no price, or a bought product with no preferred price set.
       cost: p.is_mix
-        ? (mixResult?.cost != null ? `€${mixResult.cost.toFixed(4)}` : null)
-        : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : null),
+        ? (mixResult?.cost != null ? fmtUnitCost(mixResult.cost) : null)
+        : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : null),
       weightLoss: p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—',
     }
   }
@@ -974,7 +983,7 @@ export default function ProductsPage() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Products</h2>
+          <h2 className={pageTitle}>Products</h2>
           <p className="text-sm text-gray-500 mt-1">
             Showing prices for {activeRestaurant?.name}
           </p>
@@ -1014,6 +1023,7 @@ export default function ProductsPage() {
         <div className={`${cardEdge} ${sectionColour(formData.section).bg} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Product</h3>
           <ProductForm
+            problem={formProblem}
             formData={formData}
             onChange={handleFieldChange}
             onSubmit={handleSave}
@@ -1194,6 +1204,7 @@ export default function ProductsPage() {
                 {editingProduct?.id === p.id && (
                   <div className={`mt-3 pt-3 border-t border-black/10 ${sectionColour(formData.section).bg} -mx-4 -mb-4 px-4 pb-4 rounded-b-xl`}>
                     <ProductForm
+                      problem={formProblem}
                       formData={formData}
                       onChange={handleFieldChange}
                       onSubmit={handleSave}
@@ -1366,9 +1377,9 @@ export default function ProductsPage() {
                       <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                         {p.is_mix
                           ? (mixResult?.cost !== null
-                              ? `€${mixResult.cost.toFixed(4)}`
+                              ? fmtUnitCost(mixResult.cost)
                               : <span className="text-amber-600 text-xs">Incomplete</span>)
-                          : (price ? `€${parseFloat(price.price_per_unit).toFixed(4)}` : '—')}
+                          : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
                       </td>
                       <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
@@ -1395,6 +1406,7 @@ export default function ProductsPage() {
         <Modal title={`Edit ${editingProduct.name}`} onClose={resetForm} width="max-w-2xl">
           <div className={`px-6 py-4 ${sectionColour(formData.section).bg}`}>
             <ProductForm
+              problem={formProblem}
               formData={formData}
               onChange={handleFieldChange}
               onSubmit={handleSave}

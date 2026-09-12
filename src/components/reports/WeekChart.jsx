@@ -152,7 +152,8 @@ export default function WeekChart({
                             aria-pressed={range === r.key}
                             className={`${segmentButton(range === r.key)} normal-case`}
                         >
-                            {r.label}
+                            <span className="sm:hidden">{r.short}</span>
+                            <span className="hidden sm:inline">{r.label}</span>
                         </button>
                     ))}
                 </div>

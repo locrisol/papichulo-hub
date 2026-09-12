@@ -73,7 +73,12 @@ function LineCard({ head, note, warn, onRemove }) {
     return (
         <div className={`rounded-lg border bg-white px-3 py-2 ${
             warn ? 'border-accent/50' : 'border-border'}`}>
-            <div className="flex items-center gap-2">
+            {/* Wrapping, because a refund row is five things: a euro sign, the
+                box, the money it comes to, whether it was claimed back, and the
+                remove. Held on one line at 390px the box came out about seventy
+                pixels and the claimed button was pushed half off the card. They
+                take two lines now when they need to. */}
+            <div className="flex flex-wrap items-center gap-2">
                 {head}
                 {onRemove && (
                     <button
@@ -129,7 +134,11 @@ function RefundAmount({ item, canEdit, onSave }) {
                 onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 placeholder="0.00"
                 aria-label="How much was refunded"
-                className="w-20 min-w-0 text-right bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                // Takes the room on a phone, where nothing else is competing
+                // for the line, and goes back to its own width from sm. w-20 is
+                // about four characters at this foot rule, which is not enough
+                // for a refund that runs into three figures.
+                className="flex-1 min-w-[5rem] sm:flex-none sm:w-24 text-right bg-white border border-gray-300 rounded-lg px-2 py-2 text-base sm:text-sm tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
             {amount > 0 && (
                 <span className="text-sm font-semibold tabular-nums text-red-700 whitespace-nowrap">

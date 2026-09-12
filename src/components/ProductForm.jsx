@@ -10,6 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
+import { checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -26,6 +27,7 @@ const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
 
 
 export default function ProductForm({
+  problem,
   formData, onChange, onSubmit, onCancel, submitLabel, errors, heldForNames = [],
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   formats, onFormatsChange,
@@ -43,10 +45,6 @@ export default function ProductForm({
   // dropdowns and down the side of its rows, so by the time somebody is filling
   // this in they already know what green means.
   const colour = sectionColour(formData.section)
-
-  const fieldCls =
-    'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-  const labelCls = 'block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2'
 
   const showExtras = extras && !formData.is_mix
   // Cleaning and packaging still have a supplier, they just have nothing to
@@ -72,9 +70,9 @@ export default function ProductForm({
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+          <label className={labelClass}>Name</label>
           <input
             type="text"
             value={formData.name}
@@ -93,7 +91,7 @@ export default function ProductForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Section</label>
+          <label className={labelClass}>Section</label>
           <select
             value={formData.section}
             onChange={e => onChange('section', e.target.value)}
@@ -116,7 +114,7 @@ export default function ProductForm({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Unit</label>
+          <label className={labelClass}>Unit</label>
           <select
             value={formData.unit}
             onChange={e => onChange('unit', e.target.value)}
@@ -133,7 +131,7 @@ export default function ProductForm({
             is not a question you can ask about a case of tomatoes. */}
         {formData.is_mix && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Weight Loss %</label>
+            <label className={labelClass}>Weight Loss %</label>
             <input
               {...numberField({
                 value: formData.weight_loss_pct,
@@ -160,7 +158,7 @@ export default function ProductForm({
           list underneath offers names already in use, so the same arrangement
           is not typed two ways and split into two columns. */}
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <label className={labelClass}>
           Held for someone else
         </label>
         <input
@@ -168,9 +166,10 @@ export default function ProductForm({
           list="held-for-names"
           value={formData.held_for || ''}
           onChange={e => onChange('held_for', e.target.value)}
-          placeholder="Leave empty if it is ours"
-          className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="Leave empty"
+          className={fieldClass}
         />
+        <p className={hintClass}>Leave it empty if the stock is ours.</p>
         <datalist id="held-for-names">
           {heldForNames.map(name => <option key={name} value={name} />)}
         </datalist>
@@ -223,7 +222,7 @@ export default function ProductForm({
           count they were being missed because the screen only ever showed them
           under one heading. */}
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <label className={labelClass}>
           Also kept in
         </label>
         <div className="flex flex-wrap gap-2">
@@ -247,7 +246,7 @@ export default function ProductForm({
                       ? [...(formData.also_in || []), section]
                       : (formData.also_in || []).filter(x => x !== section),
                   )}
-                  className="w-4 h-4 accent-accent"
+                  className={checkbox}
                 />
                 {section}
               </label>
@@ -266,7 +265,7 @@ export default function ProductForm({
             type="checkbox"
             checked={formData.is_mix}
             onChange={e => onChange('is_mix', e.target.checked)}
-            className="w-4 h-4 accent-accent"
+            className={checkbox}
           />
           <span className="text-sm text-gray-700">This is a MIX product (house-made, cost calculated from recipe)</span>
         </label>
@@ -282,7 +281,7 @@ export default function ProductForm({
             type="checkbox"
             checked={(formData.category || 'ingredient') === 'drink'}
             onChange={e => onChange('category', e.target.checked ? 'drink' : 'ingredient')}
-            className="w-4 h-4 accent-accent"
+            className={checkbox}
           />
           <span className="text-sm text-gray-700">
             This is a drink (counted as normal, never an ingredient in a MIX)
@@ -291,7 +290,7 @@ export default function ProductForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</label>
+        <label className={labelClass}>Notes</label>
         <textarea
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
@@ -332,7 +331,7 @@ export default function ProductForm({
           {openExtra === 'recipe' && (
             <div className="mb-4">
               <div className="mb-3">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                <label className={labelClass}>
                   Batch yield
                 </label>
                 <QuantityInUnit
@@ -382,7 +381,7 @@ export default function ProductForm({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className={labelClass}>
                     Ingredient
                   </label>
                   <ProductSelect
@@ -397,7 +396,7 @@ export default function ProductForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className={labelClass}>
                     How much
                   </label>
                   <QuantityInUnit
@@ -523,7 +522,7 @@ export default function ProductForm({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={labelCls}>Pack</label>
+                      <label className={labelClass}>Pack</label>
                       <input
                         type="text"
                         value={formats.draft.label}
@@ -532,11 +531,11 @@ export default function ProductForm({
                           draft: { ...formats.draft, label: e.target.value },
                         })}
                         placeholder="Box, Bag, Tin"
-                        className={fieldCls}
+                        className={fieldClass}
                       />
                     </div>
                     <div>
-                      <label className={labelCls}>One of them is</label>
+                      <label className={labelClass}>One of them is</label>
                       <input
                         {...numberField({
                           value: formats.draft.factor,
@@ -546,7 +545,7 @@ export default function ProductForm({
                           }),
                         })}
                         placeholder={formData.unit}
-                        className={fieldCls}
+                        className={fieldClass}
                       />
                     </div>
                   </div>
@@ -575,7 +574,7 @@ export default function ProductForm({
                         type="checkbox"
                         checked={formats.allowLoose}
                         onChange={e => onFormatsChange({ ...formats, allowLoose: e.target.checked })}
-                        className="w-4 h-4 accent-accent"
+                        className={checkbox}
                       />
                       <span className="text-sm text-gray-700">
                         Also count loose {formData.unit}
@@ -620,6 +619,14 @@ export default function ProductForm({
             </div>
           )}
         </div>
+      )}
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
       )}
 
       <div className="flex gap-3">

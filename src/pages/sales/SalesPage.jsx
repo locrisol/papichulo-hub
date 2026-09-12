@@ -9,7 +9,7 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel } from '../../lib/controlStyles'
+import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { useConfirm } from '../../context/ConfirmContext'
 
@@ -65,6 +65,12 @@ export default function SalesPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
     // Id of the existing record for this date, if any. Drives insert vs update.
@@ -242,7 +248,7 @@ export default function SalesPage() {
     // ---- saving ---------------------------------------------------------
 
     async function handleSave() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
 
         // One record per date per restaurant, so confirm before replacing one.
         if (recordId) {
@@ -306,21 +312,18 @@ export default function SalesPage() {
         }
 
         setSaving(false)
-        if (resErr) { setError(friendlyError(resErr)); return }
+        if (resErr) { setFormProblem(friendlyError(resErr)); return }
         // And the roster's day is told, so it is one tick rather than two.
         const noteErr = await applyNoteWrites(supabase, {
             restaurantId,
             userId: user.id,
             plan: planNoteWrites(dayNote ? [dayNote] : [], [{ date: saleDate, closed: isClosed }]),
         })
-        if (noteErr) { setError(friendlyError(noteErr)); return }
+        if (noteErr) { setFormProblem(friendlyError(noteErr)); return }
 
         setSuccess(isClosed ? `${saleDate} marked as closed.` : `Sales for ${saleDate} saved.`)
         loadDay()
     }
-
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-accent bg-white'
 
     // A filled box is faintly green, an empty one is white, the same as the
     // weekly grid. The 0.00 placeholders are gone with it: a grey 0.00 reads as
@@ -328,9 +331,8 @@ export default function SalesPage() {
     // filled it in, a typed 0 means the till took nothing, and the day has to
     // be able to say which.
     function fieldWith(value) {
-        return `${fieldCls} ${value === '' || value == null ? '' : 'bg-green-50'}`
+        return `${fieldClass} ${value === '' || value == null ? '' : 'bg-green-50'}`
     }
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     // One bucket of tracking platforms, with the gap against the receipt figure.
     function trackingBucket(title, bucketPlatforms, receiptKey, note) {
@@ -374,10 +376,10 @@ export default function SalesPage() {
                         commission and VAT differently.
                     </p>
                 )}
-                <div className="grid grid-cols-3 gap-3 p-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
-                            <label className={labelCls}>{p.name}</label>
+                            <label className={labelClass}>{p.name}</label>
                             <input
                                 {...numberField({
                                     value: platformSales[p.name],
@@ -400,7 +402,7 @@ export default function SalesPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Daily sales</h2>
+                    <h2 className={pageTitle}>Daily sales</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name} · one record per day</p>
                 </div>
                 {/* Switch to the whole-week grid, better suited to a laptop */}
@@ -465,7 +467,7 @@ export default function SalesPage() {
                                 type="checkbox"
                                 checked={isClosed}
                                 onChange={e => setIsClosed(e.target.checked)}
-                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                className={checkbox}
                             />
                             <div>
                                 <span className="text-sm font-medium text-gray-900">Store was closed this day</span>
@@ -491,12 +493,12 @@ export default function SalesPage() {
                                     kinds of figure, so they are set apart with
                                     the same two colours the weekly spreadsheet
                                     gives them. */}
-                                <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 pb-4 border-b border-border">
                                     {/* A step darker than the faint green a
                                         filled box gets, or the block reads as
                                         one big confirmation tick. */}
                                     <div className="bg-blue-200 rounded-lg p-2">
-                                        <label className={labelCls}>Gross sales</label>
+                                        <label className={labelClass}>Gross sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.gross,
@@ -506,7 +508,7 @@ export default function SalesPage() {
                                         />
                                     </div>
                                     <div className="bg-green-200 rounded-lg p-2">
-                                        <label className={labelCls}>Net sales</label>
+                                        <label className={labelClass}>Net sales</label>
                                         <input
                                             {...numberField({
                                                 value: values.net,
@@ -517,10 +519,10 @@ export default function SalesPage() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {shownTenders.map(t => (
                                         <div key={t.key}>
-                                            <label className={labelCls}>
+                                            <label className={labelClass}>
                                                 {t.label}
                                                 {!t.is_active && (
                                                     <span className="ml-2 text-gray-400">retired</span>
@@ -562,9 +564,9 @@ export default function SalesPage() {
                             'These start as whatever you typed on the till rows above, since the till now itemises them itself. Change one if the platform pays something different after commission, and it will stop following.')}
 
                         <div className={`${card} p-5 mb-3`}>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className={labelCls}>Staff food</label>
+                                    <label className={labelClass}>Staff food</label>
                                     <input
                                         {...numberField({
                                             value: staffFood,
@@ -578,6 +580,13 @@ export default function SalesPage() {
                     </div>
                 )}
             </div>
+
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">

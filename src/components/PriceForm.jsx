@@ -14,6 +14,8 @@
 // value is worked out again on save, but seeing it immediately catches a units
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
+import { fmtUnitCost } from '../lib/format'
+import { labelClass } from '../lib/controlStyles'
 import { numberField } from '../lib/numberInput'
 import { perUnitPreview } from '../lib/productPrice'
 
@@ -29,9 +31,9 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Supplier</label>
+          <label className={labelClass}>Supplier</label>
           <select
             value={formData.supplier_id}
             onChange={e => onChange('supplier_id', e.target.value)}
@@ -46,7 +48,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Purchase Type</label>
+          <label className={labelClass}>Purchase Type</label>
           <div className="flex gap-4 mt-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -71,7 +73,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       </div>
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Supplier Code (optional)</label>
+        <label className={labelClass}>Supplier Code (optional)</label>
         <input
           type="text"
           value={formData.supplier_code}
@@ -85,9 +87,9 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
       </div>
 
       {isCase ? (
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Price per Case (€)</label>
+            <label className={labelClass}>Price per Case (€)</label>
             <input
               {...numberField({
                 value: formData.price_per_case,
@@ -98,7 +100,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
             {errors.price_per_case && <p className="text-xs text-red-600 mt-1">{errors.price_per_case}</p>}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <label className={labelClass}>
               Units per Case ({unit || '...'})
             </label>
             <input
@@ -113,14 +115,14 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
           <div className="col-span-2">
             <p className="text-xs text-gray-500">
               {previewPerUnit !== null
-                ? `Calculated cost per ${unit}: €${previewPerUnit.toFixed(4)}`
+                ? `Calculated cost per ${unit}: ${fmtUnitCost(previewPerUnit)}`
                 : `Cost per ${unit || 'unit'} will be calculated automatically when you fill both fields.`}
             </p>
           </div>
         </div>
       ) : (
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className={labelClass}>
             Price per {unit || 'unit'} (€)
           </label>
           <input
@@ -143,6 +145,7 @@ export function PriceFields({ formData, onChange, errors = {}, suppliers, unit }
 // The database has a check constraint on purchase_type allowing only case and
 // loose, and the arithmetic behind both lives in lib/productPrice.
 export default function PriceForm({
+  problem,
   formData, onChange, onSubmit, onCancel, submitLabel, errors, suppliers, unit,
 }) {
   return (
@@ -154,6 +157,14 @@ export default function PriceForm({
         suppliers={suppliers}
         unit={unit}
       />
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button

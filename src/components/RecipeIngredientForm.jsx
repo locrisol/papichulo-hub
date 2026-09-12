@@ -1,3 +1,4 @@
+import { labelClass } from '../lib/controlStyles'
 import { useRef, useEffect } from 'react'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -11,7 +12,7 @@ import QuantityInUnit from './QuantityInUnit'
 // Typing it in grams rather than in fractions of a kilo is QuantityInUnit's
 // job, which the product form uses as well so a recipe reads the same wherever
 // it is written.
-export default function RecipeIngredientForm({ formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
+export default function RecipeIngredientForm({ problem, formData, onChange, onSubmit, onCancel, submitLabel, errors, availableProducts }) {
   const ingredient = availableProducts.find(p => p.id === formData.ingredient_product_id)
   const ingredientUnit = ingredient?.unit || 'unit'
   const ingredientSelectRef = useRef(null)
@@ -27,9 +28,9 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ingredient</label>
+          <label className={labelClass}>Ingredient</label>
           <ProductSelect
             inputRef={ingredientSelectRef}
             value={formData.ingredient_product_id}
@@ -41,7 +42,7 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Quantity</label>
+          <label className={labelClass}>Quantity</label>
           <QuantityInUnit
             value={formData.quantity}
             onChange={v => onChange('quantity', v)}
@@ -52,15 +53,23 @@ export default function RecipeIngredientForm({ formData, onChange, onSubmit, onC
       </div>
 
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+        <label className={labelClass}>Notes (optional)</label>
         <input
           type="text"
           value={formData.notes}
           onChange={e => onChange('notes', e.target.value)}
-          placeholder="e.g. finely chopped, drained, etc."
+          placeholder="e.g. drained"
           className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
         />
       </div>
+
+      {/* Beside the button that caused it. A message written at the top of
+          the page is off the screen when you press Save at the foot of a form
+          on a phone, and inside a dialog it is behind the dialog, where it is
+          never seen at all. */}
+      {problem && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+      )}
 
       <div className="flex gap-3">
         <button

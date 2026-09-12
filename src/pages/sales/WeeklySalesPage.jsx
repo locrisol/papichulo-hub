@@ -9,7 +9,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -89,6 +89,12 @@ export default function WeeklySalesPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
     // True once something has been edited but not yet saved.
@@ -414,7 +420,7 @@ export default function WeeklySalesPage() {
     // is why it stops at the first error rather than carrying on, and why the
     // local draft is only cleared once everything has gone through.
     async function handleSaveWeek() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
         setSaving(true)
 
         const toInsert = []
@@ -483,7 +489,7 @@ export default function WeeklySalesPage() {
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('sales_records').insert(toInsert)
             if (e1) {
-                setError(friendlyError(e1))
+                setFormProblem(friendlyError(e1))
                 discardDraftIfRefused(e1)
                 setSaving(false)
                 return
@@ -492,7 +498,7 @@ export default function WeeklySalesPage() {
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('sales_records').update(u.payload).eq('id', u.id)
             if (e2) {
-                setError(friendlyError(e2))
+                setFormProblem(friendlyError(e2))
                 discardDraftIfRefused(e2)
                 setSaving(false)
                 return
@@ -509,7 +515,7 @@ export default function WeeklySalesPage() {
         const noteErr = await applyNoteWrites(supabase, {
             restaurantId, userId: user.id, plan: notePlan,
         })
-        if (noteErr) { setSaving(false); setError(friendlyError(noteErr)); return }
+        if (noteErr) { setSaving(false); setFormProblem(friendlyError(noteErr)); return }
 
         setSaving(false)
         setDirty(false)
@@ -792,7 +798,7 @@ export default function WeeklySalesPage() {
                         and the date, but on a grid full of numbers it is easy to
                         lose track of the month, so it is said once up here. */}
                     <p className="font-serif text-xl font-bold text-gray-900">{weekMonthLabel(weekStart)}</p>
-                    <h2 className="text-lg font-semibold text-gray-900 mt-1">Weekly sales</h2>
+                    <h2 className={`${pageTitle} mt-1`}>Weekly sales</h2>
                     <p className="text-sm text-gray-500 mt-1">
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>
@@ -879,7 +885,20 @@ export default function WeeklySalesPage() {
                 under Wednesday has to be under Wednesday on every card.
 
                 Fixed layout stops columns resizing as digits are typed. */}
-            <div className="overflow-x-auto mb-4" onKeyDown={handleGridKeyDown}>
+            {/* The scroller runs the full width of the screen on a phone rather
+                than sitting inside the page padding.
+
+                Inset by p-4 either side it had about 32 pixels less to scroll
+                in than the screen has, and since the grid is a fixed 1000px
+                wide that came straight off the far end: Saturday could be
+                brought into view but never brought clear of the edge. The
+                padding comes back as padding on the scrolling content, so the
+                last column still ends with a margin rather than against the
+                glass. Unchanged from md up, where the page has the room. */}
+            <div
+                className="overflow-x-auto mb-4 -mx-4 px-4 md:mx-0 md:px-0"
+                onKeyDown={handleGridKeyDown}
+            >
                 <div className="min-w-[1000px] space-y-4">
 
                 <div className={`${card} overflow-hidden`}>
@@ -914,7 +933,7 @@ export default function WeeklySalesPage() {
                                             type="checkbox"
                                             checked={days[d]?.isClosed ?? false}
                                             onChange={() => toggleClosed(d)}
-                                            className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                            className={checkbox}
                                             aria-label={`Mark ${d} as closed`}
                                         />
                                     </td>
@@ -1018,6 +1037,13 @@ export default function WeeklySalesPage() {
                 Amber figures under the tracked rows show the difference against the till receipt. Platforms report
                 commission and VAT differently, so a gap is expected and does not affect the reconciliation above.
             </p>
+
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
 
             <div className="flex justify-end">
                 <button

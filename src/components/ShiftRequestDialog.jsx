@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '../lib/roster'
-import { modalFooter, secondaryButton, rowButton, badge } from '../lib/controlStyles'
+import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '../lib/controlStyles'
 import { NO_COLOUR } from '../lib/team'
 import { windowOf, shortlist, hoursChange } from '../lib/shiftRequests'
 
@@ -37,10 +38,6 @@ export default function ShiftRequestDialog({
 
     const [toEmployeeId, setToEmployeeId] = useState(theirs?.employee_id || '')
     const [message, setMessage] = useState('')
-
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
     const headCls = 'text-xs font-bold text-muted uppercase tracking-wider mb-2'
 
     const nameOf = id => employees.find(e => e.id === id)?.full_name || 'Somebody'
@@ -119,14 +116,14 @@ export default function ShiftRequestDialog({
     const change = toEmployeeId ? hoursChange(draft, weekShifts, breakRules) : []
 
     const timeRow = (from, setFrom, to, setTo) => (
-        <div className="grid grid-cols-2 gap-3 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             <div>
-                <label className={labelCls}>From</label>
-                <input type="time" value={from} onChange={e => setFrom(e.target.value)} className={fieldCls} />
+                <label className={labelClass}>From</label>
+                <TimeField value={from} onChange={setFrom} aria-label="From" />
             </div>
             <div>
-                <label className={labelCls}>To</label>
-                <input type="time" value={to} onChange={e => setTo(e.target.value)} className={fieldCls} />
+                <label className={labelClass}>To</label>
+                <TimeField value={to} onChange={setTo} aria-label="To" />
             </div>
         </div>
     )
@@ -313,13 +310,13 @@ export default function ShiftRequestDialog({
                     </div>
                 )}
 
-                <label className={`${labelCls} mt-5`}>Anything to say</label>
+                <label className={`${labelClass} mt-5`}>Anything to say</label>
                 <textarea
                     value={message}
                     onChange={e => setMessage(e.target.value)}
                     rows={2}
                     placeholder="Optional"
-                    className={fieldCls}
+                    className={fieldClass}
                 />
 
                 {problem && <p className="text-sm text-amber-700 mt-3">{problem}</p>}

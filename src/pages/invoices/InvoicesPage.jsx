@@ -6,11 +6,13 @@ import { useRestaurant } from '../../context/RestaurantContext'
 import { fmtMoney } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, cardEdge, cardHeader, rowButton } from '../../lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton, jumpButton, jumpLabel, pageTitle } from '../../lib/controlStyles'
+import DateStepper from '../../components/DateStepper'
 import InvoiceForm from '../../components/InvoiceForm'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
+import { orderByUse, USE_WINDOW_DAYS } from '../../lib/supplierOrder'
 
 // Invoice entry, plus the invoices already recorded for that week.
 //
@@ -89,8 +91,23 @@ export default function InvoicesPage() {
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
-    const [error, setError] = useState('')
-    const [success, setSuccess] = useState('')
+    const [error, setError] = useState("")
+    const [success, setSuccess] = useState("")
+
+    // Kept apart from `error` above on purpose.
+    //
+    // `error` is for something that failed to load, which belongs at the top of
+    // the page because there is nothing else up there to look at. These two are
+    // for a save that would not go through, and those belong beside the button
+    // that was pressed: on a phone you press Save at the foot of the form and
+    // anything written above it is off the screen, so the press looks like it
+    // did nothing at all. The edit one was worse again, since the page behind
+    // an open dialog is covered.
+    //
+    // Two of them because adding and editing are two forms with their own
+    // values, and a problem with one is not a problem with the other.
+    const [addProblem, setAddProblem] = useState("")
+    const [editProblem, setEditProblem] = useState("")
 
     // Bumped after saving or deleting to make the effect below run again.
     // Cheaper than keeping a load function outside the effect, which would be a
@@ -111,9 +128,18 @@ export default function InvoicesPage() {
     // kept as a second copy, so it cannot go stale if the list reloads.
     const editingInvoice = invoices.find(i => i.id === editingId) || null
 
-    // Which week the list below is showing. Follows the date on the add form, so
-    // entering an invoice from last week shows you last week's invoices.
-    const weekStart = weekStartOf(form.invoiceDate)
+    // Which week the list below is showing.
+    //
+    // This used to be worked out from the date on the add form and nothing
+    // else, which meant the only way to look at another week was to type an
+    // invoice date inside it. Every other screen in the app has a week selector
+    // and this one had a side effect.
+    //
+    // It is its own state now, and the two still move together, because a form
+    // saying one week while the list shows another is worse than either problem
+    // it would solve. Neither wins: changing the week carries the form's date
+    // into it, and typing a date in another week carries the list to that week.
+    const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const restaurantId = activeRestaurant?.id
 
     useEffect(() => {
@@ -132,7 +158,23 @@ export default function InvoicesPage() {
                 .order('name')
 
             if (sErr) { setError(friendlyError(sErr)); setLoading(false); return }
-            setSuppliers(sup || [])
+
+            // Who we actually buy from, so the dropdown can lead with them
+            // rather than with whoever the alphabet favours. One column and a
+            // year of it, which is a few hundred rows at the volume this runs
+            // at, and it is re-read whenever the list reloads so saving an
+            // invoice moves that supplier up straight away.
+            //
+            // Ordered here rather than in the query because Postgres cannot
+            // sort one table by a count taken from another without a view or an
+            // RPC, and neither is worth it for a list this size.
+            const { data: history } = await supabase
+                .from('invoices')
+                .select('supplier_id')
+                .eq('restaurant_id', restaurantId)
+                .gte('invoice_date', addDays(todayISO(), -USE_WINDOW_DAYS))
+
+            setSuppliers(orderByUse(sup || [], history || []))
 
             // The week runs Sunday to Saturday, so the end is six days on.
             const end = addDays(weekStart, 6)
@@ -155,6 +197,24 @@ export default function InvoicesPage() {
 
     function setFormField(field, value) {
         setForm(prev => ({ ...prev, [field]: value }))
+        // Typing a date in another week takes the list with it, which is what
+        // the page did before there was a selector and is still what somebody
+        // entering last Friday's invoice wants.
+        if (field === 'invoiceDate' && value) {
+            const week = weekStartOf(value)
+            if (week !== weekStart) setWeekStart(week)
+        }
+    }
+
+    // Moving the week takes the form's date with it, onto the same day of the
+    // new week. Landing on a Tuesday and getting Tuesday back is worth more
+    // than landing on the first of the week every time, because invoices from
+    // one supplier tend to arrive on the same day.
+    function goToWeek(newStart) {
+        const offset = Math.max(0, Math.min(6,
+            Math.round((new Date(form.invoiceDate) - new Date(weekStart)) / 86400000)))
+        setWeekStart(newStart)
+        setForm(prev => ({ ...prev, invoiceDate: addDays(newStart, offset) }))
     }
 
     function setEditField(field, value) {
@@ -162,7 +222,7 @@ export default function InvoicesPage() {
     }
 
     function startEdit(inv) {
-        setError(''); setSuccess('')
+        setEditProblem(""); setSuccess("")
         setEditingId(inv.id)
         setEditForm({
             supplierId: inv.supplier_id || '',
@@ -176,6 +236,9 @@ export default function InvoicesPage() {
     function cancelEdit() {
         setEditingId(null)
         setEditForm(emptyForm())
+        // Or the same complaint is waiting inside the dialog the next time one
+        // is opened, about an invoice nobody is editing any more.
+        setEditProblem("")
     }
 
     // Asks about a duplicate, and returns whether to carry on.
@@ -211,10 +274,10 @@ export default function InvoicesPage() {
 
     async function handleSave(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setAddProblem(""); setSuccess("")
 
         const problem = validate(form)
-        if (problem) { setError(problem); return }
+        if (problem) { setAddProblem(problem); return }
 
         if (!await pastDuplicate(form)) return
 
@@ -227,7 +290,7 @@ export default function InvoicesPage() {
         })
         setSaving(false)
 
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setAddProblem(friendlyError(e1)); return }
 
         // Everything clears except the date.
         //
@@ -258,10 +321,10 @@ export default function InvoicesPage() {
     // filed under the old one and quietly wrong on the cost dashboard.
     async function handleUpdate(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setEditProblem(""); setSuccess("")
 
         const problem = validate(editForm)
-        if (problem) { setError(problem); return }
+        if (problem) { setEditProblem(problem); return }
 
         // The same check on the way through. Correcting a date or an amount can
         // land an invoice exactly on top of another one, and itself does not
@@ -275,7 +338,7 @@ export default function InvoicesPage() {
             .eq('id', editingId)
         setSaving(false)
 
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setEditProblem(friendlyError(e1)); return }
 
         cancelEdit()
         setSuccess('Invoice updated.')
@@ -320,7 +383,7 @@ export default function InvoicesPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Invoices</h2>
+                    <h2 className={pageTitle}>Invoices</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 {/* This screen only shows the week you are working on. The history
@@ -336,6 +399,29 @@ export default function InvoicesPage() {
             {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
+            {/* The week, the same control the other eight screens use. */}
+            <div className={`${card} p-4 mb-4`}>
+                <DateStepper
+                    onBack={() => goToWeek(addDays(weekStart, -7))}
+                    onNext={() => goToWeek(addDays(weekStart, 7))}
+                    backLabel="Previous week"
+                    nextLabel="Next week"
+                    jump={(
+                        <button
+                            type="button"
+                            onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            className={jumpButton(weekStart === weekStartOf(todayISO()))}
+                        >
+                            {jumpLabel(weekStart === weekStartOf(todayISO()))}
+                        </button>
+                    )}
+                >
+                    <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
+                        {shortDate(weekStart)} - {shortDate(addDays(weekStart, 6))}
+                    </span>
+                </DateStepper>
+            </div>
+
             {/* Entry form */}
             <div className={`${card} overflow-hidden mb-4`}>
                 <h3 className={cardHeader}>Add an invoice</h3>
@@ -347,6 +433,7 @@ export default function InvoicesPage() {
                         submitLabel="Save invoice"
                         saving={saving}
                         suppliers={suppliers}
+                        problem={addProblem}
                         weekStart={weekStart}
                     />
                 </div>
@@ -391,10 +478,16 @@ export default function InvoicesPage() {
                     // week there was no telling where Monday's deliveries ended
                     // and Tuesday's began without reading every date.
                     //
-                    // Still in a scrolling wrapper: it sits inside a padded card
-                    // rather than the usual table box, and without it the Total
-                    // column and the Delete buttons are off the edge of a phone.
-                    <div className="overflow-x-auto space-y-4">
+                    // The scrolling wrapper that used to be here was an
+                    // admission rather than a fix. Its own comment said the
+                    // total and the Delete button were off the edge of a phone,
+                    // and sliding them back into view one thumb at a time is
+                    // not the same as them fitting: the row is four columns
+                    // with w-32, w-28 and w-28 nailed to three of them, which
+                    // is about 375 pixels spoken for before the supplier gets
+                    // any. Cards below sm, the table above it, the same way
+                    // Prices and the recipe ingredients were dealt with.
+                    <div className="space-y-4">
                         {groupByDay(invoices).map(day => (
                             <div key={day.date} className="border border-border rounded-lg overflow-hidden">
                                 <div className="bg-gray-100 border-b border-border px-3 py-2 flex items-center justify-between gap-3">
@@ -405,6 +498,54 @@ export default function InvoicesPage() {
                                     </span>
                                 </div>
 
+                                {/* A card each on a phone. The supplier and the
+                                    amount share the first line because they are
+                                    the pair anybody is scanning for; the
+                                    category, the note and the two buttons go
+                                    underneath, where none of them is competing
+                                    for width. The coloured stripe down the side
+                                    is doing real work, telling Food from
+                                    Packaging at a glance, so it stays. */}
+                                <div className="sm:hidden">
+                                    {day.rows.map(inv => {
+                                        const cat = invoiceCategory(inv.category)
+                                        const isEditing = editingId === inv.id
+                                        return (
+                                            <div
+                                                key={inv.id}
+                                                className={`border-b border-border last:border-b-0 border-l-4 px-3 py-2.5 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}
+                                            >
+                                                <div className="flex items-baseline justify-between gap-3">
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {inv.suppliers?.name || 'Unknown supplier'}
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                                                        {fmtMoney(inv.total_amount)}
+                                                    </span>
+                                                </div>
+                                                <span className={`inline-block mt-1 px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
+                                                    {cat.label}
+                                                </span>
+                                                {inv.notes && (
+                                                    <p className="text-xs text-gray-400 mt-1">{inv.notes}</p>
+                                                )}
+                                                <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
+                                                    <button
+                                                        onClick={() => isEditing ? cancelEdit() : startEdit(inv)}
+                                                        className={rowButton('edit')}
+                                                    >
+                                                        {isEditing ? 'Cancel' : 'Edit'}
+                                                    </button>
+                                                    <button onClick={() => handleDelete(inv)} className={rowButton('danger')}>
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <div className="hidden sm:block overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <tbody>
                                         {day.rows.map(inv => {
@@ -449,6 +590,7 @@ export default function InvoicesPage() {
                                         })}
                                     </tbody>
                                 </table>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -470,6 +612,7 @@ export default function InvoicesPage() {
                             submitLabel="Save changes"
                             saving={saving}
                             suppliers={suppliers}
+                            problem={editProblem}
                             weekStart={weekStartOf(editForm.invoiceDate)}
                         />
                     </div>

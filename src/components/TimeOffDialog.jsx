@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
@@ -6,7 +7,7 @@ import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { fullDate } from '../lib/dates'
 import { numberField } from '../lib/numberInput'
-import { modalFooter, secondaryButton, badge, rowButton } from '../lib/controlStyles'
+import { modalFooter, secondaryButton, badge, rowButton, labelClass, fieldClass } from '../lib/controlStyles'
 import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
@@ -209,17 +210,13 @@ export default function TimeOffDialog({
         reload()
     }
 
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
-
     return (
         <Modal title="Time off" onClose={onClose} width="max-w-2xl">
             <ModalSection title="Who">
                 <select
                     value={employeeId}
                     onChange={e => { setEmployeeId(e.target.value); setEditing(null) }}
-                    className={fieldCls}
+                    className={fieldClass}
                 >
                     {(employees || []).map(e => (
                         <option key={e.id} value={e.id}>{e.full_name}</option>
@@ -231,11 +228,11 @@ export default function TimeOffDialog({
                 <form onSubmit={save}>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                         <div className="sm:col-span-1">
-                            <label className={labelCls}>What it is</label>
+                            <label className={labelClass}>What it is</label>
                             <select
                                 value={form.kind}
                                 onChange={e => change('kind', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             >
                                 {ABSENCE_KINDS.map(k => (
                                     <option key={k.value} value={k.value}>{k.pickerLabel || k.label}</option>
@@ -243,21 +240,21 @@ export default function TimeOffDialog({
                             </select>
                         </div>
                         <div>
-                            <label className={labelCls}>First day</label>
+                            <label className={labelClass}>First day</label>
                             <input
                                 type="date"
                                 value={form.startsOn}
                                 onChange={e => change('startsOn', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                         </div>
                         <div>
-                            <label className={labelCls}>Last day</label>
+                            <label className={labelClass}>Last day</label>
                             <input
                                 type="date"
                                 value={form.endsOn}
                                 onChange={e => change('endsOn', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                             <p className="text-xs text-gray-400 mt-1">
                                 Leave it empty for a single day.
@@ -273,13 +270,13 @@ export default function TimeOffDialog({
                             somebody actually worked. */}
                         {takesHours(form.kind) && (
                             <div>
-                                <label className={labelCls}>Hours</label>
+                                <label className={labelClass}>Hours</label>
                                 <input
                                     {...numberField({
                                         value: form.hours,
                                         onChange: v => change('hours', v),
                                     })}
-                                    className={`${fieldCls} text-right`}
+                                    className={`${fieldClass} text-right`}
                                     placeholder="0.00"
                                 />
                                 <p className="text-xs text-gray-400 mt-1">
@@ -302,23 +299,23 @@ export default function TimeOffDialog({
                             three is the same shape and worth having properly. */}
                         {onePart && (
                             <div className="sm:col-span-3">
-                                <label className={labelCls}>Only part of the day, optional</label>
+                                <label className={labelClass}>Only part of the day, optional</label>
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={form.canFrom}
-                                        onChange={e => change('canFrom', e.target.value)}
-                                        className={fieldCls}
+                                        onChange={v => change("canFrom", v)}
+                                        allowEmpty
+                                        placeholder="From opening"
                                         aria-label="Can work from"
-                                    />
+                                        />
                                     <span className="text-xs text-muted flex-shrink-0">to</span>
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={form.canTo}
-                                        onChange={e => change('canTo', e.target.value)}
-                                        className={fieldCls}
+                                        onChange={v => change("canTo", v)}
+                                        allowEmpty
+                                        placeholder="Until closing"
                                         aria-label="Can work until"
-                                    />
+                                        />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-1">
                                     The hours they can still work. Leave both empty for the whole day,
@@ -328,13 +325,13 @@ export default function TimeOffDialog({
                         )}
 
                         <div className={takesHours(form.kind) ? 'sm:col-span-2' : 'sm:col-span-3'}>
-                            <label className={labelCls}>Note</label>
+                            <label className={labelClass}>Note</label>
                             <input
                                 type="text"
                                 value={form.note}
                                 onChange={e => change('note', e.target.value)}
-                                className={fieldCls}
-                                placeholder="Anything worth remembering"
+                                className={fieldClass}
+                                placeholder="Optional note"
                             />
                         </div>
                     </div>

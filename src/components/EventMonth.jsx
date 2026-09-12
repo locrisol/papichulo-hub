@@ -61,6 +61,15 @@ export default function EventMonth({
         )
     }
 
+    // The size of a finger, the same rule DateStepper is built on. These were
+    // px-2.5 py-1, about a 30 pixel target, which is fine under a mouse and a
+    // guess with a thumb. They stay in the green bar rather than becoming a
+    // DateStepper, because a white boxed stepper inside a coloured header would
+    // look like something that had fallen in.
+    const monthArrow =
+        "h-9 min-w-9 px-2 flex items-center justify-center rounded-md bg-white/15 "
+        + "hover:bg-white/25 transition-colors"
+
     return (
         <div className={`${cardEdge} bg-white overflow-hidden`}>
             <div className={`${cardHeader} flex items-center justify-between gap-3`}>
@@ -69,7 +78,7 @@ export default function EventMonth({
                     <button
                         type="button"
                         onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-                        className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors"
+                        className={monthArrow}
                         aria-label="Previous month"
                     >
                         ‹
@@ -78,7 +87,7 @@ export default function EventMonth({
                         <button
                             type="button"
                             onClick={() => setViewMonth(monthStart(today))}
-                            className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors normal-case tracking-normal"
+                            className={`${monthArrow} normal-case tracking-normal px-3`}
                         >
                             Today
                         </button>
@@ -86,7 +95,7 @@ export default function EventMonth({
                     <button
                         type="button"
                         onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                        className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors"
+                        className={monthArrow}
                         aria-label="Next month"
                     >
                         ›

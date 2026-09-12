@@ -18,6 +18,12 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
     const days = weekDates(weekStart)
     const thisWeek = weekStartOf(today)
 
+    // The size of a finger, matching the month view beside it and the rule
+    // DateStepper is built on. These were about a 30 pixel target.
+    const weekArrow =
+        "h-9 min-w-9 px-2 flex items-center justify-center rounded-md bg-white/15 "
+        + "hover:bg-white/25 transition-colors"
+
     return (
         <div className={`${cardEdge} bg-white overflow-hidden`}>
             <div className={`${cardHeader} flex items-center justify-between gap-3`}>
@@ -30,7 +36,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                     <button
                         type="button"
                         onClick={() => setWeekStart(addDays(weekStart, -7))}
-                        className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors"
+                        className={weekArrow}
                         aria-label="Previous week"
                     >
                         ‹
@@ -39,7 +45,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                         <button
                             type="button"
                             onClick={() => setWeekStart(thisWeek)}
-                            className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors normal-case tracking-normal"
+                            className={`${weekArrow} normal-case tracking-normal px-3`}
                         >
                             Today
                         </button>
@@ -47,7 +53,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                     <button
                         type="button"
                         onClick={() => setWeekStart(addDays(weekStart, 7))}
-                        className="px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 transition-colors"
+                        className={weekArrow}
                         aria-label="Next week"
                     >
                         ›

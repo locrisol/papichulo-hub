@@ -7,7 +7,7 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
@@ -51,6 +51,12 @@ export default function WasteLogPage() {
     const [loadingEntries, setLoadingEntries] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
     const [refresh, setRefresh] = useState(0)
 
@@ -159,11 +165,11 @@ export default function WasteLogPage() {
 
     function addToBasket(e) {
         e.preventDefault()
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
 
-        if (!selectedProduct) { setError('Pick a product'); return }
+        if (!selectedProduct) { setFormProblem('Pick a product'); return }
         const qty = parseFloat(quantity)
-        if (isNaN(qty) || qty <= 0) { setError('The quantity has to be above zero'); return }
+        if (isNaN(qty) || qty <= 0) { setFormProblem('The quantity has to be above zero'); return }
 
         setBasket(prev => [...prev, {
             // Only used as a React key while the item is unsaved.
@@ -192,7 +198,7 @@ export default function WasteLogPage() {
 
     async function confirmSave() {
         setSaving(true)
-        setError('')
+        setFormProblem('')
 
         // unit_cost and waste_value are stored as they are today, so a later
         // price change does not rewrite what the waste was worth on the day.
@@ -210,7 +216,7 @@ export default function WasteLogPage() {
         const { error: e1 } = await supabase.from('waste_logs').insert(rows)
 
         setSaving(false)
-        if (e1) { setError(friendlyError(e1)); return }
+        if (e1) { setFormProblem(friendlyError(e1)); return }
 
         const count = rows.length
         setBasket([])
@@ -238,8 +244,6 @@ export default function WasteLogPage() {
 
     const dayTotal = entries.reduce((sum, e) => sum + Number(e.waste_value || 0), 0)
 
-    const fieldCls = 'w-full border border-border rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     if (loading) {
         return <p className="text-sm text-gray-400">Loading...</p>
@@ -249,7 +253,7 @@ export default function WasteLogPage() {
         <>
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Waste</h2>
+                    <h2 className={pageTitle}>Waste</h2>
                     <p className="text-sm text-gray-500 mt-1">{activeRestaurant?.name}</p>
                 </div>
                 {isManager && (
@@ -311,14 +315,15 @@ export default function WasteLogPage() {
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Add an item</h3>
 
                             <div className="mb-3 relative">
-                                <label className={labelCls}>Product</label>
+                                <label className={labelClass}>Product</label>
                                 <input
                                     type="text"
                                     value={search}
                                     onChange={e => { setSearch(e.target.value); setProductId('') }}
-                                    className={fieldCls}
-                                    placeholder="Start typing a product name"
+                                    className={fieldClass}
+                                    placeholder="Product name"
                                 />
+                                <p className={hintClass}>Start typing and pick from the list.</p>
                                 {filtered.length > 0 && !productId && (
                                     <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-sm overflow-hidden">
                                         {filtered.map(p => (
@@ -336,9 +341,9 @@ export default function WasteLogPage() {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                                 <div>
-                                    <label className={labelCls}>
+                                    <label className={labelClass}>
                                         Quantity {selectedProduct ? `(${selectedProduct.unit})` : ''}
                                     </label>
                                     <input
@@ -346,13 +351,13 @@ export default function WasteLogPage() {
                                             value: quantity,
                                             onChange: setQuantity,
                                         })}
-                                        className={`${fieldCls} text-right`}
+                                        className={`${fieldClass} text-right`}
                                         placeholder="0"
                                     />
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Reason</label>
-                                    <select value={reason} onChange={e => setReason(e.target.value)} className={fieldCls}>
+                                    <label className={labelClass}>Reason</label>
+                                    <select value={reason} onChange={e => setReason(e.target.value)} className={fieldClass}>
                                         {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                     </select>
                                 </div>
@@ -377,6 +382,13 @@ export default function WasteLogPage() {
                                 </div>
                             )}
 
+                            {/* Above the button row rather than inside it. As a sibling of the
+                                button it sat beside it on one line, which squeezes both on a
+                                phone and is not where the eye goes after a press. */}
+                            {formProblem && (
+                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                            )}
+
                             <div className="flex justify-end">
                                 <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
                                     Add to list
@@ -388,7 +400,7 @@ export default function WasteLogPage() {
                     {/* The list being built. Nothing here is saved yet. */}
                     {basket.length > 0 && (
                         <div className={`bg-white rounded-xl p-5 mb-4 ${reviewing ? 'border-2 border-accent' : 'border border-border'}`}>
-                            <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center justify-between gap-3 mb-1">
                                 <h3 className="text-sm font-semibold text-gray-900">
                                     {reviewing ? 'Check before saving' : 'Not saved yet'}
                                 </h3>
@@ -433,6 +445,13 @@ export default function WasteLogPage() {
                                 </p>
                             )}
 
+                            {/* Above the button row rather than inside it. As a sibling of the
+                                button it sat beside it on one line, which squeezes both on a
+                                phone and is not where the eye goes after a press. */}
+                            {formProblem && (
+                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                            )}
+
                             <div className="flex justify-end gap-2">
                                 {reviewing ? (
                                     <>
@@ -459,7 +478,7 @@ export default function WasteLogPage() {
                 {/* What is already logged. Dims while another day loads instead
                     of disappearing, so the page does not jump. */}
                 <div className={`${card} p-5 transition-opacity ${loadingEntries ? 'opacity-50' : ''}`}>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between gap-3 mb-3">
                         <h3 className="text-sm font-semibold text-gray-700">
                             {logDate === todayISO() ? 'Logged today' : `Logged on ${shortDate(logDate)}`}
                         </h3>

@@ -15,11 +15,15 @@ import { weekStartOf, addDays } from './dates'
 // January would be at its least useful in the weeks it is most needed, and
 // "how have we done against this time last year" is the question a rolling year
 // answers and a calendar one cannot.
+// Each one carries a short form as well. Four buttons reading "12 months" do
+// not fit across a phone whatever is done to the track, and abbreviating is
+// better than scrolling for a control with four fixed choices. The full words
+// come back from sm up, where they fit.
 export const RANGES = [
-    { key: '1m', label: '1 month', weeks: 5 },
-    { key: '3m', label: '3 months', weeks: 13 },
-    { key: '6m', label: '6 months', weeks: 26 },
-    { key: '12m', label: '12 months', weeks: 52 },
+    { key: '1m', label: '1 month', short: '1m', weeks: 5 },
+    { key: '3m', label: '3 months', short: '3m', weeks: 13 },
+    { key: '6m', label: '6 months', short: '6m', weeks: 26 },
+    { key: '12m', label: '12 months', short: '12m', weeks: 52 },
 ]
 
 export const DEFAULT_RANGE = '12m'

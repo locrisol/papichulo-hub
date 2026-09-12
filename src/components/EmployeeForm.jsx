@@ -3,7 +3,7 @@ import LockedField from './LockedField'
 import { linkableUsers } from '../lib/team'
 import { todayISO, fullDate } from '../lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { modalFooter } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 
 // The add and edit form for a person.
@@ -24,9 +24,6 @@ export default function EmployeeForm({
     employees,
     editingId,
 }) {
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
 
     const available = linkableUsers(users, employees, editingId)
 
@@ -34,28 +31,29 @@ export default function EmployeeForm({
         <form onSubmit={onSubmit}>
             <ModalSection title="Who they are">
             <div className="mb-3">
-                <label className={labelCls}>Name</label>
+                <label className={labelClass}>Name</label>
                 <LockedField label="Name" value={formData.fullName}>
                     <input
                         type="text"
                         value={formData.fullName}
                         onChange={e => onChange('fullName', e.target.value)}
-                        className={fieldCls}
-                        placeholder="As it should read on the roster"
+                        className={fieldClass}
+                        placeholder="Full name"
                         autoFocus
                     />
+                    <p className={hintClass}>As it should read on the roster.</p>
                 </LockedField>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
-                    <label className={labelCls}>Position</label>
+                    <label className={labelClass}>Position</label>
                     <LockedField label="Position" value={formData.positionId}
                         display={positions.find(p => p.id === formData.positionId)?.name}>
                         <select
                             value={formData.positionId}
                             onChange={e => onChange('positionId', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         >
                             <option value="">Not set</option>
                             {positions.map(p => (
@@ -65,14 +63,14 @@ export default function EmployeeForm({
                     </LockedField>
                 </div>
                 <div>
-                    <label className={labelCls}>Cost per hour</label>
+                    <label className={labelClass}>Cost per hour</label>
                     <LockedField label="Cost per hour" value={formData.hourlyRate}>
                         <input
                             {...numberField({
                                 value: formData.hourlyRate,
                                 onChange: v => onChange('hourlyRate', v),
                             })}
-                            className={`${fieldCls} text-right`}
+                            className={`${fieldClass} text-right`}
                             placeholder="0.00"
                         />
                     </LockedField>
@@ -88,26 +86,26 @@ export default function EmployeeForm({
                 "01/C". Two across from the small breakpoint up, where it does. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
-                    <label className={labelCls}>First day</label>
+                    <label className={labelClass}>First day</label>
                     <LockedField label="First day" value={formData.startedOn}
                         display={fullDate(formData.startedOn)}>
                         <input
                             type="date"
                             value={formData.startedOn}
                             onChange={e => onChange('startedOn', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         />
                     </LockedField>
                 </div>
                 <div>
-                    <label className={labelCls}>Last day</label>
+                    <label className={labelClass}>Last day</label>
                     <LockedField label="Last day" value={formData.endedOn}
                         display={fullDate(formData.endedOn)}>
                         <input
                             type="date"
                             value={formData.endedOn}
                             onChange={e => onChange('endedOn', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         />
                     </LockedField>
                     <p className="text-xs text-gray-400 mt-1">
@@ -117,13 +115,13 @@ export default function EmployeeForm({
             </div>
 
             <div className="mb-3">
-                <label className={labelCls}>Account</label>
+                <label className={labelClass}>Account</label>
                 <LockedField label="Account" value={formData.userId}
                     display={users.find(u => u.id === formData.userId)?.full_name}>
                     <select
                         value={formData.userId}
                         onChange={e => onChange('userId', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                     >
                         <option value="">No account</option>
                         {available.map(u => (
@@ -156,7 +154,7 @@ export default function EmployeeForm({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
-                        <label className={labelCls}>Date of birth</label>
+                        <label className={labelClass}>Date of birth</label>
                         <LockedField label="Date of birth" value={formData.dateOfBirth}
                             display={fullDate(formData.dateOfBirth)}>
                             <input
@@ -164,7 +162,7 @@ export default function EmployeeForm({
                                 value={formData.dateOfBirth}
                                 max={todayISO()}
                                 onChange={e => onChange('dateOfBirth', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                         </LockedField>
                         {/* Said here rather than only at the bottom with the
@@ -179,13 +177,13 @@ export default function EmployeeForm({
                         )}
                     </div>
                     <div>
-                        <label className={labelCls}>Permission</label>
+                        <label className={labelClass}>Permission</label>
                         <LockedField label="Permission" value={formData.workPermission}
                             display={permissionFor(formData.workPermission).label}>
                             <select
                                 value={formData.workPermission}
                                 onChange={e => onChange('workPermission', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             >
                                 {WORK_PERMISSIONS.map(p => (
                                     <option key={p.value} value={p.value}>{p.label}</option>
@@ -203,14 +201,14 @@ export default function EmployeeForm({
                 </div>
 
                 <div className="mb-1">
-                    <label className={labelCls}>Permission runs out</label>
+                    <label className={labelClass}>Permission runs out</label>
                     <LockedField label="Permission expiry" value={formData.workPermissionExpires}
                         display={fullDate(formData.workPermissionExpires)}>
                         <input
                             type="date"
                             value={formData.workPermissionExpires}
                             onChange={e => onChange('workPermissionExpires', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         />
                     </LockedField>
                     <p className="text-xs text-gray-400 mt-1">
@@ -227,14 +225,14 @@ export default function EmployeeForm({
                     out, so the app has to know which came first. */}
                 {formData.workPermissionExpires && (
                     <div className="mb-1 mt-4">
-                        <label className={labelCls}>Renewal applied for on</label>
+                        <label className={labelClass}>Renewal applied for on</label>
                         <LockedField label="Renewal date" value={formData.permissionRenewalApplied}
                             display={fullDate(formData.permissionRenewalApplied)}>
                             <input
                                 type="date"
                                 value={formData.permissionRenewalApplied || ''}
                                 onChange={e => onChange('permissionRenewalApplied', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                         </LockedField>
                         <p className="text-xs text-gray-400 mt-1">
@@ -250,15 +248,16 @@ export default function EmployeeForm({
                     rather than in a folder in the office. */}
                 {formData.permissionRenewalApplied && (
                     <div className="mb-1 mt-4">
-                        <label className={labelCls}>Application reference</label>
+                        <label className={labelClass}>Application reference</label>
                         <LockedField label="Application reference" value={formData.permissionRenewalReference}>
                             <input
                                 type="text"
                                 value={formData.permissionRenewalReference || ''}
                                 onChange={e => onChange('permissionRenewalReference', e.target.value)}
-                                placeholder="OREG number off the receipt"
-                                className={fieldCls}
+                                placeholder="OREG number"
+                                className={fieldClass}
                             />
+                            <p className={hintClass}>Off the receipt they were given.</p>
                         </LockedField>
                     </div>
                 )}
@@ -280,13 +279,13 @@ export default function EmployeeForm({
             >
 
                 <div className="mb-3">
-                    <label className={labelCls}>Training held</label>
+                    <label className={labelClass}>Training held</label>
                     <LockedField label="Training held" value={formData.foodSafetyLevel}
                         display={FOOD_SAFETY_LEVELS.find(l => l.value === formData.foodSafetyLevel)?.label}>
                         <select
                             value={formData.foodSafetyLevel}
                             onChange={e => onChange('foodSafetyLevel', e.target.value)}
-                            className={fieldCls}
+                            className={fieldClass}
                         >
                             {FOOD_SAFETY_LEVELS.map(l => (
                                 <option key={l.value} value={l.value}>{l.label}</option>
@@ -297,7 +296,7 @@ export default function EmployeeForm({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label className={labelCls}>Sat on</label>
+                        <label className={labelClass}>Sat on</label>
                         <LockedField label="Training date" value={formData.foodSafetyIssued}
                             display={fullDate(formData.foodSafetyIssued)}>
                             <input
@@ -315,19 +314,19 @@ export default function EmployeeForm({
                                     onChange('foodSafetyExpires',
                                         e.target.value ? expiryFrom(e.target.value) : '')
                                 }}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                         </LockedField>
                     </div>
                     <div>
-                        <label className={labelCls}>Runs out</label>
+                        <label className={labelClass}>Runs out</label>
                         <LockedField label="Training expiry" value={formData.foodSafetyExpires}
                             display={fullDate(formData.foodSafetyExpires)}>
                             <input
                                 type="date"
                                 value={formData.foodSafetyExpires}
                                 onChange={e => onChange('foodSafetyExpires', e.target.value)}
-                                className={fieldCls}
+                                className={fieldClass}
                             />
                         </LockedField>
                     </div>
@@ -344,8 +343,8 @@ export default function EmployeeForm({
                     type="text"
                     value={formData.notes}
                     onChange={e => onChange('notes', e.target.value)}
-                    className={fieldCls}
-                    placeholder="Anything worth remembering"
+                    className={fieldClass}
+                    placeholder="Optional note"
                 />
             </ModalSection>
 

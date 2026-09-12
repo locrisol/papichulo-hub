@@ -1,3 +1,4 @@
+import { fmtMoney } from '../../lib/format'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -9,7 +10,7 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeItems from '../../components/menu/ArrangeItems'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
 
 // Every dish we sell, with what it costs us and what it makes.
@@ -48,6 +49,12 @@ export default function MenuItemsPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Kept apart from the page's error above. That one is for something that
+  // would not load, which belongs at the top of the page because there is
+  // nothing else up there to read. This is for a save that would not go
+  // through, and that belongs beside the button you pressed: at the foot of
+  // a form on a phone, the top of the page is not on the screen at all.
+  const [formProblem, setFormProblem] = useState('')
   const [errors, setErrors] = useState({})
 
   const [showForm, setShowForm] = useState(false)
@@ -142,7 +149,7 @@ export default function MenuItemsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setError('')
+    setFormProblem('')
     const v = validate()
     if (Object.keys(v).length) { setErrors(v); return }
     setErrors({})
@@ -161,7 +168,7 @@ export default function MenuItemsPage() {
       .select()
       .single()
 
-    if (error) setError(friendlyError(error))
+    if (error) setFormProblem(friendlyError(error))
     else {
       // Jump straight into the editor for the new item so the user can
       // start adding components immediately.
@@ -338,7 +345,7 @@ export default function MenuItemsPage() {
           narrow column while the last button hung off the right edge. */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+          <h2 className={pageTitle}>Menu Items</h2>
           <p className="text-sm text-gray-500 mt-1">
             Costs and margins for {activeRestaurant?.name}
           </p>
@@ -381,9 +388,9 @@ export default function MenuItemsPage() {
         <div className={`${card} p-6 mb-6`}>
           <h3 className="text-sm font-semibold text-gray-900 mb-4">New Menu Item</h3>
           <form onSubmit={handleSave}>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+                <label className={labelClass}>Name</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -393,7 +400,7 @@ export default function MenuItemsPage() {
                 {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+                <label className={labelClass}>Category</label>
                 <select
                   value={formData.category_id}
                   onChange={e => handleFieldChange('category_id', e.target.value)}
@@ -407,7 +414,7 @@ export default function MenuItemsPage() {
                 {errors.category_id && <p className="text-xs text-red-600 mt-1">{errors.category_id}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Selling Price (€, gross)</label>
+                <label className={labelClass}>Selling Price (€, gross)</label>
                 <input
                   {...numberField({
                     value: formData.selling_price,
@@ -418,7 +425,7 @@ export default function MenuItemsPage() {
                 {errors.selling_price && <p className="text-xs text-red-600 mt-1">{errors.selling_price}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VAT Rate (%)</label>
+                <label className={labelClass}>VAT Rate (%)</label>
                 <input
                   {...numberField({
                     value: formData.vat_rate,
@@ -431,7 +438,7 @@ export default function MenuItemsPage() {
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes (optional)</label>
+              <label className={labelClass}>Notes (optional)</label>
               <textarea
                 value={formData.notes}
                 onChange={e => handleFieldChange('notes', e.target.value)}
@@ -439,6 +446,13 @@ export default function MenuItemsPage() {
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
               />
             </div>
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
+
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -544,14 +558,14 @@ export default function MenuItemsPage() {
                             <dt className="text-gray-500">Cost</dt>
                             <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
                               {cost !== null
-                                ? `€${cost.toFixed(2)}`
+                                ? fmtMoney(cost)
                                 : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Price (gross)</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">
                                 (VAT {parseFloat(item.vat_rate)}%)
                               </span>
@@ -560,7 +574,7 @@ export default function MenuItemsPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Net</dt>
                             <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
@@ -568,7 +582,7 @@ export default function MenuItemsPage() {
                             <dd className="text-right">
                               {m ? (
                                 <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                  €{m.margin.toFixed(2)}
+                                  {fmtMoney(m.margin)}
                                   <span className="text-xs ml-1">
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})
                                   </span>
@@ -646,20 +660,20 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              {cost !== null ? `€${cost.toFixed(2)}` : <span className="text-amber-600 text-xs">Incomplete</span>}
+                              {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{parseFloat(item.selling_price).toFixed(2)}
+                              {fmtMoney(parseFloat(item.selling_price))}
                               <span className="text-xs text-gray-400 ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
                             <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
-                              €{getNet(item).toFixed(2)}
+                              {fmtMoney(getNet(item))}
                             </td>
                             <td className="px-4 py-3">
                               {m ? (
                                 <>
                                   <span className={`font-medium ${marginColour(m.marginPct)}`}>
-                                    €{m.margin.toFixed(2)}
+                                    {fmtMoney(m.margin)}
                                   </span>
                                   <span className={`text-xs ml-1 ${marginColour(m.marginPct)}`}>
                                     ({m.marginPct !== null ? `${m.marginPct.toFixed(1)}%` : '—'})

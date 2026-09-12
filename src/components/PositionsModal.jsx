@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { useConfirm } from '../context/ConfirmContext'
 import { POSITION_COLOURS, nextColour } from '../lib/team'
-import { badge, rowButton } from '../lib/controlStyles'
+import { badge, rowButton, fieldClass } from '../lib/controlStyles'
 import { ModalSectionBar } from './ModalSection'
 
 // The positions a restaurant uses: Kitchen, Counter, Delivery, whatever they
@@ -76,9 +76,6 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
         else onChanged()
     }
 
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white'
-
     // Buttons rather than a dropdown, the same as the invoice categories. A
     // dropdown only shows the colour once the choice is already made.
     const swatches = (value, onPick) => (
@@ -118,7 +115,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                                             type="text"
                                             value={editing.name}
                                             onChange={e => setEditing({ ...editing, name: e.target.value })}
-                                            className={fieldCls}
+                                            className={fieldClass}
                                         />
                                         {swatches(editing.colour, c => setEditing({ ...editing, colour: c }))}
                                         <div className="flex gap-2 justify-end">
@@ -179,8 +176,8 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                         type="text"
                         value={name}
                         onChange={e => setName(e.target.value)}
-                        className={fieldCls}
-                        placeholder="Kitchen, Counter, Delivery"
+                        className={fieldClass}
+                        placeholder="Kitchen"
                     />
                     {swatches(colour, setColour)}
                     <div className="flex justify-end">

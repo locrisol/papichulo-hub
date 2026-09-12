@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { friendlyError } from '../../lib/errors'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
-import { dateField } from '../../lib/controlStyles'
+import { dateField, pageTitle } from '../../lib/controlStyles'
 import { whoWords, tableWords } from '../../lib/changeLog'
 import ChangeLog from '../../components/settings/ChangeLog'
 
@@ -87,7 +87,7 @@ export default function ChangesPage() {
     return (
         <div>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Changes</h2>
+                <h2 className={pageTitle}>Changes</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     Every edit, addition and deletion, written by the database itself
                 </p>

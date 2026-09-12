@@ -73,11 +73,25 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                 {ordered.map(item => {
                     const done = !!item.done_on
                     return (
+                        // The age sits under the text rather than beside it.
+                        //
+                        // This row had four things on one line: the tick, the
+                        // text, "3 weeks open" with whitespace-nowrap, and the
+                        // remove. Only the text carried min-w-0, so only the
+                        // text was allowed to give way, and on a phone it gave
+                        // way until it was one word wide and the item read
+                        // straight down the page a word at a time.
+                        //
+                        // More width was never the answer, because the ends of
+                        // the row will not yield at any width. Taking the
+                        // stubborn one off the row is. It goes back up beside
+                        // the text from sm, where there is room for both.
                         <div
                             key={item.id}
-                            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                            className={`rounded-lg border px-3 py-2.5 ${
                                 done ? 'border-border bg-app-bg' : 'border-border bg-white'}`}
                         >
+                        <div className="flex items-start gap-3">
                             <button
                                 onClick={() => canEdit && onSave(item.id, { done_on: done ? null : weekStart })}
                                 disabled={!canEdit}
@@ -114,7 +128,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                                 )}
                             </div>
 
-                            <span className="flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
+                            <span className="hidden sm:block flex-shrink-0 text-xs text-muted whitespace-nowrap mt-0.5">
                                 {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
                             </span>
 
@@ -133,6 +147,13 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                                 </button>
                             )}
                         </div>
+
+                        {/* Lined up under the text rather than under the tick,
+                            so it reads as belonging to the item. */}
+                        <p className="sm:hidden text-xs text-muted mt-1.5 pl-9">
+                            {done ? 'closed this week' : weeksWords(weeksOpen(item, weekStart))}
+                        </p>
+                        </div>
                     )
                 })}
 
@@ -148,7 +169,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         minRows={2}
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
-                        placeholder="Add something that needs doing"
+                        placeholder="What needs doing"
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (

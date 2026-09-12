@@ -6,7 +6,7 @@ import { resolveTarget } from '../../lib/costTargets'
 import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { dateField, jumpButton, tableHeadRow, card, jumpLabel } from '../../lib/controlStyles'
+import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
 
@@ -46,6 +46,12 @@ export default function LabourPage() {
     const [saving, setSaving] = useState(false)
     const [dirty, setDirty] = useState(false)
     const [error, setError] = useState('')
+    // Kept apart from the page's error above. That one is for something that
+    // would not load, which belongs at the top of the page because there is
+    // nothing else up there to read. This is for a save that would not go
+    // through, and that belongs beside the button you pressed: at the foot of
+    // a form on a phone, the top of the page is not on the screen at all.
+    const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
     const [overrides, setOverrides] = useState([])
 
@@ -196,7 +202,7 @@ export default function LabourPage() {
     // ---- saving ----------------------------------------------------------
 
     async function handleSave() {
-        setError(''); setSuccess('')
+        setFormProblem(''); setSuccess('')
         setSaving(true)
 
         const toInsert = []
@@ -226,11 +232,11 @@ export default function LabourPage() {
 
         if (toInsert.length > 0) {
             const { error: e1 } = await supabase.from('labour_entries').insert(toInsert)
-            if (e1) { setError(friendlyError(e1)); setSaving(false); return }
+            if (e1) { setFormProblem(friendlyError(e1)); setSaving(false); return }
         }
         for (const u of toUpdate) {
             const { error: e2 } = await supabase.from('labour_entries').update(u.payload).eq('id', u.id)
-            if (e2) { setError(friendlyError(e2)); setSaving(false); return }
+            if (e2) { setFormProblem(friendlyError(e2)); setSaving(false); return }
         }
 
         setSaving(false)
@@ -255,7 +261,7 @@ export default function LabourPage() {
     return (
         <>
             <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Labour</h2>
+                <h2 className={pageTitle}>Labour</h2>
                 <p className="text-sm text-gray-500 mt-1">
                     {activeRestaurant?.name} · hours and cost, Sunday to Saturday
                 </p>
@@ -332,12 +338,12 @@ export default function LabourPage() {
                     <table className="w-full min-w-[760px] text-sm">
                         <thead>
                             <tr className={tableHeadRow}>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Day</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Hours</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">People</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Labour</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Net sales</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Labour %</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Day</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Hours</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">People</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-28">Labour</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Net sales</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Labour %</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -406,6 +412,13 @@ export default function LabourPage() {
                     ? ` The labour target for the week of ${fullDate(weekStart)} is ${target}% of net sales.`
                     : ''}
             </p>
+
+            {/* Above the button row rather than inside it. As a sibling of the
+                button it sat beside it on one line, which squeezes both on a
+                phone and is not where the eye goes after a press. */}
+            {formProblem && (
+              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            )}
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving}

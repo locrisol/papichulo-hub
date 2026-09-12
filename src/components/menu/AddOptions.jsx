@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '../Modal'
 import ModalSection from '../ModalSection'
-import { modalFooter, secondaryButton } from '../../lib/controlStyles'
+import { modalFooter, secondaryButton, checkbox, labelClass } from '../../lib/controlStyles'
 import QuantityInUnit from '../QuantityInUnit'
 import { offerable } from '../../lib/menuChoices'
 import { canBeMenuComponent } from '../../lib/products'
@@ -182,7 +182,7 @@ export default function AddOptions({
                         type="checkbox"
                         checked={listSeparately}
                         onChange={e => setListSeparately(e.target.checked)}
-                        className="w-4 h-4 accent-accent mt-0.5"
+                        className={`${checkbox} mt-0.5`}
                     />
                     <span className="text-sm text-gray-700">
                         List them separately on the allergen sheet
@@ -237,7 +237,7 @@ export default function AddOptions({
                     <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
                         {commonUnit ? (
                             <div className="w-56">
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                <label className={labelClass}>
                                     Quantity for all
                                 </label>
                                 {/* The same control as the ordinary component
@@ -324,7 +324,7 @@ export default function AddOptions({
                                         disabled={already}
                                         checked={already || ticked}
                                         onChange={() => toggle(product.id)}
-                                        className="w-4 h-4 accent-accent"
+                                        className={checkbox}
                                     />
                                     <span className="flex-1 min-w-0">
                                         <span className="block text-sm text-gray-900">{item.name}</span>

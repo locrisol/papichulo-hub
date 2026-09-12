@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { canManageUser } from '../../lib/access'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, rowButton } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '../../lib/controlStyles'
 import { latestByUser, lastUsed, agoWords } from '../../lib/loginEvents'
 import { fullDate } from '../../lib/dates'
 import SignInHistory from '../../components/settings/SignInHistory'
@@ -117,7 +117,7 @@ export default function UsersPage() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">User Management</h2>
+          <h2 className={pageTitle}>User Management</h2>
           <p className="text-sm text-gray-500 mt-1">Manage user accounts and access levels</p>
         </div>
         {/* Adding a user is not built yet. Creating an account needs the service
@@ -193,17 +193,17 @@ export default function UsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Restaurant</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Role</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Restaurant</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
                 {/* Only for Super Admin. The table itself returns nothing to
                     anybody else, and a heading over an empty column is worse
                     than no heading. */}
                 {seesLogins && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Last seen</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Last seen</th>
                 )}
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>

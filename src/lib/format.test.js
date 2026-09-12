@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney, fmtQty } from './format'
+import { fmtMoney, fmtQty, fmtUnitCost } from './format'
 
 describe('fmtMoney', () => {
   it('formats a value over 1000 with a thousands separator and 2 decimals', () => {
@@ -67,4 +67,30 @@ describe('fmtQty', () => {
   it('keeps up to three meaningful decimals', () => {
     expect(fmtQty(0.125)).toBe('0.125')
   })
+})
+
+describe('fmtUnitCost', () => {
+    it('keeps four decimals, because two would cost real money', () => {
+        // A tortilla at 0.3033 rounded to 0.30 is eleven cent light on a dish
+        // using thirty of them.
+        expect(fmtUnitCost(0.3033)).toBe('€0.3033')
+        expect(fmtUnitCost(6.4875)).toBe('€6.4875')
+    })
+
+    it('separates thousands, which a hand written toFixed does not', () => {
+        expect(fmtUnitCost(1234.5)).toBe('€1,234.5000')
+    })
+
+    it('gives a dash for nothing rather than €NaN', () => {
+        expect(fmtUnitCost(null)).toBe('—')
+        expect(fmtUnitCost(undefined)).toBe('—')
+    })
+
+    it('puts the minus before the euro sign, like fmtMoney', () => {
+        expect(fmtUnitCost(-2.5)).toBe('-€2.5000')
+    })
+
+    it('does not sign a zero that only rounds to nothing', () => {
+        expect(fmtUnitCost(-0.000001)).toBe('€0.0000')
+    })
 })

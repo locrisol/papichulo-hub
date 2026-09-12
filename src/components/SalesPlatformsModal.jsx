@@ -289,10 +289,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Status</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Order</th>
-                <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Actions</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider">Name</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Status</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-24">Order</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider w-32">Actions</th>
               </tr>
             </thead>
             <tbody>{rows.map(renderRow)}</tbody>

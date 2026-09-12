@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import TimeField from './TimeField'
 import Modal from './Modal'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
@@ -102,10 +103,6 @@ export default function DayNoteDialog({
         if (err) { setError(friendlyError(err)); return }
         onSaved()
     }
-
-    const fieldCls =
-        'w-full border border-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
-    const labelCls = 'text-xs text-gray-500 mb-1 block'
     const timeCls =
         'border border-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent'
 
@@ -134,7 +131,7 @@ export default function DayNoteDialog({
 
                 {!form.isClosed && (
                     <div className="mb-4">
-                        <p className={labelCls}>
+                        <p className={labelClass}>
                             Different hours just for this day
                             {usual && (
                                 <span className="text-gray-400">
@@ -142,21 +139,17 @@ export default function DayNoteDialog({
                                 </span>
                             )}
                         </p>
-                        <div className="grid grid-cols-2 gap-3 mb-2">
-                            <input
-                                type="time"
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                            <TimeField
                                 value={form.opensAt}
-                                onChange={e => set('opensAt', e.target.value)}
-                                className={fieldCls}
+                                onChange={v => set("opensAt", v)}
                                 aria-label="Opens at"
-                            />
-                            <input
-                                type="time"
+                                />
+                            <TimeField
                                 value={form.closesAt}
-                                onChange={e => set('closesAt', e.target.value)}
-                                className={fieldCls}
+                                onChange={v => set("closesAt", v)}
                                 aria-label="Closes at"
-                            />
+                                />
                         </div>
                         <p className="text-xs text-gray-400">
                             This is where a late night for a concert or an early close for renovations goes.
@@ -177,7 +170,7 @@ export default function DayNoteDialog({
                             type="checkbox"
                             checked={form.isClosed}
                             onChange={e => set('isClosed', e.target.checked)}
-                            className="w-4 h-4 mt-0.5 accent-accent"
+                            className={`${checkbox} mt-0.5`}
                         />
                         <span>
                             <span className="block text-sm font-medium text-gray-900">Closed all day</span>
@@ -193,7 +186,7 @@ export default function DayNoteDialog({
                             type="checkbox"
                             checked={form.isBankHoliday}
                             onChange={e => set('isBankHoliday', e.target.checked)}
-                            className="w-4 h-4 mt-0.5 accent-accent"
+                            className={`${checkbox} mt-0.5`}
                         />
                         <span>
                             <span className="block text-sm font-medium text-gray-900">Bank holiday</span>
@@ -217,7 +210,7 @@ export default function DayNoteDialog({
                         type="text"
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
-                        className={fieldCls}
+                        className={fieldClass}
                         placeholder="Deep Cleaning Day"
                     />
                 </ModalSection>
@@ -278,13 +271,12 @@ export default function DayNoteDialog({
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>
-                                    <input
-                                        type="time"
+                                    <TimeField
                                         value={extra.time}
-                                        onChange={e => set('extras', setExtraTime(form.extras, extra.name, e.target.value))}
-                                        aria-label={extra.name + ' time'}
+                                        onChange={v => set("extras", setExtraTime(form.extras, extra.name, v))}
+                                        aria-label={extra.name + " time"}
                                         className={timeCls}
-                                    />
+                                        />
                                     <button
                                         type="button"
                                         onClick={() => set('extras', removeExtra(form.extras, extra.name))}
@@ -303,22 +295,21 @@ export default function DayNoteDialog({
                         a thing to set up, it is a thing to type. */}
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="flex-1 min-w-40">
-                            <label className={labelCls}>Something else, just this day</label>
+                            <label className={labelClass}>Something else, just this day</label>
                             <input
                                 type="text"
                                 value={oneOff.name}
                                 onChange={e => setOneOff(o => ({ ...o, name: e.target.value }))}
-                                className={fieldCls}
+                                className={fieldClass}
                                 placeholder="Coffee machine service"
                             />
                         </div>
-                        <input
-                            type="time"
+                        <TimeField
                             value={oneOff.time}
-                            onChange={e => setOneOff(o => ({ ...o, time: e.target.value }))}
+                            onChange={v => setOneOff(o => ({ ...o, time: v }))}
                             aria-label="Time for the one off"
                             className={timeCls}
-                        />
+                            />
                         <button
                             type="button"
                             onClick={() => {
@@ -344,9 +335,10 @@ export default function DayNoteDialog({
                         value={form.message}
                         onChange={e => set('message', e.target.value)}
                         rows={2}
-                        className={fieldCls}
-                        placeholder="Deliveries go to the back door this week"
+                        className={fieldClass}
+                        placeholder="What happened"
                     />
+                    <p className={hintClass}>For example, deliveries go to the back door this week.</p>
                 </ModalSection>
                 )}
 
