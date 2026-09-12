@@ -1,3 +1,8 @@
+// num lives in format.js now, with the money and the percentages. It is
+// re-exported because the weekly report and this file's own tests have
+// always got it from here, and moving a name is not worth a bigger diff.
+import { num } from './format'
+export { num }
 // The till receipt rows.
 //
 // These used to be one database column each: cash_sales, card_sales and so on.
@@ -10,13 +15,6 @@
 // in here is the logic that goes with that, kept out of the pages so it can be
 // tested on its own.
 
-// Empty boxes count as nothing rather than breaking the sum. The grid holds
-// strings because that is what an input gives you.
-export function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 // Which rows to draw, given every tender for the restaurant and the days being
 // shown.

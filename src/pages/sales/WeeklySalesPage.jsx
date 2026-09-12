@@ -4,13 +4,15 @@ import { supabase } from '../../lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
+import { DAY_NAMES } from '../../lib/events'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -32,13 +34,7 @@ import DateStepper from '../../components/DateStepper'
 // Cash reconciliation (floats, cash banked, petty cash) is deliberately absent
 // here, as it is in the day form: the business is changing how it handles cash.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 // Key under which an unsaved week is kept in local storage.
 function draftKey(restaurantId, weekStart) {
@@ -855,7 +851,7 @@ export default function WeeklySalesPage() {
                 at a time and saves to exactly the same place, so it makes no difference which one you use.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Week navigation */}
@@ -1061,14 +1057,14 @@ export default function WeeklySalesPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">
                 <button
                     onClick={handleSaveWeek}
                     disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : 'Save week'}
                 </button>

@@ -3,10 +3,11 @@ import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass } from '../lib/controlStyles'
+import { tableHeadRow, card, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '../lib/controlStyles'
 import ArrangeList from './ArrangeList'
 import { ModalSectionBar } from './ModalSection'
 import Modal from './Modal'
+import ErrorBanner from './ErrorBanner'
 
 // The rows on the till receipt.
 //
@@ -268,7 +269,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
         </p>
 
         {error && (
-          <div className="mx-6 mt-4 bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>
+          <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>
         )}
 
         <div className="px-6 py-4 overflow-y-auto">
@@ -381,7 +382,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
             </div>
             <button
               type="submit"
-              className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+              className={primaryButton()}
             >
               Add
             </button>

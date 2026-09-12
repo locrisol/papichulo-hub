@@ -5,8 +5,9 @@ import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { BANK_HOLIDAY } from '../lib/roster'
-import { modalFooter, removeButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
+import ErrorBanner from './ErrorBanner'
 
 // When the store is usually open.
 //
@@ -102,7 +103,7 @@ export default function OpeningHoursModal({ onClose }) {
                     description="The roster uses this to mark opening and closing shifts, and to print Closing instead of a time on anything that runs past the end of the day."
                 >
 
-                {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
+                {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                 <div className="space-y-3 sm:space-y-2 mb-4">
                     {FULL_DAYS.map((day, i) => (
@@ -192,7 +193,7 @@ export default function OpeningHoursModal({ onClose }) {
                 </ModalSection>
 
                 {problem && (
-                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
                 )}
 
                 <div className={modalFooter}>
@@ -207,7 +208,7 @@ export default function OpeningHoursModal({ onClose }) {
                         type="button"
                         onClick={save}
                         disabled={saving || !!problem}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : 'Save'}
                     </button>

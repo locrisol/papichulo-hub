@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useConfirm } from '../context/ConfirmContext'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass } from '../lib/controlStyles'
+import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass, primaryButton } from '../lib/controlStyles'
 import ArrangeList from './ArrangeList'
 import Modal from './Modal'
 import { ModalSectionBar } from './ModalSection'
+import ErrorBanner from './ErrorBanner'
 
 // Manages the categories menu items are grouped under.
 //
@@ -151,7 +152,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
         <div className="px-6 py-4 overflow-y-auto flex-1">
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+            <ErrorBanner className="mb-4">{error}</ErrorBanner>
           )}
 
           <p className="text-xs text-gray-500 mb-4">
@@ -323,7 +324,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
 
               <button
                 type="submit"
-                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                className={primaryButton()}
               >
                 Add
               </button>
@@ -337,7 +338,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
         <div className={modalFooter}>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             Done
           </button>

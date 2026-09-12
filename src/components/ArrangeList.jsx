@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from './Modal'
-import { modalFooter, secondaryButton } from '../lib/controlStyles'
+import { modalFooter, secondaryButton, primaryButton } from '../lib/controlStyles'
 
 // Putting a list in the order it should be read in.
 //
@@ -102,7 +102,7 @@ export default function ArrangeList({
                     type="button"
                     onClick={save}
                     disabled={!moved || saving}
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                    className={primaryButton()}
                 >
                     {saving ? 'Saving...' : 'Save order'}
                 </button>

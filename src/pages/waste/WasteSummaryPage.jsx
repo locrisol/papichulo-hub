@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, fmtQty } from '../../lib/format'
+import { fmtMoney, fmtQty, fmtPct } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
 import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Waste for a week, grouped by product.
 //
@@ -149,7 +150,7 @@ export default function WasteSummaryPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {/* Week and filter */}
             <div className={`${card} p-4 mb-4`}>
@@ -219,7 +220,7 @@ export default function WasteSummaryPage() {
             <div className={`${card} p-5 mb-4`}>
                 <p className={captionClass}>Waste as % of sales</p>
                 <p className={`font-serif text-3xl font-bold leading-none mt-1 ${pctColour(wastePct)}`}>
-                    {wastePct == null ? '—' : `${wastePct.toFixed(1)}%`}
+                    {fmtPct(wastePct)}
                 </p>
                 {wastePct == null ? (
                     <p className="text-sm text-muted mt-2">

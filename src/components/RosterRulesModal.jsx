@@ -5,9 +5,10 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { NOTICE_DEFAULT } from '../lib/timeOff'
-import { modalFooter, checkbox } from '../lib/controlStyles'
+import { modalFooter, checkbox, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
 import { DEFAULT_RULES } from '../lib/workRules'
+import ErrorBanner from './ErrorBanner'
 
 // What the roster checks a week against.
 //
@@ -91,7 +92,7 @@ export default function RosterRulesModal({ onClose }) {
     return (
         <Modal title="Roster rules" onClose={onClose} width="max-w-xl">
             <div>
-                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+                {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
                 <ModalSection
                     title="Warnings"
@@ -436,7 +437,7 @@ export default function RosterRulesModal({ onClose }) {
                         type="button"
                         onClick={save}
                         disabled={saving}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : 'Save'}
                     </button>

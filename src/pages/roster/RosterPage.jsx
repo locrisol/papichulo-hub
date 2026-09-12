@@ -34,6 +34,7 @@ import RequestDeskModal from '../../components/RequestDeskModal'
 import DayNoteDialog from '../../components/DayNoteDialog'
 import Modal from '../../components/Modal'
 import EmployeeForm from '../../components/EmployeeForm'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Building the week.
 //
@@ -93,10 +94,6 @@ export default function RosterPage() {
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
-    const toMinutesSafe = t => {
-        const [h, m] = String(t).split(':').map(Number)
-        return h * 60 + m
-    }
     const dates = weekDates(weekStart)
     const date = dates[dayIndex]
     const weekEnd = dates[6]
@@ -500,7 +497,10 @@ export default function RosterPage() {
         setSaving(true)
         setError('')
 
-        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        // shiftHours, not the difference, because a shift can cross midnight.
+        // Subtracting straight makes 22:00 to 02:00 minus twenty hours, and
+        // breakFor then hands back the wrong break for it.
+        const hours = shiftHours({ starts_at: startsAt, ends_at: endsAt })
         const { error: err } = await supabase.from('roster_shifts').insert({
             restaurant_id: restaurantId,
             employee_id: employeeId,
@@ -521,7 +521,10 @@ export default function RosterPage() {
     // the whole reason it is not typed by hand.
     async function resizeShift(shift, startsAt, endsAt) {
         setError('')
-        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        // shiftHours, not the difference, because a shift can cross midnight.
+        // Subtracting straight makes 22:00 to 02:00 minus twenty hours, and
+        // breakFor then hands back the wrong break for it.
+        const hours = shiftHours({ starts_at: startsAt, ends_at: endsAt })
         const { error: err } = await supabase.from('roster_shifts').update({
             starts_at: startsAt,
             ends_at: endsAt,
@@ -764,10 +767,10 @@ export default function RosterPage() {
             )}
 
             {clashes.length > 0 && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">
+                <ErrorBanner className="mb-4">
                     {clashes.length === 1 ? 'One person is' : `${clashes.length} people are`} rostered in two places at
                     once this week: {clashes.map(([a]) => employeesById[a.employee_id]?.full_name).join(', ')}.
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Day tabs. */}

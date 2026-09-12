@@ -5,8 +5,9 @@ import ModalSection from './ModalSection'
 import { supabase } from '../lib/supabase'
 import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton, labelClass, fieldClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
 import { cleanExtras, sortExtras, usualProblem } from '../lib/dayExtras'
+import ErrorBanner from './ErrorBanner'
 
 // The two things that are the same every week.
 //
@@ -66,7 +67,7 @@ export default function WeeklyExtrasModal({ onClose }) {
 
     return (
         <Modal title="Every week" onClose={onClose} width="max-w-xl">
-            {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+            {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
             <ModalSection
                 title="What usually happens in the store"
@@ -157,7 +158,7 @@ export default function WeeklyExtrasModal({ onClose }) {
             </ModalSection>
 
             {problem && (
-                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
             )}
 
             <div className={modalFooter}>
@@ -168,7 +169,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                     type="button"
                     onClick={save}
                     disabled={saving || !!problem}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : 'Save'}
                 </button>

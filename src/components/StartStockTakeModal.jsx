@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
 import { fieldClass } from '../lib/controlStyles'
 import Modal from './Modal'
+import ErrorBanner from './ErrorBanner'
 
 // Starts a stock take session.
 //
@@ -137,9 +138,9 @@ export default function StartStockTakeModal({ onClose, onCreated, restaurantId, 
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+            <ErrorBanner>
               {error}
-            </div>
+            </ErrorBanner>
           )}
 
           <div className="flex gap-2 justify-end pt-2">

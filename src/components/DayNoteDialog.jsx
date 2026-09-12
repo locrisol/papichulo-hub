@@ -6,12 +6,13 @@ import { friendlyError } from '../lib/errors'
 import { shortDate } from '../lib/dates'
 import { dayName } from '../lib/events'
 import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import { mirrorClosedToSales } from '../lib/closedDays'
 import ModalSection from './ModalSection'
 import {
     cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
 } from '../lib/dayExtras'
+import ErrorBanner from './ErrorBanner'
 
 // When one day is not like the others.
 //
@@ -121,7 +122,7 @@ export default function DayNoteDialog({
             onClose={onClose}
         >
             <div>
-                {error && <p className="mx-6 mt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{error}</p>}
+                {error && <ErrorBanner className="mx-6 mt-4">{error}</ErrorBanner>}
 
                 {show('hours') && (
                 <ModalSection
@@ -343,7 +344,7 @@ export default function DayNoteDialog({
                 )}
 
                 {problem && (
-                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
                 )}
 
                 <div className={modalFooter}>
@@ -358,7 +359,7 @@ export default function DayNoteDialog({
                         type="button"
                         onClick={save}
                         disabled={saving || !!problem}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : isEmpty && note ? 'Back to normal' : 'Save'}
                     </button>

@@ -5,6 +5,7 @@ import { todayISO, addDays, fullDate } from '../../lib/dates'
 import { dateField, pageTitle } from '../../lib/controlStyles'
 import { whoWords, tableWords } from '../../lib/changeLog'
 import ChangeLog from '../../components/settings/ChangeLog'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Everything that has changed, and who changed it.
 //
@@ -94,9 +95,9 @@ export default function ChangesPage() {
             </div>
 
             {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
+                <ErrorBanner className="mb-4">
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Wraps to two lines on a phone rather than scrolling sideways.

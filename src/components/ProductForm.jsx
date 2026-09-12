@@ -10,7 +10,7 @@
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
 import { numberField } from '../lib/numberInput'
-import { checkbox, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import { PriceFields } from './PriceForm'
 import ProductSelect from './ProductSelect'
 import QuantityInUnit from './QuantityInUnit'
@@ -19,6 +19,7 @@ import AllergenPicker from './AllergenPicker'
 import { declaredCount } from '../lib/allergens'
 import { nameClashMessage, declaresAllergens } from '../lib/products'
 import { sectionColour } from '../lib/sections'
+import ErrorBanner from './ErrorBanner'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on
@@ -626,13 +627,13 @@ export default function ProductForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

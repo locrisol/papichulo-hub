@@ -7,7 +7,8 @@ import { dayName } from '../lib/events'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
 } from '../lib/roster'
-import { modalFooter, labelClass, fieldClass } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 // One shift: making it, changing it, removing it.
 //
@@ -165,7 +166,7 @@ export default function ShiftDialog({
                 </div>
 
                 {problem && (
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner>{problem}</ErrorBanner>
                 )}
                 </div>
 
@@ -191,7 +192,7 @@ export default function ShiftDialog({
                         <button
                             type="submit"
                             disabled={saving || !!problem}
-                            className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                            className={primaryButton('lg')}
                         >
                             {saving ? 'Saving...' : editing ? 'Save' : 'Add it'}
                         </button>

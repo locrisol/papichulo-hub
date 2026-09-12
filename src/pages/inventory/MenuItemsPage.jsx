@@ -10,8 +10,9 @@ import CategoryManagerModal from '../../components/CategoryManagerModal'
 import { useKeepScroll } from '../../context/ScrollContext'
 import ArrangeList from '../../components/ArrangeList'
 import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { numberField } from '../../lib/numberInput'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -396,7 +397,7 @@ export default function MenuItemsPage() {
           </button>
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             + Add Menu Item
           </button>
@@ -404,7 +405,7 @@ export default function MenuItemsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {showForm && (
@@ -473,13 +474,13 @@ export default function MenuItemsPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex gap-3">
               <button
                 type="submit"
-                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                className={primaryButton()}
               >
                 Create & Edit Components
               </button>

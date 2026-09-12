@@ -8,9 +8,10 @@ import PriceForm from '../../components/PriceForm'
 import Modal from '../../components/Modal'
 import PriceCountUnitsEditor from '../../components/PriceCountUnitsEditor'
 import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import BackButton from '../../components/BackButton'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -280,14 +281,14 @@ export default function ProductPricesPage() {
                 </div>
                 <button
                     onClick={() => { resetForm(); setShowForm(true) }}
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    className={primaryButton()}
                 >
                     + Add Price
                 </button>
             </div>
 
             {error && (
-                <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+                <ErrorBanner className="mb-4">{error}</ErrorBanner>
             )}
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">

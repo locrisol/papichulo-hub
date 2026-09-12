@@ -10,6 +10,8 @@ import { sectionRank, sectionColour } from '../../lib/sections'
 import { card } from '../../lib/controlStyles'
 import BackButton from '../../components/BackButton'
 import Modal from '../../components/Modal'
+import { can, MANAGERS } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -51,7 +53,7 @@ export default function StockTakeReviewPage() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [closing, setClosing] = useState(false)
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
   useEffect(() => {
     fetchEverything()
@@ -211,7 +213,7 @@ export default function StockTakeReviewPage() {
   if (error && !session) {
     return (
       <div>
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
+        <ErrorBanner>{error}</ErrorBanner>
         <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
@@ -280,7 +282,7 @@ export default function StockTakeReviewPage() {
       {/* Not while the closing dialog is up, which covers the whole screen
           and would hide it. It goes inside the dialog instead. */}
       {error && !showCloseConfirm && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {/* Counted in one place only.
@@ -469,7 +471,7 @@ export default function StockTakeReviewPage() {
             </p>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+              <ErrorBanner className="mb-4">{error}</ErrorBanner>
             )}
 
             <div className="flex flex-wrap gap-2 justify-end">

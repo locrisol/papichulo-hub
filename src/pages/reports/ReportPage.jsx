@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num, fmtPct } from '../../lib/format'
 import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
@@ -29,6 +29,8 @@ import PublishBar from '../../components/reports/PublishBar'
 import WeekChart from '../../components/reports/WeekChart'
 import BackButton from '../../components/BackButton'
 import AddButton from '../../components/AddButton'
+import { can, RESTAURANT_CONFIG } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // One week's report.
 //
@@ -42,19 +44,15 @@ import AddButton from '../../components/AddButton'
 // what makes the next mail a correction, so it does not belong on this page as
 // a quiet toggle.
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
-
-function pct(v) {
-    return v == null ? '—' : `${v.toFixed(2)}%`
-}
 
 // Green at or under target, amber within two points over, red beyond. The same
 // bands the cost dashboard uses, so a week does not look different depending on
 // which screen you read it on.
+// The report prints percentages to two decimals where the rest of the app
+// uses one, because a food cost moving by a tenth of a point is a real
+// change on a week's turnover and gets argued about.
+const pct2 = v => fmtPct(v, 2)
+
 function statusFor(actual, target) {
     if (actual == null || !target) return 'none'
     if (actual <= target) return 'green'
@@ -80,12 +78,12 @@ function CostCard({ label, figure, share, shareGross, target }) {
     return (
         <div className="rounded-lg border border-border bg-app-bg p-4">
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">{label}</p>
-            <p className={`font-serif text-3xl font-bold leading-none ${tone}`}>{pct(share)}</p>
+            <p className={`font-serif text-3xl font-bold leading-none ${tone}`}>{pct2(share)}</p>
             <p className="text-sm text-muted mt-2 tabular-nums">
                 of net{target ? ` · ${target}% target` : ''}
             </p>
             <p className="text-sm text-gray-700 mt-1 tabular-nums font-semibold">{fmtMoney(figure)}</p>
-            <p className="text-xs text-muted mt-0.5 tabular-nums">{pct(shareGross)} of gross</p>
+            <p className="text-xs text-muted mt-0.5 tabular-nums">{pct2(shareGross)} of gross</p>
         </div>
     )
 }
@@ -122,7 +120,7 @@ export default function ReportPage() {
     const [saving, setSaving] = useState(false)
     const [savedAt, setSavedAt] = useState(null)
 
-    const isStoreManager = ['super_admin', 'store_manager'].includes(user?.role)
+    const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
 
     // Up here rather than beside the charts, because publishing needs them to
@@ -815,9 +813,9 @@ export default function ReportPage() {
             </div>
 
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             <PublishBar

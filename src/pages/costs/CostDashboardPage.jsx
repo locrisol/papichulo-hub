@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num, fmtPct } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
@@ -11,6 +11,9 @@ import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { tendersToShow } from '../../lib/salesTenders'
 import WeekTakenChart from '../../components/WeekTakenChart'
+import { DAY_NAMES } from '../../lib/events'
+import { can, RESTAURANT_CONFIG } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -29,13 +32,7 @@ import WeekTakenChart from '../../components/WeekTakenChart'
 const WASTE_GOOD_BELOW = 3
 const WASTE_WARN_BELOW = 5
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The colour of a figure on the gross profit run down, from the same verdict
 // the cards at the top of the page use. Grey where there is no target to judge
@@ -89,7 +86,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
 
             <div className="flex items-baseline gap-2 mb-1">
                 <span className={`font-serif text-3xl font-bold ${colour}`}>
-                    {pct == null ? '-' : `${pct.toFixed(1)}%`}
+                    {fmtPct(pct)}
                 </span>
                 {target ? (
                     <span className="text-sm text-muted">/ {target}% target</span>
@@ -122,7 +119,7 @@ export default function CostDashboardPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
-    const isManager = ['super_admin', 'store_manager'].includes(user?.role)
+    const isManager = can(user, RESTAURANT_CONFIG)
 
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const [pickerDate, setPickerDate] = useState(weekStart)
@@ -368,7 +365,7 @@ export default function CostDashboardPage() {
                 </div>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {!loading && netSales === 0 && (
                 <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">

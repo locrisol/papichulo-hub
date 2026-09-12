@@ -3,8 +3,9 @@ import LockedField from './LockedField'
 import { linkableUsers } from '../lib/team'
 import { todayISO, fullDate } from '../lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { modalFooter, labelClass, fieldClass, hintClass } from '../lib/controlStyles'
+import { modalFooter, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
+import ErrorBanner from './ErrorBanner'
 
 // The add and edit form for a person.
 //
@@ -349,7 +350,7 @@ export default function EmployeeForm({
             </ModalSection>
 
             {problem && (
-                <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
             )}
 
             <div className={modalFooter}>
@@ -363,7 +364,7 @@ export default function EmployeeForm({
                 <button
                     type="submit"
                     disabled={saving || !!problem}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : submitLabel}
                 </button>

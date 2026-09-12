@@ -5,8 +5,9 @@ import { useRestaurant } from '../context/RestaurantContext'
 import { friendlyError } from '../lib/errors'
 import { numberField } from '../lib/numberInput'
 import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton } from '../lib/controlStyles'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '../lib/controlStyles'
 import ModalSection from './ModalSection'
+import ErrorBanner from './ErrorBanner'
 
 // The break ladder.
 //
@@ -90,7 +91,7 @@ export default function BreakRulesModal({ onClose }) {
                     description="Read top down, and the first rung a shift is long enough for is the one it gets. Breaks are paid and are never taken off the hours: this decides what is printed beside a shift, not what the shift is worth."
                 >
 
-                {error && <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{error}</p>}
+                {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                 {/* A rung on two lines, and which two is the whole of it.
 
@@ -207,7 +208,7 @@ export default function BreakRulesModal({ onClose }) {
                 </ModalSection>
 
                 {problem && (
-                    <p className="mx-6 mb-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">{problem}</p>
+                    <ErrorBanner className="mx-6 mb-4">{problem}</ErrorBanner>
                 )}
 
                 <div className={modalFooter}>
@@ -222,7 +223,7 @@ export default function BreakRulesModal({ onClose }) {
                         type="button"
                         onClick={save}
                         disabled={saving || !!problem}
-                        className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                        className={primaryButton('lg')}
                     >
                         {saving ? 'Saving...' : 'Save'}
                     </button>

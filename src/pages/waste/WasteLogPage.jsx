@@ -7,13 +7,15 @@ import { fmtMoney, fmtQty } from '../../lib/format'
 import { todayISO, shortDate, addDays } from '../../lib/dates'
 import { calculateWasteValue } from '../../lib/wasteValue'
 import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle } from '../../lib/controlStyles'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { friendlyError } from '../../lib/errors'
 import { matches } from '../../lib/search'
 import { heldFor } from '../../lib/products'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
+import { can, MANAGERS } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -35,7 +37,7 @@ export default function WasteLogPage() {
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
-    const isManager = ['super_admin', 'owner', 'store_manager'].includes(user?.role)
+    const isManager = can(user, MANAGERS)
     const navigate = useNavigate()
 
     const [logDate, setLogDate] = useState(todayISO())
@@ -266,7 +268,7 @@ export default function WasteLogPage() {
                 )}
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. What you are adding
@@ -386,11 +388,11 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end">
-                                <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                <button type="submit" className={primaryButton('xl')}>
                                     Add to list
                                 </button>
                             </div>
@@ -449,7 +451,7 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end gap-2">
@@ -466,7 +468,7 @@ export default function WasteLogPage() {
                                     </>
                                 ) : (
                                     <button onClick={() => setReviewing(true)}
-                                        className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                        className={primaryButton('xl')}>
                                         Review and save
                                     </button>
                                 )}

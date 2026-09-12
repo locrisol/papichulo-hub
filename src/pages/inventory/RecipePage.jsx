@@ -7,11 +7,12 @@ import RecipeIngredientForm from '../../components/RecipeIngredientForm'
 import Modal from '../../components/Modal'
 import { friendlyError } from '../../lib/errors'
 import { fmtMoney, fmtUnitCost } from '../../lib/format'
-import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import { canBeIngredient } from '../../lib/products'
 import { numberField } from '../../lib/numberInput'
 import BackButton from '../../components/BackButton'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -320,14 +321,14 @@ export default function RecipePage() {
         <button
           onClick={() => { resetForm(); setShowForm(true) }}
           disabled={availableProducts.length === 0}
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={primaryButton()}
         >
           + Add Ingredient
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {product && !product.is_mix && (

@@ -10,7 +10,8 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
-import { labelClass, fieldClass } from '../lib/controlStyles'
+import { labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
+import ErrorBanner from './ErrorBanner'
 
 const CATEGORIES = [
     { value: 'food', label: 'Food' },
@@ -81,7 +82,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                 on a phone, and inside a dialog it is behind the dialog, where it is
                 never seen at all. */}
             {problem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+              <ErrorBanner className="mb-3">{problem}</ErrorBanner>
             )}
 
             <div className="flex justify-end gap-3">
@@ -94,7 +95,7 @@ export default function SupplierForm({ problem, formData, onChange, onSubmit, on
                 </button>
                 <button
                     type="submit"
-                    className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    className={primaryButton()}
                 >
                     {submitLabel}
                 </button>

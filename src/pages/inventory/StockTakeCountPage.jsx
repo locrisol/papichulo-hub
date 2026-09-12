@@ -15,6 +15,8 @@ import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
 import BackButton from '../../components/BackButton'
+import { can, MANAGERS } from '../../lib/access'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
@@ -86,7 +88,7 @@ export default function StockTakeCountPage() {
     // things to think about rather than one thing to fix.
     const [justNoned, setJustNoned] = useState(null)
 
-    const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+    const isManager = can(user, MANAGERS)
 
     useEffect(() => {
         fetchEverything()
@@ -525,9 +527,9 @@ export default function StockTakeCountPage() {
     if (error) {
         return (
             <div className="p-6">
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
                 <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
             </div>
         )

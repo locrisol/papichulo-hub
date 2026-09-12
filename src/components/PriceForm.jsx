@@ -15,9 +15,10 @@
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
 import { fmtUnitCost } from '../lib/format'
-import { labelClass } from '../lib/controlStyles'
+import { labelClass, primaryButton } from '../lib/controlStyles'
 import { numberField } from '../lib/numberInput'
 import { perUnitPreview } from '../lib/productPrice'
+import ErrorBanner from './ErrorBanner'
 
 // The boxes on their own, with no form around them.
 //
@@ -163,13 +164,13 @@ export default function PriceForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>

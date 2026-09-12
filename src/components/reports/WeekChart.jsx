@@ -5,6 +5,7 @@ import {
     labelIndices,
 } from '../../lib/reportChart'
 import { segmentTrack, segmentButton } from '../../lib/controlStyles'
+import { num } from '../../lib/format'
 
 // A week by week chart for the report.
 //
@@ -87,7 +88,6 @@ export default function WeekChart({
     const x = i => (shown.length === 1 ? PAD.left + iw / 2 : PAD.left + (i / (shown.length - 1)) * iw)
     const y = v => PAD.top + ih - ((v - min) / (max - min || 1)) * ih
 
-    const num = v => (v == null || isNaN(Number(v)) ? 0 : Number(v))
 
     // Stacked areas, bottom up. Each one is drawn from the top of the one below
     // it, so the bands read as parts of a whole rather than four charts on top

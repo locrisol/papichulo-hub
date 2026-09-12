@@ -3,12 +3,14 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { resolveTarget } from '../../lib/costTargets'
-import { fmtMoney, fmtQty } from '../../lib/format'
+import { fmtMoney, fmtQty, num, fmtPct } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
-import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
+import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle, primaryButton } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
+import { DAY_NAMES } from '../../lib/events'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // Labour hours, entered a week at a time.
 //
@@ -25,13 +27,7 @@ import { numberField } from '../../lib/numberInput'
 // labour_cost is a generated column in Postgres, worked out from hours and rate,
 // so it is never sent on save. Sending it would have the insert rejected.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function LabourPage() {
     const { user } = useAuth()
@@ -275,7 +271,7 @@ export default function LabourPage() {
                 cost, so you have to scroll sideways to reach the cost column.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {!currentRate && (
@@ -381,7 +377,7 @@ export default function LabourPage() {
                                                     : <span className="text-gray-700">{fmtMoney(net)}</span>}
                                         </td>
                                         <td className={`${calcCellCls} font-medium ${pctColour(pct)}`}>
-                                            {pct == null ? '-' : `${pct.toFixed(1)}%`}
+                                            {fmtPct(pct)}
                                         </td>
                                     </tr>
                                 )
@@ -397,7 +393,7 @@ export default function LabourPage() {
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekCost)}</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekNet)}</td>
                                 <td className={`px-3 py-3 text-right font-semibold ${pctColour(weekPct)}`}>
-                                    {weekPct == null ? '-' : `${weekPct.toFixed(1)}%`}
+                                    {fmtPct(weekPct)}
                                 </td>
                             </tr>
                         </tfoot>
@@ -417,12 +413,12 @@ export default function LabourPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                    className={primaryButton('lg')}>
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>

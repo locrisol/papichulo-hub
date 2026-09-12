@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
 import { friendlyError } from '../../lib/errors'
 import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '../../lib/controlStyles'
 import { useConfirm } from '../../context/ConfirmContext'
 import Modal from '../../components/Modal'
 import AddOptions from '../../components/menu/AddOptions'
@@ -15,6 +15,7 @@ import QuantityInUnit from '../../components/QuantityInUnit'
 import { numberField } from '../../lib/numberInput'
 import { fmtMoney, fmtUnitCost } from '../../lib/format'
 import BackButton from '../../components/BackButton'
+import ErrorBanner from '../../components/ErrorBanner'
 
 // One dish: what it is made of, what it costs, and what it contains.
 //
@@ -525,7 +526,7 @@ export default function MenuItemPage() {
         <p className="text-sm text-gray-500 mt-1">Costs and margins for {activeRestaurant?.name}</p>
       </div>
 
-      {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+      {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
       {/* Header form: name, category, price, VAT, notes */}
       <div className={`${card} p-6 mb-6`}>
@@ -657,13 +658,13 @@ export default function MenuItemPage() {
             way down a long screen and on a phone the top of it is nowhere near
             the Save. */}
         {headerProblem && (
-          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{headerProblem}</p>
+          <ErrorBanner className="mb-3">{headerProblem}</ErrorBanner>
         )}
         <div className="flex items-center gap-3">
           <button
             onClick={saveHeader}
             disabled={headerSaving}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            className={primaryButton()}
           >
             {headerSaving ? 'Saving...' : 'Save Details'}
           </button>
@@ -691,7 +692,7 @@ export default function MenuItemPage() {
           <button
             onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
             disabled={availableProducts.length === 0}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={primaryButton()}
           >
             + Add Component
           </button>
@@ -1046,13 +1047,13 @@ function ComponentForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>
