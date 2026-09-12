@@ -1,0 +1,43 @@
+# The three checks, on every pull request.
+#
+# They are the same three that have to pass before anything is committed
+# locally, run again where nobody can forget them. The lint count reached zero
+# in September 2026 and this is what keeps it there: a pull request that adds a
+# problem fails here rather than being noticed six branches later.
+#
+# The database tests are deliberately not here. They sign in as real accounts
+# against the live project, so running them on every push would be both slow and
+# a bad idea. They stay a local command.
+
+name: Checks
+
+on:
+  pull_request:
+    branches: [development, main]
+  push:
+    branches: [development, main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # ci rather than install, so the lockfile decides and a version cannot
+      # drift between here and somebody's machine.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
