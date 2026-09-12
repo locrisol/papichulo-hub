@@ -5151,3 +5151,218 @@ create policy product_allergens_select on public.product_allergens
   using (get_my_role() in ('super_admin', 'owner', 'store_manager', 'employee'));
 
 notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 066: the address a restaurant sends from, and the address
+-- customers scan
+-- Branch: fix/security-hardening
+--
+-- 022 lets a store manager update their own restaurant row. Row level
+-- security cannot restrict columns, so that is every column, and two of
+-- them should not be in anybody's day to day reach.
+--
+-- slug is what the printed QR codes point at. Changing it does not break
+-- anything in the app, it breaks every card already sitting on a table.
+-- is_active switches the restaurant off, which takes the public allergen
+-- page down with it. Neither is a manager's job and both are the kind of
+-- thing that happens by accident in a settings form.
+--
+-- mail_from is different again. It reaches the From header of the weekly
+-- report, and senderFor in the edge function checks only that it contains
+-- an @. No newline check, so a value carrying a carriage return is a
+-- header injection waiting for somebody to point the relay at a host that
+-- does not rewrite the sender. A column constraint is the right place for
+-- that, because it is true of the value whoever writes it and however it
+-- gets there.
+--
+-- report_recipients is deliberately NOT restricted here. A store manager
+-- adding the accountant to the weekly report is the feature, not a hole:
+-- ReportPage has offered exactly that since the reports were built, and
+-- taking it away would break a screen people use every week to fix a
+-- threat model that starts with trusting a manager who can already read
+-- the report they would be forwarding.
+-- =====================================================================
+
+-- ── mail_from has to be one of ours, and has to be one line ──────────────────
+
+alter table public.restaurants drop constraint if exists restaurants_mail_from_ours;
+alter table public.restaurants
+  add constraint restaurants_mail_from_ours
+  check (
+    mail_from is null
+    or mail_from ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'
+  );
+
+comment on constraint restaurants_mail_from_ours on public.restaurants is
+    'One line, no spaces, and on our own domain. The value lands in a mail '
+    'header sent under the company name.';
+
+-- ── slug and is_active are a super admin's to change ─────────────────────────
+
+create or replace function public.restaurant_settings_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+    -- Only what arrives through the API is guarded. A session with no JWT
+    -- claim is the database itself: a migration, or somebody in the SQL
+    -- editor who has already been trusted with far more than this. Without
+    -- this line the trigger blocks its own maintenance, and the only way
+    -- past it is to disable it, which is worse than not having it. It is
+    -- the same test record_change uses to work out how a change arrived.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    if public.get_my_role() = 'super_admin' then
+        return new;
+    end if;
+
+    if new.slug is distinct from old.slug then
+        raise exception 'The address customers scan is changed by a super admin, '
+                        'because the printed codes cannot be changed with it';
+    end if;
+
+    if new.is_active is distinct from old.is_active then
+        raise exception 'Switching a restaurant off is a super admin job';
+    end if;
+
+    return new;
+end $$;
+
+revoke all on function public.restaurant_settings_guard() from public, anon, authenticated;
+
+drop trigger if exists restaurants_settings_guard on public.restaurants;
+create trigger restaurants_settings_guard
+  before update on public.restaurants
+  for each row
+  execute function public.restaurant_settings_guard();
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 067: the four oldest security definer functions get a
+-- search_path, and the two staff views get their grants nailed down
+-- Branch: fix/security-hardening
+--
+-- Every security definer function written from 045 onwards pins its
+-- search_path, and 052 says why in as many words: without it, whoever
+-- calls it decides what "sessions" means. The four written before that
+-- rule existed never got it.
+--
+-- Two of them are the spine of the whole permission system. get_my_role
+-- is called by sixty policies; if it can be made to answer differently,
+-- every table in the database answers differently. The other two run on
+-- auth.users and decide what role a new account gets.
+--
+-- This is latent rather than live: the attack needs the ability to create
+-- objects in a schema that resolves before public, and Supabase grants
+-- nobody that. It is one line each, it costs nothing, and it removes the
+-- need to keep being right about the grants.
+--
+-- The two staff views are a different matter and the obvious fix for them
+-- is the wrong one. roster_colleagues and roster_away read past row level
+-- security on purpose, because a policy picks rows and cannot pick
+-- columns, and these exist precisely to show a colleague's name and
+-- position without their pay rate, date of birth or immigration status.
+-- Turning on security_invoker would either return staff nothing at all or
+-- force a policy on employees that gives away the columns the views were
+-- built to hide. So they stay as they are, and what gets hardened instead
+-- is the thing that actually protects them: nobody but a signed in
+-- account can reach them, stated explicitly rather than inherited from
+-- whatever the default grants happen to be.
+-- =====================================================================
+
+alter function public.get_my_role()           set search_path = public, pg_temp;
+alter function public.get_my_restaurant_id()  set search_path = public, pg_temp;
+alter function public.handle_new_user()       set search_path = public, pg_temp;
+alter function public.handle_delete_user()    set search_path = public, pg_temp;
+
+revoke all on public.roster_colleagues from anon, public;
+revoke all on public.roster_away      from anon, public;
+grant select on public.roster_colleagues to authenticated;
+grant select on public.roster_away      to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 068: who is allowed to move a swap to which answer
+-- Branch: fix/security-hardening
+--
+-- 045 says this out loud: "What each of them is allowed to move it to is
+-- the app's business rather than the database's." The update policy lets
+-- anybody party to a request write to it, and the check constraint allows
+-- 'approved', so an employee with the console open can approve their own
+-- swap:
+--
+--   update shift_requests set status = 'approved' where id = ...
+--
+-- It does not move a real shift. roster_shifts stays managers only, so
+-- the roster does not change underneath anybody. What it does is put a
+-- request in front of a manager already marked as decided, and write a
+-- trail saying they decided it. For a table whose whole purpose is
+-- answering "why am I in on Wednesday", a forged answer is the one thing
+-- it cannot afford.
+--
+-- The rules are the ones the screens already follow:
+--
+--   asked     -> accepted | declined   by the person who was asked
+--   asked     -> withdrawn             by the person who asked
+--   accepted  -> approved | refused    by a manager
+--
+-- A manager can do any of it, which is what the desk is for. Anything
+-- else is refused with a sentence rather than silently ignored, because
+-- the only way to reach it is deliberately.
+-- =====================================================================
+
+create or replace function public.shift_request_transition_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+    me uuid;
+begin
+    -- Same as 066: only what comes through the API is guarded, so the
+    -- database can still maintain its own rows.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    if new.status is not distinct from old.status then
+        return new;
+    end if;
+
+    if public.get_my_role() in ('super_admin', 'owner', 'store_manager') then
+        return new;
+    end if;
+
+    me := public.get_my_employee_id();
+
+    if old.status <> 'asked' then
+        raise exception 'That request has already been answered';
+    end if;
+
+    if new.status in ('accepted', 'declined') and old.to_employee_id = me then
+        return new;
+    end if;
+
+    if new.status = 'withdrawn' and old.from_employee_id = me then
+        return new;
+    end if;
+
+    raise exception 'A swap is approved by a manager, not by the people in it';
+end $$;
+
+revoke all on function public.shift_request_transition_guard() from public, anon, authenticated;
+
+drop trigger if exists shift_requests_transition_guard on public.shift_requests;
+create trigger shift_requests_transition_guard
+  before update on public.shift_requests
+  for each row
+  execute function public.shift_request_transition_guard();
+
+notify pgrst, 'reload schema';
