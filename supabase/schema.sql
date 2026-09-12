@@ -4919,3 +4919,450 @@ where action = 'update'
   );
 
 notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 063: a public link is not the same as a public index
+-- Branch: fix/security-hardening
+--
+-- 050 made the report chart bucket public and gave storage.objects a
+-- select policy with no TO clause, which means it applies to anon. Its
+-- reasoning was that the path is the report's uuid, so a link cannot be
+-- guessed or walked.
+--
+-- The reasoning is right about guessing and wrong about walking. A select
+-- grant on storage.objects is exactly what makes list() work, and list()
+-- does not guess: it enumerates. Tested against the live project with
+-- nothing but the anon key out of the built bundle, anonymously:
+--
+--   list('')           -> the report's uuid
+--   list('<uuid>')     -> test-sales.png, test-earnings.png,
+--                         test-online.png, test-corporate.png,
+--                         test-delivery.png, with their sizes
+--
+-- and the bucket is public, so each one then downloads. Nothing published
+-- for real is in there yet, so nothing has leaked. The first real publish
+-- would put a week's sales, earnings and platform splits behind a link
+-- anyone can find.
+--
+-- The mail still works, and this is the part worth being sure about
+-- rather than hopeful. What the mail embeds is the public object path,
+-- and a public bucket serves that without consulting row level security
+-- at all. Confirmed by fetching a chart with no key and no Authorization
+-- header: HTTP 200, 156938 bytes. So the bucket stays public, the link
+-- stays permanent, and a mail opened next year still shows its charts.
+-- What goes is the ability to ask the bucket what is in it.
+-- =====================================================================
+
+-- Reading a row of storage.objects is now the same question as reading
+-- the report it belongs to: the report's own people, and nobody else.
+drop policy if exists report_charts_read on storage.objects;
+create policy report_charts_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'report-charts'
+    and exists (
+      select 1 from public.weekly_reports r
+      where r.id::text = split_part(name, '/', 1)
+        and ((get_my_role() = 'super_admin')
+             or (get_my_role() in ('store_manager', 'owner')
+                 and r.restaurant_id = get_my_restaurant_id()))
+    )
+  );
+
+-- Wrapped, because storage.objects belongs to the storage owner and not
+-- to whoever runs migrations. Creating the policy is allowed, labelling it
+-- is not, and a comment is not worth failing a migration over. 054 does the
+-- same thing around its event trigger for the same reason.
+do $$
+begin
+    comment on policy report_charts_read on storage.objects is
+        'Listing the report charts needs an account that can read the report. '
+        'Fetching one by its public url does not go through here, which is '
+        'what keeps the mail working.';
+exception when insufficient_privilege then
+    raise notice 'could not label report_charts_read, which is cosmetic only';
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 064: a price belongs to the restaurant that pays it
+-- Branch: fix/security-hardening
+--
+-- product_supplier_prices_select, written in 002, asks what role you are
+-- and nothing else:
+--
+--   USING (get_my_role() IN ('super_admin','owner','store_manager','employee'))
+--
+-- The table has had a restaurant_id since day one and every query in the
+-- app filters on it. The policy never did. So the lowest role in the
+-- building, at either site, could open the console and read the other
+-- site's entire cost base: price per case, price per unit, units per
+-- case, supplier code, which supplier is preferred.
+--
+-- The child table knows better. price_count_units, written in 014, joins
+-- up to the parent and checks psp.restaurant_id = get_my_restaurant_id().
+-- The parent is the one that was never scoped.
+--
+-- This is the same shape as sales_records, invoices, labour and every
+-- other restaurant-scoped table: super admin sees everything, everybody
+-- else sees their own. Nothing in the app loses a row, because nothing
+-- in the app ever asked for another restaurant's prices.
+-- =====================================================================
+
+drop policy if exists product_supplier_prices_select on product_supplier_prices;
+create policy product_supplier_prices_select on product_supplier_prices
+  for select
+  using (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager', 'employee')
+        and restaurant_id = get_my_restaurant_id())
+  );
+
+-- Writing was already restricted by role. It was not restricted by
+-- restaurant either, which means a manager could have written a price
+-- onto the other site. Same clause, same reason.
+drop policy if exists product_supplier_prices_write on product_supplier_prices;
+create policy product_supplier_prices_write on product_supplier_prices
+  for all
+  using (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager')
+        and restaurant_id = get_my_restaurant_id())
+  )
+  with check (
+    get_my_role() = 'super_admin'
+    or (get_my_role() in ('owner', 'store_manager')
+        and restaurant_id = get_my_restaurant_id())
+  );
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 065: the allergen page gets what it needs and nothing else
+-- Branch: fix/security-hardening
+--
+-- 011 opened six tables to anonymous readers so a customer scanning the
+-- QR code could be told what is in a dish. The page asks for a handful of
+-- columns. The policies grant every column, because row level security
+-- cannot restrict columns and PostgREST lets the caller pick them.
+--
+-- Tested against the live project with nothing but the anon key out of
+-- the built bundle, no login:
+--
+--   restaurants            every column, including hourly_rate, the three
+--                          cost targets, mail_from and report_recipients
+--   mix_recipes            every column, so the recipe book with its
+--                          quantities
+--   menu_item_components   every dish's exact build, with quantities
+--   products               the whole catalogue with notes
+--
+-- No money leaked: product_supplier_prices and sales_records were both
+-- refused, which is the part that was built right. What leaked is the
+-- recipe book, which is the most valuable thing the business owns.
+--
+-- So the tables stop being readable and seven views take their place,
+-- each carrying only the columns the allergen page actually reads. The
+-- quantities do not appear in any of them: how much coriander is in the
+-- slaw is not something a customer needs in order to be told it contains
+-- celery.
+--
+-- These are deliberately not security_invoker views. A view that runs as
+-- its owner is the only way to answer "these columns and no others" to a
+-- caller who has no row level access at all, and it is the same mechanism
+-- roster_colleagues already uses to keep pay rates away from staff.
+--
+-- One thing changes for the better on the way past. products_public_select
+-- required is_active, and the page says in its own comment that products
+-- are deliberately not filtered, because a dish can contain something
+-- since deactivated and dropping it would drop its allergens from the
+-- answer. The policy was quietly doing the thing the code was trying not
+-- to do. The view has no is_active condition, so a retired ingredient in
+-- a live dish is still declared.
+-- =====================================================================
+
+-- ── The views ────────────────────────────────────────────────────────────────
+
+-- Name and slug. Not the pay rate, not the cost targets, not the address
+-- the reports are mailed to.
+create or replace view public.public_restaurants as
+  select r.id, r.name, r.slug
+  from public.restaurants r
+  where r.is_active = true;
+
+create or replace view public.public_menu_categories as
+  select c.id, c.name, c.sort_order, c.on_allergen_sheet
+  from public.menu_categories c
+  where c.is_active = true;
+
+-- No selling price, no VAT rate.
+create or replace view public.public_menu_items as
+  select m.id, m.name, m.category_id, m.sheet_name, m.sort_order
+  from public.menu_items m
+  where m.is_active = true;
+
+-- Which product is in which dish, and whether it is a choice. Not how much.
+create or replace view public.public_menu_item_components as
+  select k.id, k.menu_item_id, k.product_id, k.choice_group, k.list_separately
+  from public.menu_item_components k;
+
+-- Deliberately unfiltered. A dish can contain something that has since
+-- been retired, and its allergens still count.
+create or replace view public.public_products as
+  select p.id, p.name, p.is_mix
+  from public.products p;
+
+-- Which ingredient is in which mix. Not how much, which is the recipe.
+create or replace view public.public_mix_recipes as
+  select x.id, x.mix_product_id, x.ingredient_product_id
+  from public.mix_recipes x;
+
+create or replace view public.public_product_allergens as
+  select a.product_id,
+         a.gluten, a.crustaceans, a.eggs, a.fish, a.peanuts,
+         a.soybeans, a.milk, a.nuts, a.celery, a.mustard,
+         a.sesame, a.sulphites, a.lupin, a.molluscs
+  from public.product_allergens a;
+
+grant select on public.public_restaurants           to anon, authenticated;
+grant select on public.public_menu_categories       to anon, authenticated;
+grant select on public.public_menu_items            to anon, authenticated;
+grant select on public.public_menu_item_components  to anon, authenticated;
+grant select on public.public_products              to anon, authenticated;
+grant select on public.public_mix_recipes           to anon, authenticated;
+grant select on public.public_product_allergens     to anon, authenticated;
+
+-- ── The tables stop answering to strangers ───────────────────────────────────
+
+drop policy if exists restaurants_public_select          on public.restaurants;
+drop policy if exists products_public_select             on public.products;
+drop policy if exists mix_recipes_public_select          on public.mix_recipes;
+drop policy if exists menu_categories_public_select      on public.menu_categories;
+drop policy if exists menu_items_public_select           on public.menu_items;
+drop policy if exists menu_item_components_public_select on public.menu_item_components;
+
+-- product_allergens carried its public read inside the staff select policy
+-- rather than beside it, which is why it is the only one of the seven that
+-- has to be rewritten instead of dropped.
+drop policy if exists product_allergens_select on public.product_allergens;
+create policy product_allergens_select on public.product_allergens
+  for select
+  using (get_my_role() in ('super_admin', 'owner', 'store_manager', 'employee'));
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 066: the address a restaurant sends from, and the address
+-- customers scan
+-- Branch: fix/security-hardening
+--
+-- 022 lets a store manager update their own restaurant row. Row level
+-- security cannot restrict columns, so that is every column, and two of
+-- them should not be in anybody's day to day reach.
+--
+-- slug is what the printed QR codes point at. Changing it does not break
+-- anything in the app, it breaks every card already sitting on a table.
+-- is_active switches the restaurant off, which takes the public allergen
+-- page down with it. Neither is a manager's job and both are the kind of
+-- thing that happens by accident in a settings form.
+--
+-- mail_from is different again. It reaches the From header of the weekly
+-- report, and senderFor in the edge function checks only that it contains
+-- an @. No newline check, so a value carrying a carriage return is a
+-- header injection waiting for somebody to point the relay at a host that
+-- does not rewrite the sender. A column constraint is the right place for
+-- that, because it is true of the value whoever writes it and however it
+-- gets there.
+--
+-- report_recipients is deliberately NOT restricted here. A store manager
+-- adding the accountant to the weekly report is the feature, not a hole:
+-- ReportPage has offered exactly that since the reports were built, and
+-- taking it away would break a screen people use every week to fix a
+-- threat model that starts with trusting a manager who can already read
+-- the report they would be forwarding.
+-- =====================================================================
+
+-- ── mail_from has to be one of ours, and has to be one line ──────────────────
+
+alter table public.restaurants drop constraint if exists restaurants_mail_from_ours;
+alter table public.restaurants
+  add constraint restaurants_mail_from_ours
+  check (
+    mail_from is null
+    or mail_from ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'
+  );
+
+comment on constraint restaurants_mail_from_ours on public.restaurants is
+    'One line, no spaces, and on our own domain. The value lands in a mail '
+    'header sent under the company name.';
+
+-- ── slug and is_active are a super admin's to change ─────────────────────────
+
+create or replace function public.restaurant_settings_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+    -- Only what arrives through the API is guarded. A session with no JWT
+    -- claim is the database itself: a migration, or somebody in the SQL
+    -- editor who has already been trusted with far more than this. Without
+    -- this line the trigger blocks its own maintenance, and the only way
+    -- past it is to disable it, which is worse than not having it. It is
+    -- the same test record_change uses to work out how a change arrived.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    if public.get_my_role() = 'super_admin' then
+        return new;
+    end if;
+
+    if new.slug is distinct from old.slug then
+        raise exception 'The address customers scan is changed by a super admin, '
+                        'because the printed codes cannot be changed with it';
+    end if;
+
+    if new.is_active is distinct from old.is_active then
+        raise exception 'Switching a restaurant off is a super admin job';
+    end if;
+
+    return new;
+end $$;
+
+revoke all on function public.restaurant_settings_guard() from public, anon, authenticated;
+
+drop trigger if exists restaurants_settings_guard on public.restaurants;
+create trigger restaurants_settings_guard
+  before update on public.restaurants
+  for each row
+  execute function public.restaurant_settings_guard();
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 067: the four oldest security definer functions get a
+-- search_path, and the two staff views get their grants nailed down
+-- Branch: fix/security-hardening
+--
+-- Every security definer function written from 045 onwards pins its
+-- search_path, and 052 says why in as many words: without it, whoever
+-- calls it decides what "sessions" means. The four written before that
+-- rule existed never got it.
+--
+-- Two of them are the spine of the whole permission system. get_my_role
+-- is called by sixty policies; if it can be made to answer differently,
+-- every table in the database answers differently. The other two run on
+-- auth.users and decide what role a new account gets.
+--
+-- This is latent rather than live: the attack needs the ability to create
+-- objects in a schema that resolves before public, and Supabase grants
+-- nobody that. It is one line each, it costs nothing, and it removes the
+-- need to keep being right about the grants.
+--
+-- The two staff views are a different matter and the obvious fix for them
+-- is the wrong one. roster_colleagues and roster_away read past row level
+-- security on purpose, because a policy picks rows and cannot pick
+-- columns, and these exist precisely to show a colleague's name and
+-- position without their pay rate, date of birth or immigration status.
+-- Turning on security_invoker would either return staff nothing at all or
+-- force a policy on employees that gives away the columns the views were
+-- built to hide. So they stay as they are, and what gets hardened instead
+-- is the thing that actually protects them: nobody but a signed in
+-- account can reach them, stated explicitly rather than inherited from
+-- whatever the default grants happen to be.
+-- =====================================================================
+
+alter function public.get_my_role()           set search_path = public, pg_temp;
+alter function public.get_my_restaurant_id()  set search_path = public, pg_temp;
+alter function public.handle_new_user()       set search_path = public, pg_temp;
+alter function public.handle_delete_user()    set search_path = public, pg_temp;
+
+revoke all on public.roster_colleagues from anon, public;
+revoke all on public.roster_away      from anon, public;
+grant select on public.roster_colleagues to authenticated;
+grant select on public.roster_away      to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- Migration 068: who is allowed to move a swap to which answer
+-- Branch: fix/security-hardening
+--
+-- 045 says this out loud: "What each of them is allowed to move it to is
+-- the app's business rather than the database's." The update policy lets
+-- anybody party to a request write to it, and the check constraint allows
+-- 'approved', so an employee with the console open can approve their own
+-- swap:
+--
+--   update shift_requests set status = 'approved' where id = ...
+--
+-- It does not move a real shift. roster_shifts stays managers only, so
+-- the roster does not change underneath anybody. What it does is put a
+-- request in front of a manager already marked as decided, and write a
+-- trail saying they decided it. For a table whose whole purpose is
+-- answering "why am I in on Wednesday", a forged answer is the one thing
+-- it cannot afford.
+--
+-- The rules are the ones the screens already follow:
+--
+--   asked     -> accepted | declined   by the person who was asked
+--   asked     -> withdrawn             by the person who asked
+--   accepted  -> approved | refused    by a manager
+--
+-- A manager can do any of it, which is what the desk is for. Anything
+-- else is refused with a sentence rather than silently ignored, because
+-- the only way to reach it is deliberately.
+-- =====================================================================
+
+create or replace function public.shift_request_transition_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+    me uuid;
+begin
+    -- Same as 066: only what comes through the API is guarded, so the
+    -- database can still maintain its own rows.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    if new.status is not distinct from old.status then
+        return new;
+    end if;
+
+    if public.get_my_role() in ('super_admin', 'owner', 'store_manager') then
+        return new;
+    end if;
+
+    me := public.get_my_employee_id();
+
+    if old.status <> 'asked' then
+        raise exception 'That request has already been answered';
+    end if;
+
+    if new.status in ('accepted', 'declined') and old.to_employee_id = me then
+        return new;
+    end if;
+
+    if new.status = 'withdrawn' and old.from_employee_id = me then
+        return new;
+    end if;
+
+    raise exception 'A swap is approved by a manager, not by the people in it';
+end $$;
+
+revoke all on function public.shift_request_transition_guard() from public, anon, authenticated;
+
+drop trigger if exists shift_requests_transition_guard on public.shift_requests;
+create trigger shift_requests_transition_guard
+  before update on public.shift_requests
+  for each row
+  execute function public.shift_request_transition_guard();
+
+notify pgrst, 'reload schema';

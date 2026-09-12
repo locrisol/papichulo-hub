@@ -20,20 +20,18 @@ import { stampDate } from '../lib/dates'
 // inside the manager's preview screen, which passes slugOverride instead of
 // reading the slug from the address.
 //
-// And there is one thing still open, worth knowing before trusting this page.
+// And it reads views rather than tables. Migration 065 closed the six tables
+// this used to read to anybody not signed in, because a policy can say yes to
+// a stranger asking for the menu but it cannot say which columns, and the same
+// yes covered every recipe quantity, every selling price and the restaurant's
+// pay rate. The public_ views carry the handful of columns this page actually
+// uses and nothing else.
 //
-// For a customer the database hides deactivated rows on its own, because the
-// public policies are written as auth.uid() IS NULL AND is_active = true. That
-// applies to products too. So if a dish that is still on sale contains an
-// ingredient somebody has since deactivated, the customer's copy of that product
-// never arrives, the component is skipped, and the allergens it carried are
-// quietly missing from what they are shown.
-//
-// Nothing triggers it today: no active dish currently contains a deactivated
-// product. But nothing stops it either, and this is the one page where being
-// quietly incomplete matters, so it wants either a policy that lets the public
-// read every product, or a warning when deactivating something still used in a
-// dish that is on sale.
+// That also settled something this comment used to describe as still open. The
+// old public policy on products required is_active, so a dish still on sale
+// containing an ingredient somebody had since deactivated lost that
+// ingredient's allergens without saying so. public_products has no such
+// condition, which is what the code here always intended.
 export default function PublicAllergensPage({ slugOverride }) {
   const params = useParams()
   const slug = slugOverride ?? params.slug
@@ -61,8 +59,8 @@ export default function PublicAllergensPage({ slugOverride }) {
     // the page is keyed to a restaurant so the displayed name and any
     // future per-restaurant tweaks work.
     const restRes = await supabase
-      .from('restaurants')
-      .select('id, name, slug')
+      .from('public_restaurants')
+      .select('*')
       .eq('slug', slug)
       .maybeSingle()
 
@@ -73,25 +71,30 @@ export default function PublicAllergensPage({ slugOverride }) {
     }
     setRestaurant(restRes.data)
 
-    // Categories and dishes are filtered here as well as by the database. For a
-    // customer the public policies already do it, but the manager previewing
-    // this page is signed in, and the signed-in policies have no is_active
-    // condition, so without this the preview showed dishes a customer never
-    // gets. Asking for it explicitly means the page behaves the same whoever is
-    // looking at it.
+    // Seven views rather than seven tables, and they carry only the columns
+    // this page reads. The tables themselves no longer answer to anybody who
+    // is not signed in, because row level security cannot restrict columns:
+    // it could say yes to a stranger asking for the menu, and the same yes
+    // covered the pay rate, the cost targets and every recipe quantity in
+    // the building.
     //
-    // Products deliberately are not filtered. They are not a list on screen,
-    // they are what the allergens are worked out from, and a dish can contain a
-    // product that has since been deactivated. Leaving it out would drop that
-    // product's allergens from the answer, which is the one thing this page
-    // cannot get wrong.
+    // The is_active filtering lives inside the views now, so this page shows
+    // the same thing to a customer and to a manager previewing it, without
+    // having to ask for it twice.
+    //
+    // Products are still deliberately unfiltered, and that is now true rather
+    // than merely intended. They are not a list on screen, they are what the
+    // allergens are worked out from, and a dish can contain a product that has
+    // since been deactivated. The old policy required is_active and quietly
+    // dropped exactly that product's allergens from the answer, which is the
+    // one thing this page cannot get wrong.
     const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
-      supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-      supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('menu_item_components').select('*'),
-      supabase.from('products').select('*').order('name'),
-      supabase.from('mix_recipes').select('*'),
-      supabase.from('product_allergens').select('*'),
+      supabase.from('public_menu_categories').select('*').order('sort_order'),
+      supabase.from('public_menu_items').select('*').order('name'),
+      supabase.from('public_menu_item_components').select('*'),
+      supabase.from('public_products').select('*').order('name'),
+      supabase.from('public_mix_recipes').select('*'),
+      supabase.from('public_product_allergens').select('*'),
     ])
 
     if (categoriesRes.data) setCategories(categoriesRes.data)
