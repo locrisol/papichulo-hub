@@ -173,34 +173,57 @@ export default function CostDashboardPage() {
 
             const end = addDays(weekStart, 6)
 
-            const { data: sales, error: sErr } = await supabase
-                .from('sales_records')
-                .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
-                .eq('restaurant_id', restaurantId)
-                .gte('sale_date', weekStart)
-                .lte('sale_date', end)
+            // All six at once. Not one of them needs anything from another,
+            // and this is the page everybody but an employee lands on, so
+            // waiting for each in turn was six round trips of pure latency
+            // before a single figure appeared. The roster does it this way
+            // already.
+            const [
+                { data: sales, error: sErr },
+                { data: tends, error: tErr },
+                { data: invoices, error: iErr },
+                { data: labour, error: lErr },
+                { data: waste, error: wErr },
+                { data: overrideRows, error: oErr },
+            ] = await Promise.all([
+                supabase.from('sales_records')
+                    .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('sale_date', weekStart)
+                    .lte('sale_date', end),
+                supabase.from('sales_tenders')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .order('sort_order')
+                    .order('label'),
+                supabase.from('invoices')
+                    .select('total_amount, category')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('invoice_date', weekStart)
+                    .lte('invoice_date', end),
+                supabase.from('labour_entries')
+                    .select('labour_cost')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('entry_date', weekStart)
+                    .lte('entry_date', end),
+                supabase.from('waste_logs')
+                    .select('waste_value')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('log_date', weekStart)
+                    .lte('log_date', end),
+                supabase.from('cost_target_overrides')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId),
+            ])
 
-            if (sErr) { setError(friendlyError(sErr)); finishLoading(); return }
+            // One message, whichever of them failed. Reporting the first is
+            // the same behaviour as before, where the first failure stopped
+            // the rest from being asked at all.
+            const failed = [sErr, tErr, iErr, lErr, wErr, oErr].find(Boolean)
+            if (failed) { setError(friendlyError(failed)); finishLoading(); return }
+
             setSalesRows(sales || [])
-
-            const { data: tends, error: tErr } = await supabase
-                .from('sales_tenders')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-                .order('sort_order')
-                .order('label')
-
-            if (tErr) { setError(friendlyError(tErr)); finishLoading(); return }
             setTenders(tends || [])
-
-            const { data: invoices, error: iErr } = await supabase
-                .from('invoices')
-                .select('total_amount, category')
-                .eq('restaurant_id', restaurantId)
-                .gte('invoice_date', weekStart)
-                .lte('invoice_date', end)
-
-            if (iErr) { setError(friendlyError(iErr)); finishLoading(); return }
 
             setFoodCost((invoices || [])
                 .filter(i => i.category === 'food')
@@ -213,32 +236,8 @@ export default function CostDashboardPage() {
                 .filter(i => i.category === 'packaging' || i.category === 'cleaning')
                 .reduce((t, i) => t + num(i.total_amount), 0))
 
-            const { data: labour, error: lErr } = await supabase
-                .from('labour_entries')
-                .select('labour_cost')
-                .eq('restaurant_id', restaurantId)
-                .gte('entry_date', weekStart)
-                .lte('entry_date', end)
-
-            if (lErr) { setError(friendlyError(lErr)); finishLoading(); return }
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
-
-            const { data: waste, error: wErr } = await supabase
-                .from('waste_logs')
-                .select('waste_value')
-                .eq('restaurant_id', restaurantId)
-                .gte('log_date', weekStart)
-                .lte('log_date', end)
-
-            if (wErr) { setError(friendlyError(wErr)); finishLoading(); return }
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
-
-            const { data: overrideRows, error: oErr } = await supabase
-                .from('cost_target_overrides')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-
-            if (oErr) { setError(friendlyError(oErr)); finishLoading(); return }
             setOverrides(overrideRows || [])
 
             finishLoading()
