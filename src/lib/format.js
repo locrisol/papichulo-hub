@@ -55,3 +55,29 @@ export function fmtQty(n) {
   const rounded = parseFloat(Number(n).toFixed(3))
   return rounded.toLocaleString('en-IE', { maximumFractionDigits: 3 })
 }
+// A percentage. e.g. 28.4 → "28.4%", null → "—"
+//
+// Fourteen places were doing this by hand and they did not agree. Two precisions,
+// and three of them used a hyphen for "no answer" where everything else uses an
+// em dash, which on a screen full of figures reads as a minus sign rather than
+// as a blank.
+export function fmtPct(n, places = 1) {
+  if (n == null || isNaN(n)) return '—'
+  return `${Number(n).toFixed(places)}%`
+}
+
+// Whatever came out of the database, as a number we can add up.
+//
+// This was written out eleven times across the app in two spellings, one using
+// Number and one using parseFloat with an extra check for the empty string.
+// They behave identically: Number('') is 0, so the extra branch never did
+// anything. The point of it is that nothing coming back from Postgres is
+// trusted to be a number, because a numeric column arrives as a string, an
+// empty box arrives as '', and a missing row arrives as null. All three have to
+// add up to zero rather than to NaN, because one NaN makes a whole week's total
+// disappear.
+export function num(v) {
+  if (v == null) return 0
+  const n = Number(v)
+  return isNaN(n) ? 0 : n
+}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { shortDate, addDays, weekNumber, weekRange } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '../../lib/controlStyles'
@@ -39,11 +39,6 @@ import {
 
 const WEEKS_SHOWN = 10
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The days nobody has entered, named rather than counted. "Thursday and
 // Friday" tells you where to go; "2 days missing" only makes you go and look.

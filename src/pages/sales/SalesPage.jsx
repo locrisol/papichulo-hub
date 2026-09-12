@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
 import { numberField } from '../../lib/numberInput'
 import { todayISO, addDays, fullDate } from '../../lib/dates'
@@ -32,12 +32,6 @@ import { useConfirm } from '../../context/ConfirmContext'
 // in place (petty_cash_entries, sales_records.cash_banked) so it can be
 // re-enabled without a migration. "Cash" below is a payment method.
 
-// Parse a money input string to a number, treating blank as 0.
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function SalesPage() {
     const { user } = useAuth()

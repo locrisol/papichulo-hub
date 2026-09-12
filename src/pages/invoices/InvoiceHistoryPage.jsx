@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { todayISO, addDays, shortDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
@@ -16,11 +16,6 @@ import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../.
 // and that is deferred (#48), so expanding a row would open onto nothing. The
 // same goes for a manual or AI badge: everything is manual at the moment.
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function InvoiceHistoryPage() {
     const navigate = useNavigate()

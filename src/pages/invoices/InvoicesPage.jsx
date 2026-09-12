@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { secondaryButton, card, cardEdge, cardHeader, rowButton, jumpButton, jumpLabel, pageTitle } from '../../lib/controlStyles'
@@ -14,23 +14,6 @@ import Modal from '../../components/Modal'
 import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '../../lib/invoiceCategories'
 import { orderByUse, USE_WINDOW_DAYS } from '../../lib/supplierOrder'
 
-// Invoice entry, plus the invoices already recorded for that week.
-//
-// Categories are stored separately, including packaging and cleaning, even
-// though the weekly reports add those two together against one 2.5% target.
-// Storing them apart means the accountant's monthly split comes out of the same
-// data, and separating them properly later is a reporting change rather than a
-// migration.
-//
-// Several invoices from the same supplier on the same day are allowed on
-// purpose. It happens often, so there is no uniqueness rule and no overwrite
-// warning here. Sales work the other way round, one record per day, so the two
-// screens deliberately behave differently.
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 // Nothing chosen to start with. The category used to default to food, which is
 // the commonest, but a default that is right most of the time is exactly the one

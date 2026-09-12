@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
 import { friendlyError, isPermissionError } from '../../lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
@@ -34,11 +34,6 @@ import DateStepper from '../../components/DateStepper'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 // Key under which an unsaved week is kept in local storage.
 function draftKey(restaurantId, weekStart) {

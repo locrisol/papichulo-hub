@@ -4,6 +4,7 @@
 // browser. The component does the drawing and nothing else.
 
 import { weekStartOf, addDays } from './dates'
+import { num } from './format'
 
 // How far back a chart can be asked to look.
 //
@@ -42,11 +43,6 @@ export const DEFAULT_RANGE = '12m'
 // re-read the key at every chart.
 export const CHART_TOTAL = '#2C6FCF'
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The last `count` weeks up to and including the week `upTo` falls in.
 //

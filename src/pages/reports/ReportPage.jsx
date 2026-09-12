@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import { friendlyError } from '../../lib/errors'
@@ -42,11 +42,6 @@ import AddButton from '../../components/AddButton'
 // what makes the next mail a correction, so it does not belong on this page as
 // a quiet toggle.
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 function pct(v) {
     return v == null ? '—' : `${v.toFixed(2)}%`

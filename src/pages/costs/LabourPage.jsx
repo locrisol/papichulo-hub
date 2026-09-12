@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { resolveTarget } from '../../lib/costTargets'
-import { fmtMoney, fmtQty } from '../../lib/format'
+import { fmtMoney, fmtQty, num } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
@@ -27,11 +27,6 @@ import { numberField } from '../../lib/numberInput'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function LabourPage() {
     const { user } = useAuth()

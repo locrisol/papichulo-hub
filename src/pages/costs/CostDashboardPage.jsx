@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney, num } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
 import { resolveTarget } from '../../lib/costTargets'
 import CostTargetModal from '../../components/CostTargetModal'
@@ -31,11 +31,6 @@ const WASTE_WARN_BELOW = 5
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The colour of a figure on the gross profit run down, from the same verdict
 // the cards at the top of the page use. Grey where there is no target to judge
