@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { fmtMoney } from '../../lib/format'
-import { numberField } from '../../lib/numberInput'
-import { brandFor } from '../../lib/platformBrand'
-import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
-import { useRemoveCard } from './useRemoveCard'
-import { removeButton } from '../../lib/controlStyles'
-import AutoTextarea from '../AutoTextarea'
-import AddButton from '../AddButton'
+import { fmtMoney } from '@/lib/format'
+import { numberField } from '@/lib/numberInput'
+import { brandFor } from '@/lib/platformBrand'
+import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
+import { useRemoveCard } from '@/components/reports/useRemoveCard'
+import { removeButton } from '@/lib/controlStyles'
+import AutoTextarea from '@/components/AutoTextarea'
+import AddButton from '@/components/AddButton'
 
 // Online sales, one block per platform.
 //

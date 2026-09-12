@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings,
-} from './shiftRequests'
+} from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
 const THU = '2026-08-27'

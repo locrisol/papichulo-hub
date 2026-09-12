@@ -1,5 +1,5 @@
-import { DAY_NAMES, categoryDot, agendaRows, statusNote } from '../lib/events'
-import { cardEdge, cardHeader } from '../lib/controlStyles'
+import { DAY_NAMES, categoryDot, agendaRows, statusNote } from '@/lib/events'
+import { cardEdge, cardHeader } from '@/lib/controlStyles'
 
 // What is coming up, as a list of the days that have something on.
 //

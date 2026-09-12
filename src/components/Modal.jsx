@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { cardEdge, closeButton, modalHeader } from '../lib/controlStyles'
+import { cardEdge, closeButton, modalHeader } from '@/lib/controlStyles'
 
 // The shell every dialog in the app sits in.
 //

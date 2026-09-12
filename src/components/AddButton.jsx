@@ -1,4 +1,4 @@
-import { secondaryButton } from '../lib/controlStyles'
+import { secondaryButton } from '@/lib/controlStyles'
 
 // Adding a line, a refund, a section: the small add that lives inside a panel
 // rather than at the top of a page.

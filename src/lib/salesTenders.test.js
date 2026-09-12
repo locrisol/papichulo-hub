@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { num, tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from './salesTenders'
+import { num, tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 
 // The five rows the till printed before August 2026, and the ones it prints now.
 const t = (key, label, sort_order, extra = {}) => ({

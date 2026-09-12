@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { secondaryButton } from '../lib/controlStyles'
-import Modal from '../components/Modal'
+import { secondaryButton } from '@/lib/controlStyles'
+import Modal from '@/components/Modal'
 
 // Asking "are you sure", in the app's own clothes.
 //

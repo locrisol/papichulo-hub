@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useConfirm } from '../context/ConfirmContext'
-import { supabase } from '../lib/supabase'
-import { useRestaurant } from '../context/RestaurantContext'
-import { friendlyError } from '../lib/errors'
-import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '../lib/controlStyles'
-import ArrangeList from './ArrangeList'
-import { ModalSectionBar } from './ModalSection'
-import Modal from './Modal'
-import ErrorBanner from './ErrorBanner'
+import { useConfirm } from '@/context/ConfirmContext'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { friendlyError } from '@/lib/errors'
+import { tableHeadRow, modalFooter, rowButton, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import ArrangeList from '@/components/ArrangeList'
+import { ModalSectionBar } from '@/components/ModalSection'
+import Modal from '@/components/Modal'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The stored value stays 'catering'. Only what you read changes, so nothing
 // already recorded against it has to move.

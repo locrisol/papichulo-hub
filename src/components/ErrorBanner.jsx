@@ -1,4 +1,4 @@
-import { errorBanner } from '../lib/controlStyles'
+import { errorBanner } from '@/lib/controlStyles'
 
 // Something went wrong, said once.
 //

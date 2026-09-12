@@ -1,14 +1,14 @@
-import { fmtMoney } from '../../lib/format'
+import { fmtMoney } from '@/lib/format'
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { useAuth } from '../../context/AuthContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { friendlyError } from '../../lib/errors'
-import { todayISO, fullDate } from '../../lib/dates'
-import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '../../lib/controlStyles'
-import { availabilitySummary, patternOn, pendingAvailability } from '../../lib/availability'
-import { nextAbsence, kindLabel, absenceRange } from '../../lib/absences'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { useAuth } from '@/context/AuthContext'
+import { useConfirm } from '@/context/ConfirmContext'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, fullDate } from '@/lib/dates'
+import { secondaryButton, cardEdge, cardHeader, badge, tableCard, tableHeadRow, rowButton } from '@/lib/controlStyles'
+import { availabilitySummary, patternOn, pendingAvailability } from '@/lib/availability'
+import { nextAbsence, kindLabel, absenceRange } from '@/lib/absences'
 import {
     sortEmployees,
     nextSortOrder,
@@ -16,16 +16,16 @@ import {
     employeeProblem,
     employeeNote,
     NO_COLOUR,
-} from '../../lib/team'
-import Modal from '../../components/Modal'
-import RowActions from '../../components/RowActions'
-import EmployeeForm from '../../components/EmployeeForm'
-import PositionsModal from '../../components/PositionsModal'
-import CalendarLinkDialog from '../../components/CalendarLinkDialog'
-import AvailabilityDialog from '../../components/AvailabilityDialog'
-import TimeOffDialog from '../../components/TimeOffDialog'
-import TeamGaps from '../../components/team/TeamGaps'
-import ArrangeList from '../../components/ArrangeList'
+} from '@/lib/team'
+import Modal from '@/components/Modal'
+import RowActions from '@/components/RowActions'
+import EmployeeForm from '@/components/EmployeeForm'
+import PositionsModal from '@/components/PositionsModal'
+import CalendarLinkDialog from '@/components/CalendarLinkDialog'
+import AvailabilityDialog from '@/components/AvailabilityDialog'
+import TimeOffDialog from '@/components/TimeOffDialog'
+import TeamGaps from '@/components/team/TeamGaps'
+import ArrangeList from '@/components/ArrangeList'
 
 // Who works here.
 //

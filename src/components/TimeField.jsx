@@ -1,5 +1,5 @@
-import { timeOptions } from '../lib/timeOptions'
-import { fieldClass, compactField } from '../lib/controlStyles'
+import { timeOptions } from '@/lib/timeOptions'
+import { fieldClass, compactField } from '@/lib/controlStyles'
 
 // Picking a time, anywhere in the app.
 //

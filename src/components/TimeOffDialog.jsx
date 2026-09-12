@@ -1,21 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import ModalSection from './ModalSection'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { useConfirm } from '../context/ConfirmContext'
-import { fullDate } from '../lib/dates'
-import { numberField } from '../lib/numberInput'
-import { modalFooter, secondaryButton, badge, rowButton, labelClass, fieldClass } from '../lib/controlStyles'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import ModalSection from '@/components/ModalSection'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { useConfirm } from '@/context/ConfirmContext'
+import { fullDate } from '@/lib/dates'
+import { numberField } from '@/lib/numberInput'
+import { modalFooter, secondaryButton, badge, rowButton, labelClass, fieldClass } from '@/lib/controlStyles'
 import {
     ABSENCE_KINDS, kindOf, kindLabel, takesHours, sortAbsences, absenceRange,
     absenceDays, absenceProblem, overlappingAbsence,
-} from '../lib/absences'
-import { shiftsHit, asCleared, isPartDay, partWords } from '../lib/timeOff'
-import { shortTime } from '../lib/roster'
-import { dayName } from '../lib/events'
-import { shortDate } from '../lib/dates'
+} from '@/lib/absences'
+import { shiftsHit, asCleared, isPartDay, partWords } from '@/lib/timeOff'
+import { shortTime } from '@/lib/roster'
+import { dayName } from '@/lib/events'
+import { shortDate } from '@/lib/dates'
 
 // The days somebody is not there.
 //

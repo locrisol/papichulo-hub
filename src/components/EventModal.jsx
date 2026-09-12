@@ -1,8 +1,8 @@
-import Modal from './Modal'
-import { categoryStyle, statusNote, dayName } from '../lib/events'
-import { fullDate } from '../lib/dates'
-import { fmtMoney } from '../lib/format'
-import { badge } from '../lib/controlStyles'
+import Modal from '@/components/Modal'
+import { categoryStyle, statusNote, dayName } from '@/lib/events'
+import { fullDate } from '@/lib/dates'
+import { fmtMoney } from '@/lib/format'
+import { badge } from '@/lib/controlStyles'
 
 // One event, opened from the calendar or from the list beside it.
 //

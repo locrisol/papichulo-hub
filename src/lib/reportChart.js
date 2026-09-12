@@ -3,8 +3,8 @@
 // Everything here is pure, so the shape of a line can be tested without a
 // browser. The component does the drawing and nothing else.
 
-import { weekStartOf, addDays } from './dates'
-import { num } from './format'
+import { weekStartOf, addDays } from '@/lib/dates'
+import { num } from '@/lib/format'
 
 // How far back a chart can be asked to look.
 //

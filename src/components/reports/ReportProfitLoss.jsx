@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { fmtMoney, fmtPct } from '../../lib/format'
-import { numberField } from '../../lib/numberInput'
-import { wasChanged, platformShare, startsOpen, figureGaps } from '../../lib/weeklyReport'
-import { removeButton, secondaryButton } from '../../lib/controlStyles'
-import { useConfirm } from '../../context/ConfirmContext'
-import AddButton from '../AddButton'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { numberField } from '@/lib/numberInput'
+import { wasChanged, platformShare, startsOpen, figureGaps } from '@/lib/weeklyReport'
+import { removeButton, secondaryButton } from '@/lib/controlStyles'
+import { useConfirm } from '@/context/ConfirmContext'
+import AddButton from '@/components/AddButton'
 
 // The weekly profit and loss.
 //

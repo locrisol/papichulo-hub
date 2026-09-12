@@ -1,6 +1,6 @@
-import Modal from '../Modal'
-import { fullDate } from '../../lib/dates'
-import { describeAgent, isScript, agoWords, usedForWords, lastUsed } from '../../lib/loginEvents'
+import Modal from '@/components/Modal'
+import { fullDate } from '@/lib/dates'
+import { describeAgent, isScript, agoWords, usedForWords, lastUsed } from '@/lib/loginEvents'
 
 // One person's sign ins.
 //

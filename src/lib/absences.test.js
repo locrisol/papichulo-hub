@@ -14,7 +14,7 @@ import {
     sortAbsences,
     nextAbsence,
     holidayHoursInWeek,
-} from './absences'
+} from '@/lib/absences'
 
 const away = (extra = {}) => ({
     id: 'a1',

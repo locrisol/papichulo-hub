@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { rowButton } from '../lib/controlStyles'
+import { rowButton } from '@/lib/controlStyles'
 
 // The things you can do to one row of a table.
 //

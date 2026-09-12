@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { numberField } from '../lib/numberInput'
+import { numberField } from '@/lib/numberInput'
 
 // A quantity typed in whichever unit suits the hand writing it.
 //

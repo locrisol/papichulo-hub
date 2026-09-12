@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY, CSV_BOM,
-} from './rosterShare'
-import { ABSENCE_KINDS } from './absences'
+} from '@/lib/rosterShare'
+import { ABSENCE_KINDS } from '@/lib/absences'
 
 const DATES = [
     '2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26',

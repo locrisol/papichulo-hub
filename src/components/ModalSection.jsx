@@ -1,4 +1,4 @@
-import { modalSectionHeader } from '../lib/controlStyles'
+import { modalSectionHeader } from '@/lib/controlStyles'
 
 // One part of a dialog.
 //

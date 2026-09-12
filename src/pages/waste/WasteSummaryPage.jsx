@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, fmtQty, fmtPct } from '../../lib/format'
-import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
-import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { friendlyError } from '../../lib/errors'
-import ErrorBanner from '../../components/ErrorBanner'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { fmtMoney, fmtQty, fmtPct } from '@/lib/format'
+import { todayISO, weekStartOf, shortDate, addDays } from '@/lib/dates'
+import { REASONS, reasonLabel } from '@/lib/wasteReasons'
+import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '@/lib/controlStyles'
+import DateStepper from '@/components/DateStepper'
+import { friendlyError } from '@/lib/errors'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // Waste for a week, grouped by product.
 //

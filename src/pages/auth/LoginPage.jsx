@@ -1,9 +1,9 @@
-import { labelClass } from '../../lib/controlStyles'
+import { labelClass } from '@/lib/controlStyles'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import logo from '../../assets/PapiChuloLogo.png'
-import ErrorBanner from '../../components/ErrorBanner'
+import { supabase } from '@/lib/supabase'
+import logo from '@/assets/PapiChuloLogo.png'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The sign in screen.
 //

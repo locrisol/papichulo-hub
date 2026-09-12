@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { fmtMoney } from '../lib/format'
-import { slicePath } from '../lib/weekTaken'
+import { fmtMoney } from '@/lib/format'
+import { slicePath } from '@/lib/weekTaken'
 
 // The pie half of the week taken panel, kept in its own file because it is the
 // only part with real geometry in it and the only part that has to remember

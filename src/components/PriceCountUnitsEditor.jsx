@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useConfirm } from '../context/ConfirmContext'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { orderFormats } from '../lib/countUnits'
-import { rowButton, checkbox } from '../lib/controlStyles'
-import ErrorBanner from './ErrorBanner'
+import { useConfirm } from '@/context/ConfirmContext'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { orderFormats } from '@/lib/countUnits'
+import { rowButton, checkbox } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The pack formats on one supplier price, plus whether loose counting is on.
 //

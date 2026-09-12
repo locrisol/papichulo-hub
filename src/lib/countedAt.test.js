@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countedAt, countedLine } from './countedAt'
+import { countedAt, countedLine } from '@/lib/countedAt'
 
 // Sunday 31 August 2026, ten past six in the evening.
 const NOW = new Date('2026-08-31T18:10:00')

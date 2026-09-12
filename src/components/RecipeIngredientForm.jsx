@@ -1,8 +1,8 @@
-import { labelClass, primaryButton } from '../lib/controlStyles'
+import { labelClass, primaryButton } from '@/lib/controlStyles'
 import { useRef, useEffect } from 'react'
-import ProductSelect from './ProductSelect'
-import QuantityInUnit from './QuantityInUnit'
-import ErrorBanner from './ErrorBanner'
+import ProductSelect from '@/components/ProductSelect'
+import QuantityInUnit from '@/components/QuantityInUnit'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // One ingredient line on a MIX recipe.
 //

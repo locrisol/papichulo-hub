@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { fieldClass } from '../lib/controlStyles'
-import Modal from './Modal'
-import ErrorBanner from './ErrorBanner'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { fieldClass } from '@/lib/controlStyles'
+import Modal from '@/components/Modal'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // Starts a stock take session.
 //

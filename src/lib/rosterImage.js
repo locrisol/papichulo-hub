@@ -8,7 +8,7 @@
 // Everything comes off weekTable, the same shape the screen reads, so the
 // picture cannot say something the roster did not.
 
-import { sheetLayout, wrapLines, AWAY } from './rosterShare'
+import { sheetLayout, wrapLines, AWAY } from '@/lib/rosterShare'
 
 const INK = '#111827'
 const MUTED = '#6b7280'

@@ -1,5 +1,5 @@
-import { secondaryButton } from '../../lib/controlStyles'
-import { fullDate } from '../../lib/dates'
+import { secondaryButton } from '@/lib/controlStyles'
+import { fullDate } from '@/lib/dates'
 
 // The bar that finishes a report, or re-opens one.
 //

@@ -1,8 +1,8 @@
-import { labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
-import { INVOICE_CATEGORIES } from '../lib/invoiceCategories'
-import { numberField } from '../lib/numberInput'
-import { shortDate } from '../lib/dates'
-import ErrorBanner from './ErrorBanner'
+import { labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { INVOICE_CATEGORIES } from '@/lib/invoiceCategories'
+import { numberField } from '@/lib/numberInput'
+import { shortDate } from '@/lib/dates'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The add and edit form for an invoice.
 //

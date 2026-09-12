@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { sheetRows } from '../lib/allergenSheet'
-import AllergenList from '../components/allergens/AllergenList'
-import { card } from '../lib/controlStyles'
-import { stampDate } from '../lib/dates'
+import { supabase } from '@/lib/supabase'
+import { sheetRows } from '@/lib/allergenSheet'
+import AllergenList from '@/components/allergens/AllergenList'
+import { card } from '@/lib/controlStyles'
+import { stampDate } from '@/lib/dates'
 
 
 // The allergen page customers see, at /allergens/[slug]. No login.

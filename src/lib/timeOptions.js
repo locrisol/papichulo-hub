@@ -1,4 +1,4 @@
-import { toMinutes, toTime } from './roster'
+import { toMinutes, toTime } from '@/lib/roster'
 
 // The times a person can pick, every quarter of an hour.
 //

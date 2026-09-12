@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import { supabase } from '../lib/supabase'
-import { useRestaurant } from '../context/RestaurantContext'
-import { friendlyError } from '../lib/errors'
-import { BANK_HOLIDAY } from '../lib/roster'
-import { modalFooter, removeButton, primaryButton } from '../lib/controlStyles'
-import ModalSection from './ModalSection'
-import ErrorBanner from './ErrorBanner'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { friendlyError } from '@/lib/errors'
+import { BANK_HOLIDAY } from '@/lib/roster'
+import { modalFooter, removeButton, primaryButton } from '@/lib/controlStyles'
+import ModalSection from '@/components/ModalSection'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // When the store is usually open.
 //

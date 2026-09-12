@@ -1,11 +1,11 @@
-import { numberField } from '../lib/numberInput'
-import LockedField from './LockedField'
-import { linkableUsers } from '../lib/team'
-import { todayISO, fullDate } from '../lib/dates'
-import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '../lib/workRules'
-import { modalFooter, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
-import ModalSection from './ModalSection'
-import ErrorBanner from './ErrorBanner'
+import { numberField } from '@/lib/numberInput'
+import LockedField from '@/components/LockedField'
+import { linkableUsers } from '@/lib/team'
+import { todayISO, fullDate } from '@/lib/dates'
+import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '@/lib/workRules'
+import { modalFooter, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import ModalSection from '@/components/ModalSection'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The add and edit form for a person.
 //

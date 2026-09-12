@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import Modal from './Modal'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { useConfirm } from '../context/ConfirmContext'
-import { POSITION_COLOURS, nextColour } from '../lib/team'
-import { badge, rowButton, fieldClass } from '../lib/controlStyles'
-import { ModalSectionBar } from './ModalSection'
-import ErrorBanner from './ErrorBanner'
+import Modal from '@/components/Modal'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { useConfirm } from '@/context/ConfirmContext'
+import { POSITION_COLOURS, nextColour } from '@/lib/team'
+import { badge, rowButton, fieldClass } from '@/lib/controlStyles'
+import { ModalSectionBar } from '@/components/ModalSection'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The positions a restaurant uses: Kitchen, Counter, Delivery, whatever they
 // call them.

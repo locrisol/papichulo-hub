@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import ModalSection from './ModalSection'
-import { supabase } from '../lib/supabase'
-import { useRestaurant } from '../context/RestaurantContext'
-import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton, labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
-import { cleanExtras, sortExtras, usualProblem } from '../lib/dayExtras'
-import ErrorBanner from './ErrorBanner'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import ModalSection from '@/components/ModalSection'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { friendlyError } from '@/lib/errors'
+import { modalFooter, removeButton, secondaryButton, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { cleanExtras, sortExtras, usualProblem } from '@/lib/dayExtras'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The two things that are the same every week.
 //

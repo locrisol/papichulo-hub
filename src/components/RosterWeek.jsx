@@ -1,19 +1,19 @@
 import { useState } from 'react'
-import { cardEdge, tableHeadRow } from '../lib/controlStyles'
-import { NO_COLOUR } from '../lib/team'
-import { DAY_NAMES } from '../lib/events'
-import { fullDate } from '../lib/dates'
-import { dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
-import { AlertBadge, AlertStrip } from './RosterAlerts'
-import { hasWarnings } from '../lib/workRules'
-import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '../lib/absences'
-import { askedOff, partWords } from '../lib/timeOff'
-import { AWAY } from '../lib/rosterShare'
-import { extrasFor } from '../lib/dayExtras'
+import { cardEdge, tableHeadRow } from '@/lib/controlStyles'
+import { NO_COLOUR } from '@/lib/team'
+import { DAY_NAMES } from '@/lib/events'
+import { fullDate } from '@/lib/dates'
+import { dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
+import { AlertBadge, AlertStrip } from '@/components/RosterAlerts'
+import { hasWarnings } from '@/lib/workRules'
+import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absences'
+import { askedOff, partWords } from '@/lib/timeOff'
+import { AWAY } from '@/lib/rosterShare'
+import { extrasFor } from '@/lib/dayExtras'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
-} from '../lib/roster'
+} from '@/lib/roster'
 
 // The whole week at once, laid out the way the one that goes out to the staff
 // has always been laid out.

@@ -3,7 +3,7 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH,
 } from '../../supabase/functions/weekly-report-email/email'
-import { MAIL_WIDTH } from './reportChartImage'
+import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 
 const figures = {

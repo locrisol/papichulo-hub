@@ -1,11 +1,11 @@
-import Modal from './Modal'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
-import { shortTime, endLabel, fmtHours, hoursForDate } from '../lib/roster'
-import { modalFooter, secondaryButton, rowButton, badge } from '../lib/controlStyles'
+import Modal from '@/components/Modal'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
+import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
+import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
     windowOf, isWholeShift, hoursChange, weekAfter, newFindings,
-} from '../lib/shiftRequests'
+} from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
 //

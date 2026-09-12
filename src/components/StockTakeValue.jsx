@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { fmtMoney } from '../lib/format'
-import { slicePath } from '../lib/donut'
+import { fmtMoney } from '@/lib/format'
+import { slicePath } from '@/lib/donut'
 
 // What a finished stock take came to, by where it was counted.
 //

@@ -1,18 +1,18 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
-import { hoursForDay, shortTime } from '../lib/roster'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
-import { mirrorClosedToSales } from '../lib/closedDays'
-import ModalSection from './ModalSection'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
+import { hoursForDay, shortTime } from '@/lib/roster'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import { mirrorClosedToSales } from '@/lib/closedDays'
+import ModalSection from '@/components/ModalSection'
 import {
     cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
-} from '../lib/dayExtras'
-import ErrorBanner from './ErrorBanner'
+} from '@/lib/dayExtras'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // When one day is not like the others.
 //

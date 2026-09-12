@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import Modal from './Modal'
-import ModalSection from './ModalSection'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { useConfirm } from '../context/ConfirmContext'
-import { modalFooter, secondaryButton } from '../lib/controlStyles'
-import ErrorBanner from './ErrorBanner'
+import Modal from '@/components/Modal'
+import ModalSection from '@/components/ModalSection'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { useConfirm } from '@/context/ConfirmContext'
+import { modalFooter, secondaryButton } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The link somebody subscribes their phone's calendar to.
 //

@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useConfirm } from '../context/ConfirmContext'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass, primaryButton } from '../lib/controlStyles'
-import ArrangeList from './ArrangeList'
-import Modal from './Modal'
-import { ModalSectionBar } from './ModalSection'
-import ErrorBanner from './ErrorBanner'
+import { useConfirm } from '@/context/ConfirmContext'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { modalFooter, rowButton, tableHeadRow, secondaryButton, fieldClass, primaryButton } from '@/lib/controlStyles'
+import ArrangeList from '@/components/ArrangeList'
+import Modal from '@/components/Modal'
+import { ModalSectionBar } from '@/components/ModalSection'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // Manages the categories menu items are grouped under.
 //

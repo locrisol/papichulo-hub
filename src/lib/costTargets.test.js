@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveTarget, describeTargets } from './costTargets'
+import { resolveTarget, describeTargets } from '@/lib/costTargets'
 
 describe('resolveTarget', () => {
     it('falls back to the restaurant default when there are no overrides', () => {

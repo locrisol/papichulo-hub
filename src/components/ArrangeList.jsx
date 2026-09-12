@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Modal from './Modal'
-import { modalFooter, secondaryButton, primaryButton } from '../lib/controlStyles'
+import Modal from '@/components/Modal'
+import { modalFooter, secondaryButton, primaryButton } from '@/lib/controlStyles'
 
 // Putting a list in the order it should be read in.
 //

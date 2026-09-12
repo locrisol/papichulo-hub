@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import ModalSection from './ModalSection'
-import { supabase } from '../lib/supabase'
-import { friendlyError } from '../lib/errors'
-import { modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton } from '../lib/controlStyles'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import ModalSection from '@/components/ModalSection'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { modalFooter, removeButton, secondaryButton, captionClass, compactField, primaryButton } from '@/lib/controlStyles'
 import {
     toRows, fromRows, availabilityProblem, windowShape, copyDay, DAY_GROUPS,
     DAY_START, DAY_END, patternOn,
-} from '../lib/availability'
-import { todayISO, fullDate, addDays } from '../lib/dates'
-import ErrorBanner from './ErrorBanner'
+} from '@/lib/availability'
+import { todayISO, fullDate, addDays } from '@/lib/dates'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // When somebody can work.
 //

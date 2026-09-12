@@ -2,7 +2,7 @@
 //
 // No React in here, the same split the rest of lib uses.
 
-import { weekStartOf, dayMonth, monthLabel, addDays } from './dates'
+import { weekStartOf, dayMonth, monthLabel, addDays } from '@/lib/dates'
 
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 

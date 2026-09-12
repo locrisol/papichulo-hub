@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dayIsClosed, closedDates, noteIsEmpty, planNoteWrites } from './closedDays'
+import { dayIsClosed, closedDates, noteIsEmpty, planNoteWrites } from '@/lib/closedDays'
 
 const note = (extra = {}) => ({ id: 'n1', note_date: '2026-08-24', ...extra })
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { fmtMoney } from '../lib/format'
-import { toSlices, BAR_COLOUR } from '../lib/weekTaken'
-import WeekTakenPie from './WeekTakenPie'
+import { fmtMoney } from '@/lib/format'
+import { toSlices, BAR_COLOUR } from '@/lib/weekTaken'
+import WeekTakenPie from '@/components/WeekTakenPie'
 
 // How the week's sales were taken, drawn two ways.
 //

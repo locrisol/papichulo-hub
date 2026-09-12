@@ -1,7 +1,7 @@
-import { fullDate } from '../lib/dates'
-import { DAY_NAMES } from '../lib/events'
-import { NO_COLOUR } from '../lib/team'
-import { barFor } from '../lib/presence'
+import { fullDate } from '@/lib/dates'
+import { DAY_NAMES } from '@/lib/events'
+import { NO_COLOUR } from '@/lib/team'
+import { barFor } from '@/lib/presence'
 
 // The week on a phone.
 //

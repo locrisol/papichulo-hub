@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { forDropdown } from '../lib/sections'
-import { matches } from '../lib/search'
+import { forDropdown } from '@/lib/sections'
+import { matches } from '@/lib/search'
 
 // Picking a product out of a few hundred.
 //

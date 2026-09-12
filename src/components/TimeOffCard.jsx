@@ -1,9 +1,9 @@
-import { useConfirm } from '../context/ConfirmContext'
-import { card, badge } from '../lib/controlStyles'
-import { absenceRange } from '../lib/absences'
-import { requestLabel, partWords } from '../lib/timeOff'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
+import { useConfirm } from '@/context/ConfirmContext'
+import { card, badge } from '@/lib/controlStyles'
+import { absenceRange } from '@/lib/absences'
+import { requestLabel, partWords } from '@/lib/timeOff'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
 
 // Your own time off, on your own page.
 //

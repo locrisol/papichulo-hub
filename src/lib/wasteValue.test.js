@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateWasteValue } from './wasteValue'
+import { calculateWasteValue } from '@/lib/wasteValue'
 
 const chicken = { id: 'p-chicken', is_mix: false }
 const lime = { id: 'p-lime', is_mix: false }

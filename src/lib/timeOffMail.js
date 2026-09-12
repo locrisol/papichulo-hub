@@ -1,6 +1,6 @@
-import { supabase } from './supabase'
-import { isPartDay } from './timeOff'
-import { timeOffRecordBase64, recordName } from './timeOffPdf'
+import { supabase } from '@/lib/supabase'
+import { isPartDay } from '@/lib/timeOff'
+import { timeOffRecordBase64, recordName } from '@/lib/timeOffPdf'
 
 // Setting the emails off.
 //

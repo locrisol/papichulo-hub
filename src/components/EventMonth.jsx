@@ -1,6 +1,6 @@
-import { addDays, monthStart, addMonths, monthLabel, shortDate } from '../lib/dates'
-import { DAY_NAMES, LEGEND, categoryStyle, categoryDot, dayName } from '../lib/events'
-import { cardEdge, cardHeader } from '../lib/controlStyles'
+import { addDays, monthStart, addMonths, monthLabel, shortDate } from '@/lib/dates'
+import { DAY_NAMES, LEGEND, categoryStyle, categoryDot, dayName } from '@/lib/events'
+import { cardEdge, cardHeader } from '@/lib/controlStyles'
 
 // The month grid.
 //

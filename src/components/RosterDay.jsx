@@ -1,17 +1,17 @@
 import { useState, useRef, Fragment } from 'react'
-import { cardEdge } from '../lib/controlStyles'
-import { NO_COLOUR } from '../lib/team'
-import { categoryDot } from '../lib/events'
-import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '../lib/availability'
-import { AlertBadge, AlertStrip } from './RosterAlerts'
-import { hasWarnings } from '../lib/workRules'
-import { wholeDayOn, partDayOn, kindOf } from '../lib/absences'
-import { partWords, partDaySpans } from '../lib/timeOff'
-import { extrasFor, extraLabel, extraLanes } from '../lib/dayExtras'
+import { cardEdge } from '@/lib/controlStyles'
+import { NO_COLOUR } from '@/lib/team'
+import { categoryDot } from '@/lib/events'
+import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
+import { AlertBadge, AlertStrip } from '@/components/RosterAlerts'
+import { hasWarnings } from '@/lib/workRules'
+import { wholeDayOn, partDayOn, kindOf } from '@/lib/absences'
+import { partWords, partDaySpans } from '@/lib/timeOff'
+import { extrasFor, extraLabel, extraLanes } from '@/lib/dayExtras'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor, hourLabelStep,
-} from '../lib/roster'
+} from '@/lib/roster'
 
 // One day, drawn as a timeline.
 //

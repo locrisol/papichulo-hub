@@ -1,21 +1,21 @@
 import { Fragment, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, num } from '../../lib/format'
-import { shortDate, addDays, weekNumber, weekRange } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { fmtMoney, num } from '@/lib/format'
+import { shortDate, addDays, weekNumber, weekRange } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '@/lib/controlStyles'
 import {
     reportableWeeks,
     weekReadiness,
     carriedItems,
     DEFAULT_SECTIONS,
     DEFAULT_OVERHEADS,
-} from '../../lib/weeklyReport'
-import { can, RESTAURANT_CONFIG } from '../../lib/access'
-import ErrorBanner from '../../components/ErrorBanner'
+} from '@/lib/weeklyReport'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The way in to the weekly report: the weeks that have finished, and what state
 // each one is in.

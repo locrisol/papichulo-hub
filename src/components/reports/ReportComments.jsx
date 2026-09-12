@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
-import { useRemoveCard } from './useRemoveCard'
-import { removeButton } from '../../lib/controlStyles'
-import AutoTextarea from '../AutoTextarea'
-import AddButton from '../AddButton'
+import { useRemoveCard } from '@/components/reports/useRemoveCard'
+import { removeButton } from '@/lib/controlStyles'
+import AutoTextarea from '@/components/AutoTextarea'
+import AddButton from '@/components/AddButton'
 
 // The comments on a section: one card each, one thought each.
 //

@@ -1,6 +1,6 @@
-import { absenceDays } from './absences'
-import { requestLabel, partWords } from './timeOff'
-import logo from '../assets/PapiChuloLogoPrint.png?inline'
+import { absenceDays } from '@/lib/absences'
+import { requestLabel, partWords } from '@/lib/timeOff'
+import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 
 // jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
 //

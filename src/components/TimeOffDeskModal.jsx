@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import Modal from './Modal'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
-import { shortTime, endLabel } from '../lib/roster'
-import { absenceRange } from '../lib/absences'
-import { requestLabel, partWords, shiftsHit, noticeProblem, noticeDays } from '../lib/timeOff'
-import { modalFooter, secondaryButton, badge } from '../lib/controlStyles'
+import Modal from '@/components/Modal'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
+import { shortTime, endLabel } from '@/lib/roster'
+import { absenceRange } from '@/lib/absences'
+import { requestLabel, partWords, shiftsHit, noticeProblem, noticeDays } from '@/lib/timeOff'
+import { modalFooter, secondaryButton, badge } from '@/lib/controlStyles'
 
 // Answering a request for time off.
 //

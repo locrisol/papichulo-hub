@@ -12,7 +12,7 @@
 // on their row and left there, because somebody back early from a holiday or
 // coming in for one shift is a real thing.
 
-import { addDays, fullDate } from './dates'
+import { addDays, fullDate } from '@/lib/dates'
 
 // The kinds, and what each one is called on screen.
 //

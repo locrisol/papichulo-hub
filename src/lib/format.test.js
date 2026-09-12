@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num } from './format'
+import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num } from '@/lib/format'
 
 describe('fmtMoney', () => {
   it('formats a value over 1000 with a thousands separator and 2 decimals', () => {

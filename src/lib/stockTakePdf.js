@@ -1,9 +1,9 @@
-import { fmtMoney, fmtQty } from './format'
-import { countName } from './products'
-import { sectionColour, MIX_COLOUR } from './sections'
-import { bySection, summarise } from './stockTakeSummary'
-import { slicePoints } from './donut'
-import logo from '../assets/PapiChuloLogoPrint.png?inline'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { countName } from '@/lib/products'
+import { sectionColour, MIX_COLOUR } from '@/lib/sections'
+import { bySection, summarise } from '@/lib/stockTakeSummary'
+import { slicePoints } from '@/lib/donut'
+import logo from '@/assets/PapiChuloLogoPrint.png?inline'
 
 // jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
 //

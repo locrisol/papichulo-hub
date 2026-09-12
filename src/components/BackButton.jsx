@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { secondaryButton } from '../lib/controlStyles'
+import { secondaryButton } from '@/lib/controlStyles'
 
 // Going back, as a button.
 //

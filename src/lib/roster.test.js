@@ -4,7 +4,7 @@ import {
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
     fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
     hourLabelStep,
-} from './roster'
+} from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
     shift_date: '2026-08-24', starts_at, ends_at, employee_id: 'e1', ...extra,

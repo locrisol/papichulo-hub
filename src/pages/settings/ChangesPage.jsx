@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { friendlyError } from '../../lib/errors'
-import { todayISO, addDays, fullDate } from '../../lib/dates'
-import { dateField, pageTitle } from '../../lib/controlStyles'
-import { whoWords, tableWords } from '../../lib/changeLog'
-import ChangeLog from '../../components/settings/ChangeLog'
-import ErrorBanner from '../../components/ErrorBanner'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, addDays, fullDate } from '@/lib/dates'
+import { dateField, pageTitle } from '@/lib/controlStyles'
+import { whoWords, tableWords } from '@/lib/changeLog'
+import ChangeLog from '@/components/settings/ChangeLog'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // Everything that has changed, and who changed it.
 //

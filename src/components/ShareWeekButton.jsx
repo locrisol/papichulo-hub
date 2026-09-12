@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { secondaryButton } from '../lib/controlStyles'
-import { weekTable, weekCsv, shareName, CSV_BOM } from '../lib/rosterShare'
-import { weekImageBlob } from '../lib/rosterImage'
-import { weekPdf } from '../lib/rosterPdf'
+import { secondaryButton } from '@/lib/controlStyles'
+import { weekTable, weekCsv, shareName, CSV_BOM } from '@/lib/rosterShare'
+import { weekImageBlob } from '@/lib/rosterImage'
+import { weekPdf } from '@/lib/rosterPdf'
 
 // Getting the week out of the app.
 //

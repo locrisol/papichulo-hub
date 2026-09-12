@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import { useConfirm } from '../context/ConfirmContext'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import { useConfirm } from '@/context/ConfirmContext'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
-} from '../lib/roster'
-import { modalFooter, labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
-import ErrorBanner from './ErrorBanner'
+} from '@/lib/roster'
+import { modalFooter, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // One shift: making it, changing it, removing it.
 //

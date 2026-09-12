@@ -1,5 +1,5 @@
-import { card } from '../lib/controlStyles'
-import { ALLERGENS, ALLERGEN_STATES } from '../lib/allergens'
+import { card } from '@/lib/controlStyles'
+import { ALLERGENS, ALLERGEN_STATES } from '@/lib/allergens'
 
 // The fourteen, with three answers each.
 //

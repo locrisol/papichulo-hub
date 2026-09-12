@@ -6,7 +6,7 @@ import {
     removeExtra,
     mergeForSend,
     recipientSummary,
-} from './reportRecipients'
+} from '@/lib/reportRecipients'
 
 describe('normalise', () => {
     it('drops case and the spaces round a pasted address', () => {

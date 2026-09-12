@@ -8,13 +8,13 @@
 //
 // No React in here, so all of it can be tested.
 
-import { toMinutes, shortTime } from './roster'
-import { coversDate, isPartDay } from './absences'
+import { toMinutes, shortTime } from '@/lib/roster'
+import { coversDate, isPartDay } from '@/lib/absences'
 
 // Part of a day rather than the whole of it. It lives with the other questions
 // about an absence row and is passed through here so anything reading this file
 // does not have to know that.
-export { isPartDay } from './absences'
+export { isPartDay } from '@/lib/absences'
 
 // A month, near enough, and it is the number he asked for. Set it to 0 in the
 // roster rules and no notice is asked for at all.

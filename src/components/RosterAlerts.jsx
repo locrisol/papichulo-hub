@@ -1,4 +1,4 @@
-import { worstLevel } from '../lib/workRules'
+import { worstLevel } from '@/lib/workRules'
 
 // What is wrong with somebody, said on their own row.
 //

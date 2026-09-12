@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import Modal from './Modal'
-import { supabase } from '../lib/supabase'
-import { useRestaurant } from '../context/RestaurantContext'
-import { friendlyError } from '../lib/errors'
-import { numberField } from '../lib/numberInput'
-import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '../lib/roster'
-import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '../lib/controlStyles'
-import ModalSection from './ModalSection'
-import ErrorBanner from './ErrorBanner'
+import Modal from '@/components/Modal'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/RestaurantContext'
+import { friendlyError } from '@/lib/errors'
+import { numberField } from '@/lib/numberInput'
+import { DEFAULT_BREAK_RULES, OPERATORS, breakFor } from '@/lib/roster'
+import { modalFooter, removeButton, fieldClass, segmentTrack, segmentButton, primaryButton } from '@/lib/controlStyles'
+import ModalSection from '@/components/ModalSection'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The break ladder.
 //

@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import { can } from '../lib/access'
+import { useAuth } from '@/context/AuthContext'
+import { can } from '@/lib/access'
 
 // Wraps a route so reaching it directly by URL is refused rather than rendering
 // a page the role cannot use. Hiding a link in the sidebar does nothing on its

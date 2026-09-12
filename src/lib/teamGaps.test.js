@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gapsFor, teamGaps, countGaps } from './teamGaps'
+import { gapsFor, teamGaps, countGaps } from '@/lib/teamGaps'
 
 const TODAY = '2026-09-10'
 

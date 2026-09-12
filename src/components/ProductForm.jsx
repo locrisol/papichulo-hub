@@ -9,17 +9,17 @@
 // saved as a typo. If one is ever added it has to go in a migration first.
 //   section  Freezer, Cold Room, Dry, Packaging, Cleaning
 //   unit     KG, Units, Litre
-import { numberField } from '../lib/numberInput'
-import { checkbox, labelClass, fieldClass, hintClass, primaryButton } from '../lib/controlStyles'
-import { PriceFields } from './PriceForm'
-import ProductSelect from './ProductSelect'
-import QuantityInUnit from './QuantityInUnit'
-import { ModalSectionBar, sectionBarAction } from './ModalSection'
-import AllergenPicker from './AllergenPicker'
-import { declaredCount } from '../lib/allergens'
-import { nameClashMessage, declaresAllergens } from '../lib/products'
-import { sectionColour } from '../lib/sections'
-import ErrorBanner from './ErrorBanner'
+import { numberField } from '@/lib/numberInput'
+import { checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import { PriceFields } from '@/components/PriceForm'
+import ProductSelect from '@/components/ProductSelect'
+import QuantityInUnit from '@/components/QuantityInUnit'
+import { ModalSectionBar, sectionBarAction } from '@/components/ModalSection'
+import AllergenPicker from '@/components/AllergenPicker'
+import { declaredCount } from '@/lib/allergens'
+import { nameClashMessage, declaresAllergens } from '@/lib/products'
+import { sectionColour } from '@/lib/sections'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The five places, in the order the store is walked. The database has the same
 // list twice over, as a check on products.section and as a check on

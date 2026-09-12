@@ -10,8 +10,8 @@
 // The category list is not free text. suppliers has a check constraint on it, so
 // anything outside these four is refused by the database rather than saved as a
 // typo. Adding one means a migration first.
-import { labelClass, fieldClass, primaryButton } from '../lib/controlStyles'
-import ErrorBanner from './ErrorBanner'
+import { labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ErrorBanner'
 
 const CATEGORIES = [
     { value: 'food', label: 'Food' },

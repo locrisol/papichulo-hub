@@ -1,4 +1,4 @@
-import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from './allergens'
+import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from '@/lib/allergens'
 
 // The rows of the allergen sheet for one category.
 //

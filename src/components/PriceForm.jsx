@@ -14,11 +14,11 @@
 // value is worked out again on save, but seeing it immediately catches a units
 // per case that was entered wrong, which otherwise quietly moves the cost of
 // every dish the product goes into.
-import { fmtUnitCost } from '../lib/format'
-import { labelClass, primaryButton } from '../lib/controlStyles'
-import { numberField } from '../lib/numberInput'
-import { perUnitPreview } from '../lib/productPrice'
-import ErrorBanner from './ErrorBanner'
+import { fmtUnitCost } from '@/lib/format'
+import { labelClass, primaryButton } from '@/lib/controlStyles'
+import { numberField } from '@/lib/numberInput'
+import { perUnitPreview } from '@/lib/productPrice'
+import ErrorBanner from '@/components/ErrorBanner'
 
 // The boxes on their own, with no form around them.
 //

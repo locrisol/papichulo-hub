@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import TimeField from './TimeField'
-import Modal from './Modal'
-import { shortDate } from '../lib/dates'
-import { dayName } from '../lib/events'
-import { shortTime, endLabel, fmtHours, hoursForDate } from '../lib/roster'
-import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '../lib/controlStyles'
-import { NO_COLOUR } from '../lib/team'
-import { windowOf, shortlist, hoursChange } from '../lib/shiftRequests'
+import TimeField from '@/components/TimeField'
+import Modal from '@/components/Modal'
+import { shortDate } from '@/lib/dates'
+import { dayName } from '@/lib/events'
+import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
+import { modalFooter, secondaryButton, rowButton, badge, labelClass, fieldClass } from '@/lib/controlStyles'
+import { NO_COLOUR } from '@/lib/team'
+import { windowOf, shortlist, hoursChange } from '@/lib/shiftRequests'
 
 // Asking somebody to take a shift, or asking for one of theirs.
 //

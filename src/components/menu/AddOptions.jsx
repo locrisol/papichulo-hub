@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import Modal from '../Modal'
-import ModalSection from '../ModalSection'
-import { modalFooter, secondaryButton, checkbox, labelClass, primaryButton } from '../../lib/controlStyles'
-import QuantityInUnit from '../QuantityInUnit'
-import { offerable } from '../../lib/menuChoices'
-import { canBeMenuComponent } from '../../lib/products'
+import Modal from '@/components/Modal'
+import ModalSection from '@/components/ModalSection'
+import { modalFooter, secondaryButton, checkbox, labelClass, primaryButton } from '@/lib/controlStyles'
+import QuantityInUnit from '@/components/QuantityInUnit'
+import { offerable } from '@/lib/menuChoices'
+import { canBeMenuComponent } from '@/lib/products'
 
 // Adding a whole choice at once.
 //

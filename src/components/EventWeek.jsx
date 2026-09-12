@@ -1,6 +1,6 @@
-import { addDays, weekDates, shortDate, dayMonth, weekStartOf } from '../lib/dates'
-import { DAY_NAMES, categoryDot, statusNote } from '../lib/events'
-import { cardEdge, cardHeader } from '../lib/controlStyles'
+import { addDays, weekDates, shortDate, dayMonth, weekStartOf } from '@/lib/dates'
+import { DAY_NAMES, categoryDot, statusNote } from '@/lib/events'
+import { cardEdge, cardHeader } from '@/lib/controlStyles'
 
 // A week at a time.
 //
