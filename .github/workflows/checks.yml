@@ -5,6 +5,10 @@
 # in September 2026 and this is what keeps it there: a pull request that adds a
 # problem fails here rather than being noticed six branches later.
 #
+# There is no .env here and there should not be. The unit tests get placeholder
+# Supabase values from vite.config.js, which is also what stops a test on
+# somebody's laptop reaching the live project by accident.
+#
 # The database tests are deliberately not here. They sign in as real accounts
 # against the live project, so running them on every push would be both slow and
 # a bad idea. They stay a local command.

@@ -39,5 +39,26 @@ export default defineConfig({
     //     // @vitest-environment jsdom
     //
     setupFiles: ['./src/test/setup.js'],
+
+    // Placeholders, on purpose, and they are not a secret.
+    //
+    // lib/supabase builds its client the moment it is imported, and
+    // createClient throws if there is no url. Anything importing a page or a
+    // component reaches that eventually, so with no .env present the whole
+    // suite fails at import: which is exactly what happened on CI, where there
+    // is no .env and never should be.
+    //
+    // Fixing it here rather than in the workflow does the more useful thing as
+    // well. These win over whatever is in .env, so a unit test cannot reach the
+    // real project even by accident, and nothing goes out anyway because
+    // src/test/setup.js refuses fetch outright.
+    //
+    // The database tests are a separate config and are unaffected. They sign in
+    // as real accounts and need the real values, which is why they are a
+    // separate command.
+    env: {
+      VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+      VITE_SUPABASE_ANON_KEY: 'not-a-real-key-and-never-used',
+    },
   },
 })
