@@ -1,5 +1,5 @@
 import { fmtMoney } from '../../lib/format'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../context/RestaurantContext'
@@ -204,44 +204,67 @@ export default function MenuItemsPage() {
     else fetchAll({ quiet: true })
   }
 
-  function getItemComponents(itemId) {
-    return components.filter(c => c.menu_item_id === itemId)
-  }
-
-  // What is in it, and how many choices sit beside that.
+  // Everything each dish needs, worked out once.
   //
-  // The options are not ingredients. A burrito with eleven ingredients and a
-  // choice of five salsas is not a sixteen ingredient burrito: only one of the
-  // five is ever in it. Counting them together made it read as far more of a
-  // job to build than it is.
-  function countsFor(itemId) {
-    const mine = getItemComponents(itemId)
-    return {
-      components: mine.filter(c => !c.choice_group).length,
-      choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+  // This page used to do all of it inside render, four times per dish per
+  // layout, and it draws both layouts: the phone cards and the desktop table
+  // are md:hidden and hidden md:block, which is CSS, so React runs both maps
+  // either way. getItemComponents filtered every component row in the business
+  // and was called by the cost, the margin, the allergens and the counts, and
+  // the margin called the cost a second time rather than reuse the one it had
+  // just been given. On a hundred dishes that is eight full scans each, before
+  // menuItemCost then walks the recipes down through every nested MIX.
+  //
+  // Then prices arrive from a second effect after the first paint, and the
+  // whole thing runs again.
+  //
+  // One index, one pass, and a plain lookup at the point of use.
+  const byItem = useMemo(() => {
+    const lines = new Map()
+    for (const c of components) {
+      const list = lines.get(c.menu_item_id)
+      if (list) list.push(c)
+      else lines.set(c.menu_item_id, [c])
     }
-  }
 
-  function getItemCost(item) {
-    return menuItemCost(getItemComponents(item.id), products, recipeLines, prices)
-  }
+    const out = new Map()
+    for (const item of menuItems) {
+      const mine = lines.get(item.id) || []
+      const cost = menuItemCost(mine, products, recipeLines, prices)
+      const vat = parseFloat(item.vat_rate) || 0
+      const net = parseFloat(item.selling_price) / (1 + vat / 100)
+      out.set(item.id, {
+        components: mine,
+        cost,
+        net,
+        margin: cost === null ? null : {
+          net,
+          margin: net - cost,
+          marginPct: net > 0 ? ((net - cost) / net) * 100 : null,
+        },
+        allergens: deriveMenuItemAllergens(mine, products, recipeLines, allergens),
+        // The options are not ingredients. A burrito with eleven ingredients
+        // and a choice of five salsas is not a sixteen ingredient burrito:
+        // only one of the five is ever in it. Counting them together made it
+        // read as far more of a job to build than it is.
+        counts: {
+          components: mine.filter(c => !c.choice_group).length,
+          choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+        },
+      })
+    }
+    return out
+  }, [menuItems, components, products, recipeLines, allergens, prices])
 
-  function getItemAllergens(item) {
-    const lines = getItemComponents(item.id)
-    return deriveMenuItemAllergens(lines, products, recipeLines, allergens)
-  }
+  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, counts: { components: 0, choices: 0 } }
+  const forItem = id => byItem.get(id) || EMPTY
 
-  function getNet(item) {
-    const vat = parseFloat(item.vat_rate) || 0
-    return parseFloat(item.selling_price) / (1 + vat / 100)
-  }
 
-  function getMargin(item) {
-    const cost = getItemCost(item)
-    if (cost === null) return null
-    const net = getNet(item)
-    return { net, margin: net - cost, marginPct: net > 0 ? ((net - cost) / net) * 100 : null }
-  }
+  const countsFor = itemId => forItem(itemId).counts
+  const getItemCost = item => forItem(item.id).cost
+  const getItemAllergens = item => forItem(item.id).allergens
+  const getNet = item => forItem(item.id).net
+  const getMargin = item => forItem(item.id).margin
 
   function marginColour(pct) {
     if (pct === null) return 'text-gray-400'
