@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import StartStockTakeModal from '../../components/StartStockTakeModal'
 import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
+import { can, MANAGERS } from '../../lib/access'
 
 // The way in to stock takes: whatever is open now, and the last ten that closed.
 //
@@ -34,7 +35,7 @@ export default function StockTakesListPage() {
   const [showStartModal, setShowStartModal] = useState(false)
   const [error, setError] = useState('')
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
   useEffect(() => {
     if (!activeRestaurant) return

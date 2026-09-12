@@ -14,6 +14,7 @@ import { matches } from '../../lib/search'
 import { heldFor } from '../../lib/products'
 import { useConfirm } from '../../context/ConfirmContext'
 import { numberField } from '../../lib/numberInput'
+import { can, MANAGERS } from '../../lib/access'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -35,7 +36,7 @@ export default function WasteLogPage() {
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
-    const isManager = ['super_admin', 'owner', 'store_manager'].includes(user?.role)
+    const isManager = can(user, MANAGERS)
     const navigate = useNavigate()
 
     const [logDate, setLogDate] = useState(todayISO())

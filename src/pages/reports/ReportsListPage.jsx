@@ -14,6 +14,7 @@ import {
     DEFAULT_SECTIONS,
     DEFAULT_OVERHEADS,
 } from '../../lib/weeklyReport'
+import { can, RESTAURANT_CONFIG } from '../../lib/access'
 
 // The way in to the weekly report: the weeks that have finished, and what state
 // each one is in.
@@ -115,7 +116,7 @@ export default function ReportsListPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
-    const canWrite = ['super_admin', 'store_manager'].includes(user?.role)
+    const canWrite = can(user, RESTAURANT_CONFIG)
 
     const [weeks, setWeeks] = useState([])
     const [loading, setLoading] = useState(true)

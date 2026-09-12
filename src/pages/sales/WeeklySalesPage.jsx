@@ -11,6 +11,7 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '../../lib/numberInput'
 import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
+import { DAY_NAMES } from '../../lib/events'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -32,7 +33,6 @@ import DateStepper from '../../components/DateStepper'
 // Cash reconciliation (floats, cash banked, petty cash) is deliberately absent
 // here, as it is in the day form: the business is changing how it handles cash.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 
 // Key under which an unsaved week is kept in local storage.

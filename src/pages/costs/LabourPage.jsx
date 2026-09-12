@@ -3,12 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useRestaurant } from '../../context/RestaurantContext'
 import { resolveTarget } from '../../lib/costTargets'
-import { fmtMoney, fmtQty, num } from '../../lib/format'
+import { fmtMoney, fmtQty, num, fmtPct } from '../../lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
 import { friendlyError } from '../../lib/errors'
 import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
 import DateStepper from '../../components/DateStepper'
 import { numberField } from '../../lib/numberInput'
+import { DAY_NAMES } from '../../lib/events'
 
 // Labour hours, entered a week at a time.
 //
@@ -25,7 +26,6 @@ import { numberField } from '../../lib/numberInput'
 // labour_cost is a generated column in Postgres, worked out from hours and rate,
 // so it is never sent on save. Sending it would have the insert rejected.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 
 export default function LabourPage() {
@@ -376,7 +376,7 @@ export default function LabourPage() {
                                                     : <span className="text-gray-700">{fmtMoney(net)}</span>}
                                         </td>
                                         <td className={`${calcCellCls} font-medium ${pctColour(pct)}`}>
-                                            {pct == null ? '-' : `${pct.toFixed(1)}%`}
+                                            {fmtPct(pct)}
                                         </td>
                                     </tr>
                                 )
@@ -392,7 +392,7 @@ export default function LabourPage() {
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekCost)}</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekNet)}</td>
                                 <td className={`px-3 py-3 text-right font-semibold ${pctColour(weekPct)}`}>
-                                    {weekPct == null ? '-' : `${weekPct.toFixed(1)}%`}
+                                    {fmtPct(weekPct)}
                                 </td>
                             </tr>
                         </tfoot>

@@ -15,6 +15,7 @@ import { card } from '../../lib/controlStyles'
 import SearchBox from '../../components/SearchBox'
 import { sectionColour, sectionRank } from '../../lib/sections'
 import BackButton from '../../components/BackButton'
+import { can, MANAGERS } from '../../lib/access'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
@@ -86,7 +87,7 @@ export default function StockTakeCountPage() {
     // things to think about rather than one thing to fix.
     const [justNoned, setJustNoned] = useState(null)
 
-    const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+    const isManager = can(user, MANAGERS)
 
     useEffect(() => {
         fetchEverything()

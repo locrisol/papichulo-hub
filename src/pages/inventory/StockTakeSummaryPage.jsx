@@ -14,6 +14,7 @@ import { friendlyError } from '../../lib/errors'
 import { card } from '../../lib/controlStyles'
 import BackButton from '../../components/BackButton'
 import Modal from '../../components/Modal'
+import { can, MANAGERS } from '../../lib/access'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -74,7 +75,7 @@ export default function StockTakeSummaryPage() {
 
   const { activeRestaurant } = useRestaurant()
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
   useEffect(() => { fetchEverything() }, [id])
 

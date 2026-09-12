@@ -10,6 +10,7 @@ import { sectionRank, sectionColour } from '../../lib/sections'
 import { card } from '../../lib/controlStyles'
 import BackButton from '../../components/BackButton'
 import Modal from '../../components/Modal'
+import { can, MANAGERS } from '../../lib/access'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -51,7 +52,7 @@ export default function StockTakeReviewPage() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [closing, setClosing] = useState(false)
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
   useEffect(() => {
     fetchEverything()
