@@ -26,15 +26,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # The whole history, so the migration check at the bottom can see
           # what this branch changed against the branch it is going into.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       # ci rather than install, so the lockfile decides and a version cannot

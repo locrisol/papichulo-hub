@@ -6,18 +6,6 @@
 // Without that guard the 1,362 existing tests all fail at import time, which is
 // exactly what happened the first time.
 
-// supabase-js builds a realtime client the moment a client is created, and
-// realtime wants WebSocket. Browsers have it, Node only got it in 22, and this
-// project runs on 20, so importing anything that imports lib/supabase throws
-// before the test starts. tests/rls solves this the same way.
-//
-// Nothing here connects. Creating the client is not opening a socket, and the
-// fetch refusal further down is what stops anything actually going out.
-if (typeof globalThis.WebSocket === 'undefined') {
-    const { default: ws } = await import('ws')
-    globalThis.WebSocket = ws
-}
-
 const inBrowser = typeof window !== 'undefined'
 
 if (inBrowser) {
