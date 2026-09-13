@@ -260,6 +260,29 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// Gmail's goodbye, which is not a failure.
+//
+// smtp.gmail.com accepts the message, answers QUIT, and drops the socket
+// without a TLS close_notify. rustls under Deno calls that an unexpected EOF
+// and denomailer surfaces it out of send(), after the mail has already been
+// taken. Seen on 6 and 13 September, and both times the mail arrived.
+//
+// So it is told apart by name and treated as sent. Two things were worse:
+//
+// Throwing told somebody their report had not gone when it had, which is how an
+// evening goes on a failure that never happened.
+//
+// Retrying was worse still, and it is what the retry added on 13 September did:
+// the first send is already delivered, so trying again delivers it twice. A
+// retry is right for a connection that failed and wrong for one that succeeded
+// and then hung up untidily, and this is what tells those two apart.
+export function isJustTheGoodbye(err) {
+    const said = String((err && err.message) || err || '').toLowerCase()
+    return said.includes('close_notify')
+        || said.includes('unexpected eof')
+        || said.includes('unexpectedeof')
+}
+
 // An address nobody can ever receive mail at.
 //
 // RFC 2606 and RFC 6761 set aside .test, .example, .invalid and .localhost, and

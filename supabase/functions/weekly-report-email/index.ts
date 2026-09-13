@@ -42,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -100,6 +100,7 @@ globalThis.addEventListener('unhandledrejection', (event) => {
     console.warn('an unawaited failure after sending, ignored:', event.reason)
     event.preventDefault()
 })
+
 
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
@@ -164,8 +165,22 @@ async function byGmail(mail: Mail, user: string, password: string) {
     try {
         await attempt()
     } catch (first) {
+        // Already delivered, so do not send it again and do not call it a
+        // failure. See isJustTheGoodbye in email.js.
+        if (isJustTheGoodbye(first)) {
+            console.warn('Gmail hung up without a TLS goodbye; the mail was already taken:', first)
+            return
+        }
         console.warn('the first attempt to send failed, trying once more:', first)
-        await attempt()
+        try {
+            await attempt()
+        } catch (second) {
+            if (isJustTheGoodbye(second)) {
+                console.warn('the second attempt ended on the same untidy goodbye, and went:', second)
+                return
+            }
+            throw second
+        }
     }
 }
 
