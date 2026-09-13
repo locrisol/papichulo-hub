@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveTarget, describeTargets } from '@/lib/costTargets'
+import { resolveTarget, describeTargets, statusFor } from '@/lib/costTargets'
 
 describe('resolveTarget', () => {
     it('falls back to the restaurant default when there are no overrides', () => {
@@ -147,5 +147,31 @@ describe('describeTargets', () => {
         const out = describeTargets(o, 'labour', '2026-08-02')
         expect(out.find(t => t.id === 'b').status).toBe('current')
         expect(out.find(t => t.id === 'a').status).toBe('finished')
+    })
+})
+describe('statusFor', () => {
+    it('is green at the target and under it', () => {
+        expect(statusFor(25, 25)).toBe('green')
+        expect(statusFor(19.4, 25)).toBe('green')
+    })
+
+    it('is amber up to two points over, and red past that', () => {
+        expect(statusFor(26, 25)).toBe('amber')
+        expect(statusFor(27, 25)).toBe('amber')
+        expect(statusFor(27.01, 25)).toBe('red')
+    })
+
+    // Both mean there is nothing to judge, and a screen showing red because a
+    // target was never set would be inventing a verdict.
+    it('judges nothing when there is no figure or no target', () => {
+        expect(statusFor(null, 25)).toBe('none')
+        expect(statusFor(undefined, 25)).toBe('none')
+        expect(statusFor(30, 0)).toBe('none')
+        expect(statusFor(30, null)).toBe('none')
+    })
+
+    // Zero is a real figure, not a missing one.
+    it('treats a cost of zero as green rather than missing', () => {
+        expect(statusFor(0, 25)).toBe('green')
     })
 })

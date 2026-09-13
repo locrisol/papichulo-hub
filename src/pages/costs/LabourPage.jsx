@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { resolveTarget } from '@/lib/costTargets'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { fmtMoney, fmtQty, num, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
@@ -11,6 +11,8 @@ import DateStepper from '@/components/ui/DateStepper'
 import { numberField } from '@/lib/numberInput'
 import { DAY_NAMES } from '@/lib/events'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+
+const PCT_TONE = { green: 'text-green-700', amber: 'text-amber-600', red: 'text-red-600' }
 
 // Labour hours, entered a week at a time.
 //
@@ -187,12 +189,13 @@ export default function LabourPage() {
 
     const target = resolveTarget(overrides, 'labour', weekStart, num(activeRestaurant?.labour_cost_target))
 
+    // The bands come from one place now, so where amber starts cannot be
+    // different here than on the dashboard. The colours stay on this page,
+    // because each screen shades a figure to suit itself.
     function pctColour(pct) {
         if (pct == null) return 'text-gray-400'
         if (!target) return 'text-gray-900'
-        if (pct <= target) return 'text-green-700'
-        if (pct <= target + 2) return 'text-amber-600'
-        return 'text-red-600'
+        return PCT_TONE[statusFor(pct, target)]
     }
 
     // ---- saving ----------------------------------------------------------

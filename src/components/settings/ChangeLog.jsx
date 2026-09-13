@@ -13,7 +13,7 @@ import { tableHeadRow, tableCard, card } from '@/lib/controlStyles'
 // happened and there is nothing to press, so it is laid out to be read down
 // rather than worked across.
 
-function shortDate(at) {
+function dayMonthDigits(at) {
     const day = dayOf(at)
     return `${day.slice(8, 10)}/${day.slice(5, 7)}`
 }
@@ -119,7 +119,7 @@ export default function ChangeLog({ entries }) {
                                 {tableWords(e.table_name)}
                             </span>
                             <span className="text-xs text-muted ml-auto tabular-nums whitespace-nowrap">
-                                {shortDate(e.changed_at)}, {timeWords(e.changed_at)}
+                                {dayMonthDigits(e.changed_at)}, {timeWords(e.changed_at)}
                             </span>
                         </div>
                         {e.label && (
@@ -148,7 +148,7 @@ export default function ChangeLog({ entries }) {
                         {entries.map(e => (
                             <tr key={e.id} className="align-baseline">
                                 <td className="px-4 py-2.5 text-xs text-muted tabular-nums whitespace-nowrap">
-                                    {shortDate(e.changed_at)}, {timeWords(e.changed_at)}
+                                    {dayMonthDigits(e.changed_at)}, {timeWords(e.changed_at)}
                                 </td>
                                 <td className="px-4 py-2.5 text-xs whitespace-nowrap"><Who entry={e} /></td>
                                 <td className="px-4 py-2.5">

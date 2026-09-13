@@ -6,7 +6,7 @@ import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct } from '@/lib/format'
 import { addDays, weekNumber, weekRange, todayISO } from '@/lib/dates'
-import { resolveTarget } from '@/lib/costTargets'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
@@ -52,13 +52,6 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // uses one, because a food cost moving by a tenth of a point is a real
 // change on a week's turnover and gets argued about.
 const pct2 = v => fmtPct(v, 2)
-
-function statusFor(actual, target) {
-    if (actual == null || !target) return 'none'
-    if (actual <= target) return 'green'
-    if (actual <= target + 2) return 'amber'
-    return 'red'
-}
 
 const TONE = {
     green: 'text-green-700',

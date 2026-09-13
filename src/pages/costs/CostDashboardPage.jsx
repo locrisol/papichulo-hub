@@ -4,7 +4,7 @@ import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '@/lib/dates'
-import { resolveTarget } from '@/lib/costTargets'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
 import CostTargetModal from '@/components/costs/CostTargetModal'
 import { dateField, jumpButton, card, rowButton, jumpLabel } from '@/lib/controlStyles'
 import DateStepper from '@/components/ui/DateStepper'
@@ -272,14 +272,6 @@ export default function CostDashboardPage() {
     const foodTarget = resolveTarget(overrides, 'food', weekStart, num(activeRestaurant?.food_cost_target))
     const packagingTarget = resolveTarget(overrides, 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target))
     const labourTarget = resolveTarget(overrides, 'labour', weekStart, num(activeRestaurant?.labour_cost_target))
-
-    // Green at or under target, amber within two points over, red beyond that.
-    function statusFor(actual, target) {
-        if (actual == null || !target) return 'none'
-        if (actual <= target) return 'green'
-        if (actual <= target + 2) return 'amber'
-        return 'red'
-    }
 
     function wasteStatus(actual) {
         if (actual == null) return 'none'

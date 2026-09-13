@@ -22,6 +22,23 @@ export function resolveTarget(overrides, targetType, weekStart, fallback) {
     return Number(newest.override_value)
 }
 
+// Is a cost inside its target, close to it, or past it.
+//
+// Green at or under target, amber within two points over, red beyond that.
+//
+// This lived three times: on the cost dashboard, on the weekly report and, with
+// the colours baked into it, on the labour page. All three were the same four
+// lines, so a change to where amber starts had to be made in three places or
+// the same week was judged differently depending on which screen you read it
+// on. The colours stay with each screen, because a printed report and a
+// dashboard do not have to shade a figure the same way. The bands do not.
+export function statusFor(actual, target) {
+    if (actual == null || !target) return 'none'
+    if (actual <= target) return 'green'
+    if (actual <= target + 2) return 'amber'
+    return 'red'
+}
+
 // Works out the real story of a target over time, for showing on screen.
 //
 // resolveTarget already picks the right value. This explains that pick, which
