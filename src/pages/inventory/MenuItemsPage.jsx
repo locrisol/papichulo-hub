@@ -13,6 +13,7 @@ import { friendlyError } from '@/lib/errors'
 import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { numberField } from '@/lib/numberInput'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -388,20 +389,14 @@ export default function MenuItemsPage() {
           >
             Manage Categories
           </button>
-          <button
-            onClick={() => {
+          <ShowInactiveButton
+            showing={showInactive}
+            onToggle={() => {
               const next = !showInactive
               setShowInactive(next)
               localStorage.setItem('menuItemsShowInactive', next)
             }}
-            className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${
-              showInactive
-                ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                : 'border-border text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-          </button>
+          />
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
             className={primaryButton()}
