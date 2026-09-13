@@ -3,7 +3,7 @@ import {
     escapeHtml, fmtDate, whenWords, dayCount, isPartDay,
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
-    deliverable,
+    deliverable, isJustTheGoodbye,
 } from '../../supabase/functions/time-off-email/email'
 
 // The words in the emails. It lives in the function's own folder because only
@@ -188,5 +188,37 @@ describe('deliverable', () => {
         expect(deliverable('a@examples.com')).toBe(true)
         expect(deliverable('a@testing.ie')).toBe(true)
         expect(deliverable('a@mytest.com')).toBe(true)
+    })
+})
+
+describe('isJustTheGoodbye', () => {
+    // The exact words he was shown on 13 September, after clearing
+    // MAIL_REDIRECT_TO, on a mail that had already gone.
+    it('knows the one Gmail actually produces', () => {
+        expect(isJustTheGoodbye(new Error(
+            'peer closed connection without sending TLS close_notify: '
+            + 'https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html'
+            + '#unexpected-eof'))).toBe(true)
+    })
+
+    it('knows it however it is spelt', () => {
+        expect(isJustTheGoodbye(new Error('UnexpectedEof'))).toBe(true)
+        expect(isJustTheGoodbye(new Error('unexpected eof while reading'))).toBe(true)
+        expect(isJustTheGoodbye('close_notify missing')).toBe(true)
+    })
+
+    // The whole value is in what it refuses. Call a real failure a goodbye and
+    // somebody is told their report went out when nobody has it.
+    it('refuses anything that is a real failure', () => {
+        expect(isJustTheGoodbye(new Error('535 Username and Password not accepted'))).toBe(false)
+        expect(isJustTheGoodbye(new Error('550 mailbox unavailable'))).toBe(false)
+        expect(isJustTheGoodbye(new Error('connection refused'))).toBe(false)
+        expect(isJustTheGoodbye(new Error('timed out'))).toBe(false)
+    })
+
+    it('refuses nothing at all, rather than reading it as success', () => {
+        expect(isJustTheGoodbye(null)).toBe(false)
+        expect(isJustTheGoodbye(undefined)).toBe(false)
+        expect(isJustTheGoodbye(new Error(''))).toBe(false)
     })
 })

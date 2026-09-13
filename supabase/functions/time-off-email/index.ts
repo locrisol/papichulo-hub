@@ -45,7 +45,7 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice, deliverable } from './email.js'
+import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice, deliverable, isJustTheGoodbye } from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -118,6 +118,7 @@ globalThis.addEventListener('unhandledrejection', (event) => {
     event.preventDefault()
 })
 
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
@@ -189,8 +190,22 @@ async function byGmail(mail: Mail, user: string, password: string) {
     try {
         await attempt()
     } catch (first) {
+        // Already delivered, so do not send it again and do not call it a
+        // failure. See isJustTheGoodbye in email.js.
+        if (isJustTheGoodbye(first)) {
+            console.warn('Gmail hung up without a TLS goodbye; the mail was already taken:', first)
+            return { by: 'gmail' }
+        }
         console.warn('the first attempt to send failed, trying once more:', first)
-        await attempt()
+        try {
+            await attempt()
+        } catch (second) {
+            if (isJustTheGoodbye(second)) {
+                console.warn('the second attempt ended on the same untidy goodbye, and went:', second)
+                return { by: 'gmail' }
+            }
+            throw second
+        }
     }
 
     return { by: 'gmail' }
