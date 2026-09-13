@@ -125,14 +125,14 @@ export default function ProductSelect({
                     type="button"
                     onClick={() => { onChange(''); setTerm(''); setOpen(false) }}
                     aria-label="Clear"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-muted hover:text-gray-700"
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             ) : (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>

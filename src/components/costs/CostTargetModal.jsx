@@ -169,13 +169,13 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                             <div>
                                 <label className={labelClass}>From the week of</label>
                                 <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={fieldClass} />
-                                <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(from))}</p>
+                                <p className="text-xs text-muted mt-1">{shortDate(weekStartOf(from))}</p>
                             </div>
                             {isTemporary && (
                                 <div>
                                     <label className={labelClass}>Until the week of</label>
                                     <input type="date" value={until} onChange={e => setUntil(e.target.value)} className={fieldClass} />
-                                    {until && <p className="text-xs text-gray-400 mt-1">{shortDate(weekStartOf(until))}</p>}
+                                    {until && <p className="text-xs text-muted mt-1">{shortDate(weekStartOf(until))}</p>}
                                 </div>
                             )}
                         </div>
@@ -193,7 +193,7 @@ export default function CostTargetModal({ targetType, restaurantId, currentValue
                         real range instead of everything saying ongoing. */}
                     <ModalSectionBar title="Target history" />
                     {timeline.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic">
+                        <p className="text-xs text-muted italic">
                             Nothing set yet, so the restaurant default is being used.
                         </p>
                     ) : (

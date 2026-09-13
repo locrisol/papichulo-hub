@@ -447,7 +447,7 @@ export default function RosterDay({
                     </div>
 
                     {employees.length === 0 ? (
-                        <p className="p-8 text-center text-sm text-gray-400 italic">
+                        <p className="p-8 text-center text-sm text-muted italic">
                             Nobody on the team list yet.
                         </p>
                     ) : employees.map((employee, row) => {
@@ -774,7 +774,7 @@ export default function RosterDay({
                                 </div>
 
                                 <div className="w-20 flex-shrink-0 px-2 flex items-center justify-center border-l border-border">
-                                    <span className={`text-sm font-semibold ${theirWeek ? 'text-gray-900' : 'text-gray-300'}`}>
+                                    <span className={`text-sm font-semibold ${theirWeek ? 'text-gray-900' : 'text-muted'}`}>
                                         {theirWeek ? fmtHours(theirWeek) : '—'}
                                     </span>
                                 </div>
@@ -789,7 +789,7 @@ export default function RosterDay({
                 </div>
             </div>
 
-            <p className="px-4 py-2.5 border-t border-border text-xs text-gray-400">
+            <p className="px-4 py-2.5 border-t border-border text-xs text-muted">
                 Drag across a row with a mouse to put a shift straight in, or drag either end of one to
                 move its start or finish. Tap a row to add a shift through the dialog, and tap a shift
                 to change or remove it.

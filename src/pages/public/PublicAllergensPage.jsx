@@ -227,7 +227,7 @@ export default function PublicAllergensPage({ slugOverride }) {
         )}
 
         <footer className="mt-8 text-center">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted">
             Allergen information provided by {restaurant.name}. For the most current information, please ask a member of staff.
           </p>
         </footer>

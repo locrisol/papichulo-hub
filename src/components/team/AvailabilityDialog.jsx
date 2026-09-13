@@ -351,7 +351,7 @@ function DayRows({ rows, on }) {
                                     breaks at all. */}
                                 {row.state !== 'any' && (
                                     <span className="w-full sm:w-auto flex items-center gap-1 sm:ml-auto">
-                                        <span className="text-[0.625rem] text-gray-400 uppercase tracking-wider">
+                                        <span className="text-[0.625rem] text-muted uppercase tracking-wider">
                                             Copy to
                                         </span>
                                         {DAY_GROUPS.map(group => (

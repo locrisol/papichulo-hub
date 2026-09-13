@@ -193,7 +193,7 @@ export default function LabourPage() {
     // different here than on the dashboard. The colours stay on this page,
     // because each screen shades a figure to suit itself.
     function pctColour(pct) {
-        if (pct == null) return 'text-gray-400'
+        if (pct == null) return 'text-muted'
         if (!target) return 'text-gray-900'
         return PCT_TONE[statusFor(pct, target)]
     }
@@ -254,7 +254,7 @@ export default function LabourPage() {
     const calcCellCls = 'px-3 py-2 text-right bg-gray-50'
 
     if (loading && Object.keys(days).length === 0) {
-        return <div><p className="text-sm text-gray-400">Loading...</p></div>
+        return <div><p className="text-sm text-muted">Loading...</p></div>
     }
 
     return (
@@ -354,7 +354,7 @@ export default function LabourPage() {
                                     <tr key={d} className="border-b border-border">
                                         <td className="px-3 py-2">
                                             <div className="text-gray-900">{DAY_NAMES[i]}</div>
-                                            <div className="text-xs text-gray-400">{fullDate(d)}</div>
+                                            <div className="text-xs text-muted">{fullDate(d)}</div>
                                         </td>
                                         <td className="px-2 py-2">
                                             <input {...numberField({
@@ -374,7 +374,7 @@ export default function LabourPage() {
                                         <td className={`${calcCellCls} text-gray-700`}>{fmtMoney(costFor(d))}</td>
                                         <td className={calcCellCls}>
                                             {closed
-                                                ? <span className="text-gray-400 text-xs">Closed</span>
+                                                ? <span className="text-muted text-xs">Closed</span>
                                                 : net == null
                                                     ? <span className="text-amber-600 text-xs">No sales entered</span>
                                                     : <span className="text-gray-700">{fmtMoney(net)}</span>}
@@ -392,7 +392,7 @@ export default function LabourPage() {
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtQty(weekHours)}</td>
                                 {/* No total for people: the same person works most
                                     days, so adding the daily counts is meaningless. */}
-                                <td className="px-3 py-3 text-right text-gray-400">-</td>
+                                <td className="px-3 py-3 text-right text-muted">-</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekCost)}</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekNet)}</td>
                                 <td className={`px-3 py-3 text-right font-semibold ${pctColour(weekPct)}`}>
@@ -404,7 +404,7 @@ export default function LabourPage() {
                 </div>
             </div>
 
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-muted mb-4">
                 People is a head count of who worked that day, not how many were on at once. It does not feed the
                 cost, which is hours times the hourly rate of {fmtMoney(currentRate)}.
                 {target

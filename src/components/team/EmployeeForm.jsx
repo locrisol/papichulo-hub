@@ -75,7 +75,7 @@ export default function EmployeeForm({
                             placeholder="0.00"
                         />
                     </LockedField>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                         Only ever used to total up what a week costs. Never shown to staff.
                     </p>
                 </div>
@@ -109,7 +109,7 @@ export default function EmployeeForm({
                             className={fieldClass}
                         />
                     </LockedField>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                         Leave empty while they still work here.
                     </p>
                 </div>
@@ -132,7 +132,7 @@ export default function EmployeeForm({
                         ))}
                     </select>
                 </LockedField>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                     Only if they log in. Someone on a trial does not need one, and joining them up
                     is what lets them see their own shifts later.
                 </p>
@@ -172,7 +172,7 @@ export default function EmployeeForm({
                         {note ? (
                             <p className="text-xs text-amber-700 mt-1">{note}</p>
                         ) : (
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-muted mt-1">
                                 Only used to apply the under 18 limits. Leave empty otherwise.
                             </p>
                         )}
@@ -212,7 +212,7 @@ export default function EmployeeForm({
                             className={fieldClass}
                         />
                     </LockedField>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                         The roster starts saying so two months out, and stops a week going out once
                         it has passed.
                     </p>
@@ -236,7 +236,7 @@ export default function EmployeeForm({
                                 className={fieldClass}
                             />
                         </LockedField>
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-muted mt-1">
                             Somebody who applied before their permission ran out may keep working
                             while it is processed. Leave it empty if they have not applied.
                         </p>
@@ -332,7 +332,7 @@ export default function EmployeeForm({
                         </LockedField>
                     </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                     Two years from the date it was sat, filled in whenever that date changes and free
                     to change afterwards. The roster says so two months before it runs out.
                 </p>

@@ -248,7 +248,7 @@ export default function WasteLogPage() {
 
 
     if (loading) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -336,7 +336,7 @@ export default function WasteLogPage() {
                                                 className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-border last:border-0"
                                             >
                                                 {p.name}
-                                                <span className="text-xs text-gray-400 ml-2">{p.unit}</span>
+                                                <span className="text-xs text-muted ml-2">{p.unit}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -419,7 +419,7 @@ export default function WasteLogPage() {
                                     <div key={i.key} className="flex items-center gap-3 px-3 py-2.5">
                                         <div className="flex-1 min-w-0">
                                             <div className="text-sm text-gray-900 truncate">{i.product.name}</div>
-                                            <div className="text-xs text-gray-400">
+                                            <div className="text-xs text-muted">
                                                 {fmtQty(i.quantity)} {i.product.unit} · {reasonLabel(i.reason)}
                                                 {i.hasCost && ` · at ${fmtMoney(i.unitCost)}`}
                                             </div>
@@ -490,14 +490,14 @@ export default function WasteLogPage() {
                     </div>
 
                     {entries.length === 0 ? (
-                        <p className="text-sm text-gray-400 italic">Nothing logged yet.</p>
+                        <p className="text-sm text-muted italic">Nothing logged yet.</p>
                     ) : (
                         <div className="divide-y divide-border">
                             {entries.map(e => (
                                 <div key={e.id} className="flex items-center gap-3 py-2.5">
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm text-gray-900 truncate">{e.products?.name || 'Unknown product'}</div>
-                                        <div className="text-xs text-gray-400">
+                                        <div className="text-xs text-muted">
                                             {fmtQty(e.quantity_wasted)} {e.products?.unit} · {reasonLabel(e.reason)}
                                         </div>
                                     </div>

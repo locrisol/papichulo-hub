@@ -164,7 +164,7 @@ export default function BreakRulesModal({ onClose }) {
                                     />
                                 </div>
                                 <span className="text-sm text-gray-500 whitespace-nowrap">hours</span>
-                                <span className="text-gray-300" aria-hidden="true">&rarr;</span>
+                                <span className="text-muted" aria-hidden="true">&rarr;</span>
                                 <div className="w-16 flex-shrink-0">
                                     <input
                                         {...numberField({ value: rule.minutes, onChange: v => set(i, 'minutes', v), whole: true })}
@@ -197,8 +197,8 @@ export default function BreakRulesModal({ onClose }) {
                             return (
                                 <span key={h} className="text-sm whitespace-nowrap">
                                     <span className="text-gray-500">{h}h</span>
-                                    <span className="text-gray-300 mx-1">→</span>
-                                    <span className={minutes ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                                    <span className="text-muted mx-1">→</span>
+                                    <span className={minutes ? 'text-gray-900 font-medium' : 'text-muted'}>
                                         {problem ? '—' : minutes ? `${minutes} min` : 'none'}
                                     </span>
                                 </span>

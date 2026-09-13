@@ -115,7 +115,11 @@ export const captionClass = 'text-xs font-semibold text-gray-500 uppercase track
 // disappears the moment somebody starts typing, which is often exactly when
 // they wanted to read it. A line underneath has the full width of the form and
 // stays put.
-export const hintClass = 'text-xs text-gray-400 mt-1'
+//
+// muted rather than gray-400. It is the hint under every field in the app and
+// gray-400 on white is 2.6 to 1, so the sentence explaining the box was the
+// hardest thing on the form to read.
+export const hintClass = 'text-xs text-muted mt-1'
 
 // A tick box.
 //
@@ -282,9 +286,14 @@ export function jumpLabel(isCurrent, unit = 'week') {
     return isCurrent ? 'This week' : 'Go to current week'
 }
 
+// accent-ink for the lettering, not accent. The brand orange on the light
+// ground behind it is 3.9 to 1, and accent-ink exists for exactly this: the
+// same orange taken down until it reads. Every other piece of orange lettering
+// in the app already uses it, including on this background. This was the one
+// that was missed.
 export function jumpButton(isCurrent) {
     return isCurrent
-        ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent shadow-sm whitespace-nowrap'
+        ? 'px-4 py-2 bg-accent-light border border-accent rounded-lg text-sm font-semibold text-accent-ink shadow-sm whitespace-nowrap'
         : 'px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 hover:border-gray-400 whitespace-nowrap'
 }
 

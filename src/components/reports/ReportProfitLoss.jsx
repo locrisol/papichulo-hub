@@ -247,7 +247,7 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
                         </span>
                     )}
                     <span className={`w-14 text-right text-sm tabular-nums font-bold ${
-                        share == null ? 'text-gray-400' : 'text-gray-900'}`}>
+                        share == null ? 'text-muted' : 'text-gray-900'}`}>
                         {fmtPct(share)}
                     </span>
                 </>

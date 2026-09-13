@@ -192,7 +192,13 @@ export default function AppLayout({ children }) {
                 <nav className="flex-1 py-4 overflow-y-auto sidebar-scroll">
                     {sections.map(section => (
                         <div key={section} className="mb-2">
-                            <p className="px-5 py-2 text-xs font-semibold text-green-700 uppercase tracking-widest">
+                            {/* green-500, because green-700 on the sidebar is 2.9
+                            to 1 and a heading has to be readable. It is still
+                            the quieter of the two: the items under it are
+                            green-300 at 10.2, so the hierarchy the heading is
+                            for survives. green-600 was the obvious step down
+                            and misses at 4.4. */}
+                        <p className="px-5 py-2 text-xs font-semibold text-green-500 uppercase tracking-widest">
                                 {section}
                             </p>
                             {visibleItems.filter(n => n.section === section).map(item => {

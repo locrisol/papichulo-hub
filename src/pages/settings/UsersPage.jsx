@@ -176,7 +176,7 @@ export default function UsersPage() {
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-gray-900">
                   {u.full_name}
-                  {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                  {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                 </p>
                 <span className={`${badge} flex-shrink-0 ${
                   u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
@@ -237,7 +237,7 @@ export default function UsersPage() {
                 <tr key={u.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {u.full_name}
-                    {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                    {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`${badge} bg-green-50 text-green-700 capitalize`}>

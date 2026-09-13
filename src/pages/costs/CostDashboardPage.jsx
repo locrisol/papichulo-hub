@@ -54,7 +54,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: 'text-green-700',
         amber: 'text-amber-600',
         red: 'text-red-600',
-        none: 'text-gray-400',
+        none: 'text-muted',
     }[status]
 
     const barColour = {
@@ -309,7 +309,7 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     if (!ready) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -479,7 +479,7 @@ export default function CostDashboardPage() {
                                     <span className="text-muted">
                                         {r.label}
                                         {share != null && (
-                                            <span className="block text-xs text-gray-400 tabular-nums">
+                                            <span className="block text-xs text-muted tabular-nums">
                                                 {share.toFixed(1)}% of net
                                                 {r.target ? ` · target ${r.target}%` : ' · no target set'}
                                             </span>
@@ -511,9 +511,9 @@ export default function CostDashboardPage() {
                             <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
                                 <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
                                 {!row ? (
-                                    <span className="text-gray-300 italic text-xs">nothing entered yet</span>
+                                    <span className="text-muted italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (
-                                    <span className="text-gray-400 text-xs">closed</span>
+                                    <span className="text-muted text-xs">closed</span>
                                 ) : (
                                     /* Net over gross on a phone, side by side once
                                        there is room. Three things on one line put

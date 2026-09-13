@@ -597,7 +597,7 @@ export default function PublicAllergensPreviewPage() {
                                 className="w-40 h-40 border border-border rounded-lg"
                             />
                         ) : (
-                            <div className="w-40 h-40 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">
+                            <div className="w-40 h-40 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-muted">
                                 Generating...
                             </div>
                         )}

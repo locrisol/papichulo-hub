@@ -209,7 +209,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
               onChange={e => setEditLabel(e.target.value)}
               className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-muted mt-1">
               Stored as {t.key}, which does not change. Every figure already entered stays with this row.
             </p>
           </td>
@@ -229,12 +229,12 @@ export default function SalesTendersModal({ onClose, onChange }) {
 
     return (
       <tr key={t.id} className={`border-b border-border ${!t.is_active ? 'bg-red-50' : ''}`}>
-        <td className={`px-3 py-2 font-medium ${t.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+        <td className={`px-3 py-2 font-medium ${t.is_active ? 'text-gray-900' : 'text-muted'}`}>
           {t.label}
-          <span className="block text-xs font-normal text-gray-400">{t.key}</span>
+          <span className="block text-xs font-normal text-muted">{t.key}</span>
         </td>
         <td className="px-3 py-2 text-xs">
-          <span className={t.is_active ? 'text-gray-500' : 'text-gray-400'}>
+          <span className={t.is_active ? 'text-gray-700' : 'text-muted'}>
             {t.is_active ? 'Active' : 'Retired'}
           </span>
           <button
@@ -282,9 +282,9 @@ export default function SalesTendersModal({ onClose, onChange }) {
           </p>
 
           {loading ? (
-            <p className="text-sm text-gray-400">Loading...</p>
+            <p className="text-sm text-muted">Loading...</p>
           ) : ordered.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No rows yet. Add the first one below.</p>
+            <p className="text-sm text-muted italic">No rows yet. Add the first one below.</p>
           ) : (
             <>
             {/* Arranging is a button rather than arrows on every row. This is
@@ -314,7 +314,7 @@ export default function SalesTendersModal({ onClose, onChange }) {
                         className={fieldClass}
                         aria-label="Row name"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-muted mt-1">
                         Stored as {t.key}, which does not change. Every figure already entered stays with it.
                       </p>
                       <div className="flex flex-wrap gap-3 mt-2">
@@ -325,14 +325,14 @@ export default function SalesTendersModal({ onClose, onChange }) {
                   ) : (
                     <>
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className={`text-sm font-semibold ${t.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                        <span className={`text-sm font-semibold ${t.is_active ? 'text-gray-900' : 'text-muted'}`}>
                           {t.label}
                         </span>
-                        <span className={`text-xs whitespace-nowrap ${t.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                        <span className={`text-xs whitespace-nowrap ${t.is_active ? 'text-green-700' : 'text-muted'}`}>
                           {t.is_active ? 'Active' : 'Retired'}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">{t.key}</p>
+                      <p className="text-xs text-muted mt-0.5">{t.key}</p>
                       <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                         <button onClick={() => startEdit(t)} className={rowButton('edit')}>Rename</button>
                         <button

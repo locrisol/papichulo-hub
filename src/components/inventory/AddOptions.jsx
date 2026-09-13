@@ -186,7 +186,7 @@ export default function AddOptions({
                     />
                     <span className="text-sm text-gray-700">
                         List them separately on the allergen sheet
-                        <span className="block text-xs text-gray-400">
+                        <span className="block text-xs text-muted">
                             Leave this off if they already appear in their own category.
                         </span>
                     </span>

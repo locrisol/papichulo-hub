@@ -93,7 +93,7 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
 
-          <p className="text-center text-xs text-gray-400 mt-6">
+          <p className="text-center text-xs text-muted mt-6">
             Contact your manager to create an account
           </p>
         </form>

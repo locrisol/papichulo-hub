@@ -153,7 +153,7 @@ export default function ChangesPage() {
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : (
                 <>
                     <p className="text-xs text-muted mb-3">

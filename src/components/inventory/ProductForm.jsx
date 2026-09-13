@@ -142,7 +142,7 @@ export default function ProductForm({
             />
             {errors.weight_loss_pct
               ? <p className="text-xs text-red-600 mt-1">{errors.weight_loss_pct}</p>
-              : <p className="text-xs text-gray-400 mt-1">Prepped cost = raw cost / (1 - weight loss). Leave at 0 if none.</p>}
+              : <p className="text-xs text-muted mt-1">Prepped cost = raw cost / (1 - weight loss). Leave at 0 if none.</p>}
           </div>
         )}
       </div>
@@ -210,7 +210,7 @@ export default function ProductForm({
           </div>
         )}
 
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted mt-1">
           Counted with ours on every stock take, reported apart from it.
         </p>
       </div>
@@ -254,7 +254,7 @@ export default function ProductForm({
             )
           })}
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted mt-1">
           Only changes where it shows up on a stock take. Leave these alone for
           nearly everything.
         </p>
@@ -341,7 +341,7 @@ export default function ProductForm({
                   unit={formData.unit}
                   className="max-w-xs"
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   What one batch comes out at. It is what the cost of the batch is divided by
                   to get a cost per {formData.unit}.
                 </p>
@@ -437,7 +437,7 @@ export default function ProductForm({
           />
           {openExtra === 'supplier' && (
             <div className="mb-4">
-              <p className="text-xs text-gray-400 mb-3">
+              <p className="text-xs text-muted mb-3">
                 Optional. Leave the supplier empty and you can add prices later from the
                 product's own Prices screen.
               </p>
@@ -486,7 +486,7 @@ export default function ProductForm({
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
                     How it is counted
                   </p>
-                  <p className="text-xs text-gray-400 mb-3">
+                  <p className="text-xs text-muted mb-3">
                     Optional. A pack and what it comes to in {formData.unit}, so a stock take can
                     be counted in boxes rather than in {formData.unit}.
                   </p>
@@ -611,7 +611,7 @@ export default function ProductForm({
           />}
           {showAllergens && openExtra === 'allergens' && (
             <div className="mb-4">
-              <p className="text-xs text-gray-400 mb-3">
+              <p className="text-xs text-muted mb-3">
                 The fourteen the law names. Not Present is the answer for most of them, so
                 only change the ones that apply. This is what the public allergen page shows
                 customers, and every dish the product goes into inherits it.

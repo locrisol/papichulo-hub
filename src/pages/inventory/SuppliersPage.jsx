@@ -237,7 +237,7 @@ export default function SuppliersPage() {
                             }`}
                         >
                             <div className="flex items-start justify-between gap-2">
-                                <p className={`font-semibold ${s.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                                <p className={`font-semibold ${s.is_active ? 'text-gray-900' : 'text-muted'}`}>
                                     {s.name}
                                 </p>
                                 <span className={`${badge} flex-shrink-0 ${
@@ -247,11 +247,11 @@ export default function SuppliersPage() {
                                 </span>
                             </div>
 
-                            {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+                            {s.notes && <p className="text-xs text-muted mt-0.5">{s.notes}</p>}
 
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                                 <span className={`${badge} capitalize ${
-                                    s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                    s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-muted'
                                 }`}>
                                     {s.category}
                                 </span>
@@ -266,7 +266,7 @@ export default function SuppliersPage() {
                                     <dd className="text-right min-w-0 truncate">
                                         {s.contact_email
                                             ? <a href={`mailto:${s.contact_email}`} className="text-blue-700 underline">{s.contact_email}</a>
-                                            : <span className="text-gray-400">-</span>}
+                                            : <span className="text-muted">-</span>}
                                     </dd>
                                 </div>
                                 <div className="flex items-baseline justify-between gap-3">
@@ -274,7 +274,7 @@ export default function SuppliersPage() {
                                     <dd className="text-right">
                                         {s.contact_phone
                                             ? <a href={`tel:${s.contact_phone}`} className="text-blue-700 underline">{s.contact_phone}</a>
-                                            : <span className="text-gray-400">-</span>}
+                                            : <span className="text-muted">-</span>}
                                     </dd>
                                 </div>
                             </dl>
@@ -317,18 +317,18 @@ export default function SuppliersPage() {
                             {filteredSuppliers.map((s, i) => (
                                 <Fragment key={s.id}>
                                     <tr className={`border-b border-border ${!s.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                        <td className={`px-4 py-3 font-medium ${s.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                                        <td className={`px-4 py-3 font-medium ${s.is_active ? 'text-gray-900' : 'text-muted'}`}>
                                             {s.name}
-                                            {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+                                            {s.notes && <p className="text-xs text-muted mt-0.5">{s.notes}</p>}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`${badge} capitalize ${s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'
+                                            <span className={`${badge} capitalize ${s.is_active ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-muted'
                                                 }`}>
                                                 {s.category}
                                             </span>
                                         </td>
-                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_email || '-'}</td>
-                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{s.contact_phone || '-'}</td>
+                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_email || '-'}</td>
+                                        <td className={`px-4 py-3 ${s.is_active ? 'text-gray-700' : 'text-muted'}`}>{s.contact_phone || '-'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`${badge} ${s.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
                                                 }`}>

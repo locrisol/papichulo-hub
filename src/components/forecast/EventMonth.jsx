@@ -47,9 +47,15 @@ export default function EventMonth({
                 </span>
             )
         }
+        // Three steps, faintest for a day belonging to the month either side,
+        // then a day already gone, then the days still to come. It was
+        // gray-300, gray-400 and gray-600, and the first two failed for
+        // contrast. Moving only those two would have put a past day and a
+        // neighbouring month's day on the same tone, so all three moved and the
+        // order between them is unchanged.
         return (
             <span className={`text-xs ${
-                !inMonth ? 'text-gray-300' : date < today ? 'text-gray-400' : 'text-gray-600'
+                !inMonth ? 'text-muted' : date < today ? 'text-gray-600' : 'text-gray-900'
             }`}>
                 {d.getDate()}
                 {d.getDate() === 1 && (
@@ -178,7 +184,7 @@ export default function EventMonth({
                     {dayName(selected)} {shortDate(selected)}
                 </p>
                 {selectedEvents.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nothing on. An ordinary night.</p>
+                    <p className="text-sm text-muted italic">Nothing on. An ordinary night.</p>
                 ) : (
                     <div className="divide-y divide-border">
                         {selectedEvents.map(e => (
