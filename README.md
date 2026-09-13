@@ -58,6 +58,8 @@ Then run `supabase/seed.sql`, which adds the two restaurants, the supplier list,
 
 Neither file deletes anything, and both are safe to run twice. To change a database that already exists, add a numbered file to `supabase/migrations/`, starting at `001`, and fold the same change into `schema.sql` by hand in the same commit. That is two edits on purpose: `schema.sql` is the design and the migration is how a database that already exists catches up with it.
 
+`supabase/migrations/` is empty. It starts again at `001` and only for new work: the live database and `schema.sql` were compared object by object on 13 September and agree.
+
 If you have Docker, `npm run db:local` does all of this against a local database, which is the quickest way to find out whether a change to either file actually works.
 
 ### 4. Set up your environment

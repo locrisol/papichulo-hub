@@ -1,33 +1,15 @@
 # Migrations
 
-Ten migrations, `001` to `010`, and they all do the same job: bring the live
-database up to what `../schema.sql` already describes.
-
-`schema.sql` is the design and a new database gets it in one go. The live one
-predates it, so it needs these. **They have not been run yet.** Until they are,
-the public allergen page will not load, because it reads views that only exist
-after `003`.
-
-Run them in order in the Supabase SQL editor. Each is safe to run twice.
-
-The upgrade was proved rather than assumed: a copy of the live database was
-stood up locally from a dump taken on 12 September, all ten were applied, and
-the result was compared object by object against a database built from
-`schema.sql` alone. **778 objects on both sides.** The only differences left are
-three cosmetic ones: Postgres prints an `IN (...)` check two different ways
-depending on how the expression was first written, `rls_auto_enable` has a
-shorter body here than the copy that arrived on live without a migration, and
-two column comments are worded differently.
-
-The next one after these is `011`.
+Empty on purpose. The next one is `001`.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
-part is for. This folder is only for changes to a database that already exists.
+part is for. This folder is only for changes to a database that already exists,
+and from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write the next number in here. One change, and a comment at the top saying
-   why, not what.
+1. Write `001_what_it_does.sql` in here. One change, and a comment at the top
+   saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end.
 3. Commit the two together. A change in one and not the other is how the two
@@ -37,16 +19,33 @@ part is for. This folder is only for changes to a database that already exists.
 
 ## What was here before
 
-Sixty three numbered migrations, from May to September 2026. They are in git
-history and under the `pre-rewrite` tag, and nothing has been lost.
+Sixty three numbered migrations from May to September 2026, then ten more in
+September that brought the live database up to the rewritten schema. All of them
+are in git history and under the `pre-rewrite` tag, and nothing has been lost.
 
-They were also concatenated into `schema.sql` by a script, which is why that
-file reached 5,000 lines: 37 tables and 101 later alterations of them, 91
-policies of which 37 were thrown away again, and about a fifth of it overwritten
-by some later line. It could not be read to find out what a table looked like,
-only to find out what had happened to it.
+The ten were run on the live database on 13 September and then folded away,
+which is why this is empty rather than starting at `011`.
 
-The rewrite was checked rather than trusted. A database built from the new
-`schema.sql` was compared against one built from all sixty three migrations,
-object by object: 761 tables, columns, keys, indexes, policies, functions,
-triggers and comments, all identical.
+## How that was checked
+
+Not by trusting the fold. The live database was dumped **after** the ten had
+been run, a second database was built from `schema.sql` alone with no migrations
+at all, and the two were compared object by object.
+
+**777 objects on live, 778 from `schema.sql`, and the difference is two things,
+both understood:**
+
+- `pg_graphql`. Supabase manages it and `db dump --linked` does not list it, so
+  it looks missing on live when it is not. It stays in `schema.sql`, because a
+  database set up anywhere else does need it and `IF NOT EXISTS` makes it a
+  no-op on Supabase.
+- Two column comments, on `employees.availability` and `sales_records.is_closed`,
+  where `schema.sql` says more than live does. Live's text is the older one: at
+  some point a migration's comment was edited after it had already been run. The
+  fuller version is worth keeping, and a column comment is not worth a migration.
+
+Everything else matches exactly: every table, column, type, default, constraint,
+key, index, policy, function, trigger and view. Two things were brought into
+line with live rather than left to differ, since live is what actually runs: the
+order of three columns on `stock_takes`, and the body of `rls_auto_enable`,
+which arrived on live without a migration and had been retyped shorter here.
