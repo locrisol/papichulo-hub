@@ -36,7 +36,7 @@ It is built for Papi Chulo, a Mexican Street Food business with currently two lo
 
 ## Running it locally
 
-You need **Node.js 20 or later**, npm, and a Supabase account.
+You need **Node.js 24 or later**, npm, and a Supabase account. 24 is the long term support line; 20 went out of support in April 2026, which is why it is no longer the floor. `package.json` records it so npm tells you rather than letting you find out.
 
 ### 1. Clone it and install
 
@@ -111,7 +111,7 @@ The date tests are there because of a real bug that appeared during production. 
 
 The 53 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
 
-They need the `ws` package, which `npm install` fetches with everything else. It is only there because `supabase-js` builds a realtime client the moment you create a client, and realtime needs WebSocket. Browsers have it, Node only got it in version 22, and this project runs on 20. Nothing here uses realtime.
+They used to need the `ws` package, because `supabase-js` builds a realtime client the moment you create one and realtime needs WebSocket, which Node had not got until version 22. On 24 it finds its own, so the package and both polyfills are gone. Nothing here uses realtime.
 
 They never create anything. Reads are harmless, and a write that is meant to be refused changes nothing. That does leave one gap: they do not prove an allowed write succeeds, because doing so would put rows into live data.
 

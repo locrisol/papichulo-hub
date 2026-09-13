@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import ws from 'ws'
 
 // Signs in a real account for each role, so the tests ask the database the same
 // questions the app asks. Anything that only tests JavaScript proves nothing
@@ -11,12 +10,10 @@ const ANON = process.env.VITE_SUPABASE_ANON_KEY
 export const ROLES = ['employee', 'manager', 'owner', 'superadmin']
 
 // supabase-js builds a realtime client the moment you create a client, and
-// realtime needs WebSocket. Browsers have it. Node only got it in version 22
-// and this project runs on 20, so it has to be handed one. Nothing in these
-// tests uses realtime, but the client will not start without it.
+// realtime needs WebSocket. Node has had one since version 22, and this project
+// needs 24, so it finds its own. Nothing in these tests uses realtime.
 const CLIENT_OPTIONS = {
     auth: { persistSession: false, autoRefreshToken: false },
-    realtime: { transport: ws },
 }
 
 // Missing credentials should skip the tests with a clear message, not fail
