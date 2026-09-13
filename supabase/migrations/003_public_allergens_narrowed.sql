@@ -40,7 +40,7 @@
 -- a live dish is still declared.
 -- =====================================================================
 
--- â”€â”€ The views â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── The views ────────────────────────────────────────────────────────────────
 
 -- Name and slug. Not the pay rate, not the cost targets, not the address
 -- the reports are mailed to.
@@ -91,7 +91,7 @@ grant select on public.public_products              to anon, authenticated;
 grant select on public.public_mix_recipes           to anon, authenticated;
 grant select on public.public_product_allergens     to anon, authenticated;
 
--- â”€â”€ The tables stop answering to strangers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── The tables stop answering to strangers ───────────────────────────────────
 
 drop policy if exists restaurants_public_select          on public.restaurants;
 drop policy if exists products_public_select             on public.products;
