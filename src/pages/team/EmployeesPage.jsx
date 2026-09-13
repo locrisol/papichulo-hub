@@ -281,7 +281,7 @@ export default function EmployeesPage() {
     }
 
     if (!restaurantId) {
-        return <p className="text-sm text-gray-400">Pick a restaurant first.</p>
+        return <p className="text-sm text-muted">Pick a restaurant first.</p>
     }
 
     return (
@@ -328,7 +328,7 @@ export default function EmployeesPage() {
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : sorted.length === 0 ? (
                 <div className={`${cardEdge} bg-white overflow-hidden`}>
                     <div className={cardHeader}>Nobody yet</div>
@@ -375,7 +375,7 @@ export default function EmployeesPage() {
                                                 <span className="text-sm text-gray-700">{position.name}</span>
                                             </span>
                                         ) : (
-                                            <span className="text-sm text-gray-400">No position</span>
+                                            <span className="text-sm text-muted">No position</span>
                                         )}
                                         <span className="text-xs text-gray-500">
                                             {account ? account.role.replace('_', ' ') : 'No account'}
@@ -383,7 +383,7 @@ export default function EmployeesPage() {
                                     </div>
 
                                     {employee.notes && (
-                                        <p className="text-xs text-gray-400 mt-1">{employee.notes}</p>
+                                        <p className="text-xs text-muted mt-1">{employee.notes}</p>
                                     )}
                                     {/* The pattern in force today, not whichever
                                         column it sits in, so a change that has
@@ -409,7 +409,7 @@ export default function EmployeesPage() {
                                             <dt className="text-gray-500">Per hour</dt>
                                             <dd className="text-right text-gray-900 font-medium">
                                                 {employee.hourly_rate == null
-                                                    ? <span className="text-gray-400">-</span>
+                                                    ? <span className="text-muted">-</span>
                                                     : `${fmtMoney(Number(employee.hourly_rate))}`}
                                             </dd>
                                         </div>
@@ -450,7 +450,7 @@ export default function EmployeesPage() {
                                                     {employee.full_name}
                                                 </span>
                                                 {employee.notes && (
-                                                    <span className="block text-xs text-gray-400">{employee.notes}</span>
+                                                    <span className="block text-xs text-muted">{employee.notes}</span>
                                                 )}
                                                 {/* Only ever there when
                                                     something has been typed in,
@@ -489,18 +489,18 @@ export default function EmployeesPage() {
                                                         <span className="text-gray-700">{position.name}</span>
                                                     </span>
                                                 ) : (
-                                                    <span className="text-gray-300">—</span>
+                                                    <span className="text-muted">—</span>
                                                 )}
                                             </td>
                                             <td className="px-3 py-2">{statusPill(employee)}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">
                                                 {account
                                                     ? <span className="text-gray-600 capitalize">{account.role.replace('_', ' ')}</span>
-                                                    : <span className="text-gray-300">No account</span>}
+                                                    : <span className="text-muted">No account</span>}
                                             </td>
                                             <td className="px-3 py-2 text-right whitespace-nowrap text-gray-700">
                                                 {employee.hourly_rate == null
-                                                    ? <span className="text-gray-300">—</span>
+                                                    ? <span className="text-muted">—</span>
                                                     : `${fmtMoney(Number(employee.hourly_rate))}`}
                                             </td>
                                             <td className="px-3 py-2">

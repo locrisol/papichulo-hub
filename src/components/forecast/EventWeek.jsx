@@ -85,7 +85,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                                     {d.getDate()}
                                 </span>
                             ) : (
-                                <span className={`text-sm h-6 flex items-center ${date < today ? 'text-gray-400' : 'text-gray-800'}`}>
+                                <span className={`text-sm h-6 flex items-center ${date < today ? 'text-muted' : 'text-gray-800'}`}>
                                     {d.getDate()}
                                 </span>
                             )}
@@ -109,7 +109,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                                 date === today ? 'border-accent' : 'border-border'
                             }`}>
                                 <span className={`text-sm font-bold ${
-                                    events.length === 0 ? 'text-gray-400'
+                                    events.length === 0 ? 'text-muted'
                                         : date === today ? 'text-accent-ink' : 'text-gray-900'
                                 }`}>
                                     {DAY_NAMES[d.getDay()]}
@@ -121,7 +121,7 @@ export default function EventWeek({ weekStart, setWeekStart, today, byDate, onOp
                             </div>
 
                             {events.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic py-2">Nothing on</p>
+                                <p className="text-xs text-muted italic py-2">Nothing on</p>
                             ) : (
                                 events.map(e => {
                                     const note = statusNote(e.status)

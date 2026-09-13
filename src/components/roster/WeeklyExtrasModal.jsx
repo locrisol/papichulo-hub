@@ -74,7 +74,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                 description="Office deliveries, Feedr, Lunch Team, Clockmeal, anything that comes round most weeks. A list to tick from on the day rather than a schedule, so a week something does not come is a week you simply do not tick it."
             >
                 {extras.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic mb-4">
+                    <p className="text-sm text-muted italic mb-4">
                         None yet. Add whatever happens most weeks and you will never type it again.
                     </p>
                 ) : (
@@ -128,7 +128,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                         Add it
                     </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-muted mt-2">
                     The time here is the usual one. A day can disagree with it, and changing it later
                     leaves every week already sent out exactly as it was.
                 </p>
@@ -151,7 +151,7 @@ export default function WeeklyExtrasModal({ onClose }) {
                     className={fieldClass}
                     placeholder="Optional note"
                 />
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-muted mt-2">
                     Swaps have to be agreed with a manager before they happen. Anything about one week goes on
                     the day it is about instead, through Options on that day. Those are the ones people read.
                 </p>

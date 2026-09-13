@@ -128,7 +128,7 @@ export default function OpeningHoursModal({ onClose }) {
                                 className="flex-1 min-w-0"
                                 aria-label={`${day} opens`}
                                 />
-                            <span className="text-gray-400 text-sm">to</span>
+                            <span className="text-muted text-sm">to</span>
                             <TimeField
                                 value={hours[i].close}
                                 onChange={v => set(i, "close", v)}
@@ -172,7 +172,7 @@ export default function OpeningHoursModal({ onClose }) {
                             placeholder="Not set"
                             aria-label="Bank holidays open"
                             />
-                        <span className="text-gray-400 text-sm">to</span>
+                        <span className="text-muted text-sm">to</span>
                         <TimeField
                             value={bank.close}
                             onChange={v => setBank(b => ({ ...b, close: v }))}

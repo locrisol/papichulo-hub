@@ -271,7 +271,7 @@ export default function TimeOffDialog({
                                 onChange={e => change('endsOn', e.target.value)}
                                 className={fieldClass}
                             />
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-muted mt-1">
                                 Leave it empty for a single day.
                             </p>
                         </div>
@@ -294,7 +294,7 @@ export default function TimeOffDialog({
                                     className={`${fieldClass} text-right`}
                                     placeholder="0.00"
                                 />
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     Off the payslip. The app holds no entitlement.
                                 </p>
                             </div>
@@ -332,7 +332,7 @@ export default function TimeOffDialog({
                                         aria-label="Can work until"
                                         />
                                 </div>
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="text-xs text-muted mt-1">
                                     The hours they can still work. Leave both empty for the whole day,
                                     or fill one in for somebody leaving early or starting late.
                                 </p>
@@ -413,7 +413,7 @@ export default function TimeOffDialog({
 
             <ModalSection title={person ? `${person.full_name}'s time off` : 'Time off'}>
                 {mine.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nothing recorded.</p>
+                    <p className="text-sm text-muted italic">Nothing recorded.</p>
                 ) : (
                     <div className="divide-y divide-border">
                         {mine.map(absence => {

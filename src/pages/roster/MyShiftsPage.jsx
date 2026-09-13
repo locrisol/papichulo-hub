@@ -272,7 +272,7 @@ export default function MyShiftsPage() {
     }
 
     if (!ready) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     // Somebody with a login but no record on the team list. It happens the day
@@ -575,7 +575,7 @@ function MyWeek({
 
                         <div className="px-4 py-3">
                             {working.length === 0 ? (
-                                <p className="text-sm text-gray-400">Not in.</p>
+                                <p className="text-sm text-muted">Not in.</p>
                             ) : working.map(s => (
                                 <div key={s.id} className="mb-2 last:mb-0">
                                     <p className="text-lg font-bold text-gray-900">

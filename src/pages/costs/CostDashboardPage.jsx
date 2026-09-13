@@ -54,7 +54,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: 'text-green-700',
         amber: 'text-amber-600',
         red: 'text-red-600',
-        none: 'text-gray-400',
+        none: 'text-muted',
     }[status]
 
     const barColour = {
@@ -309,7 +309,7 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     if (!ready) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -479,7 +479,7 @@ export default function CostDashboardPage() {
                                     <span className="text-muted">
                                         {r.label}
                                         {share != null && (
-                                            <span className="block text-xs text-gray-400 tabular-nums">
+                                            <span className="block text-xs text-muted tabular-nums">
                                                 {share.toFixed(1)}% of net
                                                 {r.target ? ` · target ${r.target}%` : ' · no target set'}
                                             </span>

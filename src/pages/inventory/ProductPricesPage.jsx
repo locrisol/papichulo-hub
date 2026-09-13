@@ -373,7 +373,7 @@ export default function ProductPricesPage() {
                                     per {product?.unit || 'unit'}
                                 </span>
                             </div>
-                            <p className="text-xs text-gray-400 mt-0.5">
+                            <p className="text-xs text-muted mt-0.5">
                                 {p.supplier_code || 'No supplier code'}
                             </p>
 

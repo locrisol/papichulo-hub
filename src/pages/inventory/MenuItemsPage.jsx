@@ -275,7 +275,7 @@ export default function MenuItemsPage() {
   const getMargin = item => forItem(item.id).margin
 
   function marginColour(pct) {
-    if (pct === null) return 'text-gray-400'
+    if (pct === null) return 'text-muted'
     if (pct >= MARGIN_GREEN) return 'text-green-700'
     if (pct >= MARGIN_AMBER) return 'text-amber-700'
     return 'text-red-600'
@@ -465,7 +465,7 @@ export default function MenuItemsPage() {
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.vat_rate && <p className="text-xs text-red-600 mt-1">{errors.vat_rate}</p>}
-                <p className="text-xs text-gray-400 mt-1">Use 0 if no VAT applies. Margin calculation handles any rate.</p>
+                <p className="text-xs text-muted mt-1">Use 0 if no VAT applies. Margin calculation handles any rate.</p>
               </div>
             </div>
             <div className="mb-4">
@@ -569,7 +569,7 @@ export default function MenuItemsPage() {
                           : 'bg-red-100 border-red-200'}`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                          <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                             {item.name}
                           </p>
                           {/* The table says this with a red row, which a single
@@ -587,7 +587,7 @@ export default function MenuItemsPage() {
                         <dl className="mt-3 space-y-1.5 text-sm">
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Cost</dt>
-                            <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                            <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                               {cost !== null
                                 ? fmtMoney(cost)
                                 : <span className="text-amber-600 text-xs">Incomplete</span>}
@@ -595,16 +595,16 @@ export default function MenuItemsPage() {
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Price (gross)</dt>
-                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
-                              <span className="text-xs text-gray-400 ml-1">
+                              <span className="text-xs text-muted ml-1">
                                 (VAT {parseFloat(item.vat_rate)}%)
                               </span>
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Net</dt>
-                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </dd>
                           </div>
@@ -625,7 +625,7 @@ export default function MenuItemsPage() {
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Allergens</dt>
-                            <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
                               {!allergens ? 'None' : (
                                 <>
                                   {allergens.contains > 0 && (
@@ -679,10 +679,10 @@ export default function MenuItemsPage() {
                               !item.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                             }`}
                           >
-                            <td className={`px-4 py-3 font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 font-medium ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                               {item.name}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {counts.components}
                               {counts.choices > 0 && (
                                 <span className="text-xs text-muted">
@@ -690,14 +690,14 @@ export default function MenuItemsPage() {
                                 </span>
                               )}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
-                              <span className="text-xs text-gray-400 ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
+                              <span className="text-xs text-muted ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </td>
                             <td className="px-4 py-3">
@@ -714,7 +714,7 @@ export default function MenuItemsPage() {
                                 <span className="text-amber-600 text-xs">—</span>
                               )}
                             </td>
-                            <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
                               {allergenSummary.contains === 0 && allergenSummary.mayContain === 0 ? (
                                 'None'
                               ) : (

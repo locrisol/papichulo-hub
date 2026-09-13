@@ -419,7 +419,7 @@ export default function MenuItemPage() {
   const marginPct = (margin !== null && netPrice > 0) ? (margin / netPrice) * 100 : null
 
   function marginColour(pct) {
-    if (pct === null) return 'text-gray-400'
+    if (pct === null) return 'text-muted'
     if (pct >= MARGIN_GREEN) return 'text-green-700'
     if (pct >= MARGIN_AMBER) return 'text-amber-700'
     return 'text-red-600'
@@ -976,7 +976,7 @@ function ComponentForm({
             />
             <span className="text-sm text-gray-700">
               No specific quantity
-              <span className="block text-xs text-gray-400">
+              <span className="block text-xs text-muted">
                 Its allergens still count. It adds nothing to the cost.
               </span>
             </span>
@@ -1036,7 +1036,7 @@ function ComponentForm({
           />
           <span className="text-sm text-gray-700">
             List it separately on the allergen sheet
-            <span className="block text-xs text-gray-400">
+            <span className="block text-xs text-muted">
               Use this for things that are not menu items, like a dessert sauce. Leave it off
               if it already appears in its own category.
             </span>
@@ -1134,7 +1134,7 @@ function ComponentTable({
                   <ComponentChips product={product} component={c} />
                 </span>
                 <span className={`text-sm font-semibold whitespace-nowrap tabular-nums text-right ${
-                  counted ? 'text-gray-900' : 'text-gray-400'}`}>
+                  counted ? 'text-gray-900' : 'text-muted'}`}>
                   {lineCost === null ? '—' : fmtMoney(lineCost)}
                   {lineCost !== null && !counted && (
                     <span className="block text-xs font-normal">not the most expensive</span>
@@ -1149,7 +1149,7 @@ function ComponentTable({
                   ? ` at ${fmtUnitCost(unitCost)} / ${product?.unit}`
                   : <span className="text-amber-600"> · no cost available</span>}
               </p>
-              {c.notes && <p className="text-xs text-gray-400 mt-0.5">{c.notes}</p>}
+              {c.notes && <p className="text-xs text-muted mt-0.5">{c.notes}</p>}
               <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                 <button
                   onClick={() => editingComponent?.id === c.id ? onCancelEdit() : onEdit(c)}
@@ -1205,7 +1205,7 @@ function ComponentTable({
                           // Shown rather than hidden. What the other options
                           // come to is worth seeing, and a blank here would
                           // read as a line that costs nothing.
-                          <span className="font-normal text-gray-400">
+                          <span className="font-normal text-muted">
                             {fmtMoney(lineCost)}
                             <span className="block text-xs">not the most expensive</span>
                           </span>

@@ -182,7 +182,7 @@ export default function RosterWeek({
                             return (
                                 <td key={d} className={`${cell} text-center`}>
                                     {on.length === 0 ? (
-                                        <span className="text-gray-300 text-xs">—</span>
+                                        <span className="text-muted text-xs">—</span>
                                     ) : on.map(e => (
                                         // The same card as Also on, and for the
                                         // same reason: a week with two concerts
@@ -217,7 +217,7 @@ export default function RosterWeek({
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))
                                 const inside = extras.length === 0 ? (
-                                    <span className="text-gray-300 text-xs">{staff ? '' : '+'}</span>
+                                    <span className="text-muted text-xs">{staff ? '' : '+'}</span>
                                 ) : extras.map(extra => (
                                     // One chip each, because two of them as
                                     // plain lines read as one paragraph, and
@@ -399,12 +399,12 @@ export default function RosterWeek({
                                                     // somebody is not in, which
                                                     // is what an empty cell
                                                     // should look like.
-                                                    <span className="block py-0.5 text-gray-300 text-xs">-</span>
+                                                    <span className="block py-0.5 text-muted text-xs">-</span>
                                                 ) : (
                                                     <button
                                                         type="button"
                                                         onClick={() => onNewShift?.(row.employee.id, day.date)}
-                                                        className="w-full text-gray-300 hover:text-accent-ink hover:bg-accent-light/50 rounded py-0.5 transition-colors"
+                                                        className="w-full text-muted hover:text-accent-ink hover:bg-accent-light/50 rounded py-0.5 transition-colors"
                                                         aria-label={`Add a shift for ${row.employee.full_name}`}
                                                     >
                                                         +
@@ -468,7 +468,7 @@ export default function RosterWeek({
                                     <td className="px-2 py-1.5 text-center align-middle font-semibold border-l border-border whitespace-nowrap">
                                         {holidayFor(row.employee) > 0
                                             ? <span className="text-blue-700">{fmtHours(holidayFor(row.employee))}</span>
-                                            : <span className="text-gray-300">-</span>}
+                                            : <span className="text-muted">-</span>}
                                     </td>
                                 )}
                                 <td className="px-2 py-1.5 text-center align-middle font-semibold text-gray-900 border-l border-border whitespace-nowrap">
@@ -483,7 +483,7 @@ export default function RosterWeek({
                                 // and closes under that instead.
                                 className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
                             >
-                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-gray-400 border-r border-border sticky left-0 bg-white leading-tight">
+                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (

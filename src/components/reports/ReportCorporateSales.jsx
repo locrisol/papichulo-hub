@@ -60,7 +60,7 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
                                         if (text !== (note?.note || '')) onSaveNote(p, text)
                                     }}
                                     placeholder="Who it was for"
-                                    className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                                 />
                             ) : note?.note ? (
                                 <p className="text-sm text-muted">{note.note}</p>

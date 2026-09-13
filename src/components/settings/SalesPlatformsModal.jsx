@@ -231,10 +231,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
 
     return (
       <tr key={p.id} className={`border-b border-border ${!p.is_active ? 'bg-red-50' : ''}`}>
-        <td className={`px-3 py-2 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+        <td className={`px-3 py-2 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
           {p.name}
         </td>
-        <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+        <td className={`px-3 py-2 text-xs ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
           {p.is_active ? 'Active' : 'Inactive'}
         </td>
         <td className="px-3 py-2">
@@ -275,7 +275,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           )}
         </div>
         {rows.length === 0 ? (
-          <p className="text-xs text-gray-400 italic mb-2">No platforms in this bucket yet.</p>
+          <p className="text-xs text-muted italic mb-2">No platforms in this bucket yet.</p>
         ) : (
           <>
           {/* A card each on a phone. Three columns inside a dialog put Retire
@@ -312,10 +312,10 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                 ) : (
                   <>
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                      <span className={`text-sm font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.name}
                       </span>
-                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                      <span className={`text-xs whitespace-nowrap ${p.is_active ? 'text-green-700' : 'text-muted'}`}>
                         {p.is_active ? 'Active' : 'Retired'}
                       </span>
                     </div>
@@ -363,7 +363,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
           </p>
 
           {loading ? (
-            <p className="text-sm text-gray-400">Loading platforms...</p>
+            <p className="text-sm text-muted">Loading platforms...</p>
           ) : (
             <>
               {renderBucketSection('online_platform')}
@@ -401,7 +401,7 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
                 Add
               </button>
             </form>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-muted mt-2">
               A new platform goes on the end of its group. Use Arrange to move it.
             </p>
           </div>

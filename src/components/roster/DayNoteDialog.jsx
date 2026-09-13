@@ -135,7 +135,7 @@ export default function DayNoteDialog({
                         <p className={labelClass}>
                             Different hours just for this day
                             {usual && (
-                                <span className="text-gray-400">
+                                <span className="text-muted">
                                     {' '}· usually {usual.open} to {usual.close}
                                 </span>
                             )}
@@ -152,7 +152,7 @@ export default function DayNoteDialog({
                                 aria-label="Closes at"
                                 />
                         </div>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-muted">
                             This is where a late night for a concert or an early close for renovations goes.
                         </p>
                     </div>
@@ -245,7 +245,7 @@ export default function DayNoteDialog({
                                     >
                                         {one.name}
                                         {one.time && (
-                                            <span className={on ? 'text-white/70' : 'text-gray-400'}>
+                                            <span className={on ? 'text-white/70' : 'text-muted'}>
                                                 {' '}{one.time}
                                             </span>
                                         )}

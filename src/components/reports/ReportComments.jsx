@@ -97,7 +97,7 @@ export default function ReportComments({ items, canEdit, onAdd, onSave, onRemove
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="Add a comment"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (
                         <AddButton

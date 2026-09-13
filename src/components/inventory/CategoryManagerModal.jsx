@@ -207,10 +207,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                 ) : (
                   <>
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className={`text-sm font-semibold ${c.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                      <span className={`text-sm font-semibold ${c.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {c.name}
                       </span>
-                      <span className={`text-xs whitespace-nowrap ${c.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                      <span className={`text-xs whitespace-nowrap ${c.is_active ? 'text-green-700' : 'text-muted'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
@@ -262,10 +262,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                           className="w-full border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                         />
                       </td>
-                      <td className={`px-3 py-2 ${c.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <td className={`px-3 py-2 ${c.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-400">
+                      <td className="px-3 py-2 text-xs text-muted">
                         {c.on_allergen_sheet === false ? 'Hidden' : 'Shown'}
                       </td>
                       <td className="px-3 py-2">
@@ -277,10 +277,10 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                     </>
                   ) : (
                     <>
-                      <td className={`px-3 py-2 font-medium ${c.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                      <td className={`px-3 py-2 font-medium ${c.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {c.name}
                       </td>
-                      <td className={`px-3 py-2 text-xs ${c.is_active ? 'text-green-700' : 'text-gray-400'}`}>
+                      <td className={`px-3 py-2 text-xs ${c.is_active ? 'text-green-700' : 'text-muted'}`}>
                         {c.is_active ? 'Active' : 'Inactive'}
                       </td>
                       <td className="px-3 py-2">
@@ -329,7 +329,7 @@ export default function CategoryManagerModal({ categories, onClose, onChange }) 
                 Add
               </button>
             </form>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-muted mt-2">
               It goes on the end. Use Arrange to move it.
             </p>
           </div>

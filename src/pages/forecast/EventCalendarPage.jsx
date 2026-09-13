@@ -226,7 +226,7 @@ export default function EventCalendarPage() {
             </div>
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : (
                 // The calendar takes two thirds on a laptop and the list sits
                 // beside it. items-start stops each being stretched to whichever

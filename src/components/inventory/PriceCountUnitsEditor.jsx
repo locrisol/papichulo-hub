@@ -158,9 +158,9 @@ export default function PriceCountUnitsEditor({ price, unit, onClose }) {
 
             {/* Existing formats */}
             {loading ? (
-                <p className="text-xs text-gray-400">Loading formats...</p>
+                <p className="text-xs text-muted">Loading formats...</p>
             ) : formats.length === 0 ? (
-                <p className="text-xs text-gray-400">No formats yet. Counting will use the base unit ({unit}) only.</p>
+                <p className="text-xs text-muted">No formats yet. Counting will use the base unit ({unit}) only.</p>
             ) : (
                 <div className="space-y-1.5">
                     {formats.map(f => (

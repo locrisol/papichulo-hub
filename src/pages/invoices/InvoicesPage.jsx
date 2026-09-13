@@ -453,9 +453,9 @@ export default function InvoicesPage() {
                 </h3>
                 <div className="p-5">
                 {loading ? (
-                    <p className="text-sm text-gray-400">Loading...</p>
+                    <p className="text-sm text-muted">Loading...</p>
                 ) : invoices.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nothing recorded for this week yet.</p>
+                    <p className="text-sm text-muted italic">Nothing recorded for this week yet.</p>
                 ) : (
                     // One block per day, newest first, each with its own
                     // total. It used to be one long run of rows, so on a busy
@@ -511,7 +511,7 @@ export default function InvoicesPage() {
                                                     {cat.label}
                                                 </span>
                                                 {inv.notes && (
-                                                    <p className="text-xs text-gray-400 mt-1">{inv.notes}</p>
+                                                    <p className="text-xs text-muted mt-1">{inv.notes}</p>
                                                 )}
                                                 <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                                                     <button
@@ -544,7 +544,7 @@ export default function InvoicesPage() {
                                                 <tr className={`border-b border-border last:border-b-0 border-l-4 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}>
                                                     <td className="px-3 py-2 text-gray-900">
                                                         {inv.suppliers?.name || 'Unknown supplier'}
-                                                        {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
+                                                        {inv.notes && <span className="block text-xs text-muted">{inv.notes}</span>}
                                                     </td>
                                                     <td className="px-3 py-2 w-32">
                                                         {/* Same colour as the button it was filed with */}

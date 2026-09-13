@@ -63,7 +63,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                                 )}
                               </div>
                             </div>
-                            <span className="text-gray-400 text-lg leading-none mt-1">
+                            <span className="text-muted text-lg leading-none mt-1">
                               {isExpanded ? '−' : '+'}
                             </span>
                           </div>
@@ -84,7 +84,7 @@ export default function AllergenList({ groups, expandedId, onToggle }) {
                               {ALLERGEN_KEYS.map(key => {
                                 const state = itemAllergens[key]
                                 const s = allergenLook(state)
-                                const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-gray-400 border border-gray-200'
+                                const colour = s ? `${s.bg} ${s.text} border border-current/20` : 'bg-white text-muted border border-gray-200'
                                 const label = s ? s.label : 'Not present'
                                 return (
                                   // Stacked on a phone, side by side from the

@@ -390,7 +390,7 @@ export default function SalesPage() {
     }
 
     if (loading) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -520,7 +520,7 @@ export default function SalesPage() {
                                             <label className={labelClass}>
                                                 {t.label}
                                                 {!t.is_active && (
-                                                    <span className="ml-2 text-gray-400">retired</span>
+                                                    <span className="ml-2 text-muted">retired</span>
                                                 )}
                                             </label>
                                             <input

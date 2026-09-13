@@ -53,7 +53,7 @@ export default function EventAgenda({ events, today, onOpenEvent, footnote }) {
             <div className={cardHeader}>Coming up</div>
 
             {rows.length === 0 ? (
-                <p className="p-5 text-sm text-gray-400 italic">Nothing scheduled yet.</p>
+                <p className="p-5 text-sm text-muted italic">Nothing scheduled yet.</p>
             ) : (
                 rows.map(row => {
                     if (row.type === 'month') {
@@ -104,7 +104,7 @@ export default function EventAgenda({ events, today, onOpenEvent, footnote }) {
                 })
             )}
 
-            <p className="text-xs text-gray-400 px-4 py-4">{footnote}</p>
+            <p className="text-xs text-muted px-4 py-4">{footnote}</p>
         </div>
     )
 }

@@ -632,7 +632,7 @@ export default function RosterPage() {
         published: { text: 'Published', cls: 'bg-green-50 text-green-700' },
     }[state]
 
-    if (!restaurantId) return <p className="text-sm text-gray-400">Pick a restaurant first.</p>
+    if (!restaurantId) return <p className="text-sm text-muted">Pick a restaurant first.</p>
 
     return (
         <div className="w-full">
@@ -936,7 +936,7 @@ export default function RosterPage() {
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : view === 'week' ? (
                 <RosterWeek
                     shiftMark={shift => (

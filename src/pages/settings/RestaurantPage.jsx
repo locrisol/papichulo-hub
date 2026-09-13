@@ -172,7 +172,7 @@ export default function RestaurantPage() {
                     Cost targets and settings for {activeRestaurant?.name}
                 </p>
                 {activeRestaurant?.updated_at && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                         Last updated: {stampDateTime(activeRestaurant.updated_at)}
                     </p>
                 )}
@@ -270,7 +270,7 @@ export default function RestaurantPage() {
                                     />
                                     {/* Safe to change without a date, because the rate is
                                         copied onto each labour entry when it is saved. */}
-                                    <p className="text-xs text-gray-400 mt-1">
+                                    <p className="text-xs text-muted mt-1">
                                         The average rate used to work out labour cost. Changing it does not alter weeks already
                                         entered, since each one keeps the rate it was saved with.
                                     </p>
@@ -336,7 +336,7 @@ export default function RestaurantPage() {
                             {/* The address only. The name in front of it is this
                                 restaurant own name, so renaming it renames the sender
                                 and there is no second place to keep in step. */}
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-muted mt-1">
                                 The address Papi Chulo Hub emails come from for this restaurant.
                                 Leave it empty and they come from the account the Hub sends with.
                                 Replies never come back here: they go to whoever sent it, with

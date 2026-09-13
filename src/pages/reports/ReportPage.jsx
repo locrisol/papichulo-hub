@@ -57,7 +57,7 @@ const TONE = {
     green: 'text-green-700',
     amber: 'text-amber-600',
     red: 'text-red-600',
-    none: 'text-gray-400',
+    none: 'text-muted',
 }
 
 // One cost, as a share of net sales.

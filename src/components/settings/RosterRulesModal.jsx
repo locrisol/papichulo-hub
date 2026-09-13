@@ -418,7 +418,7 @@ export default function RosterRulesModal({ onClose }) {
                 </ModalSection>
 
                 <ModalSection>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted">
                         The holiday periods a student may work full time in are June to September and
                         15 December to 15 January. Immigration rules change, so these are worth checking
                         against current guidance rather than taken as final.

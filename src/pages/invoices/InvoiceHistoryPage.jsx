@@ -178,9 +178,9 @@ export default function InvoiceHistoryPage() {
                 </h3>
                 <div className="p-5">
                 {loading ? (
-                    <p className="text-sm text-gray-400">Loading...</p>
+                    <p className="text-sm text-muted">Loading...</p>
                 ) : invoices.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">No invoices match those filters.</p>
+                    <p className="text-sm text-muted italic">No invoices match those filters.</p>
                 ) : (
                     // Same as the invoices screen: this table is inside a padded
                     // card, so it needs its own scrolling wrapper or the Total
@@ -213,7 +213,7 @@ export default function InvoiceHistoryPage() {
                                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{shortDate(inv.invoice_date)}</td>
                                     <td className="px-3 py-2 text-gray-900">
                                         {inv.suppliers?.name || 'Unknown supplier'}
-                                        {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
+                                        {inv.notes && <span className="block text-xs text-muted">{inv.notes}</span>}
                                     </td>
                                     <td className="px-3 py-2">
                                         {/* Same colours as the entry screen, so a

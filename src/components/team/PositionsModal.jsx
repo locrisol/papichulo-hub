@@ -103,7 +103,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                 {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
                 {positions.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic mb-5">
+                    <p className="text-sm text-muted italic mb-5">
                         None yet. Add whatever this restaurant calls its jobs.
                     </p>
                 ) : (
@@ -143,7 +143,7 @@ export default function PositionsModal({ positions, restaurantId, onClose, onCha
                                             style={{ backgroundColor: p.colour }}
                                         />
                                         <span className={`flex-1 text-sm font-medium ${
-                                            p.is_active ? 'text-gray-900' : 'text-gray-400 line-through'
+                                            p.is_active ? 'text-gray-900' : 'text-muted line-through'
                                         }`}>
                                             {p.name}
                                         </span>

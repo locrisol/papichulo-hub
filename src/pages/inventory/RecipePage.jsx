@@ -443,7 +443,7 @@ export default function RecipePage() {
                       ? ` at ${fmtUnitCost(unitCost)} / ${ingredient?.unit}`
                       : <span className="text-amber-600"> · no cost available</span>}
                   </p>
-                  {line.notes && <p className="text-xs text-gray-400 mt-0.5">{line.notes}</p>}
+                  {line.notes && <p className="text-xs text-muted mt-0.5">{line.notes}</p>}
                   <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                     <button
                       onClick={() => editingLine?.id === line.id ? resetForm() : startEdit(line)}

@@ -659,7 +659,7 @@ export default function WeeklySalesPage() {
                         wonders why a row they cannot find in settings is on the
                         screen in front of them. */}
                     {!tender.is_active && (
-                        <span className="ml-2 text-xs font-normal text-gray-400">retired</span>
+                        <span className="ml-2 text-xs font-normal text-muted">retired</span>
                     )}
                 </td>
                 {dates.map((d, i) => (
@@ -812,7 +812,7 @@ export default function WeeklySalesPage() {
                 })}
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">{fmtMoney(weekSum)}</div>
-                    <div className="text-xs text-gray-400">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
+                    <div className="text-xs text-muted">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
                     {comparable && Math.abs(weekGap) >= 0.01 && (
                         <div className="text-xs text-amber-600">
                             {weekGap > 0 ? '+' : ''}{fmtMoney(weekGap)} vs receipt
@@ -826,7 +826,7 @@ export default function WeeklySalesPage() {
     // Only blank the page on the very first load. On later week changes keep the
     // grid mounted, otherwise the date picker is unmounted mid-interaction.
     if (loading && Object.keys(days).length === 0) {
-        return <div><p className="text-sm text-gray-400">Loading...</p></div>
+        return <div><p className="text-sm text-muted">Loading...</p></div>
     }
 
     return (
@@ -1000,7 +1000,7 @@ export default function WeeklySalesPage() {
                                     return (
                                         <td key={d} className={`px-3 py-2 text-right text-sm whitespace-nowrap ${closedCol(d)}`}>
                                             {closed
-                                                ? <span className="text-gray-300">-</span>
+                                                ? <span className="text-muted">-</span>
                                                 : <span className={warn ? 'text-red-600 font-semibold' : 'text-green-700'}>{fmtMoney(v)}</span>}
                                         </td>
                                     )
@@ -1061,7 +1061,7 @@ export default function WeeklySalesPage() {
                 </div>
             </div>
 
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-muted mb-4">
                 Amber figures under the tracked rows show the difference against the till receipt. Platforms report
                 commission and VAT differently, so a gap is expected and does not affect the reconciliation above.
             </p>
