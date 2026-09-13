@@ -307,66 +307,78 @@ Deno.serve(async (req) => {
         const publisherAddress = caller.email || null
 
         let to: string[] = []
-        if (test) {
-            // A test goes to the person who asked for it and nowhere else.
-            // There is no list to get wrong, which is the whole safety of it.
-            if (!publisherAddress) return json({ error: 'Your account has no email address.' }, 400)
-            to = [publisherAddress]
-        } else {
+
+        // A test goes to the list somebody chose. A publish goes there and to
+        // the owners as well.
+        //
+        // It used to go to the publisher alone, on the grounds that there was
+        // no list to get wrong. That was safe and it did not test the thing
+        // worth testing, which is whether the list is right. Now it is the same
+        // report to the same addresses, with the banner on top saying what it
+        // is, so a rehearsal rehearses something.
+        //
+        // Owners stay out of a test on purpose. They are on the list by role
+        // rather than by anybody's decision, and nobody put them there to sit
+        // through a rehearsal. The addresses in Settings are chosen, so they
+        // are fair game.
+        const found: string[] = []
+        if (!test) {
             const { data: owners } = await admin
                 .from('users').select('id')
                 .eq('restaurant_id', report.restaurant_id)
                 .eq('role', 'owner')
                 .eq('is_active', true)
 
-            const found: string[] = []
             for (const owner of owners || []) {
                 const address = await addressFor(owner.id)
                 if (address) found.push(address)
             }
+        }
 
-            // The manager who wrote it up goes on the list too.
-            //
-            // Two reasons, and the second is the one that is not obvious.
-            // They need to see it arrive, because a report that was
-            // published but never sent looks identical from the Hub.
-            //
-            // And it is what makes a reply land in the right place. Every
-            // recipient is in To, and Reply-To is the manager, so a client
-            // asked to reply to all puts the manager in To and demotes the
-            // owners to Cc: the reply goes to the person who wrote the week
-            // up, with everybody who read it copied. If the manager were not
-            // a recipient they would drop out of the thread the moment an
-            // owner replied to all.
-            //
-            // hub@ is in none of it. Reply-To does not add to From, it
-            // replaces it, so the sending address is out of both Reply and
-            // Reply All without being asked.
-            const seen = new Set<string>()
-            for (const address of [
-                publisherAddress,
-                ...found,
-                ...(restaurant?.report_recipients || []),
-            ]) {
-                const key = String(address || '').trim().toLowerCase()
-                if (!key || seen.has(key)) continue
-                // An address that provably cannot receive is dropped rather
-                // than attempted. One refusal can take the whole send with it,
-                // and the people who should have had it would never know.
-                if (!deliverable(key)) {
-                    console.warn('skipping an address that cannot receive mail:', key)
-                    continue
-                }
-                seen.add(key)
-                to.push(String(address).trim())
+
+        // The manager who wrote it up goes on the list too.
+        //
+        // Two reasons, and the second is the one that is not obvious.
+        // They need to see it arrive, because a report that was
+        // published but never sent looks identical from the Hub.
+        //
+        // And it is what makes a reply land in the right place. Every
+        // recipient is in To, and Reply-To is the manager, so a client
+        // asked to reply to all puts the manager in To and demotes the
+        // owners to Cc: the reply goes to the person who wrote the week
+        // up, with everybody who read it copied. If the manager were not
+        // a recipient they would drop out of the thread the moment an
+        // owner replied to all.
+        //
+        // hub@ is in none of it. Reply-To does not add to From, it
+        // replaces it, so the sending address is out of both Reply and
+        // Reply All without being asked.
+        const seen = new Set<string>()
+        for (const address of [
+            publisherAddress,
+            ...found,
+            ...(restaurant?.report_recipients || []),
+        ]) {
+            const key = String(address || '').trim().toLowerCase()
+            if (!key || seen.has(key)) continue
+            // An address that provably cannot receive is dropped rather
+            // than attempted. One refusal can take the whole send with it,
+            // and the people who should have had it would never know.
+            if (!deliverable(key)) {
+                console.warn('skipping an address that cannot receive mail:', key)
+                continue
             }
+            seen.add(key)
+            to.push(String(address).trim())
         }
 
         // An empty list is not a failure. The report is the point and the mail
         // is how it travels; a week written up and frozen with nobody to send
         // it to is still a week written up. It says so and stops.
         if (to.length === 0) {
-            await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
+            // A test leaves sent_to alone. It is the record of where the real
+            // thing went, and a rehearsal finding nobody must not erase it.
+            if (!test) await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
             return json({ sent: 0, why: 'nobody on the list' })
         }
 
