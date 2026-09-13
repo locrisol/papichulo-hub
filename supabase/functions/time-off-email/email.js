@@ -260,6 +260,35 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// An address nobody can ever receive mail at.
+//
+// RFC 2606 and RFC 6761 set aside .test, .example, .invalid and .localhost, and
+// the example.com family, so they can be written in documentation and used in
+// testing without ever resolving. A mail server will not deliver to one: it
+// refuses, and one refused recipient can take a whole send with it.
+//
+// This is here because test.manager@papichulo.test is a real store manager on
+// the live database, so every Point Campus time off request would have tried
+// it. Whose account happens to exist should not decide whether the mail works,
+// and the alternative was to keep the account list tidy forever.
+//
+// Deliberately narrow. This is not address validation and it is not a guess at
+// whether a mailbox exists; it only removes the ones that provably cannot.
+const NEVER_DELIVERS_TLD = ['test', 'example', 'invalid', 'localhost']
+const NEVER_DELIVERS_DOMAIN = ['example.com', 'example.net', 'example.org']
+
+export function deliverable(address) {
+    const at = String(address || '').trim()
+    const cut = at.lastIndexOf('@')
+    if (cut < 1 || cut === at.length - 1) return false
+
+    const domain = at.slice(cut + 1).toLowerCase()
+    if (NEVER_DELIVERS_DOMAIN.includes(domain)) return false
+
+    const tld = domain.slice(domain.lastIndexOf('.') + 1)
+    return !NEVER_DELIVERS_TLD.includes(tld)
+}
+
 // Who the mail comes from.
 //
 // One Workspace account sends for every restaurant, and the restaurant's own

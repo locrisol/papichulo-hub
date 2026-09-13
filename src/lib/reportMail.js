@@ -104,3 +104,38 @@ export async function sendReport({ reportId, test = false, figures, charts }) {
 
     return data || {}
 }
+
+// What to tell somebody after a send.
+//
+// Three facts, all worth saying. How many got it. Whether it was a test. And
+// which addresses were skipped, which is the one this was written for: the
+// function drops an address that cannot receive rather than letting one
+// refusal take the whole send down, and without this that happens in silence.
+//
+// Silence is the problem. The card on the report names who gets it, so an
+// address dropped on the way out makes that card a lie, and the way somebody
+// finds out is a fortnight later when an owner mentions they have never had
+// one. Said here, it is the same minute.
+export function sendWords(result, { test = false } = {}) {
+    const sent = result?.sent || 0
+    const skipped = result?.skipped || []
+
+    let words
+    if (test) {
+        words = sent === 0
+            ? 'The test went nowhere: there is nobody on the list.'
+            : `Test sent to ${sent} ${sent === 1 ? 'address' : 'addresses'}.`
+    } else {
+        words = sent === 0
+            ? 'Published. Nobody is on the list, so no mail went out.'
+            : `Published and sent to ${sent} ${sent === 1 ? 'person' : 'people'}.`
+    }
+
+    if (skipped.length > 0) {
+        const many = skipped.length > 1
+        words += ` ${many ? `${skipped.length} addresses were` : 'One address was'} skipped, because `
+            + `${many ? 'they cannot' : 'it cannot'} receive mail: ${skipped.join(', ')}.`
+    }
+
+    return words
+}

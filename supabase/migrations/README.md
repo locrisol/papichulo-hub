@@ -1,6 +1,6 @@
 # Migrations
 
-Empty. The next one is `006`.
+Empty. The next one is `007`.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,
@@ -8,7 +8,7 @@ and from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write `006_what_it_does.sql` in here. One change, and a comment at the top
+1. Write `007_what_it_does.sql` in here. One change, and a comment at the top
    saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end.
@@ -37,7 +37,8 @@ functions, `auth.uid()` wrapped in the five policies that still called it bare,
 a role named on all eighty one policies, and three foreign key indexes.
 
 Then `005`, which gave restaurants a `sort_order` so the Users page could be
-arranged rather than alphabetical.
+arranged rather than alphabetical, and `006`, which made deactivating somebody
+actually stop them: until then `is_active` was written and read by nothing.
 
 All of them are in git history and under the `pre-rewrite` tag, and nothing has
 been lost.
@@ -89,3 +90,7 @@ older than it, so the file was still the only written path from the newest
 backup to the running database. A second dump was taken the same evening,
 `schema-2026-09-13-2130.sql`, and it carries the column and its comment. Then the
 file went.
+
+`006` went the same way, on a dump taken at 22:55 the same evening. **Folding one
+away is not worth a branch of its own**, so it rides with whatever is being
+worked on next.

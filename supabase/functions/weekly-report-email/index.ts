@@ -42,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice } from './email.js'
+import { senderFor, heldNotice, deliverable } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -86,52 +86,86 @@ const from = (restaurantName?: string, address?: string | null) =>
 // 465 by default, which is TLS from the first byte. See the connection below.
 const smtpPort = Number(Deno.env.get('SMTP_PORT') || 465)
 
+// denomailer's writer can fail on a socket the far end already dropped, after
+// the handler has finished with it. That arrives as an event loop
+// UncaughtException rather than a rejected promise anybody awaited, so no try
+// around a call can catch it: the isolate dies and the app is told only
+// "Failed to send a request to the Edge Function", which reads like the app is
+// broken when the mail has already gone.
+//
+// Caught here, named, and allowed to pass. This hides nothing that a caller
+// could have acted on: by the time it fires, the send has either happened or
+// thrown somewhere that was caught properly.
+globalThis.addEventListener('unhandledrejection', (event) => {
+    console.warn('an unawaited failure after sending, ignored:', event.reason)
+    event.preventDefault()
+})
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
-    const client = new SMTPClient({
-        connection: {
-            // smtp.gmail.com sends only as the account that logged in.
-            // smtp-relay.gmail.com will send as any address on the domain,
-            // which is what lets a new restaurant have a sender of its own
-            // without anybody creating an alias for it in the admin console.
-            //
-            // A secret rather than a constant so that switch is a setting
-            // change and not a deploy.
-            //
-            // The port decides how the connection is encrypted, because
-            // getting those two out of step is a hang rather than an error.
-            // 465 is TLS from the first byte. Anything else, 587 in
-            // practice, starts in the clear and upgrades with STARTTLS,
-            // which is what tls:false means here.
-            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
-            port: smtpPort,
-            tls: smtpPort === 465,
-            auth: { username: user, password },
-        },
-    })
-
-    try {
-        await client.send({
-            from: mail.from,
-            to: mail.to,
-            replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
-            subject: mail.subject,
-            content: mail.text,
-            html: mail.html,
+    async function attempt() {
+        const client = new SMTPClient({
+            connection: {
+                // smtp.gmail.com sends only as the account that logged in.
+                // smtp-relay.gmail.com will send as any address on the domain,
+                // which is what lets a new restaurant have a sender of its own
+                // without anybody creating an alias for it in the admin console.
+                //
+                // A secret rather than a constant so that switch is a setting
+                // change and not a deploy.
+                //
+                // The port decides how the connection is encrypted, because
+                // getting those two out of step is a hang rather than an error.
+                // 465 is TLS from the first byte. Anything else, 587 in
+                // practice, starts in the clear and upgrades with STARTTLS,
+                // which is what tls:false means here.
+                hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+                port: smtpPort,
+                tls: smtpPort === 465,
+                auth: { username: user, password },
+            },
         })
-    } finally {
-        // Left open, the function is held until it times out. But closing a
-        // connection the far end already dropped throws BadResource, and a
-        // throw in here replaces whatever went wrong with a useless one: the
-        // isolate dies and the app is told only "failed to send a request to
-        // the edge function", which is how a plain SMTP refusal came back
-        // with no reason attached.
+
         try {
-            await client.close()
-        } catch (closing) {
-            console.warn('the SMTP connection was already gone', closing)
+            await client.send({
+                from: mail.from,
+                to: mail.to,
+                replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
+                subject: mail.subject,
+                content: mail.text,
+                html: mail.html,
+            })
+        } finally {
+            // Left open, the function is held until it times out. But closing a
+            // connection the far end already dropped throws BadResource, and a
+            // throw in here replaces whatever went wrong with a useless one: the
+            // isolate dies and the app is told only "failed to send a request to
+            // the edge function", which is how a plain SMTP refusal came back
+            // with no reason attached.
+            try {
+                await client.close()
+            } catch (closing) {
+                console.warn('the SMTP connection was already gone', closing)
+            }
         }
+    }
+
+    // One more go if the first fails, and no more than that.
+    //
+    // What this answers is a dropped TLS connection to Gmail, seen twice in
+    // September, both times after the mail had almost certainly gone out. It
+    // cannot be reproduced on demand, so there is nothing clever to do: build a
+    // fresh client and try again, and let a second failure be the real one.
+    //
+    // Every send here is somebody pressing a button, so the worst case of a
+    // double send is the same report arriving twice. That is a great deal
+    // better than it not arriving while the app says it is broken.
+    try {
+        await attempt()
+    } catch (first) {
+        console.warn('the first attempt to send failed, trying once more:', first)
+        await attempt()
     }
 }
 
@@ -273,60 +307,92 @@ Deno.serve(async (req) => {
         const publisherAddress = caller.email || null
 
         let to: string[] = []
-        if (test) {
-            // A test goes to the person who asked for it and nowhere else.
-            // There is no list to get wrong, which is the whole safety of it.
-            if (!publisherAddress) return json({ error: 'Your account has no email address.' }, 400)
-            to = [publisherAddress]
-        } else {
+
+        // A test goes to the list somebody chose. A publish goes there and to
+        // the owners as well.
+        //
+        // It used to go to the publisher alone, on the grounds that there was
+        // no list to get wrong. That was safe and it did not test the thing
+        // worth testing, which is whether the list is right. Now it is the same
+        // report to the same addresses, with the banner on top saying what it
+        // is, so a rehearsal rehearses something.
+        //
+        // Owners stay out of a test on purpose. They are on the list by role
+        // rather than by anybody's decision, and nobody put them there to sit
+        // through a rehearsal. The addresses in Settings are chosen, so they
+        // are fair game.
+        const found: string[] = []
+        if (!test) {
             const { data: owners } = await admin
                 .from('users').select('id')
                 .eq('restaurant_id', report.restaurant_id)
                 .eq('role', 'owner')
                 .eq('is_active', true)
+                // A developer account has a real role on purpose, so role is
+                // no way to tell it from a person. See users.is_test.
+                .eq('is_test', false)
 
-            const found: string[] = []
             for (const owner of owners || []) {
                 const address = await addressFor(owner.id)
                 if (address) found.push(address)
             }
+        }
 
-            // The manager who wrote it up goes on the list too.
-            //
-            // Two reasons, and the second is the one that is not obvious.
-            // They need to see it arrive, because a report that was
-            // published but never sent looks identical from the Hub.
-            //
-            // And it is what makes a reply land in the right place. Every
-            // recipient is in To, and Reply-To is the manager, so a client
-            // asked to reply to all puts the manager in To and demotes the
-            // owners to Cc: the reply goes to the person who wrote the week
-            // up, with everybody who read it copied. If the manager were not
-            // a recipient they would drop out of the thread the moment an
-            // owner replied to all.
-            //
-            // hub@ is in none of it. Reply-To does not add to From, it
-            // replaces it, so the sending address is out of both Reply and
-            // Reply All without being asked.
-            const seen = new Set<string>()
-            for (const address of [
-                publisherAddress,
-                ...found,
-                ...(restaurant?.report_recipients || []),
-            ]) {
-                const key = String(address || '').trim().toLowerCase()
-                if (!key || seen.has(key)) continue
+
+        // The manager who wrote it up goes on the list too.
+        //
+        // Two reasons, and the second is the one that is not obvious.
+        // They need to see it arrive, because a report that was
+        // published but never sent looks identical from the Hub.
+        //
+        // And it is what makes a reply land in the right place. Every
+        // recipient is in To, and Reply-To is the manager, so a client
+        // asked to reply to all puts the manager in To and demotes the
+        // owners to Cc: the reply goes to the person who wrote the week
+        // up, with everybody who read it copied. If the manager were not
+        // a recipient they would drop out of the thread the moment an
+        // owner replied to all.
+        //
+        // hub@ is in none of it. Reply-To does not add to From, it
+        // replaces it, so the sending address is out of both Reply and
+        // Reply All without being asked.
+        // Anything dropped is reported back rather than only logged.
+        //
+        // The card on the report says who gets it, and an address quietly
+        // skipped makes that card a lie: it would name somebody who never
+        // receives a thing. Saying so on the way out is the only way somebody
+        // finds out today rather than in a fortnight.
+        const skipped: string[] = []
+
+        const seen = new Set<string>()
+        for (const address of [
+            publisherAddress,
+            ...found,
+            ...(restaurant?.report_recipients || []),
+        ]) {
+            const key = String(address || '').trim().toLowerCase()
+            if (!key || seen.has(key)) continue
+            // An address that provably cannot receive is dropped rather
+            // than attempted. One refusal can take the whole send with it,
+            // and the people who should have had it would never know.
+            if (!deliverable(key)) {
+                console.warn('skipping an address that cannot receive mail:', key)
                 seen.add(key)
-                to.push(String(address).trim())
+                skipped.push(String(address).trim())
+                continue
             }
+            seen.add(key)
+            to.push(String(address).trim())
         }
 
         // An empty list is not a failure. The report is the point and the mail
         // is how it travels; a week written up and frozen with nobody to send
         // it to is still a week written up. It says so and stops.
         if (to.length === 0) {
-            await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
-            return json({ sent: 0, why: 'nobody on the list' })
+            // A test leaves sent_to alone. It is the record of where the real
+            // thing went, and a rehearsal finding nobody must not erase it.
+            if (!test) await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
+            return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
         }
 
         const allowed = (Deno.env.get('APP_URL_ALSO') || '')
@@ -374,6 +440,7 @@ Deno.serve(async (req) => {
             sent: sentTo.length,
             to: test || redirect ? sentTo : undefined,
             held: redirect ? to.length : undefined,
+            skipped: skipped.length ? skipped : undefined,
         })
     } catch (err) {
         // Said out loud, because a key that has expired should be findable in

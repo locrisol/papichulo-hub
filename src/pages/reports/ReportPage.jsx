@@ -16,7 +16,7 @@ import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpir
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { chartSpecs } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
-import { uploadCharts, sendReport } from '@/lib/reportMail'
+import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
 import ReportComments from '@/components/reports/ReportComments'
 import ReportProfitLoss from '@/components/reports/ReportProfitLoss'
 import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
@@ -235,6 +235,10 @@ export default function ReportPage() {
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
                     .eq('role', 'owner').eq('is_active', true)
+                    // The same filter the function uses. If these two ever
+                    // disagree the card names somebody who gets nothing, which
+                    // is the exact thing it exists to prevent.
+                    .eq('is_test', false)
                     .order('full_name'),
                 supabase.from('restaurants')
                     .select('report_recipients')
@@ -606,9 +610,7 @@ export default function ReportPage() {
             // week nobody can ever look up again.
             try {
                 const result = await sendReport({ reportId: report.id })
-                setMailed(result.sent === 0
-                    ? 'Published. Nobody is on the recipient list, so no mail went out.'
-                    : `Published and sent to ${result.sent} ${result.sent === 1 ? 'person' : 'people'}.`)
+                setMailed(sendWords(result))
             } catch (err) {
                 setMailed(`Published, but the mail did not go out: ${err.message}`)
             }
@@ -670,7 +672,7 @@ export default function ReportPage() {
             const result = await sendReport({
                 reportId: report.id, test: true, figures: frozenFigures(), charts,
             })
-            setMailed(`Test sent to ${result.to?.[0] || 'you'}. Nobody else got it.`)
+            setMailed(sendWords(result, { test: true }))
         } catch (err) {
             setMailed(`The test did not go out: ${err.message}`)
         } finally {

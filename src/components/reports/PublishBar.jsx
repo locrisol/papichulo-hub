@@ -91,7 +91,7 @@ export default function PublishBar({
                             disabled={busy}
                             className={secondaryButton}
                         >
-                            {busy ? 'Working' : 'Send a test to me'}
+                            {busy ? 'Working' : 'Send a test'}
                         </button>
                     )}
                     <button
@@ -109,11 +109,18 @@ export default function PublishBar({
             {mailed && <Outcome>{mailed}</Outcome>}
 
             {/* A test can be sent on a report that is not ready, because
-                looking at it is how you find out what is missing. */}
+                looking at it is how you find out what is missing.
+
+                It used to go to the sender alone. It goes to the list now, so
+                that trying it tells you whether the list is right, which is the
+                part that was never being tested. Owners are the exception and
+                stay out of it: they are on the list by role rather than by
+                anybody's decision. */}
             {!stopped && onTest && (
                 <p className="text-xs text-muted mt-2">
-                    A test goes to you and nobody else. Nothing is frozen and it does not count as
-                    a send, so try it as many times as it takes.
+                    A test goes to everyone on the list below except the owners, marked as a test.
+                    Nothing is frozen and it does not count as a send, so try it as many times as
+                    it takes.
                 </p>
             )}
 

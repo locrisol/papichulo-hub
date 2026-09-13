@@ -19,6 +19,7 @@ const USERS = [
     { id: 'u5', full_name: 'Zoe', role: 'owner', restaurant_id: 'dl', is_active: true },
     { id: 'me', full_name: 'Leandro', role: 'super_admin', restaurant_id: 'pc', is_active: true },
     { id: 'u3', full_name: 'Nobody Home', role: 'employee', restaurant_id: null, is_active: true },
+    { id: 'u6', full_name: 'Test Owner', role: 'owner', restaurant_id: 'pc', is_active: true, is_test: true },
 ]
 
 const db = mockSupabase({
@@ -52,12 +53,13 @@ describe('UsersPage, grouped by restaurant', () => {
     })
 
     // Zoe the owner above Aaron the store manager above Ana, so the order is
-    // the ladder rather than the alphabet.
+    // the ladder rather than the alphabet. Test Owner sits by its real role
+    // too: a developer account is marked, not demoted.
     it('sorts people by role, highest first, then by name', async () => {
         await show()
         const rows = document.querySelectorAll('table tbody tr td:first-child')
-        const names = [...rows].map(td => td.textContent.replace('you', '').trim())
-        expect(names.slice(0, 4)).toEqual(['Leandro', 'Zoe', 'Aaron', 'Ana'])
+        const names = [...rows].map(td => td.textContent.replace(/you|test/g, '').trim())
+        expect(names.slice(0, 5)).toEqual(['Leandro', 'Test Owner', 'Zoe', 'Aaron', 'Ana'])
     })
 
     it('offers arranging only when there is more than one restaurant', async () => {
@@ -111,5 +113,29 @@ describe('UsersPage, grouped by restaurant', () => {
         await show()
         const pc = screen.getAllByRole('button', { expanded: true })[0]
         expect(within(pc.parentElement).getAllByText('you').length).toBeGreaterThan(0)
+    })
+})
+
+// Eleven accounts that look like eleven people is how somebody counts the staff
+// off this screen and gets it wrong by four.
+describe('developer accounts', () => {
+    it('are marked, so the list is not read as a staff list', async () => {
+        await show()
+        const marks = screen.getAllByText('test')
+        expect(marks.length).toBe(2) // the phone card and the table row
+        for (const mark of marks) {
+            expect(mark.closest('tr, div').textContent).toContain('Test Owner')
+        }
+    })
+
+    it('are still shown, because hiding them would make the page disagree with the database', async () => {
+        await show()
+        expect(screen.getAllByText('Test Owner').length).toBeGreaterThan(0)
+    })
+
+    it('leaves a real person unmarked', async () => {
+        await show()
+        const leandro = screen.getAllByText('Leandro')[0].closest('tr, div')
+        expect(leandro.textContent).not.toContain('test')
     })
 })

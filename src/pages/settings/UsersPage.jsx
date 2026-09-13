@@ -64,6 +64,25 @@ function groupByRestaurant(users, restaurants) {
   return groups
 }
 
+// A developer account, marked as one.
+//
+// Four of these exist so somebody can sign in as each role and see what that
+// role sees, and their roles are real on purpose, which is exactly why the list
+// cannot be read honestly without saying so. Eleven accounts that look like
+// eleven people is how somebody counts the staff off this screen and gets it
+// wrong by four.
+//
+// They are still shown. Hiding them would make this screen disagree with the
+// database, and the whole point of the page is that it does not.
+function TestChip({ person }) {
+  if (!person.is_test) return null
+  return (
+    <span className={`${badge} bg-cream text-muted ml-2`} title="A developer account, not a person">
+      test
+    </span>
+  )
+}
+
 export default function UsersPage() {
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -303,6 +322,7 @@ export default function UsersPage() {
                 <p className="font-semibold text-gray-900">
                   {u.full_name}
                   {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
+                  <TestChip person={u} />
                 </p>
                 <span className={`${badge} flex-shrink-0 ${
                   u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
@@ -363,6 +383,7 @@ export default function UsersPage() {
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {u.full_name}
                     {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
+                    <TestChip person={u} />
                   </td>
                   <td className="px-4 py-3">
                     <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
