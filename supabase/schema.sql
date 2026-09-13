@@ -651,10 +651,10 @@ CREATE TABLE IF NOT EXISTS "public"."stock_takes" (
     "status" character varying(20) DEFAULT 'in_progress'::character varying,
     "total_value" numeric(12,2),
     "notes" "text",
-    "type" "text" DEFAULT 'monthly'::"text" NOT NULL,
     "reopened_at" timestamp with time zone,
     "reopened_by" "uuid",
     "reopen_reason" "text",
+    "type" "text" DEFAULT 'monthly'::"text" NOT NULL,
     CONSTRAINT "stock_takes_status_check" CHECK (("status" IN ('in_progress', 'completed', 'cancelled'))),
     CONSTRAINT "stock_takes_type_check" CHECK (("type" = ANY (ARRAY['daily'::"text", 'weekly'::"text", 'monthly'::"text"])))
 );
@@ -2232,26 +2232,33 @@ end $$;
 -- in public gets row level security switched on whether or not whoever
 -- created it remembered. It arrived on the live database without a
 -- migration, which is how it came to be written down here.
-create or replace function public.rls_auto_enable() returns event_trigger
-    language plpgsql security definer set search_path to 'pg_catalog'
-    as $$
-declare
-    cmd record;
-begin
-    for cmd in
-        select * from pg_event_trigger_ddl_commands()
-        where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
-          and object_type in ('table', 'partitioned table')
-    loop
-        if cmd.schema_name = 'public' then
-            begin
-                execute format('alter table if exists %s enable row level security', cmd.object_identity);
-            exception when others then
-                raise log 'rls_auto_enable: could not enable on %', cmd.object_identity;
-            end;
-        end if;
-    end loop;
-end $$;
+CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'pg_catalog'
+    AS $$
+DECLARE
+  cmd record;
+BEGIN
+  FOR cmd IN
+    SELECT *
+    FROM pg_event_trigger_ddl_commands()
+    WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+      AND object_type IN ('table','partitioned table')
+  LOOP
+     IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN
+      BEGIN
+        EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);
+        RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+      EXCEPTION
+        WHEN OTHERS THEN
+          RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+      END;
+     ELSE
+        RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+     END IF;
+  END LOOP;
+END;
+$$;
 
 do $$
 begin
