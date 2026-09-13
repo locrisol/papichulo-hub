@@ -353,6 +353,14 @@ Deno.serve(async (req) => {
         // hub@ is in none of it. Reply-To does not add to From, it
         // replaces it, so the sending address is out of both Reply and
         // Reply All without being asked.
+        // Anything dropped is reported back rather than only logged.
+        //
+        // The card on the report says who gets it, and an address quietly
+        // skipped makes that card a lie: it would name somebody who never
+        // receives a thing. Saying so on the way out is the only way somebody
+        // finds out today rather than in a fortnight.
+        const skipped: string[] = []
+
         const seen = new Set<string>()
         for (const address of [
             publisherAddress,
@@ -366,6 +374,8 @@ Deno.serve(async (req) => {
             // and the people who should have had it would never know.
             if (!deliverable(key)) {
                 console.warn('skipping an address that cannot receive mail:', key)
+                seen.add(key)
+                skipped.push(String(address).trim())
                 continue
             }
             seen.add(key)
@@ -379,7 +389,7 @@ Deno.serve(async (req) => {
             // A test leaves sent_to alone. It is the record of where the real
             // thing went, and a rehearsal finding nobody must not erase it.
             if (!test) await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
-            return json({ sent: 0, why: 'nobody on the list' })
+            return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
         }
 
         const allowed = (Deno.env.get('APP_URL_ALSO') || '')
@@ -427,6 +437,7 @@ Deno.serve(async (req) => {
             sent: sentTo.length,
             to: test || redirect ? sentTo : undefined,
             held: redirect ? to.length : undefined,
+            skipped: skipped.length ? skipped : undefined,
         })
     } catch (err) {
         // Said out loud, because a key that has expired should be findable in

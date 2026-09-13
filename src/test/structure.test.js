@@ -88,12 +88,12 @@ describe('the shared helpers are declared in one place', () => {
 })
 
 describe('every file in lib has a test', () => {
-    // A ratchet, not a rule. These thirteen have no test today and that is the
+    // A ratchet, not a rule. These twelve have no test today and that is the
     // state of things; what this stops is a fourteenth. Take one off the list
     // when you write its test, and the list can only ever get shorter.
     const NO_TEST_YET = [
         'access', 'controlStyles', 'donut', 'productPrice', 'reportCharts',
-        'reportMail', 'rosterImage', 'rosterPdf', 'stockTakePdf', 'supabase',
+        'rosterImage', 'rosterPdf', 'stockTakePdf', 'supabase',
         'timeOffMail', 'timeOffPdf', 'wasteReasons',
     ]
 
