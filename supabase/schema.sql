@@ -1201,7 +1201,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_employee_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
   select id from public.employees where user_id = auth.uid() limit 1
 $$;
@@ -1233,6 +1233,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -1242,6 +1243,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."touch_weekly_report"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 begin
   new.updated_at = now();
@@ -1341,6 +1343,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."brief"("v" "jsonb") RETURNS "jsonb"
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
   select case
     when v is null then null
@@ -1351,10 +1354,12 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$ select array['change_log', 'login_events', 'predictions'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$ select array['updated_at', 'last_seen_at'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") RETURNS "text"
@@ -1577,6 +1582,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."watch_changes"() RETURNS integer
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_catalog', 'pg_temp'
     AS $$
 declare
   t     text;
@@ -1610,6 +1616,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."watch_new_tables"() RETURNS "event_trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 begin
   perform public.watch_changes();
@@ -1649,6 +1656,10 @@ COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'W
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
+grant execute on function "public"."handle_delete_user"() to service_role;
+revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
+grant execute on function "public"."handle_new_user"() to service_role;
 revoke all on function "public"."record_change"() from public, anon, authenticated, service_role;
 grant execute on function "public"."record_change"() to service_role;
 revoke all on function "public"."record_logins"() from public, anon, authenticated, service_role;
@@ -2259,6 +2270,11 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- Down here rather than with the other eight, because a revoke has to come
+-- after the function it names and this one is created with the triggers.
+revoke all on function "public"."rls_auto_enable"() from public, anon, authenticated, service_role;
+grant execute on function "public"."rls_auto_enable"() to service_role;
 
 do $$
 begin

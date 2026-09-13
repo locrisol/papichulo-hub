@@ -1,6 +1,11 @@
 # Migrations
 
-Empty on purpose. The next one is `001`.
+`001` is written and **has not been run on the live database yet**. The next
+one is `002`.
+
+A migration in here that is not on live is normal for exactly as long as it
+takes somebody to run it. Everything before `001` is already on live and was
+folded away, which is why this folder started again.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,
@@ -8,14 +13,19 @@ and from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write `001_what_it_does.sql` in here. One change, and a comment at the top
+1. Write `002_what_it_does.sql` in here. One change, and a comment at the top
    saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end.
 3. Commit the two together. A change in one and not the other is how the two
    drift apart, and the whole point of this arrangement is that they cannot.
 4. `npm run db:local` builds a database from `schema.sql` and `seed.sql` and
-   will tell you if step 2 was wrong.
+   will tell you if step 2 was wrong. The stronger check, and the one worth
+   doing, is to build once with the migration and once without it and compare
+   the two: if `schema.sql` on its own does not land in the same place, the fold
+   is incomplete. The GitHub action fails a pull request that adds a migration
+   without touching `schema.sql`, but it cannot tell whether what you folded in
+   was right.
 
 ## What was here before
 
