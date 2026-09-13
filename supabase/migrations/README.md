@@ -1,6 +1,6 @@
 # Migrations
 
-Empty. The next one is `005`.
+Empty. The next one is `006`.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,
@@ -8,7 +8,7 @@ and from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write `005_what_it_does.sql` in here. One change, and a comment at the top
+1. Write `006_what_it_does.sql` in here. One change, and a comment at the top
    saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end.
@@ -35,6 +35,9 @@ September that brought the live database up to the rewritten schema, then four
 more that answered the Supabase advisor: search paths pinned on seven
 functions, `auth.uid()` wrapped in the five policies that still called it bare,
 a role named on all eighty one policies, and three foreign key indexes.
+
+Then `005`, which gave restaurants a `sort_order` so the Users page could be
+arranged rather than alphabetical.
 
 All of them are in git history and under the `pre-rewrite` tag, and nothing has
 been lost.
@@ -77,3 +80,12 @@ read against the one from the day before:
 
 That dump is in `papichulo-backups` as `schema-2026-09-13.sql`, with the roles
 and the data beside it, and the day before is still there too.
+
+## How `005` was checked
+
+The same way, and it is the rule working rather than ceremony. `005` ran on live
+and the temptation was to delete it there and then. Every dump at that point was
+older than it, so the file was still the only written path from the newest
+backup to the running database. A second dump was taken the same evening,
+`schema-2026-09-13-2130.sql`, and it carries the column and its comment. Then the
+file went.
