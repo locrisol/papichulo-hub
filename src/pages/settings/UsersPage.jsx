@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { canManageUser } from '@/lib/access'
+import { canManageUser, ALL_ROLES } from '@/lib/access'
 import { friendlyError } from '@/lib/errors'
-import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '@/lib/controlStyles'
+import { tableHeadRow, tableCard, badge, rowButton, pageTitle, secondaryButton } from '@/lib/controlStyles'
 import { latestByUser, lastUsed, agoWords } from '@/lib/loginEvents'
 import { fullDate } from '@/lib/dates'
 import SignInHistory from '@/components/settings/SignInHistory'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import ArrangeList from '@/components/ui/ArrangeList'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -23,8 +24,9 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Everybody, under the restaurant they belong to.
 //
-// Restaurants come in name order already and the users inside each keep the
-// order they arrived in, which is by name for the same reason.
+// Restaurants come in the order somebody arranged, and inside each one people
+// are highest role first, then by name, so the person who can do the most is at
+// the top rather than whoever happens to be called Ana.
 //
 // A restaurant with nobody in it still gets a heading. An empty group is the
 // answer to "who works there", and leaving it out looks like the restaurant
@@ -33,16 +35,31 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // account lands there until somebody says where it belongs.
 const NO_RESTAURANT = 'none'
 
+// Highest first, and the ladder comes from lib/access rather than a second list
+// written out here. ALL_ROLES runs employee upwards, so reversing it is the
+// order to read people in: the person who can do the most at the top.
+const BY_ROLE = [...ALL_ROLES].reverse()
+
+function byRoleThenName(a, b) {
+  const rank = BY_ROLE.indexOf(a.role) - BY_ROLE.indexOf(b.role)
+  if (rank !== 0) return rank
+  return (a.full_name || '').localeCompare(b.full_name || '')
+}
+
 function groupByRestaurant(users, restaurants) {
   const groups = restaurants.map(r => ({
     key: r.id,
     name: r.name,
-    users: users.filter(u => u.restaurant_id === r.id),
+    users: users.filter(u => u.restaurant_id === r.id).sort(byRoleThenName),
   }))
 
   const orphans = users.filter(u => !restaurants.some(r => r.id === u.restaurant_id))
   if (orphans.length > 0) {
-    groups.push({ key: NO_RESTAURANT, name: 'No restaurant set', users: orphans })
+    groups.push({
+      key: NO_RESTAURANT,
+      name: 'No restaurant set',
+      users: [...orphans].sort(byRoleThenName),
+    })
   }
   return groups
 }
@@ -58,6 +75,7 @@ export default function UsersPage() {
   // The sign in record. Super Admin only, and the table itself refuses
   // everybody else, so this stays empty for them whatever the page does.
   const [logins, setLogins] = useState([])
+  const [arranging, setArranging] = useState(false)
   const [showFor, setShowFor] = useState(null)
   const [showEvents, setShowEvents] = useState([])
   const seesLogins = user?.role === 'super_admin'
@@ -69,12 +87,14 @@ export default function UsersPage() {
   async function fetchData() {
     setLoading(true)
 
-    // Ordered by name. Without an order the database returns the rows however
-    // it likes, and updating a row moves it, so deactivating a user and turning
-    // them back on sent them somewhere else in the list.
+    // Both ordered. Without an order the database returns rows however it
+    // likes, and updating one moves it, so deactivating a user and turning them
+    // back on sent them somewhere else in the list. Users come back by name and
+    // are re-sorted by role once grouped; restaurants come back in the arranged
+    // order, with name as the tie-break so a fresh database is still stable.
     const [usersRes, restaurantsRes] = await Promise.all([
       supabase.from('users').select('*').order('full_name'),
-      supabase.from('restaurants').select('*').order('name')
+      supabase.from('restaurants').select('*').order('sort_order').order('name')
     ])
 
     if (usersRes.error) setError(friendlyError(usersRes.error))
@@ -150,6 +170,18 @@ export default function UsersPage() {
     else fetchData()
   }
 
+  // The order is written once, on Save, which is what ArrangeList expects.
+  // Only a super admin reaches this page at all, and only a super admin has a
+  // policy that lets them write a restaurant row, so the two agree.
+  async function saveOrder(ordered) {
+    const { error: e } = await supabase.from('restaurants').upsert(
+      ordered.map((r, i) => ({ ...r, sort_order: i })),
+    )
+    if (e) setError(friendlyError(e))
+    else await fetchData()
+    setArranging(false)
+  }
+
   // Words for the column. Anything inside a week reads as how long ago,
   // and past that a date: "used 34 days ago" is a figure nobody checks
   // against a calendar.
@@ -198,13 +230,23 @@ export default function UsersPage() {
         {/* Adding a user is not built yet. Creating an account needs the service
             role key, which cannot go in the browser, so the plan is to let people
             sign themselves up and have a manager approve them. That is #81. */}
-        <button
-          disabled
-          title="Adding a user is not built yet. See issue #81."
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg opacity-50 cursor-not-allowed"
-        >
-          + Add User
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {/* Only a super admin reaches this page, and only a super admin can
+              write a restaurant row, so the button does not need a guard the
+              route has already applied. */}
+          {restaurants.length > 1 && (
+            <button onClick={() => setArranging(true)} className={secondaryButton}>
+              Arrange restaurants
+            </button>
+          )}
+          <button
+            disabled
+            title="Adding a user is not built yet. See issue #81."
+            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg opacity-50 cursor-not-allowed"
+          >
+            + Add User
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -221,21 +263,32 @@ export default function UsersPage() {
           const open = !shut.includes(g.key)
           return (
           <section key={g.key}>
+            {/* The dark bar, on a phone as much as on a laptop.
+                On a wide screen the table under this carries its own dark head
+                row and the restaurant was named by a column, so losing the
+                column left the phone with nothing but plain text where the
+                laptop had a heading. This is that heading, at both sizes, and
+                the table's head row underneath is the smaller uppercase one, so
+                the two read as a title and its columns rather than as two bars
+                doing the same job. */}
             <button
               type="button"
               onClick={() => toggleGroup(g.key)}
               aria-expanded={open}
-              className="w-full flex items-center gap-2 text-left py-2 group"
+              className={`w-full flex items-center gap-2.5 text-left bg-sidebar px-4 py-3
+                ${open ? 'rounded-t-xl' : 'rounded-xl'}`}
             >
               <svg
                 viewBox="0 0 20 20" aria-hidden="true"
-                className={`w-4 h-4 flex-shrink-0 text-muted transition-transform ${open ? 'rotate-90' : ''}`}
+                className={`w-4 h-4 flex-shrink-0 text-green-300 transition-transform ${open ? 'rotate-90' : ''}`}
               >
                 <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2"
                       strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span className="font-serif text-lg font-bold text-gray-900">{g.name}</span>
-              <span className="text-sm text-muted">
+              <span className="font-serif text-base font-bold text-white">{g.name}</span>
+              {/* green-300 is 10.2 to 1 on the sidebar. See the note in
+                  AppLayout about what fails there. */}
+              <span className="text-xs text-green-300">
                 {g.users.length === 1 ? '1 person' : `${g.users.length} people`}
               </span>
             </button>
@@ -243,7 +296,7 @@ export default function UsersPage() {
             {open && (<>
         {/* Cards on a phone, the table on anything wider. Sideways scrolling
             put the status and the one button on this screen out of reach. */}
-        <div className="md:hidden space-y-3">
+        <div className="md:hidden space-y-3 pt-3">
           {g.users.map(u => (
             <div key={u.id} className="rounded-xl border border-border bg-white p-4">
               <div className="flex items-start justify-between gap-2">
@@ -288,7 +341,7 @@ export default function UsersPage() {
           ))}
         </div>
 
-        <div className={`${tableCard} hidden md:block`}>
+        <div className={`${tableCard} hidden md:block rounded-t-none`}>
           <table className="w-full text-sm">
             <thead>
               <tr className={tableHeadRow}>
@@ -360,6 +413,16 @@ export default function UsersPage() {
           )
         })}
         </div>
+      )}
+
+      {arranging && (
+        <ArrangeList
+          title="Arrange restaurants"
+          note="The order they are listed in here, and nowhere else yet."
+          items={restaurants}
+          onSave={saveOrder}
+          onClose={() => setArranging(false)}
+        />
       )}
 
       {showFor && (

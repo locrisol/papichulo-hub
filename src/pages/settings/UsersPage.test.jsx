@@ -6,14 +6,17 @@ import { mockSupabase } from '@/test/helpers'
 
 const me = { id: 'me', role: 'super_admin', restaurant_id: 'pc' }
 
+// Arranged, not alphabetical: Point Campus was put first.
 const RESTAURANTS = [
-    { id: 'dl', name: 'Dun Laoghaire' },
-    { id: 'pc', name: 'Point Campus' },
+    { id: 'pc', name: 'Point Campus', sort_order: 0 },
+    { id: 'dl', name: 'Dun Laoghaire', sort_order: 1 },
 ]
 
 // Ordered by name, the way the query returns them.
 const USERS = [
     { id: 'u1', full_name: 'Ana', role: 'employee', restaurant_id: 'dl', is_active: true },
+    { id: 'u4', full_name: 'Aaron', role: 'store_manager', restaurant_id: 'dl', is_active: true },
+    { id: 'u5', full_name: 'Zoe', role: 'owner', restaurant_id: 'dl', is_active: true },
     { id: 'me', full_name: 'Leandro', role: 'super_admin', restaurant_id: 'pc', is_active: true },
     { id: 'u3', full_name: 'Nobody Home', role: 'employee', restaurant_id: null, is_active: true },
 ]
@@ -41,11 +44,25 @@ describe('UsersPage, grouped by restaurant', () => {
         localStorage.clear()
     })
 
-    it('puts every restaurant up as its own heading, in name order', async () => {
+    it('puts the restaurants up in the arranged order, not alphabetically', async () => {
         await show()
         const headings = screen.getAllByRole('button', { expanded: true }).map(b => b.textContent)
-        expect(headings[0]).toContain('Dun Laoghaire')
-        expect(headings[1]).toContain('Point Campus')
+        expect(headings[0]).toContain('Point Campus')
+        expect(headings[1]).toContain('Dun Laoghaire')
+    })
+
+    // Zoe the owner above Aaron the store manager above Ana, so the order is
+    // the ladder rather than the alphabet.
+    it('sorts people by role, highest first, then by name', async () => {
+        await show()
+        const rows = document.querySelectorAll('table tbody tr td:first-child')
+        const names = [...rows].map(td => td.textContent.replace('you', '').trim())
+        expect(names.slice(0, 4)).toEqual(['Leandro', 'Zoe', 'Aaron', 'Ana'])
+    })
+
+    it('offers arranging only when there is more than one restaurant', async () => {
+        await show()
+        expect(screen.getByRole('button', { name: 'Arrange restaurants' })).toBeInTheDocument()
     })
 
     // A new account lands with no restaurant until somebody says where it goes,
@@ -60,8 +77,8 @@ describe('UsersPage, grouped by restaurant', () => {
 
     it('counts the people in each group', async () => {
         await show()
-        const dl = screen.getAllByRole('button', { expanded: true })[0]
-        expect(dl.textContent).toContain('1 person')
+        const dl = screen.getAllByRole('button', { expanded: true })[1]
+        expect(dl.textContent).toContain('3 people')
     })
 
     it('opens expanded, because somebody arriving wants people and not headings', async () => {
@@ -71,7 +88,7 @@ describe('UsersPage, grouped by restaurant', () => {
 
     it('hides a group when its heading is pressed, and leaves the others alone', async () => {
         await show()
-        const dl = screen.getAllByRole('button', { expanded: true })[0]
+        const dl = screen.getAllByRole('button', { expanded: true })[1]
         await userEvent.click(dl)
 
         expect(screen.queryByText('Ana')).not.toBeInTheDocument()
@@ -80,7 +97,7 @@ describe('UsersPage, grouped by restaurant', () => {
 
     it('remembers what was shut, so a reload does not reopen it', async () => {
         await show()
-        await userEvent.click(screen.getAllByRole('button', { expanded: true })[0])
+        await userEvent.click(screen.getAllByRole('button', { expanded: true })[1])
         expect(JSON.parse(localStorage.getItem('usersShutGroups'))).toEqual(['dl'])
     })
 
@@ -92,7 +109,7 @@ describe('UsersPage, grouped by restaurant', () => {
 
     it('still says who you are', async () => {
         await show()
-        const pc = screen.getAllByRole('button', { expanded: true })[1]
+        const pc = screen.getAllByRole('button', { expanded: true })[0]
         expect(within(pc.parentElement).getAllByText('you').length).toBeGreaterThan(0)
     })
 })
