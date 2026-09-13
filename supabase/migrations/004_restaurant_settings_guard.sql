@@ -28,7 +28,7 @@
 -- the report they would be forwarding.
 -- =====================================================================
 
--- â”€â”€ mail_from has to be one of ours, and has to be one line â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── mail_from has to be one of ours, and has to be one line ──────────────────
 
 alter table public.restaurants drop constraint if exists restaurants_mail_from_ours;
 alter table public.restaurants
@@ -42,7 +42,7 @@ comment on constraint restaurants_mail_from_ours on public.restaurants is
     'One line, no spaces, and on our own domain. The value lands in a mail '
     'header sent under the company name.';
 
--- â”€â”€ slug and is_active are a super admin's to change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── slug and is_active are a super admin's to change ─────────────────────────
 
 create or replace function public.restaurant_settings_guard()
 returns trigger
