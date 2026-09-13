@@ -1,7 +1,7 @@
 # Migrations
 
-`001` is written and **has not been run on the live database yet**. The next
-one is `002`.
+`001` is on live. `002`, `003` and `004` are written and **have not been run
+yet**. The next one is `005`.
 
 A migration in here that is not on live is normal for exactly as long as it
 takes somebody to run it. Everything before `001` is already on live and was
@@ -13,7 +13,7 @@ and from here that means **new functionality**, not catching up on anything.
 
 ## Adding one
 
-1. Write `002_what_it_does.sql` in here. One change, and a comment at the top
+1. Write `005_what_it_does.sql` in here. One change, and a comment at the top
    saying why, not what.
 2. Fold the same change into `../schema.sql` by hand, where it belongs by
    subject rather than at the end.
