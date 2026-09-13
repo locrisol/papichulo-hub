@@ -25,6 +25,10 @@ export function RestaurantProvider({ children }) {
     const [activeRestaurant, setActiveRestaurant] = useState(null)
     const [loading, setLoading] = useState(true)
 
+    // Same reasoning as AuthContext: the console knew why and the screen did
+    // not, so the screen said Loading until somebody gave up.
+    const [error, setError] = useState(null)
+
     
 
     const fetchRestaurants = useCallback(async () => {
@@ -44,9 +48,12 @@ export function RestaurantProvider({ children }) {
         // in the console to say why.
         if (error) {
             console.error('Could not load restaurants:', error.message)
+            setError(error.message)
         } else if (data.length === 0) {
             console.error('No restaurant found for this user. Check they have a restaurant_id and can read it.')
+            setError('This account is not attached to a restaurant that it can open.')
         } else {
+            setError(null)
             setRestaurants(data)
 
             // Which restaurant to open on, in this order:
@@ -85,7 +92,7 @@ export function RestaurantProvider({ children }) {
     }
 
     return (
-        <RestaurantContext.Provider value={{ restaurants, activeRestaurant, setActiveRestaurant, switchRestaurant, loading }}>
+        <RestaurantContext.Provider value={{ restaurants, activeRestaurant, setActiveRestaurant, switchRestaurant, loading, error }}>
             {children}
         </RestaurantContext.Provider>
     )
