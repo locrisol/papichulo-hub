@@ -22,6 +22,7 @@ import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
 import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 
 // Every column in the table, in the order it appears.
 //
@@ -997,20 +998,14 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => {
+          <ShowInactiveButton
+            showing={showInactive}
+            onToggle={() => {
               const next = !showInactive
               setShowInactive(next)
               localStorage.setItem('productsShowInactive', next)
             }}
-            className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${
-              showInactive
-                ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                : 'border-border text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-          </button>
+          />
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
             className={primaryButton()}

@@ -16,6 +16,17 @@ export const ADMIN_ONLY = ['super_admin']
 // Owners see their restaurants but do not change how one is set up.
 export const RESTAURANT_CONFIG = ['store_manager', 'super_admin']
 
+// Who can see records that have been turned off: deactivated products, menu
+// items no longer sold, suppliers nobody buys from any more.
+//
+// His rule, 13 September 2026, and it is wider than the screen it came from.
+// Suppliers had a Show Inactive that everybody could use, with a comment saying
+// a filter is not a change so it was harmless. It is not about harm: a record
+// somebody turned off is not an employee's business. The rule is enforced by
+// ShowInactiveButton rather than remembered by each page, so it holds on pages
+// that do not exist yet.
+export const SEES_INACTIVE = MANAGERS
+
 export function can(user, allowed) {
     if (!user?.role) return false
     return allowed.includes(user.role)
