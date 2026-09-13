@@ -40,8 +40,10 @@ function rgb(hex) {
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-// The same colour laid over white, for the band behind a summary row.
-function tint(hex, amount) {
+// The same colour laid over white, for the band behind a summary row. Same
+// sum as tint in roster.js, which returns a hex string because the screen
+// wants one. jsPDF wants three numbers, so this one hands back the channels.
+function tintRgb(hex, amount) {
     return rgb(hex).map(c => Math.round(255 - (255 - c) * amount))
 }
 
@@ -224,7 +226,7 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
 
     function summaryRow(row) {
         ensureSpace(7)
-        pdf.setFillColor(...tint(row.ink, 0.12))
+        pdf.setFillColor(...tintRgb(row.ink, 0.12))
         pdf.rect(marginX, y - 4.2, colTotalRight - marginX, 5.4, 'F')
         pdf.setFillColor(...rgb(row.ink))
         pdf.circle(marginX + 3, y - 1.4, 1.2, 'F')

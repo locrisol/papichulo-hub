@@ -13,11 +13,17 @@
 // job; this only asks whether it exists and exports something.
 import { describe, it, expect } from 'vitest'
 
+// Both extensions everywhere, and nested, because the four globs used to be
+// jsx under components and pages, jsx in context and flat js in lib. That
+// quietly skipped App.jsx itself, the four plain files the contexts were split
+// into, and the one hook that lives under components without being a component.
+// Six modules nothing was loading, in a test whose whole job is loading them.
 const modules = {
-    ...import.meta.glob('../components/**/*.jsx'),
-    ...import.meta.glob('../pages/**/*.jsx'),
-    ...import.meta.glob('../context/*.jsx'),
-    ...import.meta.glob('../lib/*.js'),
+    ...import.meta.glob('../App.jsx'),
+    ...import.meta.glob('../components/**/*.{js,jsx}'),
+    ...import.meta.glob('../pages/**/*.{js,jsx}'),
+    ...import.meta.glob('../context/**/*.{js,jsx}'),
+    ...import.meta.glob('../lib/**/*.js'),
 }
 
 const paths = Object.keys(modules)
@@ -28,7 +34,7 @@ describe('every module loads', () => {
     it('finds a sensible number of them', () => {
         // If a glob stops matching, this is the only thing that would notice:
         // an empty list passes every test below it.
-        expect(paths.length).toBeGreaterThan(140)
+        expect(paths.length).toBeGreaterThan(165)
     })
 
     it.each(paths)('%s', async path => {
