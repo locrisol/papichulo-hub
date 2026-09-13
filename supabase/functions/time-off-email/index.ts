@@ -146,6 +146,16 @@ async function byGmail(mail: Mail, user: string, password: string) {
         })
 
         try {
+            // The key is left out entirely when there is nothing to attach,
+            // rather than passed as undefined.
+            //
+            // Not tidiness. A time off request carries no PDF, only an answer
+            // does, so every request was sending attachments: undefined, and
+            // every request failed with Gmail dropping the connection about
+            // 850ms in while the weekly report on the same account, the same
+            // host and the same credentials went out fine. This was the only
+            // difference between the two send calls, and the report does not
+            // pass the key at all.
             await client.send({
                 from: mail.from,
                 to: mail.to,
@@ -153,14 +163,16 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 subject: mail.subject,
                 content: mail.text,
                 html: mail.html,
-                attachments: mail.attachment
-                    ? [{
-                        filename: mail.attachment.filename,
-                        contentType: 'application/pdf',
-                        encoding: 'base64',
-                        content: mail.attachment.content,
-                    }]
-                    : undefined,
+                ...(mail.attachment
+                    ? {
+                        attachments: [{
+                            filename: mail.attachment.filename,
+                            contentType: 'application/pdf',
+                            encoding: 'base64',
+                            content: mail.attachment.content,
+                        }],
+                    }
+                    : {}),
             })
         } finally {
             // Left open, the function is held until it times out. But closing a
