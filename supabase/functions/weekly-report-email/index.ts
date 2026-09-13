@@ -42,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice } from './email.js'
+import { senderFor, heldNotice, deliverable } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -86,52 +86,86 @@ const from = (restaurantName?: string, address?: string | null) =>
 // 465 by default, which is TLS from the first byte. See the connection below.
 const smtpPort = Number(Deno.env.get('SMTP_PORT') || 465)
 
+// denomailer's writer can fail on a socket the far end already dropped, after
+// the handler has finished with it. That arrives as an event loop
+// UncaughtException rather than a rejected promise anybody awaited, so no try
+// around a call can catch it: the isolate dies and the app is told only
+// "Failed to send a request to the Edge Function", which reads like the app is
+// broken when the mail has already gone.
+//
+// Caught here, named, and allowed to pass. This hides nothing that a caller
+// could have acted on: by the time it fires, the send has either happened or
+// thrown somewhere that was caught properly.
+globalThis.addEventListener('unhandledrejection', (event) => {
+    console.warn('an unawaited failure after sending, ignored:', event.reason)
+    event.preventDefault()
+})
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
-    const client = new SMTPClient({
-        connection: {
-            // smtp.gmail.com sends only as the account that logged in.
-            // smtp-relay.gmail.com will send as any address on the domain,
-            // which is what lets a new restaurant have a sender of its own
-            // without anybody creating an alias for it in the admin console.
-            //
-            // A secret rather than a constant so that switch is a setting
-            // change and not a deploy.
-            //
-            // The port decides how the connection is encrypted, because
-            // getting those two out of step is a hang rather than an error.
-            // 465 is TLS from the first byte. Anything else, 587 in
-            // practice, starts in the clear and upgrades with STARTTLS,
-            // which is what tls:false means here.
-            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
-            port: smtpPort,
-            tls: smtpPort === 465,
-            auth: { username: user, password },
-        },
-    })
-
-    try {
-        await client.send({
-            from: mail.from,
-            to: mail.to,
-            replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
-            subject: mail.subject,
-            content: mail.text,
-            html: mail.html,
+    async function attempt() {
+        const client = new SMTPClient({
+            connection: {
+                // smtp.gmail.com sends only as the account that logged in.
+                // smtp-relay.gmail.com will send as any address on the domain,
+                // which is what lets a new restaurant have a sender of its own
+                // without anybody creating an alias for it in the admin console.
+                //
+                // A secret rather than a constant so that switch is a setting
+                // change and not a deploy.
+                //
+                // The port decides how the connection is encrypted, because
+                // getting those two out of step is a hang rather than an error.
+                // 465 is TLS from the first byte. Anything else, 587 in
+                // practice, starts in the clear and upgrades with STARTTLS,
+                // which is what tls:false means here.
+                hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+                port: smtpPort,
+                tls: smtpPort === 465,
+                auth: { username: user, password },
+            },
         })
-    } finally {
-        // Left open, the function is held until it times out. But closing a
-        // connection the far end already dropped throws BadResource, and a
-        // throw in here replaces whatever went wrong with a useless one: the
-        // isolate dies and the app is told only "failed to send a request to
-        // the edge function", which is how a plain SMTP refusal came back
-        // with no reason attached.
+
         try {
-            await client.close()
-        } catch (closing) {
-            console.warn('the SMTP connection was already gone', closing)
+            await client.send({
+                from: mail.from,
+                to: mail.to,
+                replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
+                subject: mail.subject,
+                content: mail.text,
+                html: mail.html,
+            })
+        } finally {
+            // Left open, the function is held until it times out. But closing a
+            // connection the far end already dropped throws BadResource, and a
+            // throw in here replaces whatever went wrong with a useless one: the
+            // isolate dies and the app is told only "failed to send a request to
+            // the edge function", which is how a plain SMTP refusal came back
+            // with no reason attached.
+            try {
+                await client.close()
+            } catch (closing) {
+                console.warn('the SMTP connection was already gone', closing)
+            }
         }
+    }
+
+    // One more go if the first fails, and no more than that.
+    //
+    // What this answers is a dropped TLS connection to Gmail, seen twice in
+    // September, both times after the mail had almost certainly gone out. It
+    // cannot be reproduced on demand, so there is nothing clever to do: build a
+    // fresh client and try again, and let a second failure be the real one.
+    //
+    // Every send here is somebody pressing a button, so the worst case of a
+    // double send is the same report arriving twice. That is a great deal
+    // better than it not arriving while the app says it is broken.
+    try {
+        await attempt()
+    } catch (first) {
+        console.warn('the first attempt to send failed, trying once more:', first)
+        await attempt()
     }
 }
 
@@ -316,6 +350,13 @@ Deno.serve(async (req) => {
             ]) {
                 const key = String(address || '').trim().toLowerCase()
                 if (!key || seen.has(key)) continue
+                // An address that provably cannot receive is dropped rather
+                // than attempted. One refusal can take the whole send with it,
+                // and the people who should have had it would never know.
+                if (!deliverable(key)) {
+                    console.warn('skipping an address that cannot receive mail:', key)
+                    continue
+                }
                 seen.add(key)
                 to.push(String(address).trim())
             }

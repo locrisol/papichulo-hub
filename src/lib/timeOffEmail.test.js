@@ -3,6 +3,7 @@ import {
     escapeHtml, fmtDate, whenWords, dayCount, isPartDay,
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
+    deliverable,
 } from '../../supabase/functions/time-off-email/email'
 
 // The words in the emails. It lives in the function's own folder because only
@@ -144,5 +145,48 @@ describe('somebody answered', () => {
     it('names the person who answered it', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).html)
             .toContain('Leandro Presti')
+    })
+})
+
+describe('deliverable', () => {
+    // The one that started it: a real store manager on the live database whose
+    // address can never receive, so every request to that restaurant tried it.
+    it('refuses a reserved TLD', () => {
+        expect(deliverable('test.manager@papichulo.test')).toBe(false)
+        expect(deliverable('someone@thing.example')).toBe(false)
+        expect(deliverable('someone@thing.invalid')).toBe(false)
+        expect(deliverable('root@localhost')).toBe(false)
+    })
+
+    it('refuses the example.com family, which is reserved the same way', () => {
+        expect(deliverable('a@example.com')).toBe(false)
+        expect(deliverable('a@example.net')).toBe(false)
+        expect(deliverable('a@example.org')).toBe(false)
+    })
+
+    // It is not address validation. Anything that is not provably undeliverable
+    // gets tried, because guessing at mailboxes is how real people stop getting
+    // their mail.
+    it('lets everything else through, including the odd looking', () => {
+        expect(deliverable('point+maria@papichulo.ie')).toBe(true)
+        expect(deliverable('leandroclpresti+dltest1@gmail.com')).toBe(true)
+        expect(deliverable('a@sub.domain.co.uk')).toBe(true)
+        expect(deliverable('  spaced@papichulo.ie  ')).toBe(true)
+    })
+
+    it('refuses anything that is not an address at all', () => {
+        expect(deliverable('')).toBe(false)
+        expect(deliverable(null)).toBe(false)
+        expect(deliverable(undefined)).toBe(false)
+        expect(deliverable('no-at-sign')).toBe(false)
+        expect(deliverable('@nothing.ie')).toBe(false)
+        expect(deliverable('nothing@')).toBe(false)
+    })
+
+    // example.com is reserved; examples.com is somebody's domain.
+    it('does not catch a domain that merely looks like one', () => {
+        expect(deliverable('a@examples.com')).toBe(true)
+        expect(deliverable('a@testing.ie')).toBe(true)
+        expect(deliverable('a@mytest.com')).toBe(true)
     })
 })
