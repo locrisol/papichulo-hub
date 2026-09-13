@@ -159,10 +159,17 @@ async function byGmail(mail: Mail, user: string, password: string) {
             await client.send({
                 from: mail.from,
                 to: mail.to,
-                replyTo: Deno.env.get('MAIL_REPLY_TO') || undefined,
                 subject: mail.subject,
                 content: mail.text,
                 html: mail.html,
+                // Optional keys are left out when empty rather than passed as
+                // undefined, which is how the weekly report's call is shaped
+                // and it is the one that works. This one always passed
+                // replyTo: undefined, because MAIL_REPLY_TO is not set, while
+                // the report always has a real one: the publisher's address.
+                ...(Deno.env.get('MAIL_REPLY_TO')
+                    ? { replyTo: Deno.env.get('MAIL_REPLY_TO') }
+                    : {}),
                 ...(mail.attachment
                     ? {
                         attachments: [{
