@@ -511,9 +511,9 @@ export default function CostDashboardPage() {
                             <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
                                 <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
                                 {!row ? (
-                                    <span className="text-gray-300 italic text-xs">nothing entered yet</span>
+                                    <span className="text-muted italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (
-                                    <span className="text-gray-400 text-xs">closed</span>
+                                    <span className="text-muted text-xs">closed</span>
                                 ) : (
                                     /* Net over gross on a phone, side by side once
                                        there is room. Three things on one line put
