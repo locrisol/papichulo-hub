@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "full_name" character varying(255) NOT NULL,
     "role" character varying(20) NOT NULL,
     "restaurant_id" "uuid",
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee')))
 );
@@ -1195,21 +1195,24 @@ CREATE OR REPLACE FUNCTION "public"."get_my_role"() RETURNS "text"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  SELECT role FROM public.users WHERE id = auth.uid();
+  SELECT role FROM public.users WHERE id = auth.uid() AND is_active;
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_restaurant_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  SELECT restaurant_id FROM public.users WHERE id = auth.uid();
+  SELECT restaurant_id FROM public.users WHERE id = auth.uid() AND is_active;
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_employee_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  select id from public.employees where user_id = auth.uid() limit 1
+  select e.id from public.employees e
+    join public.users u on u.id = e.user_id
+   where e.user_id = auth.uid() and u.is_active
+   limit 1
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
@@ -1715,7 +1718,7 @@ ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "users_select" ON "public"."users" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING (("id" = ( SELECT "auth"."uid"() )));
+CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING ((("id" = ( SELECT "auth"."uid"() )) AND "is_active"));
 
 CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
 
