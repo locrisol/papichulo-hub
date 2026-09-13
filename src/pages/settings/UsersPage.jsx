@@ -20,6 +20,33 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // Deactivating is the only change that can be made from here, and there is no
 // deleting. Everything a person did stays pointing at their row, so removing it
 // would break the history of every count and every waste entry they logged.
+
+// Everybody, under the restaurant they belong to.
+//
+// Restaurants come in name order already and the users inside each keep the
+// order they arrived in, which is by name for the same reason.
+//
+// A restaurant with nobody in it still gets a heading. An empty group is the
+// answer to "who works there", and leaving it out looks like the restaurant
+// does not exist. Anybody with no restaurant set goes in a group of their own
+// at the end, because that is a thing to fix rather than a place to work: a new
+// account lands there until somebody says where it belongs.
+const NO_RESTAURANT = 'none'
+
+function groupByRestaurant(users, restaurants) {
+  const groups = restaurants.map(r => ({
+    key: r.id,
+    name: r.name,
+    users: users.filter(u => u.restaurant_id === r.id),
+  }))
+
+  const orphans = users.filter(u => !restaurants.some(r => r.id === u.restaurant_id))
+  if (orphans.length > 0) {
+    groups.push({ key: NO_RESTAURANT, name: 'No restaurant set', users: orphans })
+  }
+  return groups
+}
+
 export default function UsersPage() {
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -138,6 +165,28 @@ export default function UsersPage() {
   }
 
   const lastSeen = latestByUser(logins)
+  const groups = groupByRestaurant(users, restaurants)
+
+  // Which groups are shut, kept per browser like the other list preferences.
+  // Open is the default: somebody arriving wants to see people, not headings.
+  const [shut, setShut] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('usersShutGroups') || '[]')
+    } catch {
+      return []
+    }
+  })
+
+  function toggleGroup(key) {
+    const next = shut.includes(key) ? shut.filter(k => k !== key) : [...shut, key]
+    setShut(next)
+    try {
+      localStorage.setItem('usersShutGroups', JSON.stringify(next))
+    } catch {
+      // A private window refuses to store it. The page still works, the
+      // choice just does not survive a reload.
+    }
+  }
 
   return (
     <div>
@@ -167,11 +216,35 @@ export default function UsersPage() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading users...</div>
       ) : (
-        <>
+        <div className="space-y-5">
+        {groups.map(g => {
+          const open = !shut.includes(g.key)
+          return (
+          <section key={g.key}>
+            <button
+              type="button"
+              onClick={() => toggleGroup(g.key)}
+              aria-expanded={open}
+              className="w-full flex items-center gap-2 text-left py-2 group"
+            >
+              <svg
+                viewBox="0 0 20 20" aria-hidden="true"
+                className={`w-4 h-4 flex-shrink-0 text-muted transition-transform ${open ? 'rotate-90' : ''}`}
+              >
+                <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="font-serif text-lg font-bold text-gray-900">{g.name}</span>
+              <span className="text-sm text-muted">
+                {g.users.length === 1 ? '1 person' : `${g.users.length} people`}
+              </span>
+            </button>
+
+            {open && (<>
         {/* Cards on a phone, the table on anything wider. Sideways scrolling
             put the status and the one button on this screen out of reach. */}
         <div className="md:hidden space-y-3">
-          {users.map(u => (
+          {g.users.map(u => (
             <div key={u.id} className="rounded-xl border border-border bg-white p-4">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-gray-900">
@@ -185,11 +258,11 @@ export default function UsersPage() {
                 </span>
               </div>
 
+              {/* No restaurant here any more: the heading above says it. */}
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className={`${badge} bg-green-50 text-green-700 capitalize`}>
                   {u.role.replace('_', ' ')}
                 </span>
-                <span className="text-xs text-gray-500">{getRestaurantName(u.restaurant_id)}</span>
               </div>
 
               {seesLogins && (
@@ -221,7 +294,6 @@ export default function UsersPage() {
               <tr className={tableHeadRow}>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Role</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Restaurant</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider">Status</th>
                 {/* Only for Super Admin. The table itself returns nothing to
                     anybody else, and a heading over an empty column is worse
@@ -233,7 +305,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u, i) => (
+              {g.users.map((u, i) => (
                 <tr key={u.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {u.full_name}
@@ -244,7 +316,6 @@ export default function UsersPage() {
                       {u.role.replace('_', ' ')}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{getRestaurantName(u.restaurant_id)}</td>
                   <td className="px-4 py-3">
                     <span className={`${badge} ${
                       u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
@@ -280,7 +351,15 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
-        </>
+            </>)}
+
+            {g.users.length === 0 && open && (
+              <p className="text-sm text-muted italic px-1 pb-1">Nobody here yet.</p>
+            )}
+          </section>
+          )
+        })}
+        </div>
       )}
 
       {showFor && (
