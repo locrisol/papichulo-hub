@@ -1,15 +1,6 @@
 # Migrations
 
-Empty of anything outstanding. `001` to `004` are on live as of 13 September
-2026 and the next one is `005`.
-
-They are kept here rather than folded away because they are the record of how a
-database that already existed caught up with `schema.sql`. The sixty three
-before them were folded away once every database that mattered had run them.
-
-A migration in here that is not on live is normal for exactly as long as it
-takes somebody to run it. Everything before `001` is already on live and was
-folded away, which is why this folder started again.
+Empty. The next one is `005`.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,
@@ -31,16 +22,24 @@ and from here that means **new functionality**, not catching up on anything.
    without touching `schema.sql`, but it cannot tell whether what you folded in
    was right.
 
+## When one can be taken out
+
+Not when it has been run. When there is a **backup newer than the change it
+makes**. Until that exists, the file is the only written path from the newest
+backup to the running database, and deleting it throws that path away.
+
 ## What was here before
 
-Sixty three numbered migrations from May to September 2026, then ten more in
-September that brought the live database up to the rewritten schema. All of them
-are in git history and under the `pre-rewrite` tag, and nothing has been lost.
+Sixty three numbered migrations from May to September 2026, then ten in
+September that brought the live database up to the rewritten schema, then four
+more that answered the Supabase advisor: search paths pinned on seven
+functions, `auth.uid()` wrapped in the five policies that still called it bare,
+a role named on all eighty one policies, and three foreign key indexes.
 
-The ten were run on the live database on 13 September and then folded away,
-which is why this is empty rather than starting at `011`.
+All of them are in git history and under the `pre-rewrite` tag, and nothing has
+been lost.
 
-## How that was checked
+## How the ten were checked
 
 Not by trusting the fold. The live database was dumped **after** the ten had
 been run, a second database was built from `schema.sql` alone with no migrations
@@ -63,3 +62,18 @@ key, index, policy, function, trigger and view. Two things were brought into
 line with live rather than left to differ, since live is what actually runs: the
 order of three columns on `stock_takes`, and the body of `rls_auto_enable`,
 which arrived on live without a migration and had been retyped shorter here.
+
+## How the four were checked
+
+Live was dumped again on 13 September, after all four had run, and the dump was
+read against the one from the day before:
+
+- Eighty one policies, every one of them naming `authenticated`. The day before
+  there were eighty seven and **not one named a role**, so every one applied to
+  PUBLIC.
+- No policy calls `auth.uid()` directly any more. Twelve did.
+- Twenty functions pin a search path, up from seven.
+- The three indexes are there.
+
+That dump is in `papichulo-backups` as `schema-2026-09-13.sql`, with the roles
+and the data beside it, and the day before is still there too.
