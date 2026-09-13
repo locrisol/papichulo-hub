@@ -15,3 +15,9 @@
 //
 // Nothing imports this. It exists for the editor and for anyone running tsc
 // over the project, and it has no effect on the build, which never sees it.
+//
+// A note on its neighbour, jsconfig.json, since a JSON file cannot hold a
+// comment. It has no baseUrl. TypeScript 7 removed the option outright, and
+// without one the paths are read relative to the config file, which is where
+// they point anyway. Checked against 5.9, 6.0 and 7.0: clean on all three,
+// with every @/ import resolving.
