@@ -7,9 +7,8 @@
     "jsx": "react-jsx",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "target": "esnext",
     "checkJs": false
   },
-  "include": ["src/**/*", "tests/**/*", "vite.config.js"],
+  "include": ["src", "tests", "vite.config.js", "vitest.rls.config.js"],
   "exclude": ["node_modules", "dist"]
 }
