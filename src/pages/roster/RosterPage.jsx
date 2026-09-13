@@ -1,39 +1,40 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { useAuth } from '../../context/AuthContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { friendlyError } from '../../lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '../../lib/dates'
-import { DAY_NAMES, dayName } from '../../lib/events'
-import { fmtMoney } from '../../lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '../../lib/team'
-import { fullDayRun, fullDayWords } from '../../lib/workRun'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { useAuth } from '@/context/auth'
+import { useConfirm } from '@/context/confirm'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
+import { DAY_NAMES, dayName } from '@/lib/events'
+import { fmtMoney } from '@/lib/format'
+import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '@/lib/team'
+import { fullDayRun, fullDayWords } from '@/lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
-} from '../../lib/roster'
-import { checkWeek, findingsByEmployee, overlapFindings } from '../../lib/workRules'
-import { openGaps, asCleared } from '../../lib/timeOff'
-import { emailTheAnswer } from '../../lib/timeOffMail'
-import { absenceRange } from '../../lib/absences'
-import TimeOffDeskModal from '../../components/TimeOffDeskModal'
-import { writesFor, requestsOnShift } from '../../lib/shiftRequests'
-import RosterDay from '../../components/RosterDay'
-import RosterWeek from '../../components/RosterWeek'
-import ShareWeekButton from '../../components/ShareWeekButton'
-import OpeningHoursModal from '../../components/OpeningHoursModal'
-import BreakRulesModal from '../../components/BreakRulesModal'
-import RosterRulesModal from '../../components/RosterRulesModal'
-import ShiftDialog from '../../components/ShiftDialog'
-import TimeOffDialog from '../../components/TimeOffDialog'
-import WeeklyExtrasModal from '../../components/WeeklyExtrasModal'
-import RequestDeskModal from '../../components/RequestDeskModal'
-import DayNoteDialog from '../../components/DayNoteDialog'
-import Modal from '../../components/Modal'
-import EmployeeForm from '../../components/EmployeeForm'
+} from '@/lib/roster'
+import { checkWeek, findingsByEmployee, overlapFindings } from '@/lib/workRules'
+import { openGaps, asCleared } from '@/lib/timeOff'
+import { emailTheAnswer } from '@/lib/timeOffMail'
+import { absenceRange } from '@/lib/absences'
+import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
+import { writesFor, requestsOnShift } from '@/lib/shiftRequests'
+import RosterDay from '@/components/roster/RosterDay'
+import RosterWeek from '@/components/roster/RosterWeek'
+import ShareWeekButton from '@/components/roster/ShareWeekButton'
+import OpeningHoursModal from '@/components/settings/OpeningHoursModal'
+import BreakRulesModal from '@/components/settings/BreakRulesModal'
+import RosterRulesModal from '@/components/settings/RosterRulesModal'
+import ShiftDialog from '@/components/roster/ShiftDialog'
+import TimeOffDialog from '@/components/roster/TimeOffDialog'
+import WeeklyExtrasModal from '@/components/roster/WeeklyExtrasModal'
+import RequestDeskModal from '@/components/roster/RequestDeskModal'
+import DayNoteDialog from '@/components/roster/DayNoteDialog'
+import Modal from '@/components/ui/Modal'
+import EmployeeForm from '@/components/team/EmployeeForm'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Building the week.
 //
@@ -93,10 +94,6 @@ export default function RosterPage() {
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
-    const toMinutesSafe = t => {
-        const [h, m] = String(t).split(':').map(Number)
-        return h * 60 + m
-    }
     const dates = weekDates(weekStart)
     const date = dates[dayIndex]
     const weekEnd = dates[6]
@@ -500,7 +497,10 @@ export default function RosterPage() {
         setSaving(true)
         setError('')
 
-        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        // shiftHours, not the difference, because a shift can cross midnight.
+        // Subtracting straight makes 22:00 to 02:00 minus twenty hours, and
+        // breakFor then hands back the wrong break for it.
+        const hours = shiftHours({ starts_at: startsAt, ends_at: endsAt })
         const { error: err } = await supabase.from('roster_shifts').insert({
             restaurant_id: restaurantId,
             employee_id: employeeId,
@@ -521,7 +521,10 @@ export default function RosterPage() {
     // the whole reason it is not typed by hand.
     async function resizeShift(shift, startsAt, endsAt) {
         setError('')
-        const hours = (toMinutesSafe(endsAt) - toMinutesSafe(startsAt)) / 60
+        // shiftHours, not the difference, because a shift can cross midnight.
+        // Subtracting straight makes 22:00 to 02:00 minus twenty hours, and
+        // breakFor then hands back the wrong break for it.
+        const hours = shiftHours({ starts_at: startsAt, ends_at: endsAt })
         const { error: err } = await supabase.from('roster_shifts').update({
             starts_at: startsAt,
             ends_at: endsAt,
@@ -629,7 +632,7 @@ export default function RosterPage() {
         published: { text: 'Published', cls: 'bg-green-50 text-green-700' },
     }[state]
 
-    if (!restaurantId) return <p className="text-sm text-gray-400">Pick a restaurant first.</p>
+    if (!restaurantId) return <p className="text-sm text-muted">Pick a restaurant first.</p>
 
     return (
         <div className="w-full">
@@ -764,10 +767,10 @@ export default function RosterPage() {
             )}
 
             {clashes.length > 0 && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3 mb-4">
+                <ErrorBanner className="mb-4">
                     {clashes.length === 1 ? 'One person is' : `${clashes.length} people are`} rostered in two places at
                     once this week: {clashes.map(([a]) => employeesById[a.employee_id]?.full_name).join(', ')}.
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Day tabs. */}
@@ -933,7 +936,7 @@ export default function RosterPage() {
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : view === 'week' ? (
                 <RosterWeek
                     shiftMark={shift => (

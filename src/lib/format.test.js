@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney, fmtQty, fmtUnitCost } from './format'
+import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num } from '@/lib/format'
 
 describe('fmtMoney', () => {
   it('formats a value over 1000 with a thousands separator and 2 decimals', () => {
@@ -92,5 +92,37 @@ describe('fmtUnitCost', () => {
 
     it('does not sign a zero that only rounds to nothing', () => {
         expect(fmtUnitCost(-0.000001)).toBe('€0.0000')
+    })
+})
+
+describe('fmtPct', () => {
+    it('prints one decimal by default', () => {
+        expect(fmtPct(28.44)).toBe('28.4%')
+        expect(fmtPct(0)).toBe('0.0%')
+    })
+
+    it('takes a different precision when a screen wants one', () => {
+        expect(fmtPct(28.444, 2)).toBe('28.44%')
+    })
+
+    it('says nothing rather than NaN%', () => {
+        expect(fmtPct(null)).toBe('—')
+        expect(fmtPct(undefined)).toBe('—')
+        expect(fmtPct(NaN)).toBe('—')
+    })
+})
+
+describe('num', () => {
+    it('takes what the database gives back', () => {
+        expect(num('12.50')).toBe(12.5)
+        expect(num(12.5)).toBe(12.5)
+    })
+
+    // The whole reason it exists: one NaN in a reduce loses the week's total.
+    it('turns everything unusable into zero, never NaN', () => {
+        expect(num(null)).toBe(0)
+        expect(num(undefined)).toBe(0)
+        expect(num('')).toBe(0)
+        expect(num('not a number')).toBe(0)
     })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { INVOICE_CATEGORIES, invoiceCategory, groupByDay } from './invoiceCategories'
+import { INVOICE_CATEGORIES, invoiceCategory, groupByDay } from '@/lib/invoiceCategories'
 
 describe('invoiceCategory', () => {
     it('finds each of the four', () => {

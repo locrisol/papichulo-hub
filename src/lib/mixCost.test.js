@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateMixCost, resolveUnitCost, menuItemCost } from './mixCost'
+import { calculateMixCost, resolveUnitCost, menuItemCost } from '@/lib/mixCost'
 
 // --- Test fixtures shaped like real rows ---------------------------------
 

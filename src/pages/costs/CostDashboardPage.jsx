@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '../../lib/dates'
-import { resolveTarget } from '../../lib/costTargets'
-import CostTargetModal from '../../components/CostTargetModal'
-import { dateField, jumpButton, card, rowButton, jumpLabel } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { friendlyError } from '../../lib/errors'
-import { tendersToShow } from '../../lib/salesTenders'
-import WeekTakenChart from '../../components/WeekTakenChart'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num, fmtPct } from '@/lib/format'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '@/lib/dates'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
+import CostTargetModal from '@/components/costs/CostTargetModal'
+import { dateField, jumpButton, card, rowButton, jumpLabel } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { friendlyError } from '@/lib/errors'
+import { tendersToShow } from '@/lib/salesTenders'
+import WeekTakenChart from '@/components/costs/WeekTakenChart'
+import { DAY_NAMES } from '@/lib/events'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The cost dashboard. Everything else in the Hub feeds this: sales give the
 // denominator, invoices give food and packaging, labour gives hours times rate,
@@ -29,13 +32,7 @@ import WeekTakenChart from '../../components/WeekTakenChart'
 const WASTE_GOOD_BELOW = 3
 const WASTE_WARN_BELOW = 5
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The colour of a figure on the gross profit run down, from the same verdict
 // the cards at the top of the page use. Grey where there is no target to judge
@@ -57,7 +54,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
         green: 'text-green-700',
         amber: 'text-amber-600',
         red: 'text-red-600',
-        none: 'text-gray-400',
+        none: 'text-muted',
     }[status]
 
     const barColour = {
@@ -89,7 +86,7 @@ function KpiCard({ label, pct, target, amount, status, onEdit, temporaryUntil, f
 
             <div className="flex items-baseline gap-2 mb-1">
                 <span className={`font-serif text-3xl font-bold ${colour}`}>
-                    {pct == null ? '-' : `${pct.toFixed(1)}%`}
+                    {fmtPct(pct)}
                 </span>
                 {target ? (
                     <span className="text-sm text-muted">/ {target}% target</span>
@@ -122,7 +119,7 @@ export default function CostDashboardPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
-    const isManager = ['super_admin', 'store_manager'].includes(user?.role)
+    const isManager = can(user, RESTAURANT_CONFIG)
 
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     const [pickerDate, setPickerDate] = useState(weekStart)
@@ -138,9 +135,7 @@ export default function CostDashboardPage() {
     // a week from before the till changed still splits the way it was taken.
     const [tenders, setTenders] = useState([])
 
-    const [loading, setLoading] = useState(true)
-    // Whether this page has ever finished loading, which is not the same
-    // question as whether it is loading now.
+    // Whether this page has ever finished loading.
     //
     // The first arrival painted the week picker and the cards straight away and
     // then dropped a notice in above them once the figures came back, shoving
@@ -150,7 +145,13 @@ export default function CostDashboardPage() {
     //
     // Only the first. Stepping to another week keeps what is on screen and
     // swaps the numbers underneath it, the same as the roster does, because
-    // blanking the page on every press is how you lose your place in it.
+    // blanking the page on every press is how you lose your place in it. The
+    // week in the heading changes on the press, so the press is answered even
+    // though the figures under it are a moment behind.
+    //
+    // There was a loading beside this, true whenever a fetch was in flight, and
+    // the only thing reading it was the pair of notices below. Nothing wants to
+    // know that now.
     const [ready, setReady] = useState(false)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
@@ -162,45 +163,62 @@ export default function CostDashboardPage() {
     useEffect(() => {
         if (!restaurantId) return
 
-        function finishLoading() {
-            setLoading(false)
-            setReady(true)
-        }
-
         async function load() {
-            setLoading(true)
             setError('')
 
             const end = addDays(weekStart, 6)
 
-            const { data: sales, error: sErr } = await supabase
-                .from('sales_records')
-                .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
-                .eq('restaurant_id', restaurantId)
-                .gte('sale_date', weekStart)
-                .lte('sale_date', end)
+            // All six at once. Not one of them needs anything from another,
+            // and this is the page everybody but an employee lands on, so
+            // waiting for each in turn was six round trips of pure latency
+            // before a single figure appeared. The roster does it this way
+            // already.
+            const [
+                { data: sales, error: sErr },
+                { data: tends, error: tErr },
+                { data: invoices, error: iErr },
+                { data: labour, error: lErr },
+                { data: waste, error: wErr },
+                { data: overrideRows, error: oErr },
+            ] = await Promise.all([
+                supabase.from('sales_records')
+                    .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('sale_date', weekStart)
+                    .lte('sale_date', end),
+                supabase.from('sales_tenders')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .order('sort_order')
+                    .order('label'),
+                supabase.from('invoices')
+                    .select('total_amount, category')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('invoice_date', weekStart)
+                    .lte('invoice_date', end),
+                supabase.from('labour_entries')
+                    .select('labour_cost')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('entry_date', weekStart)
+                    .lte('entry_date', end),
+                supabase.from('waste_logs')
+                    .select('waste_value')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('log_date', weekStart)
+                    .lte('log_date', end),
+                supabase.from('cost_target_overrides')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId),
+            ])
 
-            if (sErr) { setError(friendlyError(sErr)); finishLoading(); return }
+            // One message, whichever of them failed. Reporting the first is
+            // the same behaviour as before, where the first failure stopped
+            // the rest from being asked at all.
+            const failed = [sErr, tErr, iErr, lErr, wErr, oErr].find(Boolean)
+            if (failed) { setError(friendlyError(failed)); setReady(true); return }
+
             setSalesRows(sales || [])
-
-            const { data: tends, error: tErr } = await supabase
-                .from('sales_tenders')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-                .order('sort_order')
-                .order('label')
-
-            if (tErr) { setError(friendlyError(tErr)); finishLoading(); return }
             setTenders(tends || [])
-
-            const { data: invoices, error: iErr } = await supabase
-                .from('invoices')
-                .select('total_amount, category')
-                .eq('restaurant_id', restaurantId)
-                .gte('invoice_date', weekStart)
-                .lte('invoice_date', end)
-
-            if (iErr) { setError(friendlyError(iErr)); finishLoading(); return }
 
             setFoodCost((invoices || [])
                 .filter(i => i.category === 'food')
@@ -213,35 +231,11 @@ export default function CostDashboardPage() {
                 .filter(i => i.category === 'packaging' || i.category === 'cleaning')
                 .reduce((t, i) => t + num(i.total_amount), 0))
 
-            const { data: labour, error: lErr } = await supabase
-                .from('labour_entries')
-                .select('labour_cost')
-                .eq('restaurant_id', restaurantId)
-                .gte('entry_date', weekStart)
-                .lte('entry_date', end)
-
-            if (lErr) { setError(friendlyError(lErr)); finishLoading(); return }
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
-
-            const { data: waste, error: wErr } = await supabase
-                .from('waste_logs')
-                .select('waste_value')
-                .eq('restaurant_id', restaurantId)
-                .gte('log_date', weekStart)
-                .lte('log_date', end)
-
-            if (wErr) { setError(friendlyError(wErr)); finishLoading(); return }
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
-
-            const { data: overrideRows, error: oErr } = await supabase
-                .from('cost_target_overrides')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-
-            if (oErr) { setError(friendlyError(oErr)); finishLoading(); return }
             setOverrides(overrideRows || [])
 
-            finishLoading()
+            setReady(true)
         }
 
         load()
@@ -276,14 +270,6 @@ export default function CostDashboardPage() {
     const foodTarget = resolveTarget(overrides, 'food', weekStart, num(activeRestaurant?.food_cost_target))
     const packagingTarget = resolveTarget(overrides, 'packaging', weekStart, num(activeRestaurant?.packaging_cost_target))
     const labourTarget = resolveTarget(overrides, 'labour', weekStart, num(activeRestaurant?.labour_cost_target))
-
-    // Green at or under target, amber within two points over, red beyond that.
-    function statusFor(actual, target) {
-        if (actual == null || !target) return 'none'
-        if (actual <= target) return 'green'
-        if (actual <= target + 2) return 'amber'
-        return 'red'
-    }
 
     function wasteStatus(actual) {
         if (actual == null) return 'none'
@@ -321,7 +307,7 @@ export default function CostDashboardPage() {
     const isThisWeek = weekStart === weekStartOf(todayISO())
 
     if (!ready) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -369,9 +355,16 @@ export default function CostDashboardPage() {
                 </div>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
-            {!loading && netSales === 0 && (
+            {/* ready, not !loading, and the difference is a week step.
+                Gated on !loading these two vanished the moment you pressed
+                the arrow and came back when the figures landed, so the whole
+                page jumped up and then back down every time, twice a press.
+                ready only turns on once, so what is on screen stays on screen
+                until the new week replaces it, which is what the cards and
+                the charts underneath already do. */}
+            {ready && netSales === 0 && (
                 <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">
                     No sales are recorded for this week, so the percentages cannot be worked out. Enter the week's
                     sales and everything here fills in.
@@ -383,7 +376,7 @@ export default function CostDashboardPage() {
                 nothing on the page said so. Past weeks are finished, so they say
                 nothing, and a week with no sales at all already has the message
                 above rather than this one. */}
-            {!loading && isThisWeek && netSales > 0 && (
+            {ready && isThisWeek && netSales > 0 && (
                 <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
                     Week in progress. These figures are worked out from the days entered so far, so they will keep
                     moving as the rest of the week goes in.
@@ -491,7 +484,7 @@ export default function CostDashboardPage() {
                                     <span className="text-muted">
                                         {r.label}
                                         {share != null && (
-                                            <span className="block text-xs text-gray-400 tabular-nums">
+                                            <span className="block text-xs text-muted tabular-nums">
                                                 {share.toFixed(1)}% of net
                                                 {r.target ? ` · target ${r.target}%` : ' · no target set'}
                                             </span>
@@ -523,9 +516,9 @@ export default function CostDashboardPage() {
                             <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
                                 <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
                                 {!row ? (
-                                    <span className="text-gray-300 italic text-xs">nothing entered yet</span>
+                                    <span className="text-muted italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (
-                                    <span className="text-gray-400 text-xs">closed</span>
+                                    <span className="text-muted text-xs">closed</span>
                                 ) : (
                                     /* Net over gross on a phone, side by side once
                                        there is room. Three things on one line put

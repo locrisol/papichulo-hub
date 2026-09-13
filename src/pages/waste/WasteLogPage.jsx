@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
 import { useNavigate } from 'react-router-dom'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { todayISO, shortDate, addDays } from '../../lib/dates'
-import { calculateWasteValue } from '../../lib/wasteValue'
-import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { friendlyError } from '../../lib/errors'
-import { matches } from '../../lib/search'
-import { heldFor } from '../../lib/products'
-import { useConfirm } from '../../context/ConfirmContext'
-import { numberField } from '../../lib/numberInput'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { todayISO, shortDate, addDays } from '@/lib/dates'
+import { calculateWasteValue } from '@/lib/wasteValue'
+import { REASONS, reasonLabel } from '@/lib/wasteReasons'
+import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { friendlyError } from '@/lib/errors'
+import { matches } from '@/lib/search'
+import { heldFor } from '@/lib/products'
+import { useConfirm } from '@/context/confirm'
+import { numberField } from '@/lib/numberInput'
+import { can, MANAGERS } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Waste log. One day at a time, built for a phone, because waste gets logged on
 // the floor as it happens by whoever dropped the thing. That is the opposite of
@@ -35,7 +37,7 @@ export default function WasteLogPage() {
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
 
-    const isManager = ['super_admin', 'owner', 'store_manager'].includes(user?.role)
+    const isManager = can(user, MANAGERS)
     const navigate = useNavigate()
 
     const [logDate, setLogDate] = useState(todayISO())
@@ -246,7 +248,7 @@ export default function WasteLogPage() {
 
 
     if (loading) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -266,7 +268,7 @@ export default function WasteLogPage() {
                 )}
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. What you are adding
@@ -334,7 +336,7 @@ export default function WasteLogPage() {
                                                 className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 border-b border-border last:border-0"
                                             >
                                                 {p.name}
-                                                <span className="text-xs text-gray-400 ml-2">{p.unit}</span>
+                                                <span className="text-xs text-muted ml-2">{p.unit}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -386,11 +388,11 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end">
-                                <button type="submit" className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                <button type="submit" className={primaryButton('xl')}>
                                     Add to list
                                 </button>
                             </div>
@@ -417,7 +419,7 @@ export default function WasteLogPage() {
                                     <div key={i.key} className="flex items-center gap-3 px-3 py-2.5">
                                         <div className="flex-1 min-w-0">
                                             <div className="text-sm text-gray-900 truncate">{i.product.name}</div>
-                                            <div className="text-xs text-gray-400">
+                                            <div className="text-xs text-muted">
                                                 {fmtQty(i.quantity)} {i.product.unit} · {reasonLabel(i.reason)}
                                                 {i.hasCost && ` · at ${fmtMoney(i.unitCost)}`}
                                             </div>
@@ -449,7 +451,7 @@ export default function WasteLogPage() {
                                 button it sat beside it on one line, which squeezes both on a
                                 phone and is not where the eye goes after a press. */}
                             {formProblem && (
-                              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                             )}
 
                             <div className="flex justify-end gap-2">
@@ -466,7 +468,7 @@ export default function WasteLogPage() {
                                     </>
                                 ) : (
                                     <button onClick={() => setReviewing(true)}
-                                        className="px-6 py-3 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors">
+                                        className={primaryButton('xl')}>
                                         Review and save
                                     </button>
                                 )}
@@ -488,14 +490,14 @@ export default function WasteLogPage() {
                     </div>
 
                     {entries.length === 0 ? (
-                        <p className="text-sm text-gray-400 italic">Nothing logged yet.</p>
+                        <p className="text-sm text-muted italic">Nothing logged yet.</p>
                     ) : (
                         <div className="divide-y divide-border">
                             {entries.map(e => (
                                 <div key={e.id} className="flex items-center gap-3 py-2.5">
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm text-gray-900 truncate">{e.products?.name || 'Unknown product'}</div>
-                                        <div className="text-xs text-gray-400">
+                                        <div className="text-xs text-muted">
                                             {fmtQty(e.quantity_wasted)} {e.products?.unit} · {reasonLabel(e.reason)}
                                         </div>
                                     </div>

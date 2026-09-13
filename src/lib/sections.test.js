@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     sectionRank, sectionColour, forDropdown, productInk,
     SECTION_ORDER,
-} from './sections'
+} from '@/lib/sections'
 
 const product = (name, section, extra = {}) => ({ id: name, name, section, unit: 'KG', ...extra })
 

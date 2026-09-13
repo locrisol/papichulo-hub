@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { todayISO, weekStartOf, shortDate, addDays } from '../../lib/dates'
-import { REASONS, reasonLabel } from '../../lib/wasteReasons'
-import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { friendlyError } from '../../lib/errors'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, fmtQty, fmtPct } from '@/lib/format'
+import { todayISO, weekStartOf, shortDate, addDays } from '@/lib/dates'
+import { REASONS, reasonLabel } from '@/lib/wasteReasons'
+import { secondaryButton, tableHeadRow, card, jumpButton, jumpLabel, captionClass, pageTitle } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { friendlyError } from '@/lib/errors'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Waste for a week, grouped by product.
 //
@@ -117,7 +118,7 @@ export default function WasteSummaryPage() {
     const wastePct = netSales > 0 ? (totalValue / netSales) * 100 : null
 
     function pctColour(pct) {
-        if (pct == null) return 'text-gray-400'
+        if (pct == null) return 'text-muted'
         if (pct < GOOD_BELOW) return 'text-green-700'
         if (pct <= WARN_BELOW) return 'text-amber-600'
         return 'text-red-600'
@@ -149,7 +150,7 @@ export default function WasteSummaryPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {/* Week and filter */}
             <div className={`${card} p-4 mb-4`}>
@@ -219,7 +220,7 @@ export default function WasteSummaryPage() {
             <div className={`${card} p-5 mb-4`}>
                 <p className={captionClass}>Waste as % of sales</p>
                 <p className={`font-serif text-3xl font-bold leading-none mt-1 ${pctColour(wastePct)}`}>
-                    {wastePct == null ? '—' : `${wastePct.toFixed(1)}%`}
+                    {fmtPct(wastePct)}
                 </p>
                 {wastePct == null ? (
                     <p className="text-sm text-muted mt-2">
@@ -240,9 +241,9 @@ export default function WasteSummaryPage() {
                 </h3>
 
                 {loading ? (
-                    <p className="text-sm text-gray-400">Loading...</p>
+                    <p className="text-sm text-muted">Loading...</p>
                 ) : byProduct.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nothing logged for this week.</p>
+                    <p className="text-sm text-muted italic">Nothing logged for this week.</p>
                 ) : (
                     <>
                     {/* A card each on a phone. The reason breakdown under a
@@ -260,7 +261,7 @@ export default function WasteSummaryPage() {
                                     </span>
                                 </div>
                                 <div className="flex items-baseline justify-between gap-3 mt-0.5">
-                                    <span className="text-xs text-gray-400">
+                                    <span className="text-xs text-muted">
                                         {Object.entries(row.reasons)
                                             .map(([r, q]) => `${reasonLabel(r)} ${fmtQty(q)}`)
                                             .join(' · ')}
@@ -296,7 +297,7 @@ export default function WasteSummaryPage() {
                                 <tr key={row.id} className="border-b border-border">
                                     <td className="px-3 py-2">
                                         <div className="text-gray-900">{row.name}</div>
-                                        <div className="text-xs text-gray-400">
+                                        <div className="text-xs text-muted">
                                             {Object.entries(row.reasons)
                                                 .map(([r, q]) => `${reasonLabel(r)} ${fmtQty(q)}`)
                                                 .join(' · ')}
@@ -317,7 +318,7 @@ export default function WasteSummaryPage() {
                         <tfoot>
                             <tr className="border-t-2 border-border bg-gray-50">
                                 <td className="px-3 py-3 font-semibold text-gray-900">Total</td>
-                                <td className="px-3 py-3 text-right text-gray-400">-</td>
+                                <td className="px-3 py-3 text-right text-muted">-</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(totalValue)}</td>
                             </tr>
                         </tfoot>
@@ -327,7 +328,7 @@ export default function WasteSummaryPage() {
                 )}
             </div>
 
-            <p className="text-xs text-gray-400 mt-3">
+            <p className="text-xs text-muted mt-3">
                 Under {GOOD_BELOW}% of net sales is healthy, {GOOD_BELOW} to {WARN_BELOW}% is worth a look, above
                 {' '}{WARN_BELOW}% needs attention. Quantities are not totalled across products, since kilos and units
                 do not add up together.

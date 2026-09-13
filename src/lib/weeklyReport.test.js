@@ -19,7 +19,7 @@ import {
     figuresToStore,
     FIGURES_VERSION,
     isCorrection,
-} from './weeklyReport'
+} from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
 const TENDERS = [

@@ -1,15 +1,15 @@
-import { supabase } from '../../lib/supabase'
-import { sheetRows } from '../../lib/allergenSheet'
-import { SHEET_ORDER, ALLERGEN_SHORT } from '../../lib/allergens'
-import { useAuth } from '../../context/AuthContext'
+import { supabase } from '@/lib/supabase'
+import { sheetRows } from '@/lib/allergenSheet'
+import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
+import { useAuth } from '@/context/auth'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import jsPDF from 'jspdf'
-import logoPrint from '../../assets/PapiChuloLogoPrint.png'
-import { useRestaurant } from '../../context/RestaurantContext'
-import PublicAllergensPage from '../PublicAllergensPage'
-import { card } from '../../lib/controlStyles'
-import { useConfirm } from '../../context/ConfirmContext'
+import logoPrint from '@/assets/PapiChuloLogoPrint.png'
+import { useRestaurant } from '@/context/restaurant'
+import PublicAllergensPage from '@/pages/public/PublicAllergensPage'
+import { card } from '@/lib/controlStyles'
+import { useConfirm } from '@/context/confirm'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.
@@ -597,7 +597,7 @@ export default function PublicAllergensPreviewPage() {
                                 className="w-40 h-40 border border-border rounded-lg"
                             />
                         ) : (
-                            <div className="w-40 h-40 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">
+                            <div className="w-40 h-40 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-muted">
                                 Generating...
                             </div>
                         )}

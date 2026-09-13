@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { fmtMoney } from '../../lib/format'
-import { numberField } from '../../lib/numberInput'
-import { brandFor } from '../../lib/platformBrand'
-import { ratingMove, reviewNeedsNote } from '../../lib/weeklyReport'
-import { useRemoveCard } from './useRemoveCard'
-import { removeButton } from '../../lib/controlStyles'
-import AutoTextarea from '../AutoTextarea'
-import AddButton from '../AddButton'
+import { fmtMoney } from '@/lib/format'
+import { numberField } from '@/lib/numberInput'
+import { brandFor } from '@/lib/platformBrand'
+import { ratingMove, reviewNeedsNote } from '@/lib/weeklyReport'
+import { useRemoveCard } from '@/components/reports/useRemoveCard'
+import { removeButton } from '@/lib/controlStyles'
+import AutoTextarea from '@/components/ui/AutoTextarea'
+import AddButton from '@/components/ui/AddButton'
 
 // Online sales, one block per platform.
 //
@@ -29,7 +29,7 @@ function Stars({ value, onChange, readOnly }) {
         <span className="inline-flex items-center" role={readOnly ? undefined : 'radiogroup'}>
             {[1, 2, 3, 4, 5].map(n => (
                 readOnly ? (
-                    <span key={n} className={n <= value ? 'text-amber-500' : 'text-gray-300'}>
+                    <span key={n} className={n <= value ? 'text-amber-500' : 'text-muted'}>
                         {n <= value ? STAR_FULL : STAR_EMPTY}
                     </span>
                 ) : (
@@ -43,7 +43,7 @@ function Stars({ value, onChange, readOnly }) {
                         // Big enough for a thumb. A five star picker built from
                         // text-sized targets is unusable on a phone.
                         className={`px-1 py-0.5 text-lg leading-none transition-colors ${
-                            n <= value ? 'text-amber-500' : 'text-gray-300 hover:text-amber-300'}`}
+                            n <= value ? 'text-amber-500' : 'text-muted hover:text-amber-300'}`}
                     >
                         {n <= value ? STAR_FULL : STAR_EMPTY}
                     </button>

@@ -1,27 +1,27 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { friendlyError } from '../../lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '../../lib/dates'
-import { DAY_NAMES, dayName } from '../../lib/events'
-import { card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton, jumpLabel } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
+import { DAY_NAMES, dayName } from '@/lib/events'
+import { card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
-} from '../../lib/roster'
-import { weekSpan, freeEnds, dayShape } from '../../lib/presence'
-import { wholeDayOn } from '../../lib/absences'
-import { openGaps } from '../../lib/timeOff'
-import { AWAY } from '../../lib/rosterShare'
-import { isWorkingOn, sortEmployees, NO_COLOUR } from '../../lib/team'
+} from '@/lib/roster'
+import { weekSpan, freeEnds, dayShape } from '@/lib/presence'
+import { wholeDayOn } from '@/lib/absences'
+import { openGaps } from '@/lib/timeOff'
+import { AWAY } from '@/lib/rosterShare'
+import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
     LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
-} from '../../lib/shiftRequests'
-import DateStepper from '../../components/DateStepper'
-import RosterWeek from '../../components/RosterWeek'
-import PresenceGrid from '../../components/PresenceGrid'
-import ShiftRequestDialog from '../../components/ShiftRequestDialog'
-import TimeOffRequestDialog from '../../components/TimeOffRequestDialog'
-import TimeOffCard from '../../components/TimeOffCard'
+} from '@/lib/shiftRequests'
+import DateStepper from '@/components/ui/DateStepper'
+import RosterWeek from '@/components/roster/RosterWeek'
+import PresenceGrid from '@/components/roster/PresenceGrid'
+import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
+import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
+import TimeOffCard from '@/components/roster/TimeOffCard'
 
 // The staff side of the roster. One page.
 //
@@ -272,7 +272,7 @@ export default function MyShiftsPage() {
     }
 
     if (!ready) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     // Somebody with a login but no record on the team list. It happens the day
@@ -575,7 +575,7 @@ function MyWeek({
 
                         <div className="px-4 py-3">
                             {working.length === 0 ? (
-                                <p className="text-sm text-gray-400">Not in.</p>
+                                <p className="text-sm text-muted">Not in.</p>
                             ) : working.map(s => (
                                 <div key={s.id} className="mb-2 last:mb-0">
                                     <p className="text-lg font-bold text-gray-900">

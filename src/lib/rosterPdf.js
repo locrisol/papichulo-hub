@@ -1,5 +1,17 @@
-import jsPDF from 'jspdf'
-import { sheetLayout, shareName, wrapLines, AWAY } from './rosterShare'
+import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
+
+// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
+//
+// It is 400KB with its own optional dependencies behind it, and a plain import
+// at the top of this file means every visit to the screen that can make one
+// pays for it whether or not anybody presses the button. Most never do.
+let jsPdfModule = null
+
+async function loadJsPdf() {
+    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
+    return jsPdfModule
+}
+
 
 // The week as a PDF, for printing and putting on the wall.
 //
@@ -33,8 +45,8 @@ const RULE_ROW = { rgb: [120, 113, 100], width: 1.1 }
 const RULE_DAY = { rgb: [168, 161, 149], width: 0.7 }
 const RULE_SOFT = { rgb: [225, 220, 212], width: 0.4 }
 
-export function weekPdf(table, restaurantName, weekStart) {
-    const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
+export async function weekPdf(table, restaurantName, weekStart) {
+    const pdf = new (await loadJsPdf())({ unit: 'pt', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()
 
     // Measured before the sheet is sized, because a day with two acts on it

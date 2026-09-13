@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { fmtMoney } from '../../lib/format'
-import { numberField } from '../../lib/numberInput'
-import { wasChanged, platformShare, startsOpen, figureGaps } from '../../lib/weeklyReport'
-import { removeButton, secondaryButton } from '../../lib/controlStyles'
-import { useConfirm } from '../../context/ConfirmContext'
-import AddButton from '../AddButton'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { numberField } from '@/lib/numberInput'
+import { wasChanged, platformShare, startsOpen, figureGaps } from '@/lib/weeklyReport'
+import { removeButton, secondaryButton } from '@/lib/controlStyles'
+import { useConfirm } from '@/context/confirm'
+import AddButton from '@/components/ui/AddButton'
 
 // The weekly profit and loss.
 //
@@ -52,10 +52,6 @@ function Row({ left, right, extra, tint }) {
             {extra && <div className="mt-1.5">{extra}</div>}
         </div>
     )
-}
-
-function pctText(v) {
-    return v == null ? '—' : `${v.toFixed(1)}%`
 }
 
 // The money box on a row. Stretches on a phone, where nothing else is competing
@@ -169,7 +165,7 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
                 />
             )}
 
-            <span className="w-12 text-right text-xs tabular-nums text-muted">{pctText(share)}</span>
+            <span className="w-12 text-right text-xs tabular-nums text-muted">{fmtPct(share)}</span>
 
             {canEdit && !editing && (
                 <button
@@ -251,8 +247,8 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
                         </span>
                     )}
                     <span className={`w-14 text-right text-sm tabular-nums font-bold ${
-                        share == null ? 'text-gray-400' : 'text-gray-900'}`}>
-                        {pctText(share)}
+                        share == null ? 'text-muted' : 'text-gray-900'}`}>
+                        {fmtPct(share)}
                     </span>
                 </>
             }
@@ -278,7 +274,7 @@ function FigureRow({ label, hint, amount, share, tint, strong }) {
                         {fmtMoney(amount)}
                     </span>
                     <span className="w-12 text-right text-xs tabular-nums text-muted">
-                        {share == null ? '' : pctText(share)}
+                        {share == null ? '' : fmtPct(share)}
                     </span>
                 </>
             }
@@ -438,7 +434,7 @@ export default function ReportProfitLoss({
                     {fmtMoney(figures.earnings)}
                 </p>
                 <p className="text-sm mt-2 tabular-nums opacity-85">
-                    {pctText(figures.earningsPct)} of net sales
+                    {fmtPct(figures.earningsPct)} of net sales
                 </p>
             </div>
 

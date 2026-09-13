@@ -1,12 +1,14 @@
-import { stampDate } from '../../lib/dates'
-import { useState, useEffect } from 'react'
+import { stampDate } from '@/lib/dates'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { useAuth } from '../../context/AuthContext'
-import StartStockTakeModal from '../../components/StartStockTakeModal'
-import { friendlyError } from '../../lib/errors'
-import { card } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { useAuth } from '@/context/auth'
+import StartStockTakeModal from '@/components/inventory/StartStockTakeModal'
+import { friendlyError } from '@/lib/errors'
+import { card } from '@/lib/controlStyles'
+import { can, MANAGERS } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The way in to stock takes: whatever is open now, and the last ten that closed.
 //
@@ -34,14 +36,11 @@ export default function StockTakesListPage() {
   const [showStartModal, setShowStartModal] = useState(false)
   const [error, setError] = useState('')
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchSessions()
-  }, [activeRestaurant])
+  
 
-  async function fetchSessions() {
+  const fetchSessions = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -103,7 +102,17 @@ export default function StockTakesListPage() {
     }
 
     setLoading(false)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSessions()
+  }, [fetchSessions, activeRestaurant])
 
   function formatDateTime(iso) {
     if (!iso) return '-'
@@ -177,9 +186,9 @@ export default function StockTakesListPage() {
       </header>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
+        <ErrorBanner className="mb-4">
           {error}
-        </div>
+        </ErrorBanner>
       )}
 
       {/* Active session card */}
@@ -312,7 +321,7 @@ export default function StockTakesListPage() {
                         </p>
                       )}
                     </div>
-                    <svg className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <svg className="w-4 h-4 text-muted mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>

@@ -1,11 +1,12 @@
-import { pageTitle } from '../../lib/controlStyles'
-import { useState, useEffect } from 'react'
+import { pageTitle, primaryButton } from '@/lib/controlStyles'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { friendlyError } from '../../lib/errors'
-import { ALLERGENS, emptyAllergens } from '../../lib/allergens'
-import AllergenPicker from '../../components/AllergenPicker'
-import BackButton from '../../components/BackButton'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { ALLERGENS, emptyAllergens } from '@/lib/allergens'
+import AllergenPicker from '@/components/inventory/AllergenPicker'
+import BackButton from '@/components/ui/BackButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Tagging the 14 allergens on one product.
 //
@@ -37,11 +38,9 @@ export default function AllergenPage() {
   const [saving, setSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
 
-  useEffect(() => {
-    loadAll()
-  }, [id])
+  
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true)
 
     const { data: productData, error: productError } = await supabase
@@ -82,7 +81,16 @@ export default function AllergenPage() {
     // else: keep the default emptyAllergens() initial state (all 'none')
 
     setLoading(false)
-  }
+    }, [id])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll()
+  }, [loadAll])
 
   function setAllergenState(key, value) {
     setValues({ ...values, [key]: value })
@@ -140,7 +148,7 @@ export default function AllergenPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
@@ -157,14 +165,14 @@ export default function AllergenPage() {
               button it sat beside it on one line, which squeezes both on a
               phone and is not where the eye goes after a press. */}
           {formProblem && (
-            <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+            <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
           )}
 
           <div className="flex items-center gap-3">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+              className={primaryButton()}
             >
               {saving ? 'Saving...' : 'Save Allergens'}
             </button>

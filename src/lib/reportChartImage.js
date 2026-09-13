@@ -17,10 +17,11 @@
 // width, because a mail has no ResizeObserver and no idea how wide the window
 // is, and the labels placed by measureText rather than by a text anchor.
 
-import { shortDate } from './dates'
+import { shortDate } from '@/lib/dates'
 import {
     inRange, fromFirstFigure, scaleFor, ticks, segments, isMissing, labelIndices, DEFAULT_RANGE,
-} from './reportChart'
+} from '@/lib/reportChart'
+import { num } from '@/lib/format'
 
 // The width the mail's own tables are built to, so a chart is exactly as wide
 // as the figures above it rather than being scaled down to fit and going soft.
@@ -46,7 +47,6 @@ const PAPER = '#FFFFFF'
 const FONT = (size, weight = '400') =>
     `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`
 
-const num = v => (v == null || isNaN(Number(v)) ? 0 : Number(v))
 
 // Canvas has globalAlpha where SVG has fill-opacity. Same thing said
 // differently, and the same value, so the bands match the screen.

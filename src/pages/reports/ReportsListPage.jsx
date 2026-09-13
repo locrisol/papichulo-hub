@@ -1,19 +1,21 @@
 import { Fragment, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { shortDate, addDays, weekNumber, weekRange } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num } from '@/lib/format'
+import { shortDate, addDays, weekNumber, weekRange } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '@/lib/controlStyles'
 import {
     reportableWeeks,
     weekReadiness,
     carriedItems,
     DEFAULT_SECTIONS,
     DEFAULT_OVERHEADS,
-} from '../../lib/weeklyReport'
+} from '@/lib/weeklyReport'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The way in to the weekly report: the weeks that have finished, and what state
 // each one is in.
@@ -39,11 +41,6 @@ import {
 
 const WEEKS_SHOWN = 10
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
 
 // The days nobody has entered, named rather than counted. "Thursday and
 // Friday" tells you where to go; "2 days missing" only makes you go and look.
@@ -120,7 +117,7 @@ export default function ReportsListPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
 
-    const canWrite = ['super_admin', 'store_manager'].includes(user?.role)
+    const canWrite = can(user, RESTAURANT_CONFIG)
 
     const [weeks, setWeeks] = useState([])
     const [loading, setLoading] = useState(true)
@@ -266,9 +263,9 @@ export default function ReportsListPage() {
             </div>
 
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Below md this is a list of cards rather than a table.

@@ -9,7 +9,7 @@ import {
   declaredCount,
   SHEET_ORDER,
   ALLERGEN_SHORT,
-} from './allergens'
+} from '@/lib/allergens'
 
 // --- Fixtures ------------------------------------------------------------
 

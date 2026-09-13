@@ -1,19 +1,21 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { exportStockTakePdf } from '../../lib/stockTakePdf'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { monthYearOf, stampDateTime } from '../../lib/dates'
-import { sectionColour } from '../../lib/sections'
-import { countName } from '../../lib/products'
-import { bySection, summarise } from '../../lib/stockTakeSummary'
-import StockTakeValue from '../../components/StockTakeValue'
-import { friendlyError } from '../../lib/errors'
-import { card } from '../../lib/controlStyles'
-import BackButton from '../../components/BackButton'
-import Modal from '../../components/Modal'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { exportStockTakePdf } from '@/lib/stockTakePdf'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { monthYearOf, stampDateTime } from '@/lib/dates'
+import { sectionColour } from '@/lib/sections'
+import { countName } from '@/lib/products'
+import { bySection, summarise } from '@/lib/stockTakeSummary'
+import StockTakeValue from '@/components/inventory/StockTakeValue'
+import { friendlyError } from '@/lib/errors'
+import { card } from '@/lib/controlStyles'
+import BackButton from '@/components/ui/BackButton'
+import Modal from '@/components/ui/Modal'
+import { can, MANAGERS } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // A finished stock take: what was counted, what it was worth, and who did it.
 //
@@ -74,11 +76,11 @@ export default function StockTakeSummaryPage() {
 
   const { activeRestaurant } = useRestaurant()
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
-  useEffect(() => { fetchEverything() }, [id])
+  
 
-  async function fetchEverything() {
+  const fetchEverything = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -109,7 +111,14 @@ export default function StockTakeSummaryPage() {
     setLines(linesData || [])
 
     setLoading(false)
-  }
+    }, [id])
+
+  // The fetch sets a loading state before it starts, which is one render
+  // this rule would rather avoid. The alternative is to leave it,
+  // and then a change of session keeps the previous one's figures
+  // on screen under the new one's heading until the answer arrives.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchEverything() }, [fetchEverything])
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
@@ -215,7 +224,7 @@ export default function StockTakeSummaryPage() {
   if (error && !session) {
     return (
       <div>
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
+        <ErrorBanner>{error}</ErrorBanner>
         <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
@@ -312,7 +321,7 @@ export default function StockTakeSummaryPage() {
           screen, so a message drawn out here is behind it and the reopen looks
           like it did nothing at all. It goes inside the dialog instead. */}
       {error && !showReopen && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {/* Counted products by section */}
@@ -464,7 +473,7 @@ export default function StockTakeSummaryPage() {
                 commonest reason is another stock take already open, which the
                 database refuses outright. */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">
+              <ErrorBanner className="mb-4">
                 <p>{error}</p>
                 {blocker && (
                   <button
@@ -475,7 +484,7 @@ export default function StockTakeSummaryPage() {
                     Go to {titleOf(blocker)}
                   </button>
                 )}
-              </div>
+              </ErrorBanner>
             )}
 
             <div className="flex flex-wrap gap-2 justify-end">

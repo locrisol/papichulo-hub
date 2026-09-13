@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { friendlyError } from '../../lib/errors'
-import { todayISO, addDays, fullDate } from '../../lib/dates'
-import { dateField, pageTitle } from '../../lib/controlStyles'
-import { whoWords, tableWords } from '../../lib/changeLog'
-import ChangeLog from '../../components/settings/ChangeLog'
+import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, addDays, fullDate } from '@/lib/dates'
+import { dateField, pageTitle } from '@/lib/controlStyles'
+import { whoWords, tableWords } from '@/lib/changeLog'
+import ChangeLog from '@/components/settings/ChangeLog'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Everything that has changed, and who changed it.
 //
@@ -94,9 +95,9 @@ export default function ChangesPage() {
             </div>
 
             {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
+                <ErrorBanner className="mb-4">
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             {/* Wraps to two lines on a phone rather than scrolling sideways.
@@ -152,7 +153,7 @@ export default function ChangesPage() {
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : (
                 <>
                     <p className="text-xs text-muted mb-3">

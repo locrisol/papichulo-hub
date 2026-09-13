@@ -8,8 +8,8 @@
 // Nothing here writes anything. It works out what the week would look like, and
 // the manager's screen is the only thing allowed to make it true.
 
-import { toMinutes, shiftHours, breakFor } from './roster'
-import { wholeDayOn } from './absences'
+import { toMinutes, shiftHours, breakFor } from '@/lib/roster'
+import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
     asked: { label: 'Waiting on them', tone: 'wait' },

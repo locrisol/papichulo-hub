@@ -20,7 +20,7 @@ import {
     copyDay,
     DAY_GROUPS,
     DAY_END,
-} from './availability'
+} from '@/lib/availability'
 
 // 23 August 2026 is a Sunday, so the week that follows runs Sunday to Saturday
 // with the keys 0 to 6 in order.

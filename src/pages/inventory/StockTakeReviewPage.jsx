@@ -1,15 +1,17 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { resolveUnitCost } from '../../lib/mixCost'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { friendlyError } from '../../lib/errors'
-import { countName } from '../../lib/products'
-import { sectionRank, sectionColour } from '../../lib/sections'
-import { card } from '../../lib/controlStyles'
-import BackButton from '../../components/BackButton'
-import Modal from '../../components/Modal'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { resolveUnitCost } from '@/lib/mixCost'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { friendlyError } from '@/lib/errors'
+import { countName } from '@/lib/products'
+import { sectionRank, sectionColour } from '@/lib/sections'
+import { card } from '@/lib/controlStyles'
+import BackButton from '@/components/ui/BackButton'
+import Modal from '@/components/ui/Modal'
+import { can, MANAGERS } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The last look before a stock take is closed. Managers only.
 //
@@ -51,13 +53,11 @@ export default function StockTakeReviewPage() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [closing, setClosing] = useState(false)
 
-  const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+  const isManager = can(user, MANAGERS)
 
-  useEffect(() => {
-    fetchEverything()
-  }, [id])
+  
 
-  async function fetchEverything() {
+  const fetchEverything = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -87,7 +87,16 @@ export default function StockTakeReviewPage() {
     setRecipeLines(recipesData || [])
 
     setLoading(false)
-  }
+    }, [id])
+
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of session keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchEverything()
+  }, [fetchEverything])
 
   const countedProductIds = useMemo(() => new Set(lines.map(l => l.product_id)), [lines])
 
@@ -211,7 +220,7 @@ export default function StockTakeReviewPage() {
   if (error && !session) {
     return (
       <div>
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
+        <ErrorBanner>{error}</ErrorBanner>
         <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
       </div>
     )
@@ -280,7 +289,7 @@ export default function StockTakeReviewPage() {
       {/* Not while the closing dialog is up, which covers the whole screen
           and would hide it. It goes inside the dialog instead. */}
       {error && !showCloseConfirm && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {/* Counted in one place only.
@@ -381,7 +390,7 @@ export default function StockTakeReviewPage() {
                           {countName(product)}
                           <span className="text-xs text-muted ml-2">{product.section} · {product.unit}</span>
                         </p>
-                        <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <svg className={`w-4 h-4 text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
@@ -469,7 +478,7 @@ export default function StockTakeReviewPage() {
             </p>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4">{error}</div>
+              <ErrorBanner className="mb-4">{error}</ErrorBanner>
             )}
 
             <div className="flex flex-wrap gap-2 justify-end">

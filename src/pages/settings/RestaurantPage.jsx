@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import SalesPlatformsModal from '../../components/SalesPlatformsModal'
-import SalesTendersModal from '../../components/SalesTendersModal'
-import CostTargetModal from '../../components/CostTargetModal'
-import OpeningHoursModal from '../../components/OpeningHoursModal'
-import BreakRulesModal from '../../components/BreakRulesModal'
-import RosterRulesModal from '../../components/RosterRulesModal'
-import { todayISO, weekStartOf, shortDate, stampDateTime } from '../../lib/dates'
-import { resolveTarget, describeTargets } from '../../lib/costTargets'
-import { friendlyError } from '../../lib/errors'
-import { DEFAULT_BREAK_RULES } from '../../lib/roster'
-import { DEFAULT_RULES } from '../../lib/workRules'
-import { numberField } from '../../lib/numberInput'
-import { card, rowButton, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import SalesPlatformsModal from '@/components/settings/SalesPlatformsModal'
+import SalesTendersModal from '@/components/settings/SalesTendersModal'
+import CostTargetModal from '@/components/costs/CostTargetModal'
+import OpeningHoursModal from '@/components/settings/OpeningHoursModal'
+import BreakRulesModal from '@/components/settings/BreakRulesModal'
+import RosterRulesModal from '@/components/settings/RosterRulesModal'
+import { todayISO, weekStartOf, shortDate, stampDateTime } from '@/lib/dates'
+import { resolveTarget, describeTargets } from '@/lib/costTargets'
+import { friendlyError } from '@/lib/errors'
+import { DEFAULT_BREAK_RULES } from '@/lib/roster'
+import { DEFAULT_RULES } from '@/lib/workRules'
+import { numberField } from '@/lib/numberInput'
+import { card, rowButton, checkbox, labelClass, pageTitle } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Restaurant settings.
 //
@@ -67,6 +68,11 @@ export default function RestaurantPage() {
 
     useEffect(() => {
         if (!activeRestaurant) return
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of restaurant keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
@@ -166,13 +172,13 @@ export default function RestaurantPage() {
                     Cost targets and settings for {activeRestaurant?.name}
                 </p>
                 {activeRestaurant?.updated_at && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                         Last updated: {stampDateTime(activeRestaurant.updated_at)}
                     </p>
                 )}
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. On the left is what
@@ -264,7 +270,7 @@ export default function RestaurantPage() {
                                     />
                                     {/* Safe to change without a date, because the rate is
                                         copied onto each labour entry when it is saved. */}
-                                    <p className="text-xs text-gray-400 mt-1">
+                                    <p className="text-xs text-muted mt-1">
                                         The average rate used to work out labour cost. Changing it does not alter weeks already
                                         entered, since each one keeps the rate it was saved with.
                                     </p>
@@ -330,7 +336,7 @@ export default function RestaurantPage() {
                             {/* The address only. The name in front of it is this
                                 restaurant own name, so renaming it renames the sender
                                 and there is no second place to keep in step. */}
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-muted mt-1">
                                 The address Papi Chulo Hub emails come from for this restaurant.
                                 Leave it empty and they come from the account the Hub sends with.
                                 Replies never come back here: they go to whoever sent it, with
@@ -360,7 +366,7 @@ export default function RestaurantPage() {
                             button it sat beside it on one line, which squeezes both on a
                             phone and is not where the eye goes after a press. */}
                         {formProblem && (
-                          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+                          <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                         )}
 
                         <button

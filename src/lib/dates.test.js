@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from './dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {

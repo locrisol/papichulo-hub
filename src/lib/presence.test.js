@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { daySpan, weekSpan, barFor, dayShape, freeEnds } from './presence'
+import { daySpan, weekSpan, barFor, dayShape, freeEnds } from '@/lib/presence'
 
 const shift = (starts_at, ends_at) => ({ starts_at, ends_at })
 const hours = (open, close) => ({ open, close })

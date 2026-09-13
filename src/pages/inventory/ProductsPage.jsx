@@ -1,26 +1,27 @@
-import { fmtUnitCost } from '../../lib/format'
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { fmtUnitCost } from '@/lib/format'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { calculateMixCost } from '../../lib/mixCost'
-import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '../../lib/productPrice'
-import { emptyAllergens } from '../../lib/allergens'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { useConfirm } from '@/context/confirm'
+import { calculateMixCost } from '@/lib/mixCost'
+import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '@/lib/productPrice'
+import { emptyAllergens } from '@/lib/allergens'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
   heldFor, partiesIn,
-} from '../../lib/products'
-import SearchBox from '../../components/SearchBox'
-import RowActions from '../../components/RowActions'
-import { useKeepScroll } from '../../context/ScrollContext'
-import { sectionColour, productInk, DRINK_COLOUR } from '../../lib/sections'
-import ProductForm from '../../components/ProductForm'
-import Modal from '../../components/Modal'
-import { friendlyError } from '../../lib/errors'
-import { matches } from '../../lib/search'
-import { orderFormats } from '../../lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle } from '../../lib/controlStyles'
+} from '@/lib/products'
+import SearchBox from '@/components/ui/SearchBox'
+import RowActions from '@/components/ui/RowActions'
+import { useKeepScroll } from '@/context/scroll'
+import { sectionColour, productInk, DRINK_COLOUR } from '@/lib/sections'
+import ProductForm from '@/components/inventory/ProductForm'
+import Modal from '@/components/ui/Modal'
+import { friendlyError } from '@/lib/errors'
+import { matches } from '@/lib/search'
+import { orderFormats } from '@/lib/countUnits'
+import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Every column in the table, in the order it appears.
 //
@@ -42,13 +43,13 @@ import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitl
 // goes grey whatever section it is in, because that is the thing worth reading
 // about it first.
 function sectionBadge(section, isActive) {
-  if (!isActive) return { className: 'bg-gray-100 text-gray-400 border border-gray-200' }
+  if (!isActive) return { className: 'bg-gray-100 text-muted border border-gray-200' }
   const colour = sectionColour(section)
   return { className: `${colour.bg} ${colour.text} border ${colour.border}` }
 }
 
 function extraPlaceBadge(section, isActive) {
-  if (!isActive) return { className: 'bg-white text-gray-400 border border-gray-200' }
+  if (!isActive) return { className: 'bg-white text-muted border border-gray-200' }
   return {
     className: 'bg-white border',
     style: { color: sectionColour(section).ink, borderColor: sectionColour(section).ink },
@@ -123,7 +124,7 @@ const STICK_TOP = 'top-[-1.75rem]'
 // and the cards both say it, and a label that reads Drink in one place and
 // Purchased in the other is worse than not saying it at all.
 function typeBadge(p) {
-  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: 'bg-gray-100 text-gray-400' }
+  if (!p.is_active) return { label: p.is_mix ? 'MIX' : 'Purchased', cls: 'bg-gray-100 text-muted' }
   if (p.is_mix) return { label: 'MIX', cls: 'bg-amber-500 text-white' }
   if (p.category === 'drink') return { label: 'Drink', cls: 'bg-sky-100 text-sky-800' }
   return { label: 'Purchased', cls: 'bg-green-100 text-green-800' }
@@ -259,11 +260,7 @@ export default function ProductsPage() {
     fetchSuppliers()
   }, [])
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-    fetchRecipeLines()
-  }, [activeRestaurant])
+  
 
   // Ordered by name. Without an order the database returns the rows however it
   // likes, and updating a row moves it, so deactivating a product and turning it
@@ -294,7 +291,7 @@ export default function ProductsPage() {
     if (data) setSuppliers(data)
   }
 
-  async function fetchPrices() {
+  const fetchPrices = useCallback(async () => {
     if (!activeRestaurant) return
     const { data } = await supabase
       .from('product_supplier_prices')
@@ -332,7 +329,18 @@ export default function ProductsPage() {
       counts[row.product_id] = (counts[row.product_id] || 0) + 1
     }
     setPriceCounts(counts)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+    fetchRecipeLines()
+  }, [fetchPrices, activeRestaurant])
 
   async function fetchRecipeLines() {
     const { data } = await supabase
@@ -1005,7 +1013,7 @@ export default function ProductsPage() {
           </button>
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             + Add Product
           </button>
@@ -1013,7 +1021,7 @@ export default function ProductsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {/* The whole form takes the lightest shade of whatever section is chosen,
@@ -1127,7 +1135,7 @@ export default function ProductsPage() {
                     : 'bg-white border-border'}`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                  <p className={`font-semibold ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                     {p.name}
                   </p>
                   <span className={`${badge} flex-shrink-0 ${typeBadge(p).cls}`}>
@@ -1175,7 +1183,7 @@ export default function ProductsPage() {
                 <dl className="mt-3 space-y-1.5 text-sm">
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="text-gray-500">Cost/unit</dt>
-                    <dd className={`font-medium text-right ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                    <dd className={`font-medium text-right ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                       {v.cost ?? (
                         <span className="text-amber-600 text-xs">
                           {p.is_mix ? 'Incomplete' : 'No price set'}
@@ -1185,13 +1193,13 @@ export default function ProductsPage() {
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="text-gray-500">Supplier</dt>
-                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-gray-400'} ${p.is_mix ? 'italic' : ''}`}>
+                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'} ${p.is_mix ? 'italic' : ''}`}>
                       {v.supplier}
                     </dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="text-gray-500">Weight loss</dt>
-                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                    <dd className={`text-right ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                       {v.weightLoss}
                     </dd>
                   </div>
@@ -1323,7 +1331,7 @@ export default function ProductsPage() {
                           block inside the cell is covered by the heading like
                           everything else and is clipped by the same radius. */}
                       <td
-                        className={`relative overflow-hidden px-4 py-3 pl-6 font-medium ${last ? 'rounded-bl-xl' : ''} ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}
+                        className={`relative overflow-hidden px-4 py-3 pl-6 font-medium ${last ? 'rounded-bl-xl' : ''} ${p.is_active ? 'text-gray-900' : 'text-muted'}`}
                       >
                         <span
                           aria-hidden="true"
@@ -1365,23 +1373,23 @@ export default function ProductsPage() {
                           )}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>{p.unit}</td>
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>{p.unit}</td>
                       <td className="px-4 py-3">
                         <span className={`${badge} ${typeBadge(p).cls}`}>
                           {typeBadge(p).label}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.is_mix ? <span className="italic">House-made</span> : getSupplierName(price?.supplier_id)}
                       </td>
-                      <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                      <td className={`px-4 py-3 font-medium ${p.is_active ? 'text-gray-900' : 'text-muted'}`}>
                         {p.is_mix
                           ? (mixResult?.cost !== null
                               ? fmtUnitCost(mixResult.cost)
                               : <span className="text-amber-600 text-xs">Incomplete</span>)
                           : (price ? fmtUnitCost(parseFloat(price.price_per_unit)) : '—')}
                       </td>
-                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <td className={`px-4 py-3 ${p.is_active ? 'text-gray-700' : 'text-muted'}`}>
                         {p.weight_loss_pct > 0 ? `${p.weight_loss_pct}%` : '—'}
                       </td>
                       <td className={`px-4 py-3 ${last ? 'rounded-br-xl' : ''}`}>

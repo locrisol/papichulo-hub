@@ -1,4 +1,4 @@
-import { employeeStatus } from './team'
+import { employeeStatus } from '@/lib/team'
 
 // What is missing from somebody's record.
 //

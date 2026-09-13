@@ -17,7 +17,7 @@
 // All the arithmetic is here so it can be tested. The drawing is in
 // PresenceGrid and has no numbers in it.
 
-import { toMinutes, shiftMinutes } from './roster'
+import { toMinutes, shiftMinutes } from '@/lib/roster'
 
 // A day with no opening hours recorded still has to be drawn against something.
 const FALLBACK = { from: 8 * 60, to: 24 * 60 }

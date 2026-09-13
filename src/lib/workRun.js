@@ -1,5 +1,5 @@
-import { shiftHours, toMinutes } from './roster'
-import { addDays } from './dates'
+import { shiftHours, toMinutes } from '@/lib/roster'
+import { addDays } from '@/lib/dates'
 
 // How hard somebody has been going, in the days right before this one.
 //

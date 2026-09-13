@@ -1,8 +1,9 @@
-import { labelClass } from '../../lib/controlStyles'
+import { labelClass } from '@/lib/controlStyles'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import logo from '../../assets/PapiChuloLogo.png'
+import { supabase } from '@/lib/supabase'
+import logo from '@/assets/PapiChuloLogo.png'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The sign in screen.
 //
@@ -50,9 +51,9 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">
+          <ErrorBanner className="mb-4">
             {error}
-          </div>
+          </ErrorBanner>
         )}
 
         <form onSubmit={handleLogin}>
@@ -92,7 +93,7 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
 
-          <p className="text-center text-xs text-gray-400 mt-6">
+          <p className="text-center text-xs text-muted mt-6">
             Contact your manager to create an account
           </p>
         </form>

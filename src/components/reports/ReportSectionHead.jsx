@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { cardHeader } from '../../lib/controlStyles'
-import { isOwnSection } from '../../lib/weeklyReport'
-import { useConfirm } from '../../context/ConfirmContext'
+import { cardHeader } from '@/lib/controlStyles'
+import { isOwnSection } from '@/lib/weeklyReport'
+import { useConfirm } from '@/context/confirm'
 
 // The bar across the top of a section, and the two things that can be done to
 // one somebody added themselves: rename it, or drop it. The seven the report

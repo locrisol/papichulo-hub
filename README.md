@@ -36,7 +36,7 @@ It is built for Papi Chulo, a Mexican Street Food business with currently two lo
 
 ## Running it locally
 
-You need **Node.js 20 or later**, npm, and a Supabase account.
+You need **Node.js 24 or later**, npm, and a Supabase account. 24 is the long term support line; 20 went out of support in April 2026, which is why it is no longer the floor. `package.json` records it so npm tells you rather than letting you find out.
 
 ### 1. Clone it and install
 
@@ -52,11 +52,15 @@ Sign up at [supabase.com](https://supabase.com) and create a project.
 
 ### 3. Set up the database
 
-In the Supabase dashboard, open the SQL editor and run `supabase/schema.sql`. That creates every table, function and security policy in one go.
+In the Supabase dashboard, open the SQL editor and run `supabase/schema.sql`. That creates every table, key, function, security policy and view in one go. It is the whole design in one file, written by hand and grouped by what each part is for, so it is also the thing to read if you want to understand the database rather than set one up.
 
-Then run `supabase/seed.sql`, which adds the restaurants and the supplier list. Without at least one restaurant, nothing in the app will load.
+Then run `supabase/seed.sql`, which adds the two restaurants, the supplier list, the menu headings and the till receipt rows. Without at least one restaurant, nothing in the app will load. Nothing in `schema.sql` inserts a row and nothing in `seed.sql` creates a table, so the two never overlap.
 
-`schema.sql` starts by deleting every table in the database, so it is only designed for a fresh new empty database. If you run this in one database that already has data, it will destroy it. If you want to change something on a database that already exists, add a new numbered file to `supabase/migrations/` instead. There you will find a history of how the schema was built, one change at a time, as `schema.sql` is only all of them together in one file to make it easier for you.
+Neither file deletes anything, and both are safe to run twice. To change a database that already exists, add a numbered file to `supabase/migrations/`, starting at `001`, and fold the same change into `schema.sql` by hand in the same commit. That is two edits on purpose: `schema.sql` is the design and the migration is how a database that already exists catches up with it.
+
+`supabase/migrations/` is empty. It starts again at `001` and only for new work: the live database and `schema.sql` were compared object by object on 13 September and agree.
+
+If you have Docker, `npm run db:local` does all of this against a local database, which is the quickest way to find out whether a change to either file actually works.
 
 ### 4. Set up your environment
 
@@ -92,7 +96,7 @@ npm run dev -- --host
 | `npm run test` | Runs the tests and watches for changes |
 | `npm run test:run` | Runs the tests once and exits |
 | `npm run lint` | Runs ESLint |
-| `npm run schema` | Rebuilds `supabase/schema.sql` and `seed.sql` from the migrations |
+| `npm run db:local` | Rebuilds a local database from `schema.sql` and `seed.sql`, which needs Docker |
 | `npm run test:rls` | Runs the database access tests, which need a network and the test accounts |
 
 ## Tests
@@ -101,21 +105,25 @@ npm run dev -- --host
 npm run test:run
 ```
 
-134 tests across eight files, all in `src/lib`. These tests cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
+1,617 tests across 57 files. Forty seven of them are in `src/lib` and cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
 
 The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being treated as the next day and the week selectors were moving in blocks of six days instead of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
 
-The 35 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
+The 53 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
 
-They need the `ws` package, which `npm install` fetches with everything else. It is only there because `supabase-js` builds a realtime client the moment you create a client, and realtime needs WebSocket. Browsers have it, Node only got it in version 22, and this project runs on 20. Nothing here uses realtime.
+They used to need the `ws` package, because `supabase-js` builds a realtime client the moment you create one and realtime needs WebSocket, which Node had not got until version 22. On 24 it finds its own, so the package and both polyfills are gone. Nothing here uses realtime.
 
 They never create anything. Reads are harmless, and a write that is meant to be refused changes nothing. That does leave one gap: they do not prove an allowed write succeeds, because doing so would put rows into live data.
 
 ## How it is laid out
 
     src/
-      components/        shared components and modals
+      components/
+        ui/              used everywhere: Modal, TimeField, DateStepper, ErrorBanner
+        auth/            the two route guards
         layout/          the sidebar and page shell
+        roster/ team/ inventory/ settings/ reports/
+        costs/ forecast/ invoices/ allergens/
       context/           the signed-in user and the active restaurant
       lib/               logic with no interface: costing, allergens, dates, formatting
       pages/
@@ -126,16 +134,27 @@ They never create anything. Reads are harmless, and a write that is meant to be 
         invoices/        entry and history
         costs/           labour and the cost dashboard
         waste/           logging and the weekly summary
+        roster/          the week, and the staff view of it
+        team/            employees, availability and time off
+        reports/         the weekly report and the list of them
+        settings/        restaurant settings, users, the change log
+        public/          the allergen page a customer scans
+      test/              the setup, and the tests about the project's own shape
     tests/
       rls/               the database access tests
     supabase/
-      schema.sql         everything at once, for a new database
-      seed.sql           the restaurants and suppliers
-      migrations/        every schema change, in order
+      schema.sql         the whole design, by hand, grouped by subject
+      seed.sql           the rows a new database cannot start without
+      migrations/        changes since, numbered from 001
+      functions/         the three edge functions
     scripts/
-      build-schema.mjs   rebuilds schema.sql from the migrations
+      local-db.mjs       builds a local database from the two files above
 
 Anything in `lib` is a plain function with no React in it, which is why those are the parts with tests.
+
+`components/` mirrors `pages/`. A component used by one feature lives with that feature; one used across features lives in `ui/`. It was 55 loose files at the top level with six subfolders used inconsistently, so `allergens/` held one file while `AllergenPicker` sat beside it in the root and there was no `roster/` at all, despite roster being the biggest cluster in the app.
+
+Imports are written from the root: `@/lib/dates`, `@/components/ui/Modal`. `@` is `src`, set in `vite.config.js` and again in `jsconfig.json` for the editor.
 
 ## Who can do what
 
@@ -174,11 +193,27 @@ Add the Vercel address to the allowed URLs in Supabase under Authentication, or 
 
 `vercel.json` sends every path to `index.html`. Without it, opening a link directly returns a 404, because Vercel looks for a file at that path and this is a single page app. It matters most for the allergen page, which is only ever reached by scanning a QR code.
 
+## Checks
+
+Three commands, and all three have to pass before anything is committed:
+
+```bash
+npm run lint       # 0 problems, and it stays 0
+npm run test:run   # 1,617 tests
+npm run build
+```
+
+A GitHub action runs the same three on every pull request into `development` and `main`, so a change that adds a lint problem or breaks a test fails there rather than being found six branches later. It runs one check of its own as well: a pull request that adds a migration without also changing `supabase/schema.sql` fails, because the two drifting apart is the one thing this arrangement exists to prevent.
+
+The database tests are separate and local only. They sign in as real accounts against the live project, so they are not something to run on every push.
+
 ## How the work is organised
 
 Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is sent to `development` through a pull request. Issues that were described but we decided not to build at this stage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definitely want to implement some of them soon.
 
-When you add a migration, run `npm run schema` and commit the rebuilt `supabase/schema.sql` alongside it. That file is what a fresh install runs, so a migration missing from it would be missing from any new database.
+When you add a migration, fold the same change into `supabase/schema.sql` by hand and commit the two together. That file is what a fresh install runs, so a change missing from it would be missing from any new database. The GitHub action fails the pull request if you forget.
+
+It used to be generated by a script that concatenated every migration, which is why it grew to 5,000 lines: 37 tables and 101 later alterations of them, with roughly a fifth of it overwritten by some later line. You could not read it to find out what a table looked like, only what had happened to it. It is written by hand now and the script is gone, because a script that overwrites the design is a loaded gun.
 
 ## What is not built
 

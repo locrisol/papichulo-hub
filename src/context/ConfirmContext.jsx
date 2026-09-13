@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { secondaryButton } from '../lib/controlStyles'
-import Modal from '../components/Modal'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { secondaryButton } from '@/lib/controlStyles'
+import Modal from '@/components/ui/Modal'
+import { ConfirmContext } from '@/context/confirm'
 
 // Asking "are you sure", in the app's own clothes.
 //
@@ -19,13 +20,9 @@ import Modal from '../components/Modal'
 //
 // Which reads almost the same as what it replaced, and that is deliberate: the
 // less each call site changes, the less chance of getting one of them wrong.
-const ConfirmContext = createContext(null)
 
-export function useConfirm() {
-    const ctx = useContext(ConfirmContext)
-    if (!ctx) throw new Error('useConfirm has to be used inside ConfirmProvider')
-    return ctx
-}
+
+
 
 export function ConfirmProvider({ children }) {
     const [request, setRequest] = useState(null)

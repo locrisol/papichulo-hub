@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '../../lib/dates'
-import { friendlyError, isPermissionError } from '../../lib/errors'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
-import { numberField } from '../../lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
+import { supabase } from '@/lib/supabase'
+import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num } from '@/lib/format'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '@/lib/dates'
+import { friendlyError, isPermissionError } from '@/lib/errors'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import { numberField } from '@/lib/numberInput'
+import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { DAY_NAMES } from '@/lib/events'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -32,13 +34,7 @@ import DateStepper from '../../components/DateStepper'
 // Cash reconciliation (floats, cash banked, petty cash) is deliberately absent
 // here, as it is in the day form: the business is changing how it handles cash.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 // Key under which an unsaved week is kept in local storage.
 function draftKey(restaurantId, weekStart) {
@@ -114,13 +110,7 @@ export default function WeeklySalesPage() {
 
     // Depend on the id, not the object: the context can return a new object for
     // the same restaurant, which would re-run this and wipe anything typed.
-    useEffect(() => {
-        if (!restaurantId) return
-        const key = `${restaurantId}:${weekStart}`
-        if (loadedKey.current === key) return
-        loadWeek(key)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [restaurantId, weekStart])
+    
 
     // Keep a local draft of anything unsaved. Guarded by loadedKey: when the week
     // changes, weekStart updates before loadWeek replaces `days`, so without this
@@ -147,57 +137,70 @@ export default function WeeklySalesPage() {
         return () => window.removeEventListener('beforeunload', onBeforeUnload)
     }, [dirty])
 
-    async function loadWeek(key) {
+    const loadWeek = useCallback(async (key) => {
+
+        // The week's seven days, worked out here rather than taken as a
+
+        // dependency. They are derived from weekStart on every render, so
+
+        // depending on them would rebuild this callback every render and the
+
+        // effect below would reload the week forever.
+
+        const dates = weekDates(weekStart)
+
         setLoading(true)
         setError('')
         setSuccess('')
 
-        const { data: plats, error: pErr } = await supabase
-            .from('sales_platforms')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
-            .order('sort_order')
-            .order('name')
+        // Four at once. None of them needs anything from another, and this
+        // grid is the slowest screen in the app to open.
+        //
+        // The tenders are deliberately not filtered by is_active. A week from
+        // March has to be able to show Outside Catering, and it can only do
+        // that if the retired row is here to be matched against what that week
+        // has stored.
+        const [
+            { data: plats, error: pErr },
+            { data: tends, error: tErr },
+            { data: recs, error: rErr },
+            { data: notes },
+        ] = await Promise.all([
+            supabase.from('sales_platforms')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .eq('is_active', true)
+                .order('sort_order')
+                .order('name'),
+            supabase.from('sales_tenders')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order')
+                .order('label'),
+            supabase.from('sales_records')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('sale_date', dates[0])
+                .lte('sale_date', dates[6]),
+            // What the roster says about these days. It decides which are
+            // closed, and a failure here is not worth stopping the week over.
+            supabase.from('day_notes')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('note_date', dates[0]).lte('note_date', dates[6]),
+        ])
 
-        if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
+        const failed = [pErr, tErr, rErr].find(Boolean)
+        if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
         const sortedPlats = (plats || []).sort(
             (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
         )
         setPlatforms(sortedPlats)
-
-        // Not filtered by is_active on purpose. A week from March has to be able
-        // to show Outside Catering, and it can only do that if the retired row
-        // is here to be matched against what that week has stored.
-        const { data: tends, error: tErr } = await supabase
-            .from('sales_tenders')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .order('sort_order')
-            .order('label')
-
-        if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
         setTenders(tends || [])
-
-        const { data: recs, error: rErr } = await supabase
-            .from('sales_records')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('sale_date', dates[0])
-            .lte('sale_date', dates[6])
-
-        if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
         const byDate = {}
         for (const r of recs || []) byDate[r.sale_date] = r
-
-        // What the roster says about these days. It decides which are closed.
-        const { data: notes } = await supabase
-            .from('day_notes')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('note_date', dates[0]).lte('note_date', dates[6])
 
         const noteByDate = {}
         for (const n of notes || []) noteByDate[n.note_date] = n
@@ -256,7 +259,15 @@ export default function WeeklySalesPage() {
         if (restored) setSuccess('Restored unsaved changes from this device.')
         loadedKey.current = key
         setLoading(false)
-    }
+        }, [restaurantId, weekStart])
+
+    useEffect(() => {
+        if (!restaurantId) return
+        const key = `${restaurantId}:${weekStart}`
+        if (loadedKey.current === key) return
+        loadWeek(key)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadWeek])
 
     function setField(date, field, value) {
         setDirty(true)
@@ -648,7 +659,7 @@ export default function WeeklySalesPage() {
                         wonders why a row they cannot find in settings is on the
                         screen in front of them. */}
                     {!tender.is_active && (
-                        <span className="ml-2 text-xs font-normal text-gray-400">retired</span>
+                        <span className="ml-2 text-xs font-normal text-muted">retired</span>
                     )}
                 </td>
                 {dates.map((d, i) => (
@@ -801,7 +812,7 @@ export default function WeeklySalesPage() {
                 })}
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">{fmtMoney(weekSum)}</div>
-                    <div className="text-xs text-gray-400">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
+                    <div className="text-xs text-muted">{pctOfGross(weekSum, weekGross).toFixed(1)}% of sales</div>
                     {comparable && Math.abs(weekGap) >= 0.01 && (
                         <div className="text-xs text-amber-600">
                             {weekGap > 0 ? '+' : ''}{fmtMoney(weekGap)} vs receipt
@@ -815,7 +826,7 @@ export default function WeeklySalesPage() {
     // Only blank the page on the very first load. On later week changes keep the
     // grid mounted, otherwise the date picker is unmounted mid-interaction.
     if (loading && Object.keys(days).length === 0) {
-        return <div><p className="text-sm text-gray-400">Loading...</p></div>
+        return <div><p className="text-sm text-muted">Loading...</p></div>
     }
 
     return (
@@ -853,7 +864,7 @@ export default function WeeklySalesPage() {
                 at a time and saves to exactly the same place, so it makes no difference which one you use.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Week navigation */}
@@ -989,7 +1000,7 @@ export default function WeeklySalesPage() {
                                     return (
                                         <td key={d} className={`px-3 py-2 text-right text-sm whitespace-nowrap ${closedCol(d)}`}>
                                             {closed
-                                                ? <span className="text-gray-300">-</span>
+                                                ? <span className="text-muted">-</span>
                                                 : <span className={warn ? 'text-red-600 font-semibold' : 'text-green-700'}>{fmtMoney(v)}</span>}
                                         </td>
                                     )
@@ -1050,7 +1061,7 @@ export default function WeeklySalesPage() {
                 </div>
             </div>
 
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-muted mb-4">
                 Amber figures under the tracked rows show the difference against the till receipt. Platforms report
                 commission and VAT differently, so a gap is expected and does not affect the reconciliation above.
             </p>
@@ -1059,14 +1070,14 @@ export default function WeeklySalesPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">
                 <button
                     onClick={handleSaveWeek}
                     disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className={primaryButton('lg')}
                 >
                     {saving ? 'Saving...' : 'Save week'}
                 </button>

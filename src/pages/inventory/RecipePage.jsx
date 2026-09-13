@@ -1,17 +1,18 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { calculateMixCost } from '../../lib/mixCost'
-import RecipeIngredientForm from '../../components/RecipeIngredientForm'
-import Modal from '../../components/Modal'
-import { friendlyError } from '../../lib/errors'
-import { fmtMoney, fmtUnitCost } from '../../lib/format'
-import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle } from '../../lib/controlStyles'
-import { useConfirm } from '../../context/ConfirmContext'
-import { canBeIngredient } from '../../lib/products'
-import { numberField } from '../../lib/numberInput'
-import BackButton from '../../components/BackButton'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { calculateMixCost } from '@/lib/mixCost'
+import RecipeIngredientForm from '@/components/inventory/RecipeIngredientForm'
+import Modal from '@/components/ui/Modal'
+import { friendlyError } from '@/lib/errors'
+import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { useConfirm } from '@/context/confirm'
+import { canBeIngredient } from '@/lib/products'
+import { numberField } from '@/lib/numberInput'
+import BackButton from '@/components/ui/BackButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The recipe behind a MIX, meaning something we make ourselves rather than buy.
 //
@@ -61,18 +62,11 @@ export default function RecipePage() {
     }
   }
 
-  useEffect(() => {
-    fetchProduct()
-    fetchProducts()
-    fetchRecipeLines()
-  }, [id])
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-  }, [activeRestaurant])
 
-  async function fetchProduct() {
+
+
+  const fetchProduct = useCallback(async () => {
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -84,9 +78,11 @@ export default function RecipePage() {
       setProduct(data)
       setBatchYieldInput(data.batch_yield ?? '')
     }
-  }
+    }, [id])
 
-  async function fetchProducts() {
+
+
+  const fetchProducts = useCallback(async () => {
     // Ingredients are any active product except the MIX itself (no self-reference)
     const { data } = await supabase
       .from('products')
@@ -96,9 +92,11 @@ export default function RecipePage() {
       .order('name')
 
     if (data) setProducts(data)
-  }
+    }, [id])
 
-  async function fetchRecipeLines() {
+
+
+  const fetchRecipeLines = useCallback(async () => {
     const { data, error } = await supabase
       .from('mix_recipes')
       .select('*')
@@ -107,9 +105,20 @@ export default function RecipePage() {
     if (error) setError(friendlyError(error))
     else setRecipeLines(data)
     setLoading(false)
-  }
+    }, [])
 
-  async function fetchPrices() {
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchProduct()
+    fetchProducts()
+    fetchRecipeLines()
+  }, [fetchProduct, fetchProducts, fetchRecipeLines])
+
+  const fetchPrices = useCallback(async () => {
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
@@ -117,7 +126,17 @@ export default function RecipePage() {
       .eq('is_preferred', true)
 
     if (data) setPrices(data)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+  }, [fetchPrices, activeRestaurant])
 
   function getProduct(productId) {
     return products.find(p => p.id === productId)
@@ -320,14 +339,14 @@ export default function RecipePage() {
         <button
           onClick={() => { resetForm(); setShowForm(true) }}
           disabled={availableProducts.length === 0}
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={primaryButton()}
         >
           + Add Ingredient
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {product && !product.is_mix && (
@@ -424,7 +443,7 @@ export default function RecipePage() {
                       ? ` at ${fmtUnitCost(unitCost)} / ${ingredient?.unit}`
                       : <span className="text-amber-600"> · no cost available</span>}
                   </p>
-                  {line.notes && <p className="text-xs text-gray-400 mt-0.5">{line.notes}</p>}
+                  {line.notes && <p className="text-xs text-muted mt-0.5">{line.notes}</p>}
                   <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                     <button
                       onClick={() => editingLine?.id === line.id ? resetForm() : startEdit(line)}

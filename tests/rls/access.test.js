@@ -179,7 +179,13 @@ maybe('what each role can see and do', () => {
 
         // The one that would matter most if it were wrong.
         it('sees nothing from the other restaurant', async () => {
-            for (const table of ['sales_records', 'invoices', 'labour_entries', 'waste_logs', 'sales_platforms']) {
+            // product_supplier_prices is in this list because it was not, and
+            // that is exactly how it kept a policy that asked what role you
+            // are and never which restaurant, for as long as it did.
+            for (const table of [
+                'sales_records', 'invoices', 'labour_entries', 'waste_logs',
+                'sales_platforms', 'product_supplier_prices',
+            ]) {
                 const { data } = await manager.from(table).select('restaurant_id')
                 const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
                 expect(strays, `${table} leaked rows from another restaurant`).toHaveLength(0)
@@ -288,15 +294,96 @@ maybe('what each role can see and do', () => {
         })
     })
 
+    // roster_colleagues and roster_away read past row level security on
+    // purpose, because a policy picks rows and cannot pick columns, and these
+    // exist to show a colleague's name and position without their pay rate,
+    // date of birth or immigration status. That makes the where clause written
+    // inside each view the only wall between the two restaurants, and nothing
+    // was checking it was still there.
+    describe('the two staff views', () => {
+        it('roster_colleagues never hands over pay or personal details', async () => {
+            const { data } = await employee.from('roster_colleagues').select('*').limit(1)
+            if (data?.length) {
+                const cols = Object.keys(data[0])
+                for (const hidden of [
+                    'hourly_rate', 'date_of_birth', 'work_permission',
+                    'work_permission_expires', 'availability', 'notes',
+                ]) {
+                    expect(cols, `roster_colleagues is handing over ${hidden}`).not.toContain(hidden)
+                }
+            }
+        })
+
+        it('roster_away says when, never why', async () => {
+            const { data } = await employee.from('roster_away').select('*').limit(1)
+            if (data?.length) {
+                const cols = Object.keys(data[0])
+                expect(cols).not.toContain('kind')
+                expect(cols).not.toContain('note')
+            }
+        })
+
+        it('neither view shows the other restaurant', async () => {
+            for (const view of ['roster_colleagues', 'roster_away']) {
+                const { data } = await employee.from(view).select('restaurant_id')
+                const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
+                expect(strays, `${view} leaked rows from another restaurant`).toHaveLength(0)
+            }
+        })
+
+        it('neither view answers to somebody not signed in', async () => {
+            for (const view of ['roster_colleagues', 'roster_away']) {
+                const { count } = await countVisible(anon, view)
+                expect(count, `${view} is readable by anybody`).toBe(0)
+            }
+        })
+    })
+
     describe('nobody signed in', () => {
         it('can read the menu, which the allergen page needs', async () => {
-            const { count } = await countVisible(anon, 'menu_items')
+            const { count } = await countVisible(anon, 'public_menu_items')
             expect(count).toBeGreaterThan(0)
         })
 
         it('can read products, which the allergen page follows recipes through', async () => {
-            const { count } = await countVisible(anon, 'products')
+            const { count } = await countVisible(anon, 'public_products')
             expect(count).toBeGreaterThan(0)
+        })
+
+        // The tables those views are built on. A policy can say yes to a
+        // stranger asking for the menu, and it cannot say which columns, so
+        // the same yes used to cover every recipe quantity, every selling
+        // price and the restaurant's pay rate. 065 closed them.
+        it('cannot read the tables the allergen views are built on', async () => {
+            for (const table of [
+                'restaurants', 'products', 'menu_items', 'menu_categories',
+                'menu_item_components', 'mix_recipes', 'product_allergens',
+            ]) {
+                const { count } = await countVisible(anon, table)
+                expect(count, `${table} is still readable by anybody`).toBe(0)
+            }
+        })
+
+        // What the views hand over, stated as columns rather than as a
+        // promise. A quantity here is the recipe, and a selling price here is
+        // nobody's business.
+        it('is given the columns the page needs and no others', async () => {
+            const { data: recipes } = await anon.from('public_mix_recipes').select('*').limit(1)
+            if (recipes?.length) {
+                expect(Object.keys(recipes[0]).sort())
+                    .toEqual(['id', 'ingredient_product_id', 'mix_product_id'])
+            }
+
+            const { data: items } = await anon.from('public_menu_items').select('*').limit(1)
+            if (items?.length) {
+                expect(Object.keys(items[0])).not.toContain('selling_price')
+                expect(Object.keys(items[0])).not.toContain('vat_rate')
+            }
+
+            const { data: places } = await anon.from('public_restaurants').select('*').limit(1)
+            if (places?.length) {
+                expect(Object.keys(places[0]).sort()).toEqual(['id', 'name', 'slug'])
+            }
         })
 
         it('cannot read what anything costs', async () => {

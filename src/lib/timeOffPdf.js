@@ -1,7 +1,19 @@
-import jsPDF from 'jspdf'
-import { absenceDays } from './absences'
-import { requestLabel, partWords } from './timeOff'
-import logo from '../assets/PapiChuloLogoPrint.png?inline'
+import { absenceDays } from '@/lib/absences'
+import { requestLabel, partWords } from '@/lib/timeOff'
+import logo from '@/assets/PapiChuloLogoPrint.png?inline'
+
+// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
+//
+// It is 400KB with its own optional dependencies behind it, and a plain import
+// at the top of this file means every visit to the screen that can make one
+// pays for it whether or not anybody presses the button. Most never do.
+let jsPdfModule = null
+
+async function loadJsPdf() {
+    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
+    return jsPdfModule
+}
+
 
 // The answer to a time off request, as a piece of paper.
 //
@@ -52,8 +64,8 @@ export function recordName(absence, employeeName) {
 //
 // Handed back rather than saved, because this one has two jobs: the manager may
 // want it on screen, and the email needs the same bytes as an attachment.
-export function timeOffRecordPdf({ absence, employeeName, restaurant, answeredBy, cleared }) {
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+export async function timeOffRecordPdf({ absence, employeeName, restaurant, answeredBy, cleared }) {
+    const pdf = new (await loadJsPdf())({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
     const marginX = 18
@@ -192,6 +204,6 @@ export function timeOffRecordPdf({ absence, employeeName, restaurant, answeredBy
 }
 
 // The same page as bytes, for hanging off an email.
-export function timeOffRecordBase64(args) {
-    return timeOffRecordPdf(args).output('datauristring').split(',')[1]
+export async function timeOffRecordBase64(args) {
+    return (await timeOffRecordPdf(args)).output('datauristring').split(',')[1]
 }

@@ -10,7 +10,7 @@ import {
     removeExtra,
     usualProblem,
     extraLanes,
-} from './dayExtras'
+} from '@/lib/dayExtras'
 
 describe('cleanExtras', () => {
     it('keeps a name and a time', () => {

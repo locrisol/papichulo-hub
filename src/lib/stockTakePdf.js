@@ -1,10 +1,22 @@
-import jsPDF from 'jspdf'
-import { fmtMoney, fmtQty } from './format'
-import { countName } from './products'
-import { sectionColour, MIX_COLOUR } from './sections'
-import { bySection, summarise } from './stockTakeSummary'
-import { slicePoints } from './donut'
-import logo from '../assets/PapiChuloLogoPrint.png?inline'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { countName } from '@/lib/products'
+import { sectionColour, MIX_COLOUR } from '@/lib/sections'
+import { bySection, summarise } from '@/lib/stockTakeSummary'
+import { slicePoints } from '@/lib/donut'
+import logo from '@/assets/PapiChuloLogoPrint.png?inline'
+
+// jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
+//
+// It is 400KB with its own optional dependencies behind it, and a plain import
+// at the top of this file means every visit to the screen that can make one
+// pays for it whether or not anybody presses the button. Most never do.
+let jsPdfModule = null
+
+async function loadJsPdf() {
+    if (!jsPdfModule) jsPdfModule = (await import('jspdf')).default
+    return jsPdfModule
+}
+
 
 // The logo, in millimetres. The file is 400 by 249.
 const LOGO_WIDTH = 26
@@ -28,8 +40,10 @@ function rgb(hex) {
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-// The same colour laid over white, for the band behind a summary row.
-function tint(hex, amount) {
+// The same colour laid over white, for the band behind a summary row. Same
+// sum as tint in roster.js, which returns a hex string because the screen
+// wants one. jsPDF wants three numbers, so this one hands back the channels.
+function tintRgb(hex, amount) {
     return rgb(hex).map(c => Math.round(255 - (255 - c) * amount))
 }
 
@@ -76,8 +90,8 @@ function breakdownString(line, product) {
 
 // Builds and saves a stock take PDF.
 // session, restaurant ({name}), products, lines, generatedBy (display name), title
-export function exportStockTakePdf({ session, restaurant, products, lines, generatedBy, title }) {
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+export async function exportStockTakePdf({ session, restaurant, products, lines, generatedBy, title }) {
+    const pdf = new (await loadJsPdf())({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
     const marginX = 15
@@ -212,7 +226,7 @@ export function exportStockTakePdf({ session, restaurant, products, lines, gener
 
     function summaryRow(row) {
         ensureSpace(7)
-        pdf.setFillColor(...tint(row.ink, 0.12))
+        pdf.setFillColor(...tintRgb(row.ink, 0.12))
         pdf.rect(marginX, y - 4.2, colTotalRight - marginX, 5.4, 'F')
         pdf.setFillColor(...rgb(row.ink))
         pdf.circle(marginX + 3, y - 1.4, 1.2, 'F')

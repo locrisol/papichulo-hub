@@ -1,14 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { resolveTarget } from '../../lib/costTargets'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { numberField } from '../../lib/numberInput'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
+import { fmtMoney, fmtQty, num, fmtPct } from '@/lib/format'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle, primaryButton } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { numberField } from '@/lib/numberInput'
+import { DAY_NAMES } from '@/lib/events'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+
+const PCT_TONE = { green: 'text-green-700', amber: 'text-amber-600', red: 'text-red-600' }
 
 // Labour hours, entered a week at a time.
 //
@@ -25,13 +29,7 @@ import { numberField } from '../../lib/numberInput'
 // labour_cost is a generated column in Postgres, worked out from hours and rate,
 // so it is never sent on save. Sending it would have the insert rejected.
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function LabourPage() {
     const { user } = useAuth()
@@ -191,12 +189,13 @@ export default function LabourPage() {
 
     const target = resolveTarget(overrides, 'labour', weekStart, num(activeRestaurant?.labour_cost_target))
 
+    // The bands come from one place now, so where amber starts cannot be
+    // different here than on the dashboard. The colours stay on this page,
+    // because each screen shades a figure to suit itself.
     function pctColour(pct) {
-        if (pct == null) return 'text-gray-400'
+        if (pct == null) return 'text-muted'
         if (!target) return 'text-gray-900'
-        if (pct <= target) return 'text-green-700'
-        if (pct <= target + 2) return 'text-amber-600'
-        return 'text-red-600'
+        return PCT_TONE[statusFor(pct, target)]
     }
 
     // ---- saving ----------------------------------------------------------
@@ -255,7 +254,7 @@ export default function LabourPage() {
     const calcCellCls = 'px-3 py-2 text-right bg-gray-50'
 
     if (loading && Object.keys(days).length === 0) {
-        return <div><p className="text-sm text-gray-400">Loading...</p></div>
+        return <div><p className="text-sm text-muted">Loading...</p></div>
     }
 
     return (
@@ -275,7 +274,7 @@ export default function LabourPage() {
                 cost, so you have to scroll sideways to reach the cost column.
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {!currentRate && (
@@ -355,7 +354,7 @@ export default function LabourPage() {
                                     <tr key={d} className="border-b border-border">
                                         <td className="px-3 py-2">
                                             <div className="text-gray-900">{DAY_NAMES[i]}</div>
-                                            <div className="text-xs text-gray-400">{fullDate(d)}</div>
+                                            <div className="text-xs text-muted">{fullDate(d)}</div>
                                         </td>
                                         <td className="px-2 py-2">
                                             <input {...numberField({
@@ -375,13 +374,13 @@ export default function LabourPage() {
                                         <td className={`${calcCellCls} text-gray-700`}>{fmtMoney(costFor(d))}</td>
                                         <td className={calcCellCls}>
                                             {closed
-                                                ? <span className="text-gray-400 text-xs">Closed</span>
+                                                ? <span className="text-muted text-xs">Closed</span>
                                                 : net == null
                                                     ? <span className="text-amber-600 text-xs">No sales entered</span>
                                                     : <span className="text-gray-700">{fmtMoney(net)}</span>}
                                         </td>
                                         <td className={`${calcCellCls} font-medium ${pctColour(pct)}`}>
-                                            {pct == null ? '-' : `${pct.toFixed(1)}%`}
+                                            {fmtPct(pct)}
                                         </td>
                                     </tr>
                                 )
@@ -393,11 +392,11 @@ export default function LabourPage() {
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtQty(weekHours)}</td>
                                 {/* No total for people: the same person works most
                                     days, so adding the daily counts is meaningless. */}
-                                <td className="px-3 py-3 text-right text-gray-400">-</td>
+                                <td className="px-3 py-3 text-right text-muted">-</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekCost)}</td>
                                 <td className="px-3 py-3 text-right font-semibold text-gray-900">{fmtMoney(weekNet)}</td>
                                 <td className={`px-3 py-3 text-right font-semibold ${pctColour(weekPct)}`}>
-                                    {weekPct == null ? '-' : `${weekPct.toFixed(1)}%`}
+                                    {fmtPct(weekPct)}
                                 </td>
                             </tr>
                         </tfoot>
@@ -405,7 +404,7 @@ export default function LabourPage() {
                 </div>
             </div>
 
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-muted mb-4">
                 People is a head count of who worked that day, not how many were on at once. It does not feed the
                 cost, which is hours times the hourly rate of {fmtMoney(currentRate)}.
                 {target
@@ -417,12 +416,12 @@ export default function LabourPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">
                 <button onClick={handleSave} disabled={saving}
-                    className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                    className={primaryButton('lg')}>
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>

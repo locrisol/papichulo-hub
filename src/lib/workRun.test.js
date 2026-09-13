@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fullDayRun, fullDayWords, dayHoursFor } from './workRun'
+import { fullDayRun, fullDayWords, dayHoursFor } from '@/lib/workRun'
 
 const shift = (date, starts_at, ends_at, employee_id = 'e1') =>
     ({ shift_date: date, starts_at, ends_at, employee_id })

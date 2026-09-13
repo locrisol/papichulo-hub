@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { secondaryButton, card, cardEdge } from '../../lib/controlStyles'
-import { useAuth } from '../../context/AuthContext'
-import { can, MANAGERS } from '../../lib/access'
-import { todayISO, weekStartOf, addDays, monthStart } from '../../lib/dates'
-import { syncEvents, syncIsDue, markSynced } from '../../lib/ticketmaster'
-import { friendlyError } from '../../lib/errors'
-import { byDate as groupByDate } from '../../lib/events'
-import EventModal from '../../components/EventModal'
-import EventMonth from '../../components/EventMonth'
-import EventWeek from '../../components/EventWeek'
-import EventAgenda from '../../components/EventAgenda'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { secondaryButton, card, cardEdge } from '@/lib/controlStyles'
+import { useAuth } from '@/context/auth'
+import { can, MANAGERS } from '@/lib/access'
+import { todayISO, weekStartOf, addDays, monthStart } from '@/lib/dates'
+import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
+import { friendlyError } from '@/lib/errors'
+import { byDate as groupByDate } from '@/lib/events'
+import EventModal from '@/components/forecast/EventModal'
+import EventMonth from '@/components/forecast/EventMonth'
+import EventWeek from '@/components/forecast/EventWeek'
+import EventAgenda from '@/components/forecast/EventAgenda'
 
 // What is on at 3Arena.
 //
@@ -76,6 +76,11 @@ export default function EventCalendarPage() {
     const enabled = activeRestaurant?.forecasting_enabled
 
     useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of month keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (!activeRestaurant || !enabled) { setLoading(false); return }
 
         async function load() {
@@ -221,7 +226,7 @@ export default function EventCalendarPage() {
             </div>
 
             {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted">Loading...</p>
             ) : (
                 // The calendar takes two thirds on a laptop and the list sits
                 // beside it. items-start stops each being stretched to whichever

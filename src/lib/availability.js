@@ -20,8 +20,8 @@
 // college hours this term can roster straight over it, and the roster says so
 // once rather than standing in the way.
 
-import { toMinutes, shiftMinutes } from './roster'
-import { todayISO, weekStartOf } from './dates'
+import { toMinutes, shiftMinutes } from '@/lib/roster'
+import { todayISO, weekStartOf } from '@/lib/dates'
 
 // The two edges of a day.
 //

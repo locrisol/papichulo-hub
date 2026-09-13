@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { dayIsClosed, planNoteWrites, applyNoteWrites } from '../../lib/closedDays'
-import { useAuth } from '../../context/AuthContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '../../lib/salesTenders'
-import { numberField } from '../../lib/numberInput'
-import { todayISO, addDays, fullDate } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
-import DateStepper from '../../components/DateStepper'
-import { useConfirm } from '../../context/ConfirmContext'
+import { supabase } from '@/lib/supabase'
+import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num } from '@/lib/format'
+import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import { numberField } from '@/lib/numberInput'
+import { todayISO, addDays, fullDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import DateStepper from '@/components/ui/DateStepper'
+import { useConfirm } from '@/context/confirm'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // TWO RECORDS, DELIBERATELY SEPARATE
 // The till receipt block (gross, net, and a row for every way the till takes
@@ -32,12 +33,6 @@ import { useConfirm } from '../../context/ConfirmContext'
 // in place (petty_cash_entries, sales_records.cash_banked) so it can be
 // re-enabled without a migration. "Cash" below is a payment method.
 
-// Parse a money input string to a number, treating blank as 0.
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function SalesPage() {
     const { user } = useAuth()
@@ -395,7 +390,7 @@ export default function SalesPage() {
     }
 
     if (loading) {
-        return <p className="text-sm text-gray-400">Loading...</p>
+        return <p className="text-sm text-muted">Loading...</p>
     }
 
     return (
@@ -417,7 +412,7 @@ export default function SalesPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. The left is the day
@@ -525,7 +520,7 @@ export default function SalesPage() {
                                             <label className={labelClass}>
                                                 {t.label}
                                                 {!t.is_active && (
-                                                    <span className="ml-2 text-gray-400">retired</span>
+                                                    <span className="ml-2 text-muted">retired</span>
                                                 )}
                                             </label>
                                             <input
@@ -585,11 +580,11 @@ export default function SalesPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex justify-end">
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
+                <button onClick={handleSave} disabled={saving} className={primaryButton('lg')}>
                     {saving
                         ? 'Saving...'
                         : isClosed

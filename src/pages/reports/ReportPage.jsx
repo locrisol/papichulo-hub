@@ -1,34 +1,36 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { addDays, weekNumber, weekRange, todayISO } from '../../lib/dates'
-import { resolveTarget } from '../../lib/costTargets'
-import { friendlyError } from '../../lib/errors'
-import { card, cardHeader, badge, secondaryButton } from '../../lib/controlStyles'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useConfirm } from '@/context/confirm'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num, fmtPct } from '@/lib/format'
+import { addDays, weekNumber, weekRange, todayISO } from '@/lib/dates'
+import { resolveTarget, statusFor } from '@/lib/costTargets'
+import { friendlyError } from '@/lib/errors'
+import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
-import { reportFigures, sectionKey, publishCheck, figuresToStore } from '../../lib/weeklyReport'
+import { reportFigures, sectionKey, publishCheck, figuresToStore } from '@/lib/weeklyReport'
 import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpiry }
-    from '../../lib/reportPeople'
-import { weeksBack, byWeek } from '../../lib/reportChart'
-import { chartSpecs } from '../../lib/reportCharts'
-import { brandFor } from '../../lib/platformBrand'
-import { uploadCharts, sendReport } from '../../lib/reportMail'
-import ReportComments from '../../components/reports/ReportComments'
-import ReportProfitLoss from '../../components/reports/ReportProfitLoss'
-import ReportOnlineSales from '../../components/reports/ReportOnlineSales'
-import ReportCorporateSales from '../../components/reports/ReportCorporateSales'
-import ReportPaperwork from '../../components/reports/ReportPaperwork'
-import ReportActions from '../../components/reports/ReportActions'
-import ReportSectionHead from '../../components/reports/ReportSectionHead'
-import Recipients from '../../components/reports/Recipients'
-import PublishBar from '../../components/reports/PublishBar'
-import WeekChart from '../../components/reports/WeekChart'
-import BackButton from '../../components/BackButton'
-import AddButton from '../../components/AddButton'
+    from '@/lib/reportPeople'
+import { weeksBack, byWeek } from '@/lib/reportChart'
+import { chartSpecs } from '@/lib/reportCharts'
+import { brandFor } from '@/lib/platformBrand'
+import { uploadCharts, sendReport } from '@/lib/reportMail'
+import ReportComments from '@/components/reports/ReportComments'
+import ReportProfitLoss from '@/components/reports/ReportProfitLoss'
+import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
+import ReportCorporateSales from '@/components/reports/ReportCorporateSales'
+import ReportPaperwork from '@/components/reports/ReportPaperwork'
+import ReportActions from '@/components/reports/ReportActions'
+import ReportSectionHead from '@/components/reports/ReportSectionHead'
+import Recipients from '@/components/reports/Recipients'
+import PublishBar from '@/components/reports/PublishBar'
+import WeekChart from '@/components/reports/WeekChart'
+import BackButton from '@/components/ui/BackButton'
+import AddButton from '@/components/ui/AddButton'
+import { can, RESTAURANT_CONFIG } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One week's report.
 //
@@ -42,31 +44,20 @@ import AddButton from '../../components/AddButton'
 // what makes the next mail a correction, so it does not belong on this page as
 // a quiet toggle.
 
-function num(v) {
-    if (v == null) return 0
-    const n = Number(v)
-    return isNaN(n) ? 0 : n
-}
-
-function pct(v) {
-    return v == null ? '—' : `${v.toFixed(2)}%`
-}
 
 // Green at or under target, amber within two points over, red beyond. The same
 // bands the cost dashboard uses, so a week does not look different depending on
 // which screen you read it on.
-function statusFor(actual, target) {
-    if (actual == null || !target) return 'none'
-    if (actual <= target) return 'green'
-    if (actual <= target + 2) return 'amber'
-    return 'red'
-}
+// The report prints percentages to two decimals where the rest of the app
+// uses one, because a food cost moving by a tenth of a point is a real
+// change on a week's turnover and gets argued about.
+const pct2 = v => fmtPct(v, 2)
 
 const TONE = {
     green: 'text-green-700',
     amber: 'text-amber-600',
     red: 'text-red-600',
-    none: 'text-gray-400',
+    none: 'text-muted',
 }
 
 // One cost, as a share of net sales.
@@ -80,12 +71,12 @@ function CostCard({ label, figure, share, shareGross, target }) {
     return (
         <div className="rounded-lg border border-border bg-app-bg p-4">
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">{label}</p>
-            <p className={`font-serif text-3xl font-bold leading-none ${tone}`}>{pct(share)}</p>
+            <p className={`font-serif text-3xl font-bold leading-none ${tone}`}>{pct2(share)}</p>
             <p className="text-sm text-muted mt-2 tabular-nums">
                 of net{target ? ` · ${target}% target` : ''}
             </p>
             <p className="text-sm text-gray-700 mt-1 tabular-nums font-semibold">{fmtMoney(figure)}</p>
-            <p className="text-xs text-muted mt-0.5 tabular-nums">{pct(shareGross)} of gross</p>
+            <p className="text-xs text-muted mt-0.5 tabular-nums">{pct2(shareGross)} of gross</p>
         </div>
     )
 }
@@ -122,7 +113,7 @@ export default function ReportPage() {
     const [saving, setSaving] = useState(false)
     const [savedAt, setSavedAt] = useState(null)
 
-    const isStoreManager = ['super_admin', 'store_manager'].includes(user?.role)
+    const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
 
     // Up here rather than beside the charts, because publishing needs them to
@@ -815,9 +806,9 @@ export default function ReportPage() {
             </div>
 
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
             )}
 
             <PublishBar

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderByUse } from './supplierOrder'
+import { orderByUse } from '@/lib/supplierOrder'
 
 const SUPPLIERS = [
     { id: 'a', name: 'Aryzta' },

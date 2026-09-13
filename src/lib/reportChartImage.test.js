@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { drawChart, chartPlan, keyLines, MAIL_WIDTH } from './reportChartImage'
-import { chartSpecs } from './reportCharts'
+import { drawChart, chartPlan, keyLines, MAIL_WIDTH } from '@/lib/reportChartImage'
+import { chartSpecs } from '@/lib/reportCharts'
 
 // A canvas that writes down what it was asked to do instead of drawing it.
 //

@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { weeksOpen } from '../../lib/weeklyReport'
-import { useRemoveCard } from './useRemoveCard'
-import { removeButton } from '../../lib/controlStyles'
-import AutoTextarea from '../AutoTextarea'
-import AddButton from '../AddButton'
+import { weeksOpen } from '@/lib/weeklyReport'
+import { useRemoveCard } from '@/components/reports/useRemoveCard'
+import { removeButton } from '@/lib/controlStyles'
+import AutoTextarea from '@/components/ui/AutoTextarea'
+import AddButton from '@/components/ui/AddButton'
 
 // Support and actions needed: the running list.
 //
@@ -170,7 +170,7 @@ export default function ReportActions({ section, weekStart, canEdit, onAdd, onSa
                         onChange={e => setAdding(e.target.value)}
                         onBlur={add}
                         placeholder="What needs doing"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                     />
                     {adding.trim() && (
                         <AddButton

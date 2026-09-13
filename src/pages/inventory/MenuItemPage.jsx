@@ -1,20 +1,21 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { calculateMixCost, menuItemCost } from '../../lib/mixCost'
-import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '../../lib/allergens'
-import { friendlyError } from '../../lib/errors'
-import { canBeMenuComponent } from '../../lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle } from '../../lib/controlStyles'
-import { useConfirm } from '../../context/ConfirmContext'
-import Modal from '../../components/Modal'
-import AddOptions from '../../components/menu/AddOptions'
-import ProductSelect from '../../components/ProductSelect'
-import QuantityInUnit from '../../components/QuantityInUnit'
-import { numberField } from '../../lib/numberInput'
-import { fmtMoney, fmtUnitCost } from '../../lib/format'
-import BackButton from '../../components/BackButton'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { calculateMixCost, menuItemCost } from '@/lib/mixCost'
+import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
+import { friendlyError } from '@/lib/errors'
+import { canBeMenuComponent } from '@/lib/products'
+import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { useConfirm } from '@/context/confirm'
+import Modal from '@/components/ui/Modal'
+import AddOptions from '@/components/inventory/AddOptions'
+import ProductSelect from '@/components/ui/ProductSelect'
+import QuantityInUnit from '@/components/ui/QuantityInUnit'
+import { numberField } from '@/lib/numberInput'
+import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import BackButton from '@/components/ui/BackButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One dish: what it is made of, what it costs, and what it contains.
 //
@@ -122,14 +123,9 @@ export default function MenuItemPage() {
 
   const productSelectRef = useRef(null)
 
-  useEffect(() => {
-    fetchAll()
-  }, [id])
+  
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-  }, [activeRestaurant])
+  
 
   useEffect(() => {
     // Auto-focus the product dropdown after the form clears (post-add)
@@ -141,7 +137,7 @@ export default function MenuItemPage() {
     }
   }, [componentForm.product_id, showComponentForm])
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     const [
       itemRes, categoriesRes, productsRes, componentsRes, recipesRes, allergensRes,
@@ -173,16 +169,35 @@ export default function MenuItemPage() {
     if (allComponentsRes.data) setAllComponents(allComponentsRes.data)
 
     setLoading(false)
-  }
+    }, [id])
 
-  async function fetchPrices() {
+  useEffect(() => {
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAll()
+  }, [fetchAll])
+
+  const fetchPrices = useCallback(async () => {
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
     if (data) setPrices(data)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of what is shown keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+  }, [fetchPrices, activeRestaurant])
 
   function handleHeaderChange(field, value) {
     setHeaderForm({ ...headerForm, [field]: value })
@@ -404,7 +419,7 @@ export default function MenuItemPage() {
   const marginPct = (margin !== null && netPrice > 0) ? (margin / netPrice) * 100 : null
 
   function marginColour(pct) {
-    if (pct === null) return 'text-gray-400'
+    if (pct === null) return 'text-muted'
     if (pct >= MARGIN_GREEN) return 'text-green-700'
     if (pct >= MARGIN_AMBER) return 'text-amber-700'
     return 'text-red-600'
@@ -525,7 +540,7 @@ export default function MenuItemPage() {
         <p className="text-sm text-gray-500 mt-1">Costs and margins for {activeRestaurant?.name}</p>
       </div>
 
-      {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+      {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
       {/* Header form: name, category, price, VAT, notes */}
       <div className={`${card} p-6 mb-6`}>
@@ -657,13 +672,13 @@ export default function MenuItemPage() {
             way down a long screen and on a phone the top of it is nowhere near
             the Save. */}
         {headerProblem && (
-          <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{headerProblem}</p>
+          <ErrorBanner className="mb-3">{headerProblem}</ErrorBanner>
         )}
         <div className="flex items-center gap-3">
           <button
             onClick={saveHeader}
             disabled={headerSaving}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
+            className={primaryButton()}
           >
             {headerSaving ? 'Saving...' : 'Save Details'}
           </button>
@@ -691,7 +706,7 @@ export default function MenuItemPage() {
           <button
             onClick={() => { resetComponentForm(); setShowComponentForm(true) }}
             disabled={availableProducts.length === 0}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={primaryButton()}
           >
             + Add Component
           </button>
@@ -961,7 +976,7 @@ function ComponentForm({
             />
             <span className="text-sm text-gray-700">
               No specific quantity
-              <span className="block text-xs text-gray-400">
+              <span className="block text-xs text-muted">
                 Its allergens still count. It adds nothing to the cost.
               </span>
             </span>
@@ -1021,7 +1036,7 @@ function ComponentForm({
           />
           <span className="text-sm text-gray-700">
             List it separately on the allergen sheet
-            <span className="block text-xs text-gray-400">
+            <span className="block text-xs text-muted">
               Use this for things that are not menu items, like a dessert sauce. Leave it off
               if it already appears in its own category.
             </span>
@@ -1046,13 +1061,13 @@ function ComponentForm({
           on a phone, and inside a dialog it is behind the dialog, where it is
           never seen at all. */}
       {problem && (
-        <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{problem}</p>
+        <ErrorBanner className="mb-3">{problem}</ErrorBanner>
       )}
 
       <div className="flex gap-3">
         <button
           type="submit"
-          className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+          className={primaryButton()}
         >
           {submitLabel}
         </button>
@@ -1119,7 +1134,7 @@ function ComponentTable({
                   <ComponentChips product={product} component={c} />
                 </span>
                 <span className={`text-sm font-semibold whitespace-nowrap tabular-nums text-right ${
-                  counted ? 'text-gray-900' : 'text-gray-400'}`}>
+                  counted ? 'text-gray-900' : 'text-muted'}`}>
                   {lineCost === null ? '—' : fmtMoney(lineCost)}
                   {lineCost !== null && !counted && (
                     <span className="block text-xs font-normal">not the most expensive</span>
@@ -1134,7 +1149,7 @@ function ComponentTable({
                   ? ` at ${fmtUnitCost(unitCost)} / ${product?.unit}`
                   : <span className="text-amber-600"> · no cost available</span>}
               </p>
-              {c.notes && <p className="text-xs text-gray-400 mt-0.5">{c.notes}</p>}
+              {c.notes && <p className="text-xs text-muted mt-0.5">{c.notes}</p>}
               <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
                 <button
                   onClick={() => editingComponent?.id === c.id ? onCancelEdit() : onEdit(c)}
@@ -1190,7 +1205,7 @@ function ComponentTable({
                           // Shown rather than hidden. What the other options
                           // come to is worth seeing, and a blank here would
                           // read as a line that costs nothing.
-                          <span className="font-normal text-gray-400">
+                          <span className="font-normal text-muted">
                             {fmtMoney(lineCost)}
                             <span className="block text-xs">not the most expensive</span>
                           </span>

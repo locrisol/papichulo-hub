@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cleanNumberInput, numberField } from './numberInput'
+import { cleanNumberInput, numberField } from '@/lib/numberInput'
 
 describe('cleanNumberInput', () => {
     it('keeps a plain figure', () => {

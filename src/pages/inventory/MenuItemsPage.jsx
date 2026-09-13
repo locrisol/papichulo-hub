@@ -1,17 +1,18 @@
-import { fmtMoney } from '../../lib/format'
-import { useState, useEffect } from 'react'
+import { fmtMoney } from '@/lib/format'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { menuItemCost } from '../../lib/mixCost'
-import { deriveMenuItemAllergens, summariseAllergens } from '../../lib/allergens'
-import CategoryManagerModal from '../../components/CategoryManagerModal'
-import { useKeepScroll } from '../../context/ScrollContext'
-import ArrangeList from '../../components/ArrangeList'
-import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle } from '../../lib/controlStyles'
-import { numberField } from '../../lib/numberInput'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { useConfirm } from '@/context/confirm'
+import { menuItemCost } from '@/lib/mixCost'
+import { deriveMenuItemAllergens, summariseAllergens } from '@/lib/allergens'
+import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
+import { useKeepScroll } from '@/context/scroll'
+import ArrangeList from '@/components/ui/ArrangeList'
+import { friendlyError } from '@/lib/errors'
+import { secondaryButton, tableHeadRow, tableHeadCell, tableCard, badge, card, rowButton, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { numberField } from '@/lib/numberInput'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Every dish we sell, with what it costs us and what it makes.
 //
@@ -79,10 +80,7 @@ export default function MenuItemsPage() {
     fetchAll()
   }, [])
 
-  useEffect(() => {
-    if (!activeRestaurant) return
-    fetchPrices()
-  }, [activeRestaurant])
+  
 
   // quiet is for reading the same page again after changing something on it:
   // arranging a category, turning a dish off. Blanking the list for a moment
@@ -123,14 +121,24 @@ export default function MenuItemsPage() {
     setLoading(false)
   }
 
-  async function fetchPrices() {
+  const fetchPrices = useCallback(async () => {
     const { data } = await supabase
       .from('product_supplier_prices')
       .select('*')
       .eq('restaurant_id', activeRestaurant.id)
       .eq('is_preferred', true)
     if (data) setPrices(data)
-  }
+    }, [activeRestaurant])
+
+  useEffect(() => {
+    if (!activeRestaurant) return
+    // The fetch sets a loading state before it starts, which is one render
+    // this rule would rather avoid. The alternative is to leave it,
+    // and then a change of restaurant keeps the previous one's figures
+    // on screen under the new one's heading until the answer arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPrices()
+  }, [fetchPrices, activeRestaurant])
 
   function handleFieldChange(field, value) {
     setFormData({ ...formData, [field]: value })
@@ -204,47 +212,70 @@ export default function MenuItemsPage() {
     else fetchAll({ quiet: true })
   }
 
-  function getItemComponents(itemId) {
-    return components.filter(c => c.menu_item_id === itemId)
-  }
-
-  // What is in it, and how many choices sit beside that.
+  // Everything each dish needs, worked out once.
   //
-  // The options are not ingredients. A burrito with eleven ingredients and a
-  // choice of five salsas is not a sixteen ingredient burrito: only one of the
-  // five is ever in it. Counting them together made it read as far more of a
-  // job to build than it is.
-  function countsFor(itemId) {
-    const mine = getItemComponents(itemId)
-    return {
-      components: mine.filter(c => !c.choice_group).length,
-      choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+  // This page used to do all of it inside render, four times per dish per
+  // layout, and it draws both layouts: the phone cards and the desktop table
+  // are md:hidden and hidden md:block, which is CSS, so React runs both maps
+  // either way. getItemComponents filtered every component row in the business
+  // and was called by the cost, the margin, the allergens and the counts, and
+  // the margin called the cost a second time rather than reuse the one it had
+  // just been given. On a hundred dishes that is eight full scans each, before
+  // menuItemCost then walks the recipes down through every nested MIX.
+  //
+  // Then prices arrive from a second effect after the first paint, and the
+  // whole thing runs again.
+  //
+  // One index, one pass, and a plain lookup at the point of use.
+  const byItem = useMemo(() => {
+    const lines = new Map()
+    for (const c of components) {
+      const list = lines.get(c.menu_item_id)
+      if (list) list.push(c)
+      else lines.set(c.menu_item_id, [c])
     }
-  }
 
-  function getItemCost(item) {
-    return menuItemCost(getItemComponents(item.id), products, recipeLines, prices)
-  }
+    const out = new Map()
+    for (const item of menuItems) {
+      const mine = lines.get(item.id) || []
+      const cost = menuItemCost(mine, products, recipeLines, prices)
+      const vat = parseFloat(item.vat_rate) || 0
+      const net = parseFloat(item.selling_price) / (1 + vat / 100)
+      out.set(item.id, {
+        components: mine,
+        cost,
+        net,
+        margin: cost === null ? null : {
+          net,
+          margin: net - cost,
+          marginPct: net > 0 ? ((net - cost) / net) * 100 : null,
+        },
+        allergens: deriveMenuItemAllergens(mine, products, recipeLines, allergens),
+        // The options are not ingredients. A burrito with eleven ingredients
+        // and a choice of five salsas is not a sixteen ingredient burrito:
+        // only one of the five is ever in it. Counting them together made it
+        // read as far more of a job to build than it is.
+        counts: {
+          components: mine.filter(c => !c.choice_group).length,
+          choices: new Set(mine.filter(c => c.choice_group).map(c => c.choice_group)).size,
+        },
+      })
+    }
+    return out
+  }, [menuItems, components, products, recipeLines, allergens, prices])
 
-  function getItemAllergens(item) {
-    const lines = getItemComponents(item.id)
-    return deriveMenuItemAllergens(lines, products, recipeLines, allergens)
-  }
+  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, counts: { components: 0, choices: 0 } }
+  const forItem = id => byItem.get(id) || EMPTY
 
-  function getNet(item) {
-    const vat = parseFloat(item.vat_rate) || 0
-    return parseFloat(item.selling_price) / (1 + vat / 100)
-  }
 
-  function getMargin(item) {
-    const cost = getItemCost(item)
-    if (cost === null) return null
-    const net = getNet(item)
-    return { net, margin: net - cost, marginPct: net > 0 ? ((net - cost) / net) * 100 : null }
-  }
+  const countsFor = itemId => forItem(itemId).counts
+  const getItemCost = item => forItem(item.id).cost
+  const getItemAllergens = item => forItem(item.id).allergens
+  const getNet = item => forItem(item.id).net
+  const getMargin = item => forItem(item.id).margin
 
   function marginColour(pct) {
-    if (pct === null) return 'text-gray-400'
+    if (pct === null) return 'text-muted'
     if (pct >= MARGIN_GREEN) return 'text-green-700'
     if (pct >= MARGIN_AMBER) return 'text-amber-700'
     return 'text-red-600'
@@ -373,7 +404,7 @@ export default function MenuItemsPage() {
           </button>
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
-            className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+            className={primaryButton()}
           >
             + Add Menu Item
           </button>
@@ -381,7 +412,7 @@ export default function MenuItemsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+        <ErrorBanner className="mb-4">{error}</ErrorBanner>
       )}
 
       {showForm && (
@@ -434,7 +465,7 @@ export default function MenuItemsPage() {
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
                 />
                 {errors.vat_rate && <p className="text-xs text-red-600 mt-1">{errors.vat_rate}</p>}
-                <p className="text-xs text-gray-400 mt-1">Use 0 if no VAT applies. Margin calculation handles any rate.</p>
+                <p className="text-xs text-muted mt-1">Use 0 if no VAT applies. Margin calculation handles any rate.</p>
               </div>
             </div>
             <div className="mb-4">
@@ -450,13 +481,13 @@ export default function MenuItemsPage() {
                 button it sat beside it on one line, which squeezes both on a
                 phone and is not where the eye goes after a press. */}
             {formProblem && (
-              <p className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-3" role="alert">{formProblem}</p>
+              <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
             )}
 
             <div className="flex gap-3">
               <button
                 type="submit"
-                className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                className={primaryButton()}
               >
                 Create & Edit Components
               </button>
@@ -538,7 +569,7 @@ export default function MenuItemsPage() {
                           : 'bg-red-100 border-red-200'}`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                          <p className={`font-semibold ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                             {item.name}
                           </p>
                           {/* The table says this with a red row, which a single
@@ -556,7 +587,7 @@ export default function MenuItemsPage() {
                         <dl className="mt-3 space-y-1.5 text-sm">
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Cost</dt>
-                            <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                            <dd className={`text-right font-medium ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                               {cost !== null
                                 ? fmtMoney(cost)
                                 : <span className="text-amber-600 text-xs">Incomplete</span>}
@@ -564,16 +595,16 @@ export default function MenuItemsPage() {
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Price (gross)</dt>
-                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
-                              <span className="text-xs text-gray-400 ml-1">
+                              <span className="text-xs text-muted ml-1">
                                 (VAT {parseFloat(item.vat_rate)}%)
                               </span>
                             </dd>
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Net</dt>
-                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <dd className={`text-right ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </dd>
                           </div>
@@ -594,7 +625,7 @@ export default function MenuItemsPage() {
                           </div>
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Allergens</dt>
-                            <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
                               {!allergens ? 'None' : (
                                 <>
                                   {allergens.contains > 0 && (
@@ -648,10 +679,10 @@ export default function MenuItemsPage() {
                               !item.is_active ? 'bg-red-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                             }`}
                           >
-                            <td className={`px-4 py-3 font-medium ${item.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 font-medium ${item.is_active ? 'text-gray-900' : 'text-muted'}`}>
                               {item.name}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-500' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {counts.components}
                               {counts.choices > 0 && (
                                 <span className="text-xs text-muted">
@@ -659,14 +690,14 @@ export default function MenuItemsPage() {
                                 </span>
                               )}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {cost !== null ? fmtMoney(cost) : <span className="text-amber-600 text-xs">Incomplete</span>}
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(parseFloat(item.selling_price))}
-                              <span className="text-xs text-gray-400 ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
+                              <span className="text-xs text-muted ml-1">(VAT {parseFloat(item.vat_rate)}%)</span>
                             </td>
-                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 ${item.is_active ? 'text-gray-700' : 'text-muted'}`}>
                               {fmtMoney(getNet(item))}
                             </td>
                             <td className="px-4 py-3">
@@ -683,7 +714,7 @@ export default function MenuItemsPage() {
                                 <span className="text-amber-600 text-xs">—</span>
                               )}
                             </td>
-                            <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
                               {allergenSummary.contains === 0 && allergenSummary.mayContain === 0 ? (
                                 'None'
                               ) : (

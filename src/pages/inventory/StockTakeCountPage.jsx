@@ -1,20 +1,22 @@
-import { monthYearOf } from '../../lib/dates'
-import { useState, useEffect, useMemo } from 'react'
+import { monthYearOf } from '@/lib/dates'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { useConfirm } from '../../context/ConfirmContext'
-import { resolveUnitCost } from '../../lib/mixCost'
-import { fmtMoney, fmtQty } from '../../lib/format'
-import { friendlyError } from '../../lib/errors'
-import { matches } from '../../lib/search'
-import { countName, compareForCount } from '../../lib/products'
-import { countedLine } from '../../lib/countedAt'
-import { orderFormats } from '../../lib/countUnits'
-import { card } from '../../lib/controlStyles'
-import SearchBox from '../../components/SearchBox'
-import { sectionColour, sectionRank } from '../../lib/sections'
-import BackButton from '../../components/BackButton'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useConfirm } from '@/context/confirm'
+import { resolveUnitCost } from '@/lib/mixCost'
+import { fmtMoney, fmtQty } from '@/lib/format'
+import { friendlyError } from '@/lib/errors'
+import { matches } from '@/lib/search'
+import { countName, compareForCount } from '@/lib/products'
+import { countedLine } from '@/lib/countedAt'
+import { orderFormats } from '@/lib/countUnits'
+import { card } from '@/lib/controlStyles'
+import SearchBox from '@/components/ui/SearchBox'
+import { sectionColour, sectionRank } from '@/lib/sections'
+import BackButton from '@/components/ui/BackButton'
+import { can, MANAGERS } from '@/lib/access'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // One row is one product in one place, and a product can be kept in more than
 // one. Tacos live in the freezer and there are two boxes in the cold room
@@ -86,11 +88,9 @@ export default function StockTakeCountPage() {
     // things to think about rather than one thing to fix.
     const [justNoned, setJustNoned] = useState(null)
 
-    const isManager = user && ['super_admin', 'owner', 'store_manager'].includes(user.role)
+    const isManager = can(user, MANAGERS)
 
-    useEffect(() => {
-        fetchEverything()
-    }, [id])
+    
 
     // The undo is offered for ten seconds, which is long enough to notice the
     // wrong row and short enough that it is gone before the next shelf.
@@ -100,7 +100,7 @@ export default function StockTakeCountPage() {
         return () => clearTimeout(timer)
     }, [justNoned])
 
-    async function fetchEverything() {
+    const fetchEverything = useCallback(async () => {
         setLoading(true)
         setError('')
 
@@ -186,7 +186,16 @@ export default function StockTakeCountPage() {
         }
 
         setLoading(false)
-    }
+        }, [id])
+
+    useEffect(() => {
+        // The fetch sets a loading state before it starts, which is one render
+        // this rule would rather avoid. The alternative is to leave it,
+        // and then a change of session keeps the previous one's figures
+        // on screen under the new one's heading until the answer arrives.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchEverything()
+    }, [fetchEverything])
 
     // Every line carries the place it was counted in, so asking by place never
     // counts the same box twice however many headings a product appears under.
@@ -484,10 +493,11 @@ export default function StockTakeCountPage() {
     // the freezer is worth nothing.
     const allSections = useMemo(() => group(products), [products])
 
-    const countedPlaces = useMemo(
-        () => new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other'))),
-        [lines],
-    )
+    // Not wrapped in useMemo, deliberately. The React Compiler could not
+    // preserve that memoization and was skipping the optimisation of this whole
+    // component to avoid changing its meaning, which costs far more than the
+    // one Set this was saving. Left plain, the compiler memoizes it itself.
+    const countedPlaces = new Set(lines.map(l => placeKey(l.product_id, l.section || 'Other')))
 
     const allPlaces = products.flatMap(p => placesOf(p).map(section => placeKey(p.id, section)))
 
@@ -525,9 +535,9 @@ export default function StockTakeCountPage() {
     if (error) {
         return (
             <div className="p-6">
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+                <ErrorBanner>
                     {error}
-                </div>
+                </ErrorBanner>
                 <BackButton to="/inventory/stock-takes" className="mt-4">Back to stock takes</BackButton>
             </div>
         )
@@ -771,7 +781,7 @@ export default function StockTakeCountPage() {
                                                         </div>
                                                         {!isClosed && (
                                                             <svg
-                                                                className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                                                className={`w-4 h-4 text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
                                                             >
                                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />

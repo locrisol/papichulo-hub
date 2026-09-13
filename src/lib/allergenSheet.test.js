@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { sheetRows, sheetName } from './allergenSheet'
-import { emptyAllergens } from './allergens'
+import { sheetRows, sheetName } from '@/lib/allergenSheet'
+import { emptyAllergens } from '@/lib/allergens'
 
 // The churros case, which is what this was built for.
 //

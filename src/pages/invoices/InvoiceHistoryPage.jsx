@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { useRestaurant } from '../../context/RestaurantContext'
-import { fmtMoney } from '../../lib/format'
-import { todayISO, addDays, shortDate } from '../../lib/dates'
-import { friendlyError } from '../../lib/errors'
-import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '../../lib/controlStyles'
-import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../../lib/invoiceCategories'
+import { supabase } from '@/lib/supabase'
+import { useRestaurant } from '@/context/restaurant'
+import { fmtMoney, num } from '@/lib/format'
+import { todayISO, addDays, shortDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
+import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '@/lib/controlStyles'
+import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '@/lib/invoiceCategories'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
@@ -16,11 +17,6 @@ import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '../.
 // and that is deferred (#48), so expanding a row would open onto nothing. The
 // same goes for a manual or AI badge: everything is manual at the moment.
 
-function num(v) {
-    if (v === '' || v == null) return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-}
 
 export default function InvoiceHistoryPage() {
     const navigate = useNavigate()
@@ -115,7 +111,7 @@ export default function InvoiceHistoryPage() {
                 </button>
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
             {/* Filters */}
             <div className={`${card} p-4 mb-4`}>
@@ -182,9 +178,9 @@ export default function InvoiceHistoryPage() {
                 </h3>
                 <div className="p-5">
                 {loading ? (
-                    <p className="text-sm text-gray-400">Loading...</p>
+                    <p className="text-sm text-muted">Loading...</p>
                 ) : invoices.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">No invoices match those filters.</p>
+                    <p className="text-sm text-muted italic">No invoices match those filters.</p>
                 ) : (
                     // Same as the invoices screen: this table is inside a padded
                     // card, so it needs its own scrolling wrapper or the Total
@@ -217,7 +213,7 @@ export default function InvoiceHistoryPage() {
                                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{shortDate(inv.invoice_date)}</td>
                                     <td className="px-3 py-2 text-gray-900">
                                         {inv.suppliers?.name || 'Unknown supplier'}
-                                        {inv.notes && <span className="block text-xs text-gray-400">{inv.notes}</span>}
+                                        {inv.notes && <span className="block text-xs text-muted">{inv.notes}</span>}
                                     </td>
                                     <td className="px-3 py-2">
                                         {/* Same colours as the entry screen, so a

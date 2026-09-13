@@ -3,7 +3,7 @@ import {
     RANGES, weeksBack, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
     segments, isMissing,
     labelIndices,
-} from './reportChart'
+} from '@/lib/reportChart'
 
 describe('weeksBack', () => {
     it('ends on the week the date is in, and includes it', () => {

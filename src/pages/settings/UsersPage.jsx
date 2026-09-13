@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
-import { useConfirm } from '../../context/ConfirmContext'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
-import { canManageUser } from '../../lib/access'
-import { friendlyError } from '../../lib/errors'
-import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '../../lib/controlStyles'
-import { latestByUser, lastUsed, agoWords } from '../../lib/loginEvents'
-import { fullDate } from '../../lib/dates'
-import SignInHistory from '../../components/settings/SignInHistory'
+import { useConfirm } from '@/context/confirm'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { canManageUser } from '@/lib/access'
+import { friendlyError } from '@/lib/errors'
+import { tableHeadRow, tableCard, badge, rowButton, pageTitle } from '@/lib/controlStyles'
+import { latestByUser, lastUsed, agoWords } from '@/lib/loginEvents'
+import { fullDate } from '@/lib/dates'
+import SignInHistory from '@/components/settings/SignInHistory'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Everyone with an account, and turning them on or off.
 //
@@ -158,9 +159,9 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">
+        <ErrorBanner className="mb-4">
           {error}
-        </div>
+        </ErrorBanner>
       )}
 
       {loading ? (
@@ -175,7 +176,7 @@ export default function UsersPage() {
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-gray-900">
                   {u.full_name}
-                  {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                  {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                 </p>
                 <span className={`${badge} flex-shrink-0 ${
                   u.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
@@ -236,7 +237,7 @@ export default function UsersPage() {
                 <tr key={u.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {u.full_name}
-                    {u.id === user?.id && <span className="text-xs text-gray-400 ml-2">you</span>}
+                    {u.id === user?.id && <span className="text-xs text-muted ml-2">you</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`${badge} bg-green-50 text-green-700 capitalize`}>

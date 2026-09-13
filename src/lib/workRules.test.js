@@ -3,7 +3,7 @@ import {
     inHolidayPeriod, weeklyCap, ageOn, longestRest, shortestGap, checkWeek,
     permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, overlapFindings,
     graceFor,
-} from './workRules'
+} from '@/lib/workRules'
 
 // Sunday 23 August 2026 to Saturday the 29th.
 const WEEK = [

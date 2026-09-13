@@ -1,0 +1,77 @@
+# The checks, on every pull request.
+#
+# They are the same three that have to pass before anything is committed
+# locally, run again where nobody can forget them. The lint count reached zero
+# in September 2026 and this is what keeps it there: a pull request that adds a
+# problem fails here rather than being noticed six branches later.
+#
+# There is no .env here and there should not be. The unit tests get placeholder
+# Supabase values from vite.config.js, which is also what stops a test on
+# somebody's laptop reaching the live project by accident.
+#
+# The database tests are deliberately not here. They sign in as real accounts
+# against the live project, so running them on every push would be both slow and
+# a bad idea. They stay a local command.
+
+name: Checks
+
+on:
+  pull_request:
+    branches: [development, main]
+  push:
+    branches: [development, main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so the migration check at the bottom can see
+          # what this branch changed against the branch it is going into.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # ci rather than install, so the lockfile decides and a version cannot
+      # drift between here and somebody's machine.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      # schema.sql is the design and a migration is how a database that already
+      # exists catches up with it, so a change that appears in one and not the
+      # other is the two drifting apart. That rule was written in two READMEs
+      # and a README has never stopped anybody.
+      - name: A new migration is folded into schema.sql
+        if: github.event_name == 'pull_request'
+        run: |
+          base='${{ github.event.pull_request.base.sha }}'
+          added=$(git diff --name-only --diff-filter=A "$base" HEAD -- 'supabase/migrations/*.sql')
+          if [ -z "$added" ]; then
+            echo "No migration added, nothing to check."
+            exit 0
+          fi
+          echo "Added:"
+          echo "$added"
+          if git diff --quiet "$base" HEAD -- supabase/schema.sql; then
+            echo
+            echo "supabase/schema.sql is unchanged."
+            echo "Fold the same change into it by hand, where it belongs by subject,"
+            echo "and commit the two together. A fresh install runs schema.sql, so a"
+            echo "change missing from it would be missing from every new database."
+            exit 1
+          fi
+          echo "schema.sql changed too."
+
