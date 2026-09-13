@@ -1,5 +1,46 @@
 @import "tailwindcss";
 
+/* What the page is set in before the real fonts arrive.
+ *
+ * DM Sans and Fraunces come from Google with font-display: swap, so the page
+ * paints in whatever the system has, Arial and Times on Windows, and then
+ * relays out when the real ones land. Every block of text changes height at
+ * that moment and everything below it moves, which is most of the layout shift
+ * the browser reports and it happens on every cold load of every page.
+ *
+ * These two faces are the system fonts with their metrics bent to match, so the
+ * text takes up the same room either way and the swap is a change of shape
+ * rather than a change of size. Nothing is downloaded for them.
+ *
+ * The numbers are measured, not copied. size-adjust is the ratio of the average
+ * advance width of the two fonts across the lowercase alphabet weighted by how
+ * often each letter appears in English, plus a space for every 4.7 letters.
+ * ascent and descent are the real font's own, divided by that ratio because
+ * they are read against the adjusted em. Measured on 13 September 2026 from the
+ * fonts Google serves and the ones in C:/Windows/Fonts.
+ *
+ * Arial is what the numbers are tuned to. Liberation Sans is metric compatible
+ * with it, and Roboto on a phone is close enough that the remaining difference
+ * is nothing beside what it fixes.
+ */
+@font-face {
+  font-family: 'DM Sans Fallback';
+  src: local('Arial'), local('Helvetica'), local('Liberation Sans'), local('Roboto');
+  size-adjust: 105.63%;
+  ascent-override: 93.92%;
+  descent-override: 29.35%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Fraunces Fallback';
+  src: local('Times New Roman'), local('Liberation Serif'), local('Noto Serif'), local('Georgia');
+  size-adjust: 119.83%;
+  ascent-override: 81.62%;
+  descent-override: 21.28%;
+  line-gap-override: 0%;
+}
+
 @theme {
   --color-sidebar: #182F24;
   --color-sidebar-active: #224036;
@@ -18,8 +59,8 @@
      cream the whole app actually sits on. */
   --color-muted: #6B6459;
   --color-green-brand: #2E7D52;
-  --font-sans: 'DM Sans', sans-serif;
-  --font-serif: 'Fraunces', serif;
+  --font-sans: 'DM Sans', 'DM Sans Fallback', sans-serif;
+  --font-serif: 'Fraunces', 'Fraunces Fallback', serif;
 }
 
 /* How big the whole app is.
