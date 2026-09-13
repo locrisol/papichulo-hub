@@ -1,7 +1,11 @@
 # Migrations
 
-`001` is on live. `002`, `003` and `004` are written and **have not been run
-yet**. The next one is `005`.
+Empty of anything outstanding. `001` to `004` are on live as of 13 September
+2026 and the next one is `005`.
+
+They are kept here rather than folded away because they are the record of how a
+database that already existed caught up with `schema.sql`. The sixty three
+before them were folded away once every database that mattered had run them.
 
 A migration in here that is not on live is normal for exactly as long as it
 takes somebody to run it. Everything before `001` is already on live and was
