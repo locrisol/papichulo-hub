@@ -920,22 +920,20 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
     return out.map(l => l.replace(/\s+$/, '')).join('\n')
 }
 
-// Gmail's goodbye, which is not a failure.
+// Gmail's untidy goodbye.
 //
-// smtp.gmail.com accepts the message, answers QUIT, and drops the socket
-// without a TLS close_notify. rustls under Deno calls that an unexpected EOF
-// and denomailer surfaces it out of send(), after the mail has already been
-// taken. Seen on 6 and 13 September, and both times the mail arrived.
+// smtp.gmail.com can accept a message, answer QUIT and drop the socket without
+// a TLS close_notify. rustls calls that an unexpected EOF and denomailer
+// surfaces it out of send().
 //
-// So it is told apart by name and treated as sent. Two things were worse:
+// **What this does NOT tell you is whether the message was taken.** That was
+// assumed on 13 September, from a note saying an earlier one had "probably"
+// gone out, and the assumption was wrong: on 14 September a time off request
+// ended exactly this way and never arrived. The error is identical whether the
+// message was delivered or lost, so there is nothing in it to read.
 //
-// Throwing told somebody their report had not gone when it had, which is how an
-// evening goes on a failure that never happened.
-//
-// Retrying was worse still, and it is what the retry added on 13 September did:
-// the first send is already delivered, so trying again delivers it twice. A
-// retry is right for a connection that failed and wrong for one that succeeded
-// and then hung up untidily, and this is what tells those two apart.
+// So it is not treated as success any more. It is used to say something clearer
+// than a stack trace when a send has failed twice, and nothing else.
 export function isJustTheGoodbye(err) {
     const said = String((err && err.message) || err || '').toLowerCase()
     return said.includes('close_notify')

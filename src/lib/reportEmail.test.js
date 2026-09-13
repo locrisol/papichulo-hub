@@ -989,8 +989,10 @@ describe('deliverable', () => {
 })
 
 describe('isJustTheGoodbye', () => {
-    // The exact words he was shown on 13 September, after clearing
-    // MAIL_REDIRECT_TO, on a mail that had already gone.
+    // It says the connection ended untidily. It does NOT say whether the
+    // message was taken: on 13 September that was assumed and the assumption
+    // lost a real mail while telling somebody it had sent. So this is used to
+    // word a failure clearly, never to call a failure a success.
     it('knows the one Gmail actually produces', () => {
         expect(isJustTheGoodbye(new Error(
             'peer closed connection without sending TLS close_notify: '
@@ -1004,16 +1006,14 @@ describe('isJustTheGoodbye', () => {
         expect(isJustTheGoodbye('close_notify missing')).toBe(true)
     })
 
-    // The whole value is in what it refuses. Call a real failure a goodbye and
-    // somebody is told their report went out when nobody has it.
-    it('refuses anything that is a real failure', () => {
+    it('refuses anything that is a different failure', () => {
         expect(isJustTheGoodbye(new Error('535 Username and Password not accepted'))).toBe(false)
         expect(isJustTheGoodbye(new Error('550 mailbox unavailable'))).toBe(false)
         expect(isJustTheGoodbye(new Error('connection refused'))).toBe(false)
         expect(isJustTheGoodbye(new Error('timed out'))).toBe(false)
     })
 
-    it('refuses nothing at all, rather than reading it as success', () => {
+    it('refuses nothing at all', () => {
         expect(isJustTheGoodbye(null)).toBe(false)
         expect(isJustTheGoodbye(undefined)).toBe(false)
         expect(isJustTheGoodbye(new Error(''))).toBe(false)

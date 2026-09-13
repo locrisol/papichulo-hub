@@ -165,19 +165,24 @@ async function byGmail(mail: Mail, user: string, password: string) {
     try {
         await attempt()
     } catch (first) {
-        // Already delivered, so do not send it again and do not call it a
-        // failure. See isJustTheGoodbye in email.js.
-        if (isJustTheGoodbye(first)) {
-            console.warn('Gmail hung up without a TLS goodbye; the mail was already taken:', first)
-            return
-        }
+        // Tried again rather than believed.
+        //
+        // A dropped connection says nothing about whether the message was
+        // taken, so the only honest moves are to try once more and, if that
+        // fails too, to say it did not go. Claiming it went was tried on
+        // 13 September and lost a real mail while telling somebody it had sent,
+        // which is the worst of the three.
+        //
+        // A duplicate is possible and is the lesser evil: somebody reading the
+        // same request twice is a smaller problem than somebody never reading
+        // it and being told they had.
         console.warn('the first attempt to send failed, trying once more:', first)
         try {
             await attempt()
         } catch (second) {
             if (isJustTheGoodbye(second)) {
-                console.warn('the second attempt ended on the same untidy goodbye, and went:', second)
-                return
+                throw new Error(
+                    'Gmail dropped the connection twice without finishing, so the mail did not go out.')
             }
             throw second
         }
