@@ -135,9 +135,7 @@ export default function CostDashboardPage() {
     // a week from before the till changed still splits the way it was taken.
     const [tenders, setTenders] = useState([])
 
-    const [loading, setLoading] = useState(true)
-    // Whether this page has ever finished loading, which is not the same
-    // question as whether it is loading now.
+    // Whether this page has ever finished loading.
     //
     // The first arrival painted the week picker and the cards straight away and
     // then dropped a notice in above them once the figures came back, shoving
@@ -147,7 +145,13 @@ export default function CostDashboardPage() {
     //
     // Only the first. Stepping to another week keeps what is on screen and
     // swaps the numbers underneath it, the same as the roster does, because
-    // blanking the page on every press is how you lose your place in it.
+    // blanking the page on every press is how you lose your place in it. The
+    // week in the heading changes on the press, so the press is answered even
+    // though the figures under it are a moment behind.
+    //
+    // There was a loading beside this, true whenever a fetch was in flight, and
+    // the only thing reading it was the pair of notices below. Nothing wants to
+    // know that now.
     const [ready, setReady] = useState(false)
     const [error, setError] = useState('')
     const [refresh, setRefresh] = useState(0)
@@ -159,13 +163,7 @@ export default function CostDashboardPage() {
     useEffect(() => {
         if (!restaurantId) return
 
-        function finishLoading() {
-            setLoading(false)
-            setReady(true)
-        }
-
         async function load() {
-            setLoading(true)
             setError('')
 
             const end = addDays(weekStart, 6)
@@ -217,7 +215,7 @@ export default function CostDashboardPage() {
             // the same behaviour as before, where the first failure stopped
             // the rest from being asked at all.
             const failed = [sErr, tErr, iErr, lErr, wErr, oErr].find(Boolean)
-            if (failed) { setError(friendlyError(failed)); finishLoading(); return }
+            if (failed) { setError(friendlyError(failed)); setReady(true); return }
 
             setSalesRows(sales || [])
             setTenders(tends || [])
@@ -237,7 +235,7 @@ export default function CostDashboardPage() {
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
             setOverrides(overrideRows || [])
 
-            finishLoading()
+            setReady(true)
         }
 
         load()
@@ -359,7 +357,14 @@ export default function CostDashboardPage() {
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
 
-            {!loading && netSales === 0 && (
+            {/* ready, not !loading, and the difference is a week step.
+                Gated on !loading these two vanished the moment you pressed
+                the arrow and came back when the figures landed, so the whole
+                page jumped up and then back down every time, twice a press.
+                ready only turns on once, so what is on screen stays on screen
+                until the new week replaces it, which is what the cards and
+                the charts underneath already do. */}
+            {ready && netSales === 0 && (
                 <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-4 mb-4">
                     No sales are recorded for this week, so the percentages cannot be worked out. Enter the week's
                     sales and everything here fills in.
@@ -371,7 +376,7 @@ export default function CostDashboardPage() {
                 nothing on the page said so. Past weeks are finished, so they say
                 nothing, and a week with no sales at all already has the message
                 above rather than this one. */}
-            {!loading && isThisWeek && netSales > 0 && (
+            {ready && isThisWeek && netSales > 0 && (
                 <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-4 mb-4">
                     Week in progress. These figures are worked out from the days entered so far, so they will keep
                     moving as the rest of the week goes in.
