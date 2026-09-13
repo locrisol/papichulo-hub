@@ -105,11 +105,11 @@ npm run dev -- --host
 npm run test:run
 ```
 
-1,355 tests across 47 files, all in `src/lib`. These tests cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
+1,617 tests across 57 files. Forty seven of them are in `src/lib` and cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
 
 The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being treated as the next day and the week selectors were moving in blocks of six days instead of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
 
-The 58 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
+The 53 database access tests are separate, in `tests/rls`. They sign in as a real account for each role and check what the database actually allows, because row level security lives in the database and nothing you can test in JavaScript proves it works. They need the eight TEST_ variables in `.env` and skip themselves with a message if those are missing.
 
 They need the `ws` package, which `npm install` fetches with everything else. It is only there because `supabase-js` builds a realtime client the moment you create a client, and realtime needs WebSocket. Browsers have it, Node only got it in version 22, and this project runs on 20. Nothing here uses realtime.
 
@@ -118,15 +118,14 @@ They never create anything. Reads are harmless, and a write that is meant to be 
 ## How it is laid out
 
     src/
-      components/        shared components and modals
-        layout/          the sidebar and page shell
-      context/           the signed-in user and the active restaurant
-      lib/               logic with no interface: costing, allergens, dates, formatting
       components/
         ui/              used everywhere: Modal, TimeField, DateStepper, ErrorBanner
         auth/            the two route guards
+        layout/          the sidebar and page shell
         roster/ team/ inventory/ settings/ reports/
-        costs/ forecast/ invoices/ allergens/ layout/
+        costs/ forecast/ invoices/ allergens/
+      context/           the signed-in user and the active restaurant
+      lib/               logic with no interface: costing, allergens, dates, formatting
       pages/
         auth/            login
         inventory/       catalogue, menu, stock takes, allergens
@@ -135,7 +134,12 @@ They never create anything. Reads are harmless, and a write that is meant to be 
         invoices/        entry and history
         costs/           labour and the cost dashboard
         waste/           logging and the weekly summary
+        roster/          the week, and the staff view of it
+        team/            employees, availability and time off
+        reports/         the weekly report and the list of them
+        settings/        restaurant settings, users, the change log
         public/          the allergen page a customer scans
+      test/              the setup, and the tests about the project's own shape
     tests/
       rls/               the database access tests
     supabase/
@@ -195,11 +199,11 @@ Three commands, and all three have to pass before anything is committed:
 
 ```bash
 npm run lint       # 0 problems, and it stays 0
-npm run test:run   # 1,573 tests
+npm run test:run   # 1,617 tests
 npm run build
 ```
 
-A GitHub action runs the same three on every pull request into `development` and `main`, so a change that adds a lint problem or breaks a test fails there rather than being found six branches later.
+A GitHub action runs the same three on every pull request into `development` and `main`, so a change that adds a lint problem or breaks a test fails there rather than being found six branches later. It runs one check of its own as well: a pull request that adds a migration without also changing `supabase/schema.sql` fails, because the two drifting apart is the one thing this arrangement exists to prevent.
 
 The database tests are separate and local only. They sign in as real accounts against the live project, so they are not something to run on every push.
 
@@ -207,7 +211,7 @@ The database tests are separate and local only. They sign in as real accounts ag
 
 Every change starts as a GitHub issue, gets a branch named `feature/[issue]-[name]`, and is sent to `development` through a pull request. Issues that were described but we decided not to build at this stage are closed as not planned and labelled `future implementation`, with a comment explaining why, so the reasoning is not lost as we definitely want to implement some of them soon.
 
-When you add a migration, fold the same change into `supabase/schema.sql` by hand and commit the two together. That file is what a fresh install runs, so a change missing from it would be missing from any new database.
+When you add a migration, fold the same change into `supabase/schema.sql` by hand and commit the two together. That file is what a fresh install runs, so a change missing from it would be missing from any new database. The GitHub action fails the pull request if you forget.
 
 It used to be generated by a script that concatenated every migration, which is why it grew to 5,000 lines: 37 tables and 101 later alterations of them, with roughly a fifth of it overwritten by some later line. You could not read it to find out what a table looked like, only what had happened to it. It is written by hand now and the script is gone, because a script that overwrites the design is a loaded gun.
 
