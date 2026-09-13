@@ -146,21 +146,40 @@ async function byGmail(mail: Mail, user: string, password: string) {
         })
 
         try {
+            // The key is left out entirely when there is nothing to attach,
+            // rather than passed as undefined.
+            //
+            // Not tidiness. A time off request carries no PDF, only an answer
+            // does, so every request was sending attachments: undefined, and
+            // every request failed with Gmail dropping the connection about
+            // 850ms in while the weekly report on the same account, the same
+            // host and the same credentials went out fine. This was the only
+            // difference between the two send calls, and the report does not
+            // pass the key at all.
             await client.send({
                 from: mail.from,
                 to: mail.to,
-                replyTo: Deno.env.get('MAIL_REPLY_TO') || undefined,
                 subject: mail.subject,
                 content: mail.text,
                 html: mail.html,
-                attachments: mail.attachment
-                    ? [{
-                        filename: mail.attachment.filename,
-                        contentType: 'application/pdf',
-                        encoding: 'base64',
-                        content: mail.attachment.content,
-                    }]
-                    : undefined,
+                // Optional keys are left out when empty rather than passed as
+                // undefined, which is how the weekly report's call is shaped
+                // and it is the one that works. This one always passed
+                // replyTo: undefined, because MAIL_REPLY_TO is not set, while
+                // the report always has a real one: the publisher's address.
+                ...(Deno.env.get('MAIL_REPLY_TO')
+                    ? { replyTo: Deno.env.get('MAIL_REPLY_TO') }
+                    : {}),
+                ...(mail.attachment
+                    ? {
+                        attachments: [{
+                            filename: mail.attachment.filename,
+                            contentType: 'application/pdf',
+                            encoding: 'base64',
+                            content: mail.attachment.content,
+                        }],
+                    }
+                    : {}),
             })
         } finally {
             // Left open, the function is held until it times out. But closing a
