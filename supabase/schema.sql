@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "role" character varying(20) NOT NULL,
     "restaurant_id" "uuid",
     "is_active" boolean DEFAULT true NOT NULL,
+    "is_test" boolean DEFAULT false NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee')))
 );
@@ -163,6 +164,8 @@ CREATE TABLE IF NOT EXISTS "public"."employees" (
 );
 
 COMMENT ON TABLE "public"."employees" IS 'A person who works at a restaurant, whether or not they can log in. This is what the roster is built from.';
+COMMENT ON COLUMN "public"."users"."is_test" IS 'True for a developer account that exists to be signed in as, never to be communicated with. Kept out of every recipient list. Does not affect permissions: the role is real.';
+
 COMMENT ON COLUMN "public"."restaurants"."sort_order" IS 'Where this restaurant sits in a list. Arranged on Settings, Users.';
 
 COMMENT ON COLUMN "public"."employees"."availability" IS 'The days and hours they can normally work, as {"1":[["09:00","17:00"]], ...} keyed by weekday with Sunday as 0. A weekday missing from the object means no restriction on that day. A weekday present with an empty list means they cannot work it. A weekday with pairs means those hours and nothing else, and a pair with 00:00 at the start or 24:00 at the end is a stretch open at that end: [["13:00","24:00"]] is anything from one o''clock on. Null means nothing has been recorded, which is the same as no restriction on any day. Held on the person rather than in a table of its own because it has no history worth keeping: a published week is frozen, so a rostered shift is already a fact and cannot be changed by anything typed here afterwards.';

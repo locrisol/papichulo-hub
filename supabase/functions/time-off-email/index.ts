@@ -362,6 +362,9 @@ Deno.serve(async (request) => {
                 .from('users').select('id, role')
                 .eq('restaurant_id', absence.restaurant_id)
                 .eq('is_active', true)
+                // See users.is_test: a developer account holds a real role, so
+                // it would otherwise be a manager somebody's request goes to.
+                .eq('is_test', false)
                 .in('role', askerIsManager ? ['owner'] : ['store_manager'])
 
             const to: string[] = []

@@ -235,6 +235,10 @@ export default function ReportPage() {
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
                     .eq('role', 'owner').eq('is_active', true)
+                    // The same filter the function uses. If these two ever
+                    // disagree the card names somebody who gets nothing, which
+                    // is the exact thing it exists to prevent.
+                    .eq('is_test', false)
                     .order('full_name'),
                 supabase.from('restaurants')
                     .select('report_recipients')

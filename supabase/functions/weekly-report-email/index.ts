@@ -328,6 +328,9 @@ Deno.serve(async (req) => {
                 .eq('restaurant_id', report.restaurant_id)
                 .eq('role', 'owner')
                 .eq('is_active', true)
+                // A developer account has a real role on purpose, so role is
+                // no way to tell it from a person. See users.is_test.
+                .eq('is_test', false)
 
             for (const owner of owners || []) {
                 const address = await addressFor(owner.id)
