@@ -261,6 +261,7 @@ ALTER TABLE ONLY "public"."product_supplier_prices"
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case");
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
+CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 
 CREATE TABLE IF NOT EXISTS "public"."price_count_units" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -562,6 +563,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_invoices_restaurant_date" ON "public"."invoices" USING "btree" ("restaurant_id", "invoice_date");
+CREATE INDEX "idx_invoices_supplier" ON "public"."invoices" USING "btree" ("supplier_id");
 
 CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -812,6 +814,7 @@ COMMENT ON COLUMN "public"."shift_requests"."status" IS 'asked until the other p
 ALTER TABLE ONLY "public"."shift_requests"
     ADD CONSTRAINT "shift_requests_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_shift_requests_give" ON "public"."shift_requests" USING "btree" ("give_shift_id");
+CREATE INDEX "idx_shift_requests_take" ON "public"."shift_requests" USING "btree" ("take_shift_id");
 CREATE INDEX "idx_shift_requests_restaurant" ON "public"."shift_requests" USING "btree" ("restaurant_id", "status");
 CREATE INDEX "idx_shift_requests_to" ON "public"."shift_requests" USING "btree" ("to_employee_id", "status");
 
@@ -1201,7 +1204,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_employee_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
   select id from public.employees where user_id = auth.uid() limit 1
 $$;
@@ -1233,6 +1236,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -1242,6 +1246,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."touch_weekly_report"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 begin
   new.updated_at = now();
@@ -1341,6 +1346,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."brief"("v" "jsonb") RETURNS "jsonb"
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
   select case
     when v is null then null
@@ -1351,10 +1357,12 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."audit_skips"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$ select array['change_log', 'login_events', 'predictions'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."audit_ignored_columns"() RETURNS "text"[]
     LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$ select array['updated_at', 'last_seen_at'] $$;
 
 CREATE OR REPLACE FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") RETURNS "text"
@@ -1577,6 +1585,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."watch_changes"() RETURNS integer
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_catalog', 'pg_temp'
     AS $$
 declare
   t     text;
@@ -1610,6 +1619,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION "public"."watch_new_tables"() RETURNS "event_trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
 begin
   perform public.watch_changes();
@@ -1649,6 +1659,10 @@ COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'W
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
+grant execute on function "public"."handle_delete_user"() to service_role;
+revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
+grant execute on function "public"."handle_new_user"() to service_role;
 revoke all on function "public"."record_change"() from public, anon, authenticated, service_role;
 grant execute on function "public"."record_change"() to service_role;
 revoke all on function "public"."record_logins"() from public, anon, authenticated, service_role;
@@ -1686,60 +1700,60 @@ grant execute on function "public"."watch_changes"() to service_role;
 
 ALTER TABLE "public"."restaurants" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "restaurants_all_super_admin" ON "public"."restaurants" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
+CREATE POLICY "restaurants_all_super_admin" ON "public"."restaurants" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
-CREATE POLICY "restaurants_select" ON "public"."restaurants" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "restaurants_select" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "restaurants_select_own" ON "public"."restaurants" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "restaurants_select_own" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
-CREATE POLICY "restaurants_update_own" ON "public"."restaurants" FOR UPDATE USING (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "restaurants_update_own" ON "public"."restaurants" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users_select" ON "public"."users" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "users_select" ON "public"."users" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT USING (("id" = "auth"."uid"()));
+CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING (("id" = ( SELECT "auth"."uid"() )));
 
-CREATE POLICY "users_write" ON "public"."users" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
+CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
 
 ALTER TABLE "public"."positions" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "positions_all" ON "public"."positions" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "positions_all" ON "public"."positions" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."employees" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "employees_all" ON "public"."employees" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "employees_all" ON "public"."employees" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "employees_read_own" ON "public"."employees" FOR SELECT USING (("user_id" = "auth"."uid"()));
+CREATE POLICY "employees_read_own" ON "public"."employees" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() )));
 
 
 -- -- The catalogue -----------------------------------------------------
 
 ALTER TABLE "public"."suppliers" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "suppliers_write" ON "public"."suppliers" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "suppliers_write" ON "public"."suppliers" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."products" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "products_select" ON "public"."products" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "products_select" ON "public"."products" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "products_write" ON "public"."products" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "products_write" ON "public"."products" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."product_supplier_prices" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "product_supplier_prices_select" ON "public"."product_supplier_prices" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "product_supplier_prices_select" ON "public"."product_supplier_prices" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "product_supplier_prices_write" ON "public"."product_supplier_prices" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "product_supplier_prices_write" ON "public"."product_supplier_prices" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."price_count_units" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "price_count_units_read" ON "public"."price_count_units" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "price_count_units_read" ON "public"."price_count_units" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."product_supplier_prices" "psp"
   WHERE (("psp"."id" = "price_count_units"."price_id") AND ("psp"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))));
 
-CREATE POLICY "price_count_units_write" ON "public"."price_count_units" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "price_count_units_write" ON "public"."price_count_units" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."product_supplier_prices" "psp"
   WHERE (("psp"."id" = "price_count_units"."price_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("psp"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."product_supplier_prices" "psp"
@@ -1747,92 +1761,92 @@ CREATE POLICY "price_count_units_write" ON "public"."price_count_units" USING ((
 
 ALTER TABLE "public"."product_aliases" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "product_aliases_select" ON "public"."product_aliases" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "product_aliases_select" ON "public"."product_aliases" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
-CREATE POLICY "product_aliases_write" ON "public"."product_aliases" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "product_aliases_write" ON "public"."product_aliases" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."mix_recipes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
-CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."product_allergens" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "product_allergens_write" ON "public"."product_allergens" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
 -- -- The menu ----------------------------------------------------------
 
 ALTER TABLE "public"."menu_categories" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "menu_categories_write" ON "public"."menu_categories" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "menu_categories_write" ON "public"."menu_categories" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_items" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "menu_items_write" ON "public"."menu_items" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "menu_items_write" ON "public"."menu_items" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_item_components" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
-CREATE POLICY "menu_item_components_write" ON "public"."menu_item_components" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "menu_item_components_write" ON "public"."menu_item_components" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
 -- -- What was sold -----------------------------------------------------
 
 ALTER TABLE "public"."sales_records" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "sales_records_select" ON "public"."sales_records" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "sales_records_select" ON "public"."sales_records" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "sales_records_write" ON "public"."sales_records" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "sales_records_write" ON "public"."sales_records" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."sales_tenders" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "sales_tenders_select" ON "public"."sales_tenders" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "sales_tenders_select" ON "public"."sales_tenders" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "sales_tenders_write" ON "public"."sales_tenders" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
+CREATE POLICY "sales_tenders_write" ON "public"."sales_tenders" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 ALTER TABLE "public"."sales_platforms" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "sales_platforms_select" ON "public"."sales_platforms" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "sales_platforms_select" ON "public"."sales_platforms" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "sales_platforms_write" ON "public"."sales_platforms" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "sales_platforms_write" ON "public"."sales_platforms" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."petty_cash_entries" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "petty_cash_select" ON "public"."petty_cash_entries" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "petty_cash_select" ON "public"."petty_cash_entries" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "petty_cash_write" ON "public"."petty_cash_entries" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "petty_cash_write" ON "public"."petty_cash_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."predictions" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "predictions_select" ON "public"."predictions" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "predictions_select" ON "public"."predictions" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "predictions_write" ON "public"."predictions" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
+CREATE POLICY "predictions_write" ON "public"."predictions" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 
 -- -- What it cost ------------------------------------------------------
 
 ALTER TABLE "public"."invoices" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "invoices_select" ON "public"."invoices" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "invoices_select" ON "public"."invoices" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "invoices_write" ON "public"."invoices" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "invoices_write" ON "public"."invoices" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."invoice_lines" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "invoice_lines_select" ON "public"."invoice_lines" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "invoice_lines_select" ON "public"."invoice_lines" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."invoices" "i"
   WHERE (("i"."id" = "invoice_lines"."invoice_id") AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("i"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
-CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."invoices" "i"
   WHERE (("i"."id" = "invoice_lines"."invoice_id") AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("i"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."invoices" "i"
@@ -1840,56 +1854,56 @@ CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" USING (((( SELEC
 
 ALTER TABLE "public"."labour_entries" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "labour_entries_select" ON "public"."labour_entries" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "labour_entries_select" ON "public"."labour_entries" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "labour_entries_write" ON "public"."labour_entries" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "labour_entries_write" ON "public"."labour_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."cost_target_overrides" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "cost_target_overrides_select" ON "public"."cost_target_overrides" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "cost_target_overrides_select" ON "public"."cost_target_overrides" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "cost_target_overrides_write" ON "public"."cost_target_overrides" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "cost_target_overrides_write" ON "public"."cost_target_overrides" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."waste_logs" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_insert" ON "public"."waste_logs" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
-CREATE POLICY "waste_logs_select" ON "public"."waste_logs" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "waste_logs_select" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "waste_logs_select_today" ON "public"."waste_logs" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("log_date" = CURRENT_DATE)));
+CREATE POLICY "waste_logs_select_today" ON "public"."waste_logs" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("log_date" = CURRENT_DATE)));
 
-CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 
 -- -- Counting the stock ------------------------------------------------
 
 ALTER TABLE "public"."stock_takes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "stock_takes_write" ON "public"."stock_takes" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "stock_takes_write" ON "public"."stock_takes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."stock_take_lines" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "stock_take_lines_delete_own" ON "public"."stock_take_lines" FOR DELETE USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = "auth"."uid"()) AND (EXISTS ( SELECT 1
+CREATE POLICY "stock_take_lines_delete_own" ON "public"."stock_take_lines" FOR DELETE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (("st"."status")::"text" = 'in_progress'::"text"))))));
 
-CREATE POLICY "stock_take_lines_insert_employee" ON "public"."stock_take_lines" FOR INSERT WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = "auth"."uid"()) AND (EXISTS ( SELECT 1
+CREATE POLICY "stock_take_lines_insert_employee" ON "public"."stock_take_lines" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text"))))));
 
-CREATE POLICY "stock_take_lines_select" ON "public"."stock_take_lines" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "stock_take_lines_select" ON "public"."stock_take_lines" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
-CREATE POLICY "stock_take_lines_update_own" ON "public"."stock_take_lines" FOR UPDATE USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = "auth"."uid"()) AND (EXISTS ( SELECT 1
+CREATE POLICY "stock_take_lines_update_own" ON "public"."stock_take_lines" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
-  WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (("st"."status")::"text" = 'in_progress'::"text")))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = "auth"."uid"()) AND (EXISTS ( SELECT 1
+  WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (("st"."status")::"text" = 'in_progress'::"text")))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("counted_by" = ( SELECT "auth"."uid"() )) AND (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (("st"."status")::"text" = 'in_progress'::"text"))))));
 
-CREATE POLICY "stock_take_lines_write_manager" ON "public"."stock_take_lines" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
+CREATE POLICY "stock_take_lines_write_manager" ON "public"."stock_take_lines" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text")))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
@@ -1900,50 +1914,50 @@ CREATE POLICY "stock_take_lines_write_manager" ON "public"."stock_take_lines" US
 
 ALTER TABLE "public"."roster_shifts" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "roster_shifts_all" ON "public"."roster_shifts" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "roster_shifts_all" ON "public"."roster_shifts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "roster_shifts_read_published" ON "public"."roster_shifts" FOR SELECT USING ((("published_at" IS NOT NULL) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "roster_shifts_read_published" ON "public"."roster_shifts" FOR SELECT TO "authenticated" USING ((("published_at" IS NOT NULL) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 ALTER TABLE "public"."day_notes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "day_notes_select" ON "public"."day_notes" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "day_notes_select" ON "public"."day_notes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
-CREATE POLICY "day_notes_write" ON "public"."day_notes" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "day_notes_write" ON "public"."day_notes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."absences" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "absences_all" ON "public"."absences" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "absences_all" ON "public"."absences" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "absences_ask_own" ON "public"."absences" FOR INSERT WITH CHECK ((("employee_id" = ( SELECT "public"."get_my_employee_id"() )) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("status" = 'requested'::"text") AND ("kind" = ANY (ARRAY['holiday'::"text", 'day_off'::"text"]))));
+CREATE POLICY "absences_ask_own" ON "public"."absences" FOR INSERT TO "authenticated" WITH CHECK ((("employee_id" = ( SELECT "public"."get_my_employee_id"() )) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("status" = 'requested'::"text") AND ("kind" = ANY (ARRAY['holiday'::"text", 'day_off'::"text"]))));
 
-CREATE POLICY "absences_read_own" ON "public"."absences" FOR SELECT USING (("employee_id" = ( SELECT "public"."get_my_employee_id"() )));
+CREATE POLICY "absences_read_own" ON "public"."absences" FOR SELECT TO "authenticated" USING (("employee_id" = ( SELECT "public"."get_my_employee_id"() )));
 
-CREATE POLICY "absences_withdraw_own" ON "public"."absences" FOR DELETE USING ((("employee_id" = ( SELECT "public"."get_my_employee_id"() )) AND ("status" = 'requested'::"text")));
+CREATE POLICY "absences_withdraw_own" ON "public"."absences" FOR DELETE TO "authenticated" USING ((("employee_id" = ( SELECT "public"."get_my_employee_id"() )) AND ("status" = 'requested'::"text")));
 
 ALTER TABLE "public"."shift_requests" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "shift_requests_answer" ON "public"."shift_requests" FOR UPDATE USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) OR ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() )) OR ("to_employee_id" = ( SELECT "public"."get_my_employee_id"() )))))) WITH CHECK ((("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")));
+CREATE POLICY "shift_requests_answer" ON "public"."shift_requests" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) OR ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() )) OR ("to_employee_id" = ( SELECT "public"."get_my_employee_id"() )))))) WITH CHECK ((("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")));
 
-CREATE POLICY "shift_requests_ask" ON "public"."shift_requests" FOR INSERT WITH CHECK ((("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() ))));
+CREATE POLICY "shift_requests_ask" ON "public"."shift_requests" FOR INSERT TO "authenticated" WITH CHECK ((("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("from_employee_id" = ( SELECT "public"."get_my_employee_id"() ))));
 
-CREATE POLICY "shift_requests_read" ON "public"."shift_requests" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+CREATE POLICY "shift_requests_read" ON "public"."shift_requests" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 
 -- -- The weekly report -------------------------------------------------
 
 ALTER TABLE "public"."weekly_reports" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "weekly_reports_select" ON "public"."weekly_reports" FOR SELECT USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "weekly_reports_select" ON "public"."weekly_reports" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "weekly_reports_write" ON "public"."weekly_reports" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+CREATE POLICY "weekly_reports_write" ON "public"."weekly_reports" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."report_sections" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "report_sections_select" ON "public"."report_sections" FOR SELECT USING ((EXISTS ( SELECT 1
+CREATE POLICY "report_sections_select" ON "public"."report_sections" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."weekly_reports" "r"
   WHERE (("r"."id" = "report_sections"."report_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
-CREATE POLICY "report_sections_write" ON "public"."report_sections" USING ((EXISTS ( SELECT 1
+CREATE POLICY "report_sections_write" ON "public"."report_sections" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."weekly_reports" "r"
   WHERE (("r"."id" = "report_sections"."report_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."weekly_reports" "r"
@@ -1951,12 +1965,12 @@ CREATE POLICY "report_sections_write" ON "public"."report_sections" USING ((EXIS
 
 ALTER TABLE "public"."report_items" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "report_items_select" ON "public"."report_items" FOR SELECT USING ((EXISTS ( SELECT 1
+CREATE POLICY "report_items_select" ON "public"."report_items" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM ("public"."report_sections" "s"
      JOIN "public"."weekly_reports" "r" ON (("r"."id" = "s"."report_id")))
   WHERE (("s"."id" = "report_items"."section_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
-CREATE POLICY "report_items_write" ON "public"."report_items" USING ((EXISTS ( SELECT 1
+CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM ("public"."report_sections" "s"
      JOIN "public"."weekly_reports" "r" ON (("r"."id" = "s"."report_id")))
   WHERE (("s"."id" = "report_items"."section_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
@@ -1969,22 +1983,22 @@ CREATE POLICY "report_items_write" ON "public"."report_items" USING ((EXISTS ( S
 
 ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "events_select" ON "public"."events" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
-CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
-CREATE POLICY "events_write" ON "public"."events" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
 -- -- The record of what happened ---------------------------------------
 
 ALTER TABLE "public"."login_events" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "login_events_select" ON "public"."login_events" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
+CREATE POLICY "login_events_select" ON "public"."login_events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 ALTER TABLE "public"."change_log" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
+CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 
 -- ======================================================================
@@ -2259,6 +2273,11 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- Down here rather than with the other eight, because a revoke has to come
+-- after the function it names and this one is created with the triggers.
+revoke all on function "public"."rls_auto_enable"() from public, anon, authenticated, service_role;
+grant execute on function "public"."rls_auto_enable"() to service_role;
 
 do $$
 begin
