@@ -138,6 +138,25 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 // 465 is TLS from the first byte. Anything else, 587 in
                 // practice, starts in the clear and upgrades with STARTTLS,
                 // which is what tls:false means here.
+                // **Do not point this at smtp-relay.gmail.com.**
+                //
+                // The relay decides who may connect by IP address, allow-listed
+                // in Workspace admin, and edge functions run on shared rotating
+                // IPs, so there is nothing to allow-list. It refuses at EHLO,
+                // before authentication, with:
+                //
+                //     421-4.7.0 Try again later, closing connection. (EHLO)
+                //
+                // It was set to the relay on 6 September 2026 to let each
+                // restaurant send from its own address. The time off mail last
+                // arrived the day before and did not work again until it was
+                // put back, and every dropped connection in between was this.
+                // 421 is a temporary refusal, so the weekly report getting
+                // through some of the time was luck, not a difference.
+                //
+                // smtp.gmail.com only sends as the account that authenticates,
+                // so per restaurant senders need a provider that authenticates
+                // rather than allow-lists, not this setting.
                 hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
                 port: smtpPort,
                 tls: smtpPort === 465,
