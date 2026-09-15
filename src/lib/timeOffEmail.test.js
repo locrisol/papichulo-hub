@@ -3,7 +3,7 @@ import {
     escapeHtml, fmtDate, whenWords, dayCount, isPartDay,
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
-    deliverable, isJustTheGoodbye,
+    deliverable, isJustTheGoodbye, replyToFor,
 } from '../../supabase/functions/time-off-email/email'
 
 // The words in the emails. It lives in the function's own folder because only
@@ -220,5 +220,51 @@ describe('isJustTheGoodbye', () => {
         expect(isJustTheGoodbye(null)).toBe(false)
         expect(isJustTheGoodbye(undefined)).toBe(false)
         expect(isJustTheGoodbye(new Error(''))).toBe(false)
+    })
+})
+
+describe('replyToFor', () => {
+    // The whole point: a reply reaches the restaurant, not the one account that
+    // sends for everybody, and a new restaurant needs nothing but this field.
+    it('sends replies to the restaurant', () => {
+        expect(replyToFor('point@papichulo.ie')).toBe('point@papichulo.ie')
+    })
+
+    it('tidies what somebody typed into the form', () => {
+        expect(replyToFor('  point@papichulo.ie  ')).toBe('point@papichulo.ie')
+    })
+
+    // The column is typed into a form. A Reply-To nobody can receive at is
+    // worse than none: the client offers the reply and the person believes it
+    // went somewhere.
+    it('refuses something in the column that is not an address', () => {
+        expect(replyToFor('Point Campus')).toBeUndefined()
+        expect(replyToFor('point at papichulo dot ie')).toBeUndefined()
+    })
+
+    it('refuses an address that provably cannot receive', () => {
+        expect(replyToFor('manager@papichulo.test')).toBeUndefined()
+    })
+
+    it('falls back to the secret when the restaurant has no address set', () => {
+        expect(replyToFor(null, 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+        expect(replyToFor('', 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+    })
+
+    // The restaurant wins. The secret exists to point every reply somewhere
+    // else without a deploy, not to override a restaurant that has an address.
+    it('prefers the restaurant over the secret', () => {
+        expect(replyToFor('point@papichulo.ie', 'hub@papichulo.ie')).toBe('point@papichulo.ie')
+    })
+
+    it('falls through a bad restaurant address to the secret', () => {
+        expect(replyToFor('not an address', 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+    })
+
+    // No Reply-To at all is a fine answer. The mail still goes.
+    it('gives nothing when there is nothing worth giving', () => {
+        expect(replyToFor(null, null)).toBeUndefined()
+        expect(replyToFor(undefined, undefined)).toBeUndefined()
+        expect(replyToFor('nonsense', 'also nonsense')).toBeUndefined()
     })
 })
