@@ -310,6 +310,30 @@ export function deliverable(address) {
     return !NEVER_DELIVERS_TLD.includes(tld)
 }
 
+// Where a reply should land.
+//
+// The restaurant's own address, from restaurant settings, so a new restaurant
+// needs that one field and nothing else. A person's address would go stale the
+// week they leave; a restaurant's does not.
+//
+// The same answer in both directions on purpose. A manager replying to a request
+// lands in the restaurant inbox where their colleagues can see it, which beats
+// it reaching whichever manager happened to open it, and an employee replying to
+// an answer reaches the restaurant rather than one person's inbox.
+//
+// It is checked rather than trusted: the column is typed into a form, and a
+// Reply-To nobody can receive at is worse than none, because the client offers
+// the reply and the person believes it went.
+export function replyToFor(restaurantAddress, fallback) {
+    const asked = String(restaurantAddress || '').trim()
+    if (asked && deliverable(asked)) return asked
+
+    const spare = String(fallback || '').trim()
+    if (spare && deliverable(spare)) return spare
+
+    return undefined
+}
+
 // Who the mail comes from.
 //
 // One Workspace account sends for every restaurant, and the restaurant's own

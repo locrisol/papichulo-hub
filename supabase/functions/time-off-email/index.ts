@@ -45,7 +45,7 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice, deliverable, isJustTheGoodbye } from './email.js'
+import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -73,6 +73,7 @@ const json = (body: unknown, status = 200) =>
 type Mail = {
     to: string[]
     from: string
+    replyTo?: string
     subject: string
     html: string
     text: string
@@ -186,8 +187,10 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 // and it is the one that works. This one always passed
                 // replyTo: undefined, because MAIL_REPLY_TO is not set, while
                 // the report always has a real one: the publisher's address.
-                ...(Deno.env.get('MAIL_REPLY_TO')
-                    ? { replyTo: Deno.env.get('MAIL_REPLY_TO') }
+                // What the mail carries wins; MAIL_REPLY_TO stays as a way to
+                // point every reply somewhere else without a deploy.
+                ...(replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
+                    ? { replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')) }
                     : {}),
                 ...(mail.attachment
                     ? {
@@ -266,7 +269,7 @@ async function byResend(mail: Mail) {
         text: mail.text,
     }
 
-    const replyTo = Deno.env.get('MAIL_REPLY_TO')
+    const replyTo = replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO'))
     if (replyTo) body.reply_to = replyTo
 
     if (mail.attachment) {
@@ -463,6 +466,17 @@ Deno.serve(async (request) => {
             await send({
                 to,
                 from: from(restaurantName, restaurantFrom),
+                // Replies reach the restaurant, not the one account that
+                // sends for everybody.
+                //
+                // It is the address from restaurant settings, so a new
+                // restaurant needs that one field and nothing else, and it does
+                // not go stale when a manager leaves the way a person's address
+                // would. Deliberately the same in both directions: a manager
+                // replying to a request lands in the restaurant inbox where
+                // their colleagues can see it, which beats it going to whoever
+                // happened to answer.
+                replyTo: restaurantFrom || undefined,
                 subject: mail.subject,
                 html: mail.html,
                 text: mail.text,
@@ -497,6 +511,9 @@ Deno.serve(async (request) => {
         await send({
             to: [to],
             from: from(restaurantName, restaurantFrom),
+            // The same rule as the request above: the employee replies to the
+            // restaurant rather than to whichever manager answered.
+            replyTo: restaurantFrom || undefined,
             subject: mail.subject,
             html: mail.html,
             text: mail.text,

@@ -42,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -151,7 +151,7 @@ async function byGmail(mail: Mail, user: string, password: string) {
             await client.send({
                 from: mail.from,
                 to: mail.to,
-                replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
+                replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
                 subject: mail.subject,
                 content: mail.text,
                 html: mail.html,
@@ -215,7 +215,7 @@ async function byResend(mail: Mail, key: string) {
         body: JSON.stringify({
             from: mail.from,
             to: mail.to,
-            reply_to: mail.replyTo || undefined,
+            reply_to: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
