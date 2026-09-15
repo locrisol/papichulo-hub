@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH,
-    deliverable, isJustTheGoodbye,
+    deliverable, isJustTheGoodbye, replyToFor,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
@@ -1017,5 +1017,41 @@ describe('isJustTheGoodbye', () => {
         expect(isJustTheGoodbye(null)).toBe(false)
         expect(isJustTheGoodbye(undefined)).toBe(false)
         expect(isJustTheGoodbye(new Error(''))).toBe(false)
+    })
+})
+
+describe('replyToFor, on a report', () => {
+    // The normal case, and the one that must not change: every recipient is in
+    // To and Reply-To is the manager who wrote the week up, so reply to all
+    // puts the author in To and copies everybody who read it.
+    it('lets the author through untouched', () => {
+        expect(replyToFor('leandro@papichulo.ie')).toBe('leandro@papichulo.ie')
+    })
+
+    // test.manager@papichulo.test is a real store manager at Point Campus and
+    // can publish. Without this an owner presses reply and it bounces, and
+    // nobody hears about it.
+    it('drops an author whose address can never receive', () => {
+        expect(replyToFor('test.manager@papichulo.test')).toBeUndefined()
+    })
+
+    // No Reply-To is not a failure: the reply goes to the From address, which
+    // is a mailbox somebody reads.
+    it('gives nothing rather than something broken', () => {
+        expect(replyToFor(null)).toBeUndefined()
+        expect(replyToFor('')).toBeUndefined()
+        expect(replyToFor('not an address')).toBeUndefined()
+    })
+
+    it('falls back to the secret when there is no author address', () => {
+        expect(replyToFor(null, 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+    })
+
+    it('prefers the author over the secret', () => {
+        expect(replyToFor('leandro@papichulo.ie', 'hub@papichulo.ie')).toBe('leandro@papichulo.ie')
+    })
+
+    it('falls through a bad author address to the secret', () => {
+        expect(replyToFor('someone@papichulo.test', 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
     })
 })

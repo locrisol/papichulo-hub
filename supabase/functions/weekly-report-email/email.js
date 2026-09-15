@@ -970,6 +970,46 @@ export function deliverable(address) {
     return !NEVER_DELIVERS_TLD.includes(tld)
 }
 
+// Where a reply should land.
+//
+// On a report that is the manager who wrote the week up, not the restaurant.
+// Every recipient is in To and Reply-To is the manager, so an owner pressing
+// reply to all puts the author in To and copies everybody who read it. Point it
+// at a shared inbox and the thread loses its author.
+//
+// This only decides whether the address is worth using. Which address it is, is
+// the caller's business.
+//
+// It is checked rather than trusted: the column is typed into a form, and a
+// Reply-To nobody can receive at is worse than none, because the client offers
+// the reply and the person believes it went.
+export function replyToFor(restaurantAddress, fallback) {
+    const asked = String(restaurantAddress || '').trim()
+    if (asked && deliverable(asked)) return asked
+
+    const spare = String(fallback || '').trim()
+    if (spare && deliverable(spare)) return spare
+
+    return undefined
+}
+
+// Who the mail comes from.
+//
+// One Workspace account sends for every restaurant, and the restaurant's own
+// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
+// SMTP when it is not the account that authenticated, but it leaves the display
+// name alone, so this is how one mailbox and one app password can still say
+// which restaurant a mail is about.
+//
+// It is the display name people actually read in a list of mail, and it is the
+// only place the restaurant appears in the header: the address is the same for
+// both, so anybody sorting by sender sorts on this.
+//
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
+// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
+// one matters: a display name with an accent in it has to be encoded to travel
+// in a header, and a name that arrives as mojibake is worse than a generic one.
+
 // Who the mail comes from.
 //
 // One Workspace account sends for every restaurant, and the restaurant's own
