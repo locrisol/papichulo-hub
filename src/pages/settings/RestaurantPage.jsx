@@ -42,6 +42,7 @@ export default function RestaurantPage() {
         hourly_rate: '',
         forecasting_enabled: false,
         mail_from: '',
+        google_calendar_id: '',
     })
 
     const [loading, setLoading] = useState(false)
@@ -77,6 +78,7 @@ export default function RestaurantPage() {
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             forecasting_enabled: activeRestaurant.forecasting_enabled || false,
             mail_from: activeRestaurant.mail_from || '',
+            google_calendar_id: activeRestaurant.google_calendar_id || '',
         })
     }, [activeRestaurant])
 
@@ -115,6 +117,7 @@ export default function RestaurantPage() {
                 // on; an empty string would read as an address that is
                 // blank.
                 mail_from: formData.mail_from.trim() || null,
+                google_calendar_id: formData.google_calendar_id.trim() || null,
             })
             .eq('id', activeRestaurant.id)
             .select()
@@ -341,6 +344,34 @@ export default function RestaurantPage() {
                                 Leave it empty and they come from the account the Hub sends with.
                                 Replies never come back here: they go to whoever sent it, with
                                 everyone else copied.
+                            </p>
+                        </div>
+
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Calendar</h3>
+                            <label className={labelClass} htmlFor="google-calendar-id">
+                                Google calendar
+                            </label>
+                            <input
+                                id="google-calendar-id"
+                                type="text"
+                                autoComplete="off"
+                                value={formData.google_calendar_id}
+                                onChange={e => setFormData({ ...formData, google_calendar_id: e.target.value })}
+                                placeholder="something@group.calendar.google.com"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                            {/* The whole of what a new restaurant needs. Somebody
+                                makes it a calendar, shares it the way the other two
+                                are shared, and pastes the id here. There is nothing
+                                to verify and nothing an administrator has to set up
+                                per restaurant, which is the thing the email could
+                                never manage. */}
+                            <p className="text-xs text-muted mt-1">
+                                Where catering, meetings and promotions for this restaurant are
+                                written. Find it in Google Calendar under Settings, Integrate
+                                calendar. Leave it empty and they stay in the Hub, which the
+                                calendar screen says rather than pretending they went out.
                             </p>
                         </div>
 
