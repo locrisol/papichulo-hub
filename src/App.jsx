@@ -59,7 +59,7 @@ const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
 const CostDashboardPage = lazy(() => import('@/pages/costs/CostDashboardPage'))
 const ReportsListPage = lazy(() => import('@/pages/reports/ReportsListPage'))
 const ReportPage = lazy(() => import('@/pages/reports/ReportPage'))
-const EventCalendarPage = lazy(() => import('@/pages/forecast/EventCalendarPage'))
+const CalendarPage = lazy(() => import('@/pages/diary/CalendarPage'))
 const EmployeesPage = lazy(() => import('@/pages/team/EmployeesPage'))
 const RosterPage = lazy(() => import('@/pages/roster/RosterPage'))
 const MyShiftsPage = lazy(() => import('@/pages/roster/MyShiftsPage'))
@@ -127,7 +127,15 @@ export default function App() {
                 <Route path="/inventory/stock-takes/:id/summary" element={<RequireRole allowed={MANAGERS}><StockTakeSummaryPage /></RequireRole>} />
                 <Route path="/inventory/public-allergens" element={<RequireRole allowed={MANAGERS}><PublicAllergensPreviewPage /></RequireRole>} />
 
-                <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
+                {/* What is coming up: the diary, what is on at the Arena,
+                    and the deliveries a day already carries. Everybody
+                    reads it, because a catering job matters most to the
+                    person who has to make it. Managers and above write,
+                    which the database also insists on. */}
+                <Route path="/calendar" element={<RequireRole allowed={ALL_ROLES}><CalendarPage /></RequireRole>} />
+
+                {/* Where Events used to be. Somebody has this bookmarked. */}
+                <Route path="/forecast" element={<Navigate to="/calendar" replace />} />
 
                 {/* The people who work here. Managers and above, and nothing
                     below that: the row carries what somebody costs per hour, and

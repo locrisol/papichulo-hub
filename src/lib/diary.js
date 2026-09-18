@@ -60,6 +60,28 @@ const KIND = {
         dot: 'bg-stone-500',
         google: '7', // Peacock
     },
+
+    // These two are not kinds anybody can choose. They are the other two
+    // sources the calendar draws, and they are in here so one function answers
+    // "what colour is this item" whatever it came from.
+    //
+    // Neither carries a Google colour, because neither is ever written there. An
+    // Arena listing is context rather than a commitment, and a quarter of them
+    // would bury everything that is actually ours.
+    arena: {
+        label: '3Arena',
+        chip: 'bg-purple-50 text-purple-900 border-l-purple-700',
+        tag: 'bg-purple-50 text-purple-900',
+        dot: 'bg-purple-700',
+        google: null,
+    },
+    delivery: {
+        label: 'Delivery',
+        chip: 'bg-white text-gray-700 border-l-gray-500',
+        tag: 'bg-gray-100 text-gray-700',
+        dot: 'bg-gray-500',
+        google: null,
+    },
 }
 
 const FALLBACK = KIND.other
@@ -298,4 +320,115 @@ export function entryProblem(form) {
         return 'Say which restaurant it is for.'
     }
     return ''
+}
+
+// -- One screen out of three sources -----------------------------------
+//
+// The calendar draws diary entries, what is on at the Arena, and the
+// deliveries ticked onto a day, and none of the three is shaped like the other
+// two. Rather than teach each view about all three, they are turned into one
+// item here and the views only ever draw items.
+//
+// Deliveries are in it because leaving them out would make a screen built to
+// answer "what have I got coming up" miss half of what is coming up. They stay
+// in day_notes.extras where they have always been: this reads them, it does not
+// move them.
+
+export const LAYERS = [
+    'catering', 'meeting', 'promotion', 'maintenance', 'other',
+    'arena', 'delivery', 'private',
+]
+
+// Which switch turns this item off.
+//
+// A private entry answers to its own layer rather than to its kind, so hiding
+// what is only yours is one press and does not also hide the catering.
+export function layerOf(item) {
+    if (item?.source === 'arena') return 'arena'
+    if (item?.source === 'delivery') return 'delivery'
+    return item?.scope === 'private' ? 'private' : (item?.kind || 'other')
+}
+
+export function calendarItems({ entries, arena, dayNotes, from, to }) {
+    const items = []
+
+    for (const entry of entries || []) {
+        for (const date of datesBetween(entry.starts_on, entry.ends_on)) {
+            if (from && date < from) continue
+            if (to && date > to) continue
+            items.push({
+                key: `diary-${entry.id}-${date}`,
+                source: 'diary',
+                kind: entry.kind,
+                scope: entry.scope,
+                title: entry.title,
+                date,
+                time: entry.starts_at ? shortTime(entry.starts_at) : '',
+                allDay: isAllDay(entry),
+                entry,
+            })
+        }
+    }
+
+    for (const event of arena || []) {
+        items.push({
+            key: `arena-${event.id}`,
+            source: 'arena',
+            kind: 'arena',
+            title: event.name,
+            date: event.event_date,
+            time: event.event_time ? shortTime(event.event_time) : '',
+            allDay: !event.event_time,
+            entry: event,
+        })
+    }
+
+    for (const note of dayNotes || []) {
+        for (const extra of note?.extras || []) {
+            if (!extra?.name) continue
+            items.push({
+                key: `delivery-${note.note_date}-${extra.name}`,
+                source: 'delivery',
+                kind: 'delivery',
+                title: extra.name,
+                date: note.note_date,
+                time: extra.time ? shortTime(extra.time) : '',
+                allDay: false,
+                entry: note,
+            })
+        }
+    }
+
+    return items
+}
+
+// The items a day holds, in the order they read.
+//
+// All day first, then by time, then by name. An item with no time that is not
+// all day is a delivery nobody put a time on, and those go last for the same
+// reason they do on the roster: it is the one thing that cannot be placed in
+// the day's order.
+export function itemsByDate(items, layers) {
+    const on = layers ? new Set(layers) : null
+    const out = {}
+
+    for (const item of items || []) {
+        if (on && !on.has(layerOf(item))) continue
+        if (!out[item.date]) out[item.date] = []
+        out[item.date].push(item)
+    }
+
+    for (const date of Object.keys(out)) {
+        out[date].sort((a, b) => {
+            if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+            if (!a.time !== !b.time) return a.time ? -1 : 1
+            if (a.time && b.time) {
+                const gap = toMinutes(a.time) - toMinutes(b.time)
+                if (gap) return gap
+            }
+            return String(a.title || '').localeCompare(String(b.title || ''))
+        })
+    }
+
+    return out
 }

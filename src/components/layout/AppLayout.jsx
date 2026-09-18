@@ -46,7 +46,11 @@ const navItems = [
 
     // Everyone sees this. Nothing on it is sensitive, and the people working a
     // concert night are the ones who most need to know it is happening.
-    { path: '/forecast', label: 'Events', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES, needsForecasting: true },
+    //
+    // No longer gated on forecasting. It used to be the Arena and nothing else,
+    // so a restaurant with no venue had nothing to look at; now the Arena is one
+    // layer on it and the rest of it is the same everywhere.
+    { path: '/calendar', label: 'Calendar', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES },
 
     { path: '/my-shifts', label: 'My shifts', icon: 'weekly', section: 'People', roles: ALL_ROLES },
     { path: '/roster', label: 'Roster', icon: 'weekly', section: 'People', roles: MANAGERS },
@@ -356,7 +360,7 @@ export default function AppLayout({ children }) {
                         </div>
                     </ScrollProvider>
                 </main>
-                <BackToTop scrollers={[mainRef, shellRef]} />
+                <BackToTop scrollers={[mainRef, shellRef]} raised={location.pathname.startsWith('/calendar')} />
             </div>
         </div>
     )

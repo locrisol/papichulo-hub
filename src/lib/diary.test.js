@@ -5,6 +5,7 @@ import {
     lastDay, coversDate, isAllDay, runsMoreThanADay, timeLabel,
     sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
     showsOnRoster, entryProblem,
+    LAYERS, layerOf, calendarItems, itemsByDate,
 } from './diary'
 
 const RESTAURANTS = [
@@ -365,5 +366,104 @@ describe('what is wrong with it before it is saved', () => {
 
     it('does not throw on nothing at all', () => {
         expect(entryProblem(undefined)).toBe('It needs a name.')
+    })
+})
+
+describe('one screen out of three sources', () => {
+    const arena = [{ id: 'a1', name: 'Fontaines D.C.', event_date: '2026-10-16', event_time: '18:30:00' }]
+    const dayNotes = [{
+        note_date: '2026-10-16',
+        extras: [{ name: 'Feedr', time: '12:00' }, { name: 'Somebody', time: '' }],
+    }]
+
+    const items = () => calendarItems({
+        entries: [catering, promotion], arena, dayNotes,
+    })
+
+    it('turns a diary entry into an item on every day it covers', () => {
+        const mine = items().filter(i => i.entry?.id === 'p1')
+        expect(mine).toHaveLength(5)
+        expect(mine[0].source).toBe('diary')
+        expect(mine[0].allDay).toBe(true)
+    })
+
+    it('brings the Arena in', () => {
+        const one = items().find(i => i.source === 'arena')
+        expect(one).toMatchObject({ title: 'Fontaines D.C.', date: '2026-10-16', time: '18:30' })
+    })
+
+    // The whole reason this exists. A screen built to answer what is coming up
+    // that leaves out half of what is coming up is a screen you cannot trust.
+    it('reads the deliveries without moving them', () => {
+        const feedr = items().find(i => i.title === 'Feedr')
+        expect(feedr).toMatchObject({ source: 'delivery', date: '2026-10-16', time: '12:00' })
+    })
+
+    it('keeps a delivery nobody put a time on', () => {
+        expect(items().find(i => i.title === 'Somebody')).toBeTruthy()
+    })
+
+    it('leaves out days outside the range it was asked for', () => {
+        const short = calendarItems({
+            entries: [promotion], from: '2026-10-14', to: '2026-10-15',
+        })
+        expect(short.map(i => i.date)).toEqual(['2026-10-14', '2026-10-15'])
+    })
+
+    it('copes with nothing at all', () => {
+        expect(calendarItems({})).toEqual([])
+    })
+})
+
+describe('which switch turns an item off', () => {
+    it('sends the Arena and the deliveries to their own layers', () => {
+        expect(layerOf({ source: 'arena' })).toBe('arena')
+        expect(layerOf({ source: 'delivery' })).toBe('delivery')
+    })
+
+    it('sends a diary entry to its kind', () => {
+        expect(layerOf({ source: 'diary', kind: 'catering', scope: 'sites' })).toBe('catering')
+    })
+
+    // Hiding what is only yours should be one press and should not also hide
+    // the catering, so private answers to its own layer rather than its kind.
+    it('sends a private one to the private layer whatever kind it is', () => {
+        expect(layerOf({ source: 'diary', kind: 'catering', scope: 'private' })).toBe('private')
+    })
+
+    it('has a layer for every kind and then some', () => {
+        for (const kind of KINDS) expect(LAYERS).toContain(kind)
+        expect(LAYERS).toContain('arena')
+        expect(LAYERS).toContain('delivery')
+        expect(LAYERS).toContain('private')
+    })
+})
+
+describe('what a day holds, in order', () => {
+    const day = '2026-10-16'
+    const built = () => calendarItems({
+        entries: [catering, promotion],
+        arena: [{ id: 'a1', name: 'Fontaines D.C.', event_date: day, event_time: '18:30:00' }],
+        dayNotes: [{ note_date: day, extras: [{ name: 'Feedr', time: '12:00' }, { name: 'Late one', time: '' }] }],
+    })
+
+    it('puts the all day one first and then the times in order', () => {
+        const titles = itemsByDate(built())[day].map(i => i.title)
+        expect(titles).toEqual(['15% off wraps', 'Feedr', 'Fontaines D.C.', 'Blanchardstown 40th', 'Late one'])
+    })
+
+    // A delivery with no time is the one thing that cannot be placed in the
+    // day's order, which is why it goes last rather than first.
+    it('puts something with no time at all at the end', () => {
+        expect(itemsByDate(built())[day].at(-1).title).toBe('Late one')
+    })
+
+    it('leaves out a layer that is switched off', () => {
+        const titles = itemsByDate(built(), ['catering', 'promotion'])[day].map(i => i.title)
+        expect(titles).toEqual(['15% off wraps', 'Blanchardstown 40th'])
+    })
+
+    it('shows everything when it is not told which layers', () => {
+        expect(itemsByDate(built())[day]).toHaveLength(5)
     })
 })
