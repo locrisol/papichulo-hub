@@ -12,6 +12,7 @@ import {
     labelClass, fieldClass, dateField, hintClass,
 } from '@/lib/controlStyles'
 import { KINDS, kindLabel, kindTag, scopeFrom, entryProblem } from '@/lib/diary'
+import { writeToGoogle } from '@/lib/diaryGoogle'
 
 // Putting something in the diary.
 //
@@ -193,6 +194,16 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
             return
         }
 
+        // The row is saved either way. A calendar that refuses is reported, not
+        // hidden: an entry that quietly stayed in the Hub looks exactly like one
+        // that went out, and the list says which it was.
+        const went = await writeToGoogle(data.id)
+        if (!went.ok && went.reason) {
+            setError(`Saved, but it did not reach Google. ${went.reason}`)
+            setSaving(false)
+            return
+        }
+
         onSaved(data)
     }
 
@@ -206,6 +217,17 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
         if (!yes) return
 
         setSaving(true)
+
+        // Off the calendars first, while the row is still here to say which ones
+        // it is on. Once it is deleted nothing knows, and the events would sit
+        // there forever saying something that is no longer true.
+        const cleared = await writeToGoogle(entry.id, { clear: true })
+        if (!cleared.ok && cleared.reason) {
+            setError(`It is still in Google and could not be taken off. ${cleared.reason}`)
+            setSaving(false)
+            return
+        }
+
         const { error: err } = await supabase.from('diary_entries').delete().eq('id', entry.id)
         if (err) {
             setError(friendlyError(err))
