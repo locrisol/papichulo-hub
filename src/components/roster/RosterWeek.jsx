@@ -46,7 +46,8 @@ import {
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
     dates, employees, shifts, positions, dayNotes, events, diary, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, shiftMark, staff = false,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
+    shiftMark, staff = false,
 }) {
     // Whose warnings are open, one at a time. Blocks are never in here: those
     // stay on screen, because a block is the reason the week will not publish.
@@ -258,7 +259,22 @@ export default function RosterWeek({
                         in. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
                             <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
-                                Also on
+                                {/* The label is the way into the whole week at
+                                    once, because a delivery schedule arrives as
+                                    a week and putting it in a day at a time
+                                    means opening seven days to type three
+                                    times. The + on a single day is still there
+                                    for when that is all you want. */}
+                                {staff ? 'Also on' : (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenWeekExtras?.()}
+                                        className="text-left hover:text-accent-ink transition-colors"
+                                        title="Put in a whole week at once"
+                                    >
+                                        Also on <span aria-hidden="true">&#9662;</span>
+                                    </button>
+                                )}
                             </td>
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))

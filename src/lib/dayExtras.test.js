@@ -10,6 +10,7 @@ import {
     removeExtra,
     usualProblem,
     extraLanes,
+    weekGrid,
 } from '@/lib/dayExtras'
 
 describe('cleanExtras', () => {
@@ -193,5 +194,66 @@ describe('extraLanes', () => {
 
     it('is happy with nothing', () => {
         expect(extraLanes(null)).toEqual([])
+    })
+})
+
+describe('the whole week at once', () => {
+    const DATES = ['2026-10-12', '2026-10-13', '2026-10-14']
+    const USUAL = [{ name: 'Feedr', time: '12:00' }, { name: 'Clockmeal', time: '15:00' }]
+    const NOTES = [
+        { note_date: '2026-10-12', extras: [{ name: 'Feedr', time: '12:00' }] },
+        { note_date: '2026-10-14', extras: [{ name: 'Feedr', time: '11:30' }, { name: 'Extraction', time: '' }] },
+    ]
+
+    it('gives a row for every usual one, in the order somebody set', () => {
+        expect(weekGrid(USUAL, NOTES, DATES).map(r => r.name).slice(0, 2))
+            .toEqual(['Feedr', 'Clockmeal'])
+    })
+
+    it('puts the time in the cell, not a tick, because the time is what varies', () => {
+        const feedr = weekGrid(USUAL, NOTES, DATES)[0]
+        expect(feedr.onDay).toEqual({
+            '2026-10-12': '12:00',
+            '2026-10-13': null,
+            '2026-10-14': '11:30',
+        })
+    })
+
+    it('leaves a usual one that is on no day completely empty', () => {
+        const clockmeal = weekGrid(USUAL, NOTES, DATES)[1]
+        expect(Object.values(clockmeal.onDay)).toEqual([null, null, null])
+        expect(clockmeal.count).toBe(0)
+    })
+
+    // Not on the usual list, but it is on the roster, so a grid that left it out
+    // would disagree with the row right beside it.
+    it('picks up a one off that was ticked onto a day', () => {
+        const rows = weekGrid(USUAL, NOTES, DATES)
+        const extraction = rows.find(r => r.name === 'Extraction')
+        expect(extraction).toBeTruthy()
+        expect(extraction.usual).toBe(false)
+    })
+
+    // On with nobody saying when is a real answer, and it is not the same as
+    // not being on at all. Getting these two the same way round is the whole
+    // reason null and empty string mean different things here.
+    it('tells on with no time apart from not on', () => {
+        const extraction = weekGrid(USUAL, NOTES, DATES).find(r => r.name === 'Extraction')
+        expect(extraction.onDay['2026-10-14']).toBe('')
+        expect(extraction.onDay['2026-10-13']).toBeNull()
+    })
+
+    it('counts the days each one is on, which is what says a job is half done', () => {
+        expect(weekGrid(USUAL, NOTES, DATES)[0].count).toBe(2)
+    })
+
+    it('does not list the same name twice', () => {
+        const twice = [{ note_date: '2026-10-13', extras: [{ name: 'feedr', time: '12:00' }] }]
+        expect(weekGrid(USUAL, twice, DATES).filter(r => r.name.toLowerCase() === 'feedr')).toHaveLength(1)
+    })
+
+    it('copes with nothing at all', () => {
+        expect(weekGrid(null, null, DATES)).toEqual([])
+        expect(weekGrid(USUAL, null, [])).toHaveLength(2)
     })
 })

@@ -30,6 +30,7 @@ import RosterRulesModal from '@/components/settings/RosterRulesModal'
 import ShiftDialog from '@/components/roster/ShiftDialog'
 import TimeOffDialog from '@/components/roster/TimeOffDialog'
 import WeeklyExtrasModal from '@/components/roster/WeeklyExtrasModal'
+import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import RequestDeskModal from '@/components/roster/RequestDeskModal'
 import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
@@ -83,6 +84,7 @@ export default function RosterPage() {
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
+    const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [priorHours, setPriorHours] = useState({})
     // The week either side. Only the rest checks read it: a break between two
     // shifts does not stop on a Saturday night, so they cannot be worked out
@@ -975,6 +977,7 @@ export default function RosterPage() {
                     events={events}
                     diary={diary}
                     onOpenDiary={entry => setEditingDiary(entry)}
+                    onOpenWeekExtras={() => setWeekExtrasOpen(true)}
                     openingHours={activeRestaurant?.opening_hours}
                     standingNote={activeRestaurant?.roster_note}
                     today={today}
@@ -1060,6 +1063,16 @@ export default function RosterPage() {
             )}
 
             {settingsOpen === 'weekly' && <WeeklyExtrasModal onClose={() => setSettingsOpen(null)} />}
+
+            {weekExtrasOpen && (
+                <WeekExtrasModal
+                    dates={dates}
+                    dayNotes={dayNotes}
+                    restaurant={activeRestaurant}
+                    onClose={() => setWeekExtrasOpen(false)}
+                    onSaved={() => { setWeekExtrasOpen(false); load({ quiet: true }) }}
+                />
+            )}
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
