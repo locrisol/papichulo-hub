@@ -35,6 +35,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import DiaryDialog from '@/components/diary/DiaryDialog'
 
 // Building the week.
 //
@@ -79,6 +80,9 @@ export default function RosterPage() {
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
     const [events, setEvents] = useState([])
+    const [diary, setDiary] = useState([])
+    const [restaurants, setRestaurants] = useState([])
+    const [editingDiary, setEditingDiary] = useState(null)
     const [priorHours, setPriorHours] = useState({})
     // The week either side. Only the rest checks read it: a break between two
     // shifts does not stop on a Saturday night, so they cannot be worked out
@@ -132,7 +136,7 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes, askRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes, diaryRes, placeRes, offRes, askRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -147,6 +151,23 @@ export default function RosterPage() {
             supabase.from('events').select('*')
                 .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
                 .order('event_time'),
+            // The diary: catering, meetings, promotions. Overlapping the
+            // week rather than starting in it, the same reason the absences
+            // below are asked for that way: a discount week that began last
+            // Thursday still covers Monday.
+            //
+            // No restaurant filter. Which entries this restaurant can see is
+            // the scope, and the scope is read by the policy in the database
+            // rather than by a clause here. A group wide promotion has no
+            // restaurant on it at all and a filter would drop it.
+            supabase.from('diary_entries').select('*')
+                .lte('starts_on', addDays(weekStart, 6))
+                .or(`ends_on.gte.${weekStart},and(ends_on.is.null,starts_on.gte.${weekStart})`)
+                .order('starts_on'),
+            // For the diary dialog, which has to name every restaurant an entry
+            // could be put on rather than only the one whose week is open.
+            supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
+                .eq('is_active', true).order('sort_order'),
             // Anything overlapping the week, which is not the same as anything
             // starting in it. A fortnight off that began last Thursday still
             // covers Monday and would be missed by a date range on starts_on.
@@ -175,6 +196,8 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
+        setDiary(diaryRes.data || [])
+        setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
         setAllWaiting(askRes.data || [])
         setLoading(false)
@@ -950,6 +973,8 @@ export default function RosterPage() {
                     positions={positions}
                     dayNotes={dayNotes}
                     events={events}
+                    diary={diary}
+                    onOpenDiary={entry => setEditingDiary(entry)}
                     openingHours={activeRestaurant?.opening_hours}
                     standingNote={activeRestaurant?.roster_note}
                     today={today}
@@ -1085,6 +1110,19 @@ export default function RosterPage() {
                         setAnswering(null)
                     }}
                     onClose={() => setAnswering(null)}
+                />
+            )}
+
+            {/* A promotion running across the week opens from the band it is
+                drawn as, so a date that turns out to be wrong is fixed where it
+                is wrong rather than on another screen. */}
+            {editingDiary && (
+                <DiaryDialog
+                    entry={editingDiary}
+                    date={editingDiary.starts_on}
+                    restaurants={restaurants}
+                    onClose={() => setEditingDiary(null)}
+                    onSaved={() => { setEditingDiary(null); load({ quiet: true }) }}
                 />
             )}
         </div>

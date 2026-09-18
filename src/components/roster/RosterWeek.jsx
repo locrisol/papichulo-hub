@@ -10,6 +10,7 @@ import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absence
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor } from '@/lib/dayExtras'
+import { bandsForWeek, kindChip, showsOnRoster, onDate, timeLabel } from '@/lib/diary'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -44,8 +45,8 @@ import {
 // The hours stay. Everybody sees everybody's, which is a decision rather than an
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay, shiftMark, staff = false,
+    dates, employees, shifts, positions, dayNotes, events, diary, openingHours, standingNote, today,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, shiftMark, staff = false,
 }) {
     // Whose warnings are open, one at a time. Blocks are never in here: those
     // stay on screen, because a block is the reason the week will not publish.
@@ -61,7 +62,25 @@ export default function RosterWeek({
     // get typed in. Staff cannot type anything, so for them an empty one is a
     // line of dashes taking up space on a week they are trying to read.
     const showEvents = !staff || (events || []).length > 0
-    const showExtras = !staff || (dayNotes || []).some(n => extrasFor(n).length > 0)
+
+    // What reaches the roster at all. Private never does, because the form
+    // promises nobody else sees it and this is where the staff read the week.
+    // Cancelled never does either: the entry is worth keeping, it just does not
+    // need anybody on any more.
+    const onNow = (diary || []).filter(showsOnRoster)
+
+    // Anything running more than a day is a band across the days it covers,
+    // once, rather than the same chip printed on each of them. Five chips read
+    // as five things and a discount week is one thing.
+    const bands = bandsForWeek(onNow, dates)
+    const banded = new Set(bands.map(b => b.entry.id))
+
+    // Everything else joins the deliveries on the day it is on.
+    const diaryOn = d => onDate(onNow, d).filter(e => !banded.has(e.id))
+
+    const showExtras = !staff
+        || (dayNotes || []).some(n => extrasFor(n).length > 0)
+        || dates.some(d => diaryOn(d).length > 0)
 
     // Down the middle, not up at the top.
     //
@@ -173,6 +192,33 @@ export default function RosterWeek({
                         {tail}
                     </tr>
 
+                    {/* What is on, as a band across the days it runs.
+                        One row each so the columns line up with the days
+                        underneath them: a grid inside one wide cell only lines
+                        up while every column happens to be the same width, and
+                        the first bank holiday would have broken it. */}
+                    {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
+                        <tr key={entry.id} className="border-b border-border bg-white">
+                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 bg-white">
+                                {i === 0 ? 'What is on' : ''}
+                            </td>
+                            {start > 0 && <td className={cell} colSpan={start} />}
+                            <td className={`${cell} p-1`} colSpan={span}>
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenDiary?.(entry)}
+                                    className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)}`}
+                                >
+                                    {runsIn && '\u2039 '}{entry.title}{runsOn && ' \u203a'}
+                                </button>
+                            </td>
+                            {start + span < dates.length && (
+                                <td className={cell} colSpan={dates.length - start - span} />
+                            )}
+                            {tail}
+                        </tr>
+                    ))}
+
                     {showEvents && <tr className="bg-accent-light/60 border-b border-border">
                         <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 bg-accent-light">
                             Events
@@ -216,9 +262,39 @@ export default function RosterWeek({
                             </td>
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))
-                                const inside = extras.length === 0 ? (
+                                // The diary first, because a catering job is
+                                // something somebody committed to and a
+                                // delivery is something that turns up. Both are
+                                // the same chip with a different edge: two
+                                // kinds of thing on one day, and this row is
+                                // about the day rather than about which table
+                                // they came out of.
+                                //
+                                // Not a button, though it looks like one it
+                                // could be. For a manager this whole cell is
+                                // already a button that opens the day, and a
+                                // button inside a button is not a thing. The
+                                // band above is pressable because it has a cell
+                                // to itself; these are read here and changed on
+                                // the calendar.
+                                const commitments = diaryOn(d)
+                                const inside = (extras.length === 0 && commitments.length === 0) ? (
                                     <span className="text-muted text-xs">{staff ? '' : '+'}</span>
-                                ) : extras.map(extra => (
+                                ) : [...commitments.map(entry => (
+                                    <span
+                                        key={entry.id}
+                                        className={`block rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words text-left ${kindChip(entry.kind)}`}
+                                    >
+                                        {entry.starts_at && (
+                                            <>
+                                                <span className="font-bold tabular-nums">
+                                                    {timeLabel(entry).split(' to ')[0]}
+                                                </span>{' '}
+                                            </>
+                                        )}
+                                        {entry.title}
+                                    </span>
+                                )), ...extras.map(extra => (
                                     // One chip each, because two of them as
                                     // plain lines read as one paragraph, and
                                     // the time picked out from the name because
@@ -246,7 +322,7 @@ export default function RosterWeek({
                                         )}
                                         <span className="text-slate-600">{extra.name}</span>
                                     </span>
-                                ))
+                                ))]
                                 return (
                                     <td key={d} className={`${cell} text-center p-0`}>
                                         {/* The same way in as an empty cell on
