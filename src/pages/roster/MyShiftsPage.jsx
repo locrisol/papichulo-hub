@@ -18,6 +18,8 @@ import {
 } from '@/lib/shiftRequests'
 import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
+import DiaryChip from '@/components/diary/DiaryChip'
+import { calendarItems, itemsByDate, showsOnRoster } from '@/lib/diary'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -42,6 +44,38 @@ import TimeOffCard from '@/components/roster/TimeOffCard'
 //              bars, because the table is 64rem wide and a phone is 23.
 //
 // Published only, and that is the database's rule rather than this page's.
+// What is on this week, for the phone.
+//
+// Only the days that have something, because a list of seven headings with
+// nothing under five of them is longer and says less. Nothing here is
+// pressable: an employee cannot change any of it, and a chip that looks like a
+// button and does nothing is worse than a plain label.
+function WhatIsOn({ diary, dates }) {
+    const items = calendarItems({ entries: (diary || []).filter(showsOnRoster) })
+    const byDate = itemsByDate(items)
+    const days = dates.filter(d => (byDate[d] || []).length > 0)
+
+    if (!days.length) return null
+
+    return (
+        <div className={`lg:hidden ${cardEdge} bg-white p-3 mb-3`}>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">What is on</p>
+            <div className="flex flex-col gap-2">
+                {days.map(date => (
+                    <div key={date}>
+                        <p className="text-xs font-semibold text-gray-700 mb-1">{fullDate(date)}</p>
+                        <div className="flex flex-col gap-1">
+                            {byDate[date].map(item => (
+                                <DiaryChip key={item.key} item={item} canEdit={false} />
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
 export default function MyShiftsPage() {
     const { user } = useAuth()
 
@@ -49,6 +83,7 @@ export default function MyShiftsPage() {
     const [shifts, setShifts] = useState([])
     const [colleagues, setColleagues] = useState([])
     const [dayNotes, setDayNotes] = useState([])
+    const [diary, setDiary] = useState([])
     const [absences, setAbsences] = useState([])
     const [openingHours, setOpeningHours] = useState(null)
     const [breakRules, setBreakRules] = useState(null)
@@ -91,7 +126,7 @@ export default function MyShiftsPage() {
             const from = dates[0]
             const to = dates[6]
 
-            const [shiftRes, mateRes, noteRes, awayRes, restRes, offRes] = await Promise.all([
+            const [shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, offRes] = await Promise.all([
                 // Straight off the table. A policy lets staff read published
                 // rows at their own restaurant, so there is nothing between
                 // this and the same shifts a manager sees.
@@ -102,6 +137,19 @@ export default function MyShiftsPage() {
                 supabase.from('day_notes').select('*')
                     .eq('restaurant_id', mine.restaurant_id)
                     .gte('note_date', from).lte('note_date', to),
+                // What is on: catering, meetings, promotions. This is where
+                // somebody working a shift actually looks, so leaving it out of
+                // here would mean the one person who has to make the catering
+                // is the one person not told about it.
+                //
+                // No restaurant filter and no filter on who it is for. Both are
+                // the scope, and the policy in the database reads it: a private
+                // entry belongs to whoever wrote it and never comes back here
+                // at all.
+                supabase.from('diary_entries').select('*')
+                    .lte('starts_on', to)
+                    .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
+                    .order('starts_on'),
                 // Who is away, with no word about why. That is the whole of
                 // what the view hands over and the whole of what anybody here
                 // needs: a day greyed out so you do not ask somebody who is in
@@ -124,6 +172,7 @@ export default function MyShiftsPage() {
             setShifts(shiftRes.data || [])
             setColleagues(mateRes.data || [])
             setDayNotes(noteRes.data || [])
+            setDiary(diaryRes.data || [])
             setAbsences(awayRes.data || [])
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
@@ -412,6 +461,7 @@ export default function MyShiftsPage() {
                             positions={positions}
                             dayNotes={dayNotes}
                             events={[]}
+                            diary={diary}
                             openingHours={openingHours}
                             absences={absences}
                             today={today}
@@ -423,6 +473,13 @@ export default function MyShiftsPage() {
                             )}
                         />
                     </div>
+
+                    {/* The wide roster above carries what is on in its own
+                        rows, and the phone has no roster to carry it. Leaving
+                        it out here would mean the one person who has to make
+                        the catering is the one person never told about it, and
+                        a phone is what they are holding. */}
+                    <WhatIsOn diary={diary} dates={dates} />
 
                     <div className="lg:hidden">
                         <div className={`${cardEdge} bg-white p-3`}>

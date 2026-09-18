@@ -312,6 +312,7 @@ export default function CalendarPage() {
                         selected={selected}
                         onSelect={setSelected}
                         onOpen={open}
+                        canEdit={canWrite}
                     />
                 ) : view === 'week' ? (
                     <DiaryWeek
@@ -319,7 +320,8 @@ export default function CalendarPage() {
                         today={today}
                         byDate={byDate}
                         onOpen={open}
-                        onAdd={date => canWrite && openAdd(date)}
+                        onAdd={openAdd}
+                        canEdit={canWrite}
                     />
                 ) : (
                     <DiaryList
@@ -328,6 +330,7 @@ export default function CalendarPage() {
                         restaurants={restaurants}
                         layers={layers}
                         onOpen={open}
+                        canEdit={canWrite}
                     />
                 )}
             </div>

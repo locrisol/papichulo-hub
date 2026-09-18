@@ -10,7 +10,7 @@ import DiaryChip from './DiaryChip'
 // plenty of the one direction and none of the other, and a name that has
 // scrolled off the left is a time you cannot place.
 
-export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd }) {
+export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd, canEdit }) {
     const dates = weekDates(weekStart)
     const bands = bandsForWeek(
         [...new Map(dates.flatMap(d => (byDate[d] || [])
@@ -31,13 +31,13 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd }) {
                         <div key={entry.id} className="grid grid-cols-7 py-0.5">
                             {start > 0 && <div style={{ gridColumn: `span ${start}` }} />}
                             <div style={{ gridColumn: `span ${span}` }} className="px-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => onOpen(entry)}
-                                    className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-1 text-xs font-bold ${kindChip(entry.kind)}`}
-                                >
-                                    {runsIn && '‹ '}{entry.title}{runsOn && ' ›'}
-                                </button>
+                                {(() => {
+                                    const look = `block w-full text-left truncate rounded-md border-l-[3px] px-2 py-1 text-xs font-bold ${kindChip(entry.kind)}`
+                                    const inside = <>{runsIn && '‹ '}{entry.title}{runsOn && ' ›'}</>
+                                    return canEdit
+                                        ? <button type="button" onClick={() => onOpen(entry)} className={look}>{inside}</button>
+                                        : <span className={look}>{inside}</span>
+                                })()}
                             </div>
                         </div>
                     ))}
@@ -54,14 +54,16 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd }) {
                             <span className={`text-xs font-bold ${date === today ? 'text-accent-ink' : 'text-gray-700'}`}>
                                 {DAY_NAMES[i]} {shortDate(date)}
                             </span>
-                            <button
-                                type="button"
-                                onClick={() => onAdd(date)}
-                                aria-label={`Add something on ${date}`}
-                                className="text-muted hover:text-accent-ink text-base leading-none px-1"
-                            >
-                                +
-                            </button>
+                            {canEdit && (
+                                <button
+                                    type="button"
+                                    onClick={() => onAdd(date)}
+                                    aria-label={`Add something on ${date}`}
+                                    className="text-muted hover:text-accent-ink text-base leading-none px-1"
+                                >
+                                    +
+                                </button>
+                            )}
                         </div>
 
                         <div className="flex flex-col gap-1 p-1.5 sm:min-h-[8rem]">
@@ -72,7 +74,7 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd }) {
                             <span className="sm:hidden contents">
                                 {bands.filter(b => dates.indexOf(date) >= b.start
                                     && dates.indexOf(date) < b.start + b.span)
-                                    .map(b => (
+                                    .map(b => (canEdit ? (
                                         <button
                                             key={b.entry.id}
                                             type="button"
@@ -81,11 +83,18 @@ export default function DiaryWeek({ weekStart, today, byDate, onOpen, onAdd }) {
                                         >
                                             {b.entry.title}
                                         </button>
-                                    ))}
+                                    ) : (
+                                        <span
+                                            key={b.entry.id}
+                                            className={`block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-1 text-xs font-bold ${kindChip(b.entry.kind)}`}
+                                        >
+                                            {b.entry.title}
+                                        </span>
+                                    )))}
                             </span>
 
                             {rest(date).map(item => (
-                                <DiaryChip key={item.key} item={item} onOpen={onOpen} />
+                                <DiaryChip key={item.key} item={item} onOpen={onOpen} canEdit={canEdit} />
                             ))}
                         </div>
                     </div>

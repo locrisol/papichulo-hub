@@ -16,7 +16,7 @@ import { kindChip, kindTag, kindLabel, scopeLabel, timeLabel, layerOf } from '@/
 // the badge at the end. A badge is a word you read; a colour is something you
 // see without reading, and the point of this list is scanning it.
 
-function Row({ item, restaurants, onOpen }) {
+function Row({ item, restaurants, onOpen, canEdit }) {
     const entry = item.source === 'diary' ? item.entry : null
     const edge = kindChip(item.kind).split(' ').find(c => c.startsWith('border-l-')) || 'border-l-gray-400'
     const tint = kindTag(item.kind)
@@ -70,12 +70,12 @@ function Row({ item, restaurants, onOpen }) {
 
     const shell = `w-full border-l-[4px] ${edge} px-3 py-2.5 border-b border-border last:border-b-0`
 
-    return entry
+    return entry && canEdit
         ? <button type="button" onClick={() => onOpen(entry)} className={`${shell} hover:bg-gray-50 transition-colors`}>{inside}</button>
         : <div className={shell}>{inside}</div>
 }
 
-export default function DiaryList({ items, today, restaurants, layers, onOpen }) {
+export default function DiaryList({ items, today, restaurants, layers, onOpen, canEdit }) {
     const on = new Set(layers)
     const shown = [...items]
         .filter(i => on.has(layerOf(i)))
@@ -110,7 +110,7 @@ export default function DiaryList({ items, today, restaurants, layers, onOpen })
                     )
                 }
                 return row.events.map(item => (
-                    <Row key={item.key} item={item} restaurants={restaurants} onOpen={onOpen} />
+                    <Row key={item.key} item={item} restaurants={restaurants} onOpen={onOpen} canEdit={canEdit} />
                 ))
             })}
         </div>

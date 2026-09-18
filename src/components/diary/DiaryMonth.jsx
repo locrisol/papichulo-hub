@@ -21,7 +21,7 @@ import DiaryChip from './DiaryChip'
 // every week in the month taller.
 const ROOM_FOR = 3
 
-function BandRow({ bands, onOpen }) {
+function BandRow({ bands, onOpen, canEdit }) {
     if (!bands.length) return null
 
     return (
@@ -30,15 +30,13 @@ function BandRow({ bands, onOpen }) {
                 <div key={entry.id} className="grid grid-cols-7 py-0.5">
                     {start > 0 && <div style={{ gridColumn: `span ${start}` }} />}
                     <div style={{ gridColumn: `span ${span}` }} className="px-0.5">
-                        <button
-                            type="button"
-                            onClick={() => onOpen(entry)}
-                            className={`block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)} ${runsIn ? 'rounded-l-none' : ''} ${runsOn ? 'rounded-r-none' : ''}`}
-                        >
-                            {runsIn && '‹ '}
-                            {entry.title}
-                            {runsOn && ' ›'}
-                        </button>
+                        {(() => {
+                            const look = `block w-full text-left truncate rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)} ${runsIn ? 'rounded-l-none' : ''} ${runsOn ? 'rounded-r-none' : ''}`
+                            const inside = <>{runsIn && '‹ '}{entry.title}{runsOn && ' ›'}</>
+                            return canEdit
+                                ? <button type="button" onClick={() => onOpen(entry)} className={look}>{inside}</button>
+                                : <span className={look}>{inside}</span>
+                        })()}
                     </div>
                 </div>
             ))}
@@ -46,7 +44,7 @@ function BandRow({ bands, onOpen }) {
     )
 }
 
-export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelect, onOpen }) {
+export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelect, onOpen, canEdit }) {
     // Starts on the Sunday before the first, so the columns line up with the
     // day names above them.
     const gridStart = addDays(viewMonth, -new Date(`${viewMonth}T00:00:00`).getDay())
@@ -93,7 +91,7 @@ export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelec
 
                 return (
                     <div key={week[0]}>
-                        <BandRow bands={bands} onOpen={onOpen} />
+                        <BandRow bands={bands} onOpen={onOpen} canEdit={canEdit} />
 
                         <div className="grid grid-cols-7">
                             {week.map(date => {
@@ -136,7 +134,7 @@ export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelec
 
                                         <div className="hidden sm:flex flex-col gap-0.5 px-1 pb-1">
                                             {items.slice(0, ROOM_FOR).map(item => (
-                                                <DiaryChip key={item.key} item={item} onOpen={onOpen} compact />
+                                                <DiaryChip key={item.key} item={item} onOpen={onOpen} canEdit={canEdit} compact />
                                             ))}
                                             {items.length > ROOM_FOR && (
                                                 <button
@@ -167,7 +165,7 @@ export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelec
                 ) : (
                     <div className="flex flex-col gap-1">
                         {onSelectedDay.map(item => (
-                            <DiaryChip key={item.key} item={item} onOpen={onOpen} />
+                            <DiaryChip key={item.key} item={item} onOpen={onOpen} canEdit={canEdit} />
                         ))}
                     </div>
                 )}

@@ -6,11 +6,11 @@ import { kindChip } from '@/lib/diary'
 // the same reason the roster does it: a delivery at eleven and a delivery at
 // three are different problems.
 //
-// Only a diary entry is a button. What is on at the Arena arrives on its own
-// and nobody here can change it, and a delivery belongs to the day it is ticked
-// onto, so neither of those pretends to be something you can press. A control
-// that looks pressable and does nothing is worse than a plain label.
-export default function DiaryChip({ item, onOpen, compact = false }) {
+// What is a button here depends on what you can do with it. An Arena listing
+// always opens, because it opens to be read. A diary entry opens only if you can
+// change it, so an employee gets a label rather than a control that looks
+// pressable and does nothing, which is worse than a plain label.
+export default function DiaryChip({ item, onOpen, canEdit = true, compact = false }) {
     const look = `block w-full text-left rounded-md border-l-[3px] ${kindChip(item.kind)} `
         + `${compact ? 'px-1 py-0.5 text-[0.6875rem]' : 'px-1.5 py-1 text-xs'} `
         + 'leading-tight font-semibold truncate'
@@ -32,7 +32,7 @@ export default function DiaryChip({ item, onOpen, compact = false }) {
     // A delivery belongs to the day it was ticked onto, so it is not a button
     // here. Pressing it would have to take you somewhere else to change it, and
     // a chip that navigates away from a month you were reading is a surprise.
-    if (item.source === 'delivery' || !onOpen) {
+    if (item.source === 'delivery' || !onOpen || (item.source === 'diary' && !canEdit)) {
         return <span className={`${look} ${edge}`} title={item.title}>{inside}</span>
     }
 
