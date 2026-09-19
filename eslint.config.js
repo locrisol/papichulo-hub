@@ -58,7 +58,7 @@ export default defineConfig([
     files: [
       'src/lib/ics.test.js',
       'src/lib/reportEmail.test.js',
-      'src/lib/timeOffEmail.test.js',
+      'src/lib/rosterEmail.test.js',
       'src/lib/diaryGoogle.test.js',
     ],
     rules: {

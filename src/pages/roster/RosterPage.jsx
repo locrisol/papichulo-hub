@@ -17,7 +17,7 @@ import {
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
-import { emailTheAnswer } from '@/lib/timeOffMail'
+import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
 import { writesFor, requestsOnShift } from '@/lib/shiftRequests'
@@ -489,6 +489,9 @@ export default function RosterPage() {
 
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // Last, after every write above has gone through. Both of them are
+        // being told the roster has changed, and it has to have changed first.
+        emailTheShiftDecision(request.id)
         load({ quiet: true })
     }
 
@@ -501,6 +504,9 @@ export default function RosterPage() {
         }).eq('id', request.id)
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // A no is worth as much as a yes here. Two people agreed something
+        // between them and are both waiting to find out whether it counts.
+        emailTheShiftDecision(request.id)
         loadRequests(shifts)
     }
 

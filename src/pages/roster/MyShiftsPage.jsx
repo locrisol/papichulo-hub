@@ -16,6 +16,7 @@ import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
     LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
 } from '@/lib/shiftRequests'
+import { emailTheShiftAsk, emailTheShiftAnswer } from '@/lib/rosterMail'
 import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
@@ -286,13 +287,19 @@ export default function MyShiftsPage() {
     async function send(draft) {
         setSaving(true)
         setError('')
-        const { error: err } = await supabase.from('shift_requests').insert({
+        // The row comes back because the mail goes out by id and there is no
+        // other way for the browser to learn it.
+        const { data, error: err } = await supabase.from('shift_requests').insert({
             ...draft,
             restaurant_id: me.restaurant_id,
             created_by: user.id,
-        })
+        }).select('id').single()
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // Not awaited. Asking is the thing that had to happen and it has; the
+        // mail is how the other person finds out, and it does not get to fail
+        // the ask.
+        emailTheShiftAsk(data?.id)
         setAsking(null)
         reload()
     }
@@ -307,6 +314,9 @@ export default function MyShiftsPage() {
             .eq('id', request.id)
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // Whoever asked hears either way, and a yes also reaches the managers,
+        // because from here it is their turn and nothing has told them.
+        emailTheShiftAnswer(request.id)
         reload()
     }
 

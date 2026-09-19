@@ -260,6 +260,290 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// ------------------------------------------------- somebody wants to swap
+
+// A request is a give and a take, and either half can be empty. The asker gives
+// away some of a shift of theirs, and takes some of one of the other person's
+// back. That one shape covers a straight cover, an even swap, and an uneven
+// trade across two different days, which is what people actually ask for.
+//
+// Three mails come out of it, because a swap is three waits and not one. You
+// wait on the person you asked, then you both wait on a manager, and then it is
+// done. Each of those ends with somebody needing to know, and every one of them
+// used to end in silence.
+
+// 09:00:00 out of the database and 09:00 out of a time field are the same
+// moment written twice.
+export function hhmm(value) {
+    return String(value ?? '').slice(0, 5)
+}
+
+// The two sides of a request, as facts rather than as words.
+//
+// Each half says who gives the hours up, who takes them on, and whether it is
+// all of a shift or part of one. The shifts are handed in because nothing in
+// this file reads a database.
+//
+// Who gives and who takes comes off the request and never off the shift, and
+// that is not a shortcut. The give half is always the asker's hours going to
+// the person asked, and the take half is always the other way round, by what a
+// request is. Reading the owner off the shift row agrees with that right up
+// until a manager approves it: approving rewrites the roster, a shift handed
+// over whole keeps its row and changes hands, and from then on the row says the
+// taker owns it. The mail would have somebody taking a shift from themselves.
+export function swapHalves(request, shifts) {
+    const find = id => (shifts || []).find(s => s.id === id) || null
+    const out = []
+
+    const sides = [
+        {
+            shift: find(request?.give_shift_id),
+            from: request?.give_from,
+            to: request?.give_to,
+            giverId: request?.from_employee_id,
+            takerId: request?.to_employee_id,
+        },
+        {
+            shift: find(request?.take_shift_id),
+            from: request?.take_from,
+            to: request?.take_to,
+            giverId: request?.to_employee_id,
+            takerId: request?.from_employee_id,
+        },
+    ]
+
+    for (const side of sides) {
+        if (!side.shift) continue
+        const from = hhmm(side.from || side.shift.starts_at)
+        const to = hhmm(side.to || side.shift.ends_at)
+        out.push({
+            date: side.shift.shift_date,
+            from,
+            to,
+            // Whole or part changes the size of the favour being asked, so it
+            // is said rather than left to be worked out from two times.
+            whole: from === hhmm(side.shift.starts_at) && to === hhmm(side.shift.ends_at),
+            giverId: side.giverId,
+            takerId: side.takerId,
+        })
+    }
+
+    return out
+}
+
+// One half read out.
+//
+// It takes who is reading it, because the same fact is far plainer as "You take
+// Saturday from Majo" than as "Georgiana takes Saturday from Majo" when
+// Georgiana is the one holding the phone. Left out, it names both, which is
+// what the mail to a manager and the mail that goes to two people need.
+export function halfWords(half, nameOf, meId = null) {
+    const takes = half.takerId === meId ? 'You take' : `${nameOf(half.takerId)} takes`
+    const mine = half.giverId === meId
+    // Part of a shift is said as part of a shift rather than tacked on the end,
+    // because the times alone do not tell you the other person is still in for
+    // the rest of it.
+    const off = half.whole
+        ? `from ${mine ? 'you' : nameOf(half.giverId)}`
+        : `part of ${mine ? 'your' : `${nameOf(half.giverId)}'s`} shift`
+    return `${takes} ${fmtDate(half.date)}, ${half.from} to ${half.to}, ${off}`
+}
+
+// The day the swap is about, for a subject line. The earlier of the two.
+export function swapDate(halves) {
+    const dates = (halves || []).map(h => h.date).filter(Boolean).sort()
+    return dates[0] || ''
+}
+
+function halfLines(halves, nameOf, meId) {
+    return halves
+        .map(h => `<div style="padding:2px 0;">${escapeHtml(halfWords(h, nameOf, meId))}</div>`)
+        .join('')
+}
+
+// -------------------------------------------------- to the person asked
+
+// The one he asked for. Somebody cannot agree to cover your Saturday if the
+// only place it is written down is a page they had no reason to open.
+export function swapAskEmail({ request, halves, nameOf, restaurantName, appUrl }) {
+    const asker = nameOf(request.from_employee_id)
+    const meId = request.to_employee_id
+    const mine = halves.filter(h => h.takerId === meId)
+    const theirs = halves.filter(h => h.takerId !== meId)
+
+    const headline = theirs.length > 0
+        ? `${asker} wants to swap a shift with you`
+        : `${asker} asked you to take a shift`
+    const subject = `${headline}, ${restaurantName}`
+
+    const rows = [
+        mine.length > 0 ? ['You take', halfLines(mine, nameOf, meId)] : null,
+        theirs.length > 0 ? ['You give', halfLines(theirs, nameOf, meId)] : null,
+        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+    ]
+
+    const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(headline)}</p>
+${detailRows(rows)}
+${button(appUrl ? `${appUrl}/my-shifts` : '', 'Answer it')}
+<p style="margin:14px 0 0;color:${MUTED};font-size:13px;">Saying yes does not change the roster on its own. A manager still has to approve it.</p>`
+
+    const footer = `You are getting this because ${escapeHtml(asker)} asked you at ${escapeHtml(restaurantName)}.`
+
+    const text = [
+        `${headline}.`,
+        '',
+        ...mine.map(h => halfWords(h, nameOf, meId)),
+        ...theirs.map(h => halfWords(h, nameOf, meId)),
+        request.message ? `Their note: "${request.message}"` : null,
+        '',
+        'Saying yes does not change the roster on its own. A manager still has to approve it.',
+        appUrl ? `${appUrl}/my-shifts` : null,
+    ].filter(v => v !== null).join('\n')
+
+    return { subject, html: shell({ restaurantName, bandColour: GREEN, bandText: restaurantName, body, footer }), text }
+}
+
+// ------------------------------------------------------- back to the asker
+
+// Yes or no from the person asked. Both are worth a mail: a no that nobody
+// hears is somebody turning up on Saturday expecting to be covered.
+export function swapAnswerEmail({ request, halves, nameOf, restaurantName, appUrl }) {
+    const yes = request.status === 'accepted'
+    const them = nameOf(request.to_employee_id)
+    const meId = request.from_employee_id
+
+    const subject = yes
+        ? `${them} said yes to your shift swap`
+        : `${them} said no to your shift swap`
+
+    const rows = [['What you asked', halfLines(halves, nameOf, meId)]]
+
+    // Said plainly, because this is the step people think is the last one. It
+    // is not: two people agreeing is not a change to the roster.
+    const next = yes
+        ? noticeBox(
+            'It is with a manager now. Nothing on the roster changes until they approve it.',
+            INK, CREAM, BORDER)
+        : ''
+
+    const closing = yes
+        ? ''
+        : 'Your shifts have not changed. You can ask somebody else from My shifts.'
+
+    const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(them)} said ${yes ? 'yes' : 'no'}</p>
+${detailRows(rows)}
+${next}
+${closing ? `<p style="margin:14px 0 0;">${escapeHtml(closing)}</p>` : ''}
+${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
+
+    const footer = `You are getting this because you asked ${escapeHtml(them)} at ${escapeHtml(restaurantName)}.`
+
+    const text = [
+        `${them} said ${yes ? 'yes' : 'no'} to your shift swap.`,
+        '',
+        ...halves.map(h => halfWords(h, nameOf, meId)),
+        '',
+        yes
+            ? 'It is with a manager now. Nothing on the roster changes until they approve it.'
+            : closing,
+        appUrl ? `${appUrl}/my-shifts` : null,
+    ].filter(v => v !== null).join('\n')
+
+    return {
+        subject,
+        html: shell({ restaurantName, bandColour: yes ? GREEN : RED, bandText: restaurantName, body, footer }),
+        text,
+    }
+}
+
+// --------------------------------------------------------- to the managers
+
+// Two people have agreed and it is sitting on a desk.
+//
+// The menu already carries a count of these, and a count is only seen by
+// somebody who opens the Hub. A swap is usually about this week, so the day
+// nobody opens it is the day the swap quietly does not happen. That is the
+// whole reason this one exists.
+export function swapDeskEmail({ request, halves, nameOf, restaurantName, appUrl }) {
+    const asker = nameOf(request.from_employee_id)
+    const them = nameOf(request.to_employee_id)
+
+    const subject = `${asker} and ${them} agreed a shift swap, ${restaurantName}`
+
+    const rows = [
+        ['What they agreed', halfLines(halves, nameOf, null)],
+        request.message ? ['Their note', `<em>&ldquo;${escapeHtml(request.message)}&rdquo;</em>`] : null,
+    ]
+
+    const body = `<p style="margin:0;font-size:17px;font-weight:700;">${escapeHtml(asker)} and ${escapeHtml(them)} agreed a swap</p>
+${detailRows(rows)}
+${button(appUrl ? `${appUrl}/roster` : '', 'Open the roster')}
+<p style="margin:14px 0 0;color:${MUTED};font-size:13px;">The roster does not change until you approve it, and approving shows you what it would do to the week first.</p>`
+
+    const footer = `You are getting this because you manage ${escapeHtml(restaurantName)}.`
+
+    const text = [
+        `${asker} and ${them} agreed a shift swap.`,
+        '',
+        ...halves.map(h => halfWords(h, nameOf, null)),
+        request.message ? `Their note: "${request.message}"` : null,
+        '',
+        'The roster does not change until you approve it.',
+        appUrl ? `${appUrl}/roster` : null,
+    ].filter(v => v !== null).join('\n')
+
+    return { subject, html: shell({ restaurantName, bandColour: GREEN, bandText: restaurantName, body, footer }), text }
+}
+
+// ------------------------------------------------------------- the answer
+
+// The manager decided, and it goes to both of them.
+//
+// One mail for the two rather than one each. An approved swap has already been
+// written to the roster, so what each of them needs is the same short fact and
+// the roster itself is where the detail lives. Naming both is also the version
+// that still reads right when one of them shows it to the other.
+export function swapDecisionEmail({ request, halves, nameOf, restaurantName, answeredBy, appUrl }) {
+    const yes = request.status === 'approved'
+    const when = swapDate(halves)
+
+    const subject = yes
+        ? `Shift swap approved, ${fmtDate(when)}`
+        : `Shift swap not approved, ${fmtDate(when)}`
+
+    const rows = [
+        ['The swap', halfLines(halves, nameOf, null)],
+        ['Answered by', escapeHtml(answeredBy || 'your manager')],
+    ]
+
+    const closing = yes
+        ? 'The roster has already been changed. Open My shifts for what you are on now.'
+        : 'Nothing on the roster has changed, so you are both on what you were on before.'
+
+    const body = `<p style="margin:0;font-size:17px;font-weight:700;">The swap was ${yes ? 'approved' : 'not approved'}</p>
+${detailRows(rows)}
+<p style="margin:14px 0 0;">${escapeHtml(closing)}</p>
+${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
+
+    const footer = `You are getting this because the swap was between the two of you at ${escapeHtml(restaurantName)}.`
+
+    const text = [
+        `The shift swap was ${yes ? 'approved' : 'not approved'}.`,
+        '',
+        ...halves.map(h => halfWords(h, nameOf, null)),
+        `Answered by: ${answeredBy || 'your manager'}`,
+        '',
+        closing,
+        appUrl ? `${appUrl}/my-shifts` : null,
+    ].filter(v => v !== null).join('\n')
+
+    return {
+        subject,
+        html: shell({ restaurantName, bandColour: yes ? GREEN : RED, bandText: restaurantName, body, footer }),
+        text,
+    }
+}
+
 // Gmail's untidy goodbye.
 //
 // smtp.gmail.com can accept a message, answer QUIT and drop the socket without

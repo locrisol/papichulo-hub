@@ -1,18 +1,33 @@
-// The time off emails.
+// The mail the roster sends.
 //
-// Two things happen worth telling somebody about. Somebody asks for time off,
-// and the people who can answer it need to know. Somebody answers it, and the
-// person who asked needs to know, with a piece of paper they can keep.
+// Two things ask somebody for something and then wait, and a wait that nobody
+// is told about is the same as never having asked. Time off waits on a manager
+// and then on nothing. A shift swap waits three times over: on the person you
+// asked, then on a manager, then it is done.
 //
-// The app posts which request it is and which of the two happened. It does not
+// So five events, and every one of them is somebody's turn ending:
+//
+//   asked           somebody wants time off, and a manager can answer it
+//   answered        a manager answered, and the person who asked gets the paper
+//   swap-asked      somebody wants a shift covered, and it is your Saturday
+//   swap-answered   they said yes or no, and a yes is now a manager's to approve
+//   swap-decided    a manager decided, and both of them need to know
+//
+// It was called time-off-email until 19 September 2026, when the swaps moved in
+// and the name stopped being true. **Deploy the new name before deleting the
+// old one**, because the app calls it by name and mail failing here is silent:
+// nothing is awaited and nothing is shown.
+//
+//   supabase functions deploy roster-email
+//   (then, once the app is on it) supabase functions delete time-off-email
+//
+// The app posts which request it is and which of the events happened. It does not
 // post addresses, names or words. All of that is worked out in here off the
 // database, so nothing that reaches this function can decide who gets an email
 // or what it says. A logged in kitchen porter with the URL and a bit of time
 // still cannot send mail as us.
 //
-// Deploy it the ordinary way, with the caller's key checked:
-//
-//   supabase functions deploy time-off-email
+// Deploy it the ordinary way, with the caller's key checked.
 //
 // Unlike the calendar feed this one has a logged in person behind every call,
 // so leave JWT verification on. Secrets it needs:
@@ -45,7 +60,11 @@
 // folder gets deployed with it, the same as ics.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { requestEmail, answerEmail, isPartDay, senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
+import {
+    requestEmail, answerEmail, isPartDay,
+    swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
+    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor,
+} from './email.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -329,54 +348,28 @@ Deno.serve(async (request) => {
     if (!me) return json({ error: 'Not signed in' }, 401)
 
     // ---------- what happened ----------
-    let payload: { absenceId?: string, event?: string, pdf?: string, pdfName?: string, origin?: string }
+    let payload: {
+        absenceId?: string
+        requestId?: string
+        event?: string
+        pdf?: string
+        pdfName?: string
+        origin?: string
+    }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
 
-    const { absenceId, event, pdf, pdfName, origin } = payload
-    if (!absenceId || (event !== 'asked' && event !== 'answered')) {
+    const { absenceId, requestId, event, pdf, pdfName, origin } = payload
+
+    // Somebody who could answer one of these. Three of the five events are only
+    // ever set off by a manager.
+    const isManager = me.role === 'super_admin' || MANAGERS.includes(me.role)
+
+    const SWAPS = ['swap-asked', 'swap-answered', 'swap-decided']
+    const TIME_OFF = ['asked', 'answered']
+    if (!event || (!SWAPS.includes(event) && !TIME_OFF.includes(event))) {
         return json({ error: 'Bad request' }, 400)
     }
 
-    const { data: absence } = await admin
-        .from('absences')
-        .select('id, restaurant_id, employee_id, kind, starts_on, ends_on, note, status, created_at, decided_at, decided_by, can_work_from, can_work_to, cleared_shifts')
-        .eq('id', absenceId).maybeSingle()
-    if (!absence) return json({ error: 'Not found' }, 404)
-
-    const { data: employee } = await admin
-        .from('employees').select('id, full_name, user_id, restaurant_id')
-        .eq('id', absence.employee_id).maybeSingle()
-    if (!employee) return json({ error: 'Not found' }, 404)
-
-    const sameHouse = me.role === 'super_admin' || me.restaurant_id === absence.restaurant_id
-    if (!sameHouse) return json({ error: 'Not found' }, 404)
-
-    // Asking about your own request, or being somebody who could answer it.
-    // Anything else has no business setting this off.
-    const isManager = me.role === 'super_admin' || MANAGERS.includes(me.role)
-    const isTheirs = employee.user_id === me.id
-    if (event === 'asked' && !isTheirs && !isManager) return json({ error: 'Not yours' }, 403)
-    if (event === 'answered' && !isManager) return json({ error: 'Not yours' }, 403)
-
-    // mail_from arrived in migration 051, and a function can be deployed
-    // before a migration is run. Asking for a column that is not there
-    // does not throw, it returns an error and a null row, and an
-    // unchecked null here would have quietly sent a report headed "The
-    // restaurant" to every owner. So the error IS checked, and it falls
-    // back to the columns that have always existed.
-    let { data: restaurant, error: restaurantError } = await admin
-        .from('restaurants').select('name, mail_from').eq('id', absence.restaurant_id).maybeSingle()
-
-    if (restaurantError) {
-        console.warn('restaurants.mail_from is missing, run migration 051', restaurantError)
-        const again = await admin
-            .from('restaurants').select('name').eq('id', absence.restaurant_id).maybeSingle()
-        restaurant = again.data
-    }
-    const restaurantName = restaurant?.name || 'Papi Chulo'
-    // Null on a restaurant with no address of its own, which falls back to the
-    // MAIL_FROM secret.
-    const restaurantFrom = restaurant?.mail_from || null
     // Where the buttons point.
     //
     // APP_URL is the real site and the answer unless told otherwise. The app
@@ -389,8 +382,8 @@ Deno.serve(async (request) => {
     // who can post to this function can say anything they like.
     const allowed = (Deno.env.get('APP_URL_ALSO') || '')
         .split(',').map(v => v.trim().replace(/\/$/, '')).filter(Boolean)
-    const asked = String(origin || '').trim().replace(/\/$/, '')
-    const appUrl = asked && allowed.includes(asked) ? asked : (Deno.env.get('APP_URL') || '')
+    const cameFrom = String(origin || '').trim().replace(/\/$/, '')
+    const appUrl = cameFrom && allowed.includes(cameFrom) ? cameFrom : (Deno.env.get('APP_URL') || '')
 
     // The address is the one they log in with. Somebody with no account has no
     // address here and no email goes out, which is the trial case and is fine:
@@ -398,10 +391,214 @@ Deno.serve(async (request) => {
     async function addressFor(userId: string | null) {
         if (!userId) return null
         const { data } = await admin.auth.admin.getUserById(userId)
-        return data?.user?.email || null
+        const address = data?.user?.email || null
+        // See deliverable() in email.js: a reserved TLD refuses, and one
+        // refusal can take a whole send down with it.
+        if (address && !deliverable(address)) {
+            console.warn('skipping an address that cannot receive mail:', address)
+            return null
+        }
+        return address
+    }
+
+    // The restaurant a mail is about: what it is called, and what it sends as.
+    //
+    // mail_from arrived in migration 051, and a function can be deployed before
+    // a migration is run. Asking for a column that is not there does not throw,
+    // it returns an error and a null row, and an unchecked null here would have
+    // quietly sent a report headed "The restaurant" to every owner. So the
+    // error IS checked, and it falls back to the columns that have always
+    // existed.
+    async function houseOf(restaurantId: string) {
+        let { data, error } = await admin
+            .from('restaurants').select('name, mail_from').eq('id', restaurantId).maybeSingle()
+
+        if (error) {
+            console.warn('restaurants.mail_from is missing, run migration 051', error)
+            const again = await admin
+                .from('restaurants').select('name').eq('id', restaurantId).maybeSingle()
+            data = again.data
+        }
+
+        return {
+            name: data?.name || 'Papi Chulo',
+            // Null on a restaurant with no address of its own, which falls back
+            // to the MAIL_FROM secret.
+            address: data?.mail_from || null,
+        }
+    }
+
+    // The people who can say yes, minus anybody the thing is about.
+    async function deskAddresses(restaurantId: string, roles: string[], skip: (string | null)[]) {
+        const { data: people } = await admin
+            .from('users').select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            // See users.is_test: a developer account holds a real role, so it
+            // would otherwise be a manager somebody's request goes to.
+            .eq('is_test', false)
+            .in('role', roles)
+
+        const out: string[] = []
+        for (const person of people || []) {
+            if (skip.includes(person.id)) continue
+            const address = await addressFor(person.id)
+            if (address && !out.includes(address)) out.push(address)
+        }
+        return out
     }
 
     try {
+        // ---------- somebody wants a shift covered ----------
+        if (SWAPS.includes(event)) {
+            if (!requestId) return json({ error: 'Bad request' }, 400)
+
+            const { data: ask } = await admin
+                .from('shift_requests')
+                .select('id, restaurant_id, from_employee_id, to_employee_id, give_shift_id,'
+                    + ' give_from, give_to, take_shift_id, take_from, take_to, message, status, decided_by')
+                .eq('id', requestId).maybeSingle()
+            // Gone rather than never there, sometimes. Both shift columns are ON
+            // DELETE CASCADE, so a roster row deleted while a week is rebuilt
+            // takes the request with it. See joinUp in shiftRequests.js, which
+            // now keeps these two ids on purpose.
+            if (!ask) return json({ error: 'Not found' }, 404)
+
+            if (me.role !== 'super_admin' && me.restaurant_id !== ask.restaurant_id) {
+                return json({ error: 'Not found' }, 404)
+            }
+
+            const { data: pair } = await admin
+                .from('employees').select('id, full_name, user_id')
+                .in('id', [ask.from_employee_id, ask.to_employee_id])
+            const asker = (pair || []).find(p => p.id === ask.from_employee_id)
+            const other = (pair || []).find(p => p.id === ask.to_employee_id)
+            if (!asker || !other) return json({ error: 'Not found' }, 404)
+
+            // Your own, or somebody who could answer it. The same shape as time
+            // off, and for the same reason: a logged in kitchen porter with the
+            // URL should not be able to set anybody's mail off.
+            if (event === 'swap-asked' && asker.user_id !== me.id && !isManager) {
+                return json({ error: 'Not yours' }, 403)
+            }
+            if (event === 'swap-answered' && other.user_id !== me.id && !isManager) {
+                return json({ error: 'Not yours' }, 403)
+            }
+            if (event === 'swap-decided' && !isManager) return json({ error: 'Not yours' }, 403)
+
+            // The status has to agree with the event. Posting the same id twice
+            // then sends nothing the second time, instead of mailing somebody an
+            // answer that has already been overtaken by the next one.
+            const expected: Record<string, string[]> = {
+                'swap-asked': ['asked'],
+                'swap-answered': ['accepted', 'declined'],
+                'swap-decided': ['approved', 'refused'],
+            }
+            if (!expected[event].includes(ask.status)) {
+                return json({ sent: 0, why: `it is ${ask.status}` })
+            }
+
+            const { data: rows } = await admin
+                .from('roster_shifts').select('id, employee_id, shift_date, starts_at, ends_at')
+                .in('id', [ask.give_shift_id, ask.take_shift_id].filter(Boolean))
+
+            const halves = swapHalves(ask, rows || [])
+            if (halves.length === 0) return json({ sent: 0, why: 'the shifts are gone' })
+
+            const names: Record<string, string> = {}
+            names[asker.id] = asker.full_name || 'Somebody'
+            names[other.id] = other.full_name || 'Somebody'
+            const nameOf = (id: string) => names[id] || 'Somebody'
+
+            const house = await houseOf(ask.restaurant_id)
+            // Replies reach the restaurant rather than the one account that
+            // sends for everybody, the same as the time off mail below.
+            const heading = { from: from(house.name, house.address), replyTo: house.address || undefined }
+            const words = { request: ask, halves, nameOf, restaurantName: house.name, appUrl }
+
+            if (event === 'swap-asked') {
+                const to = await addressFor(other.user_id)
+                if (!to) return json({ sent: 0, why: 'no account' })
+                const mail = swapAskEmail(words)
+                await send({ to: [to], ...heading, subject: mail.subject, html: mail.html, text: mail.text })
+                return json({ sent: 1 })
+            }
+
+            if (event === 'swap-answered') {
+                let sent = 0
+
+                const back = await addressFor(asker.user_id)
+                if (back) {
+                    const mail = swapAnswerEmail(words)
+                    await send({ to: [back], ...heading, subject: mail.subject, html: mail.html, text: mail.text })
+                    sent += 1
+                }
+
+                // A yes is not the end of it. It is the start of a wait on
+                // somebody who has not been told anything, and the menu's count
+                // of these is only seen by whoever opens the Hub, which on the
+                // morning of the shift is the whole problem.
+                if (ask.status === 'accepted') {
+                    const desk = await deskAddresses(
+                        ask.restaurant_id, ['store_manager'], [asker.user_id, other.user_id])
+                    if (desk.length > 0) {
+                        const mail = swapDeskEmail(words)
+                        await send({ to: desk, ...heading, subject: mail.subject, html: mail.html, text: mail.text })
+                        sent += desk.length
+                    }
+                }
+
+                return json({ sent })
+            }
+
+            // ---------- a manager decided ----------
+            const both: string[] = []
+            for (const person of [asker, other]) {
+                const address = await addressFor(person.user_id)
+                if (address && !both.includes(address)) both.push(address)
+            }
+            if (both.length === 0) return json({ sent: 0, why: 'no account' })
+
+            const { data: decider } = ask.decided_by
+                ? await admin.from('users').select('full_name').eq('id', ask.decided_by).maybeSingle()
+                : { data: null }
+
+            const decided = swapDecisionEmail({
+                ...words,
+                answeredBy: decider?.full_name || me.full_name,
+            })
+            await send({
+                to: both, ...heading,
+                subject: decided.subject, html: decided.html, text: decided.text,
+            })
+            return json({ sent: both.length })
+        }
+
+        // ---------- somebody wants time off ----------
+        if (!absenceId) return json({ error: 'Bad request' }, 400)
+
+        const { data: absence } = await admin
+            .from('absences')
+            .select('id, restaurant_id, employee_id, kind, starts_on, ends_on, note, status, created_at, decided_at, decided_by, can_work_from, can_work_to, cleared_shifts')
+            .eq('id', absenceId).maybeSingle()
+        if (!absence) return json({ error: 'Not found' }, 404)
+
+        const { data: employee } = await admin
+            .from('employees').select('id, full_name, user_id, restaurant_id')
+            .eq('id', absence.employee_id).maybeSingle()
+        if (!employee) return json({ error: 'Not found' }, 404)
+
+        const sameHouse = me.role === 'super_admin' || me.restaurant_id === absence.restaurant_id
+        if (!sameHouse) return json({ error: 'Not found' }, 404)
+
+        // Asking about your own request, or being somebody who could answer it.
+        // Anything else has no business setting this off.
+        const isTheirs = employee.user_id === me.id
+        if (event === 'asked' && !isTheirs && !isManager) return json({ error: 'Not yours' }, 403)
+        if (event === 'answered' && !isManager) return json({ error: 'Not yours' }, 403)
+
+        const house = await houseOf(absence.restaurant_id)
+
         if (event === 'asked') {
             // Who hears about it depends on who asked.
             //
@@ -419,28 +616,11 @@ Deno.serve(async (request) => {
                 return json({ sent: 0, why: 'a manager, part of a day' })
             }
 
-            const { data: people } = await admin
-                .from('users').select('id, role')
-                .eq('restaurant_id', absence.restaurant_id)
-                .eq('is_active', true)
-                // See users.is_test: a developer account holds a real role, so
-                // it would otherwise be a manager somebody's request goes to.
-                .eq('is_test', false)
-                .in('role', askerIsManager ? ['owner'] : ['store_manager'])
-
-            const to: string[] = []
-            for (const person of people || []) {
-                if (person.id === employee.user_id) continue
-                const address = await addressFor(person.id)
-                if (!address) continue
-                // See deliverable() in email.js: a reserved TLD refuses, and
-                // one refusal can take the whole send with it.
-                if (!deliverable(address)) {
-                    console.warn('skipping an address that cannot receive mail:', address)
-                    continue
-                }
-                to.push(address)
-            }
+            const to = await deskAddresses(
+                absence.restaurant_id,
+                askerIsManager ? ['owner'] : ['store_manager'],
+                [employee.user_id],
+            )
             if (to.length === 0) return json({ sent: 0, why: 'nobody to send to' })
 
             // The one thing the request itself does not say: they are already
@@ -457,7 +637,7 @@ Deno.serve(async (request) => {
             const mail = requestEmail({
                 absence,
                 employeeName: employee.full_name,
-                restaurantName,
+                restaurantName: house.name,
                 clashes: clashes || [],
                 appUrl,
                 askerIsManager,
@@ -465,7 +645,7 @@ Deno.serve(async (request) => {
             })
             await send({
                 to,
-                from: from(restaurantName, restaurantFrom),
+                from: from(house.name, house.address),
                 // Replies reach the restaurant, not the one account that
                 // sends for everybody.
                 //
@@ -476,7 +656,7 @@ Deno.serve(async (request) => {
                 // replying to a request lands in the restaurant inbox where
                 // their colleagues can see it, which beats it going to whoever
                 // happened to answer.
-                replyTo: restaurantFrom || undefined,
+                replyTo: house.address || undefined,
                 subject: mail.subject,
                 html: mail.html,
                 text: mail.text,
@@ -502,7 +682,7 @@ Deno.serve(async (request) => {
         const mail = answerEmail({
             absence,
             employeeName: employee.full_name,
-            restaurantName,
+            restaurantName: house.name,
             answeredBy: decider?.full_name || me.full_name,
             freedCount: (absence.cleared_shifts || []).length,
             appUrl,
@@ -510,10 +690,10 @@ Deno.serve(async (request) => {
 
         await send({
             to: [to],
-            from: from(restaurantName, restaurantFrom),
+            from: from(house.name, house.address),
             // The same rule as the request above: the employee replies to the
             // restaurant rather than to whichever manager answered.
-            replyTo: restaurantFrom || undefined,
+            replyTo: house.address || undefined,
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
@@ -524,7 +704,7 @@ Deno.serve(async (request) => {
         // Said out loud rather than swallowed, because a key that has expired
         // should be findable in the logs. The app ignores this either way: the
         // request is already saved and the roster is already right.
-        console.error('time-off-email', err)
+        console.error('roster-email', err)
         return json({ error: String(err) }, 502)
     }
 })
