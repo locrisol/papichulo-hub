@@ -107,7 +107,12 @@ export function drawWeek(canvas, table) {
     )
     // Each band measured against its own width, which is however many day
     // columns it runs across rather than one of them.
-    font(11, '700')
+    //
+    // c.font directly, the same as the measuring above it. The font helper is
+    // declared further down with the rest of the drawing, so calling it here
+    // threw before a single pixel was drawn and the button said only that it
+    // could not make the picture.
+    c.font = FONT(11, '700')
     const bandWords = (table.bands || []).map(band => [
         band.runsIn ? '\u2039' : '', band.label, band.runsOn ? '\u203a' : '',
     ].filter(Boolean).join(' '))
