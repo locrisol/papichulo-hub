@@ -12,12 +12,28 @@
 -- decides who it is for, and restaurant_ids only means anything when the scope
 -- says sites.
 --
+-- Everything here can be run twice.
+--
+-- npm run db:local applies schema.sql and then every migration on top of it,
+-- and the README requires a migration to be folded into schema.sql in the same
+-- commit. So a migration always meets a database that already has its change.
+-- Postgres has no ADD CONSTRAINT IF NOT EXISTS and no CREATE POLICY IF NOT
+-- EXISTS, which is why the keys are inside CREATE TABLE and each policy is
+-- dropped before it is made.
+--
+-- cardinality rather than array_length, and a CASE rather than an OR.
+--
+-- array_length on an empty array is NULL, not 0, and a check constraint passes
+-- when its expression is NULL. Written the obvious way, scope 'sites' with no
+-- restaurants on it went straight in: invisible to everybody, because the read
+-- policy looks for a restaurant in that list, and written to no calendar.
+--
 -- Private is a promise and not a preference. The screen says nobody else sees
 -- it, so nobody else sees it, and that includes a super admin. A promise the
 -- database does not keep is a lie told by the interface.
 
 CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL PRIMARY KEY,
     "kind" "text" NOT NULL,
     "title" "text" NOT NULL,
     "scope" "text" NOT NULL,
@@ -33,13 +49,13 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
     "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
     "google_event_ids" "jsonb",
     "google_synced_at" timestamp with time zone,
-    "created_by" "uuid",
+    "created_by" "uuid" REFERENCES "public"."users"("id"),
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
     CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
     CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
-    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK (((("scope" = 'sites'::"text") AND ("array_length"("restaurant_ids", 1) >= 1)) OR (("scope" <> 'sites'::"text") AND ("coalesce"("array_length"("restaurant_ids", 1), 0) = 0)))),
+    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK ((CASE WHEN ("scope" = 'sites'::"text") THEN ("cardinality"("restaurant_ids") >= 1) ELSE ("cardinality"("restaurant_ids") = 0) END)),
     CONSTRAINT "diary_entries_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "starts_on"))),
     CONSTRAINT "diary_entries_no_finish_without_a_start" CHECK ((("ends_at" IS NULL) OR ("starts_at" IS NOT NULL))),
     CONSTRAINT "diary_entries_private_has_an_owner" CHECK ((("scope" <> 'private'::"text") OR ("created_by" IS NOT NULL)))
@@ -52,13 +68,7 @@ COMMENT ON COLUMN "public"."diary_entries"."google_event_ids" IS 'The calendar i
 COMMENT ON COLUMN "public"."diary_entries"."google_synced_at" IS 'When Google last accepted it. Null after a save means the write failed and the entry is only in the Hub, which the screen says out loud. A failed write must never lose the entry and must never be reported as a success.';
 COMMENT ON COLUMN "public"."diary_entries"."restaurant_ids" IS 'Which restaurants, and only when the scope is sites. Empty for all_sites and for private, which the check constraint enforces so there is no second way to say the same thing.';
 COMMENT ON COLUMN "public"."diary_entries"."scope" IS 'Who it is for, and it decides three things at once: who can see it, which Google calendar it is written to, and which rosters it appears on. all_sites is the whole group and is not the same as ticking every restaurant, because it goes to the group calendar.';
-COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody's week.';
-
-ALTER TABLE ONLY "public"."diary_entries"
-    ADD CONSTRAINT "diary_entries_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE ONLY "public"."diary_entries"
-    ADD CONSTRAINT "diary_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
+COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody''s week.';
 
 -- Read by date range every time the calendar or a roster week is opened.
 CREATE INDEX IF NOT EXISTS "idx_diary_entries_dates" ON "public"."diary_entries" USING "btree" ("starts_on", "ends_on");
@@ -77,6 +87,7 @@ ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
 -- Everybody who works here reads what is on, because a catering job matters
 -- most to the person who has to make it. Private is the exception and answers
 -- only to the person who wrote it.
+DROP POLICY IF EXISTS "diary_entries_select" ON "public"."diary_entries";
 CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )))));
 
 -- Managers and above write. A store manager or an owner can only put an entry
@@ -84,6 +95,7 @@ CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "
 -- they are at; a super admin is the only one who can write an entry that lands
 -- on somebody else's site. Only an owner or a super admin speaks for the whole
 -- group, because a discount week is not one restaurant's decision.
+DROP POLICY IF EXISTS "diary_entries_write" ON "public"."diary_entries";
 CREATE POLICY "diary_entries_write" ON "public"."diary_entries" TO "authenticated" USING (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )])))))) WITH CHECK (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )]))))));
 
 

@@ -975,7 +975,7 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
     CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
     CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
     CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
-    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK (((("scope" = 'sites'::"text") AND ("array_length"("restaurant_ids", 1) >= 1)) OR (("scope" <> 'sites'::"text") AND ("coalesce"("array_length"("restaurant_ids", 1), 0) = 0)))),
+    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK ((CASE WHEN ("scope" = 'sites'::"text") THEN ("cardinality"("restaurant_ids") >= 1) ELSE ("cardinality"("restaurant_ids") = 0) END)),
     CONSTRAINT "diary_entries_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "starts_on"))),
     CONSTRAINT "diary_entries_no_finish_without_a_start" CHECK ((("ends_at" IS NULL) OR ("starts_at" IS NOT NULL))),
     CONSTRAINT "diary_entries_private_has_an_owner" CHECK ((("scope" <> 'private'::"text") OR ("created_by" IS NOT NULL)))
@@ -988,10 +988,20 @@ COMMENT ON COLUMN "public"."diary_entries"."google_event_ids" IS 'The calendar i
 COMMENT ON COLUMN "public"."diary_entries"."google_synced_at" IS 'When Google last accepted it. Null after a save means the write failed and the entry is only in the Hub, which the screen says out loud. A failed write must never lose the entry and must never be reported as a success.';
 COMMENT ON COLUMN "public"."diary_entries"."restaurant_ids" IS 'Which restaurants, and only when the scope is sites. Empty for all_sites and for private, which the check constraint enforces so there is no second way to say the same thing.';
 COMMENT ON COLUMN "public"."diary_entries"."scope" IS 'Who it is for, and it decides three things at once: who can see it, which Google calendar it is written to, and which rosters it appears on. all_sites is the whole group and is not the same as ticking every restaurant, because it goes to the group calendar.';
-COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody's week.';
+COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody''s week.';
 
 ALTER TABLE ONLY "public"."diary_entries"
     ADD CONSTRAINT "diary_entries_pkey" PRIMARY KEY ("id");
+
+-- Read by date range every time the calendar or a roster week is opened.
+CREATE INDEX "idx_diary_entries_dates" ON "public"."diary_entries" USING "btree" ("starts_on", "ends_on");
+
+-- The select policy asks whether one restaurant is in the array, which is what
+-- a gin index on an array is for.
+CREATE INDEX "idx_diary_entries_restaurants" ON "public"."diary_entries" USING "gin" ("restaurant_ids");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_diary_entries_created_by" ON "public"."diary_entries" USING "btree" ("created_by");
 
 
 -- -- The record of what happened ---------------------------------------
