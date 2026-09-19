@@ -97,3 +97,46 @@ export function eventsFrom(payload) {
     const events = payload?._embedded?.events || []
     return events.map(mapEvent).filter(e => e.event_date)
 }
+
+// ---------------------------------------------------------- who is calling
+
+// What a token says it is, without checking whether it is telling the truth.
+//
+// It does not have to check. Supabase verifies the signature before any of this
+// runs, so by the time the payload is read it is something the platform has
+// already vouched for. Reading it here is reading a fact, not taking a claim.
+//
+// Null for anything that is not a JWT at all, which includes the newer
+// `sb_secret_...` and `sb_publishable_...` keys. They are handled by the list
+// in isServiceRole instead.
+export function roleOf(token) {
+    const middle = String(token || '').split('.')[1]
+    if (!middle) return null
+
+    try {
+        const padded = middle.replace(/-/g, '+').replace(/_/g, '/')
+        const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
+        return JSON.parse(json)?.role || null
+    } catch {
+        return null
+    }
+}
+
+// Is this the schedule rather than a person?
+//
+// **Not by comparing the token to the service key this function happens to
+// hold.** That is what it did first and it does not work: a project can carry
+// more than one valid service credential, in more than one variable and in more
+// than one format, so the one the function reads and the one the caller sends
+// are not necessarily the same string. It came back "Not signed in" on the
+// first real run for exactly that reason, with a key that was provably the
+// right role.
+//
+// So the token is asked what it is, and the key list is kept only as the answer
+// for credentials that are not JWTs and have nothing to read.
+export function isServiceRole(bearer, keys = []) {
+    const token = String(bearer || '').replace(/^Bearer\s+/i, '').trim()
+    if (!token) return false
+    if (keys.filter(Boolean).includes(token)) return true
+    return roleOf(token) === 'service_role'
+}

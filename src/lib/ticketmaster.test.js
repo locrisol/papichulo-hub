@@ -5,7 +5,7 @@
  * is plain functions and runs faster without one.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mapEvent, discoveryUrl, eventsFrom } from '../../supabase/functions/arena-events/discovery'
+import { mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf } from '../../supabase/functions/arena-events/discovery'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
 
 // syncEvents is handed a client rather than reaching for one, so there is
@@ -183,5 +183,74 @@ describe('asking for a sync', () => {
     it('does not ask at all without a restaurant', async () => {
         await expect(syncEvents(client, null)).rejects.toThrow('No restaurant')
         expect(invoke).not.toHaveBeenCalled()
+    })
+})
+
+// Telling the schedule from a person.
+//
+// This went wrong on the first real run against live and the reason is worth
+// keeping. It compared the token to the service key the function itself holds,
+// which looked obviously correct and is not: a project carries more than one
+// valid service credential, in more than one variable and more than one format,
+// so the key that arrives and the key that is read are not necessarily the same
+// string. The token in Vault was provably the right role and it was still
+// refused.
+// btoa rather than Buffer: this file runs in jsdom and a token is base64 either
+// way, which roleOf handles because a real one is base64url.
+const jwt = payload => `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify(payload))}.signature`
+
+describe('reading what a token says it is', () => {
+    it('reads the role out of the middle of it', () => {
+        expect(roleOf(jwt({ iss: 'supabase', role: 'service_role' }))).toBe('service_role')
+        expect(roleOf(jwt({ iss: 'supabase', role: 'anon' }))).toBe('anon')
+    })
+
+    // The newer sb_secret_ and sb_publishable_ keys are not JWTs and have
+    // nothing to read. Saying so beats throwing.
+    it('says nothing for anything that is not a token', () => {
+        expect(roleOf('sb_secret_N7UND0Ugj')).toBe(null)
+        expect(roleOf('')).toBe(null)
+        expect(roleOf(null)).toBe(null)
+    })
+
+    it('does not throw on a token with rubbish in the middle', () => {
+        expect(roleOf('a.!!!!.c')).toBe(null)
+    })
+})
+
+describe('whether a caller is the schedule', () => {
+    it('is, when the token holds the service role', () => {
+        expect(isServiceRole(`Bearer ${jwt({ role: 'service_role' })}`)).toBe(true)
+    })
+
+    it('is not, for anybody signed in as themselves', () => {
+        expect(isServiceRole(`Bearer ${jwt({ role: 'authenticated' })}`)).toBe(false)
+        expect(isServiceRole(`Bearer ${jwt({ role: 'anon' })}`)).toBe(false)
+    })
+
+    // Which is the whole point: the token is asked what it is rather than
+    // matched against one particular key this function happens to hold.
+    it('does not care which key the function itself is holding', () => {
+        const sent = jwt({ role: 'service_role' })
+        expect(isServiceRole(`Bearer ${sent}`, ['sb_secret_something_else'])).toBe(true)
+    })
+
+    // The list is kept only for credentials that are not JWTs, where there is
+    // nothing to read and matching is the only thing left.
+    it('still matches a key that has no role to read', () => {
+        expect(isServiceRole('Bearer sb_secret_abc', ['sb_secret_abc'])).toBe(true)
+        expect(isServiceRole('Bearer sb_secret_abc', ['sb_secret_other'])).toBe(false)
+    })
+
+    it('takes the token with or without the word Bearer', () => {
+        const token = jwt({ role: 'service_role' })
+        expect(isServiceRole(token)).toBe(true)
+        expect(isServiceRole(`bearer  ${token}`)).toBe(true)
+    })
+
+    it('is not, for nothing at all', () => {
+        expect(isServiceRole('')).toBe(false)
+        expect(isServiceRole(null)).toBe(false)
+        expect(isServiceRole('Bearer ', [''])).toBe(false)
     })
 })

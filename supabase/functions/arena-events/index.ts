@@ -31,8 +31,9 @@
 //   supabase functions deploy arena-events
 //
 // There is a signed in person behind every call except the schedule's, and the
-// schedule carries the service key, which satisfies the same check. So leave
-// JWT verification on.
+// schedule carries a service role token, which satisfies the same check. So
+// leave JWT verification on: it is what makes reading the token's own role
+// below safe, since the signature has been checked before any of this runs.
 //
 //   TICKETMASTER_KEY   a Discovery API consumer key
 //
@@ -40,7 +41,7 @@
 // folder gets deployed with it, the same as email.js next door.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { discoveryUrl, eventsFrom } from './discovery.js'
+import { discoveryUrl, eventsFrom, isServiceRole, roleOf } from './discovery.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -109,15 +110,20 @@ Deno.serve(async (request) => {
     const key = Deno.env.get('TICKETMASTER_KEY')
     if (!key) return json({ error: 'TICKETMASTER_KEY is not set on this function' }, 500)
 
-    const bearer = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+    const bearer = request.headers.get('Authorization') || ''
 
     // ---------- the schedule ----------
     //
-    // Recognised by carrying the service key itself, which is the only thing
-    // that holds it. There is no second secret to set and nothing extra to keep
-    // in step: whatever can already do anything to this database is the one
-    // thing allowed to ask for every restaurant at once.
-    if (bearer && bearer === secret) {
+    // Recognised by the token saying it holds the service role, which is the
+    // only thing that can ask about every restaurant at once. There is no
+    // second secret to set and nothing extra to keep in step.
+    //
+    // It used to compare the token to this function's own service key, and that
+    // was wrong in a way that took three rounds to see: a project carries more
+    // than one valid service credential, in more than one variable and more
+    // than one format, so the one read here and the one sent are not
+    // necessarily the same string. See isServiceRole.
+    if (isServiceRole(bearer, [secret, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')])) {
         const { data: places } = await admin
             .from('restaurants').select('id, name, forecasting_venue_id')
             .eq('is_active', true)
@@ -147,7 +153,14 @@ Deno.serve(async (request) => {
         { global: { headers: { Authorization: request.headers.get('Authorization') || '' } } },
     )
     const { data: { user } } = await caller.auth.getUser()
-    if (!user) return json({ error: 'Not signed in' }, 401)
+    if (!user) {
+        // Said in the log, because this is the refusal that is hardest to tell
+        // apart from the outside: a schedule that was not recognised and a
+        // person who is not signed in come back with the same sentence. The
+        // role is what separates them and nothing was saying it.
+        console.warn('arena-events: no person behind this call. Token role:', roleOf(bearer.replace(/^Bearer\s+/i, '').trim()))
+        return json({ error: 'Not signed in' }, 401)
+    }
 
     const { data: me } = await admin
         .from('users').select('id, role, restaurant_id')
