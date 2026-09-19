@@ -413,8 +413,9 @@ export async function weekPdf(table, restaurantName, weekStart) {
             day.shifts.forEach((s, n) => {
                 marked(s, x, timesMiddle - ((stack - 1) * h(11)) / 2 + n * h(11))
             })
-            day.shifts.forEach((s, n) => {
-                at(s.break, x, breaksMiddle - ((stack - 1) * h(9)) / 2 + n * h(9), {
+            const breakStack = day.breaks.length
+            day.breaks.forEach((words, n) => {
+                at(words, x, breaksMiddle - ((breakStack - 1) * h(9)) / 2 + n * h(9), {
                     align: 'center', size: 6, rgb: RED, max: l.dayCol - 6,
                 })
             })

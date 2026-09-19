@@ -68,10 +68,22 @@ describe('weekTable', () => {
         expect(t.people[0].days[3].shifts[0].end).toBe('Closing')
     })
 
-    it('carries the breaks beside the times', () => {
+    // On the day rather than on each shift, the same as the screen. A split
+    // day where neither stretch earns one printed No break twice, which is one
+    // fact said twice.
+    it('carries the breaks on the day', () => {
         const t = build()
-        expect(t.people[0].days[1].shifts[0].break).toBe('30 minutes')
-        expect(t.people[1].days[1].shifts[0].break).toBe('No break')
+        expect(t.people[0].days[1].breaks).toEqual(['30 minutes'])
+        expect(t.people[1].days[1].breaks).toEqual(['No break'])
+    })
+
+    it('says No break once for a split day that earns none', () => {
+        const split = [
+            { id: 'a', employee_id: 'e1', shift_date: DATES[1], starts_at: '09:00', ends_at: '13:00', break_minutes: 0 },
+            { id: 'b', employee_id: 'e1', shift_date: DATES[1], starts_at: '17:30', ends_at: '21:00', break_minutes: 0 },
+        ]
+        const t = build({ shifts: split })
+        expect(t.people[0].days[1].breaks).toEqual(['No break'])
     })
 
     it('leaves an empty day empty rather than putting a dash in a spreadsheet', () => {
@@ -327,7 +339,7 @@ describe('time off on a shared week', () => {
     it('gives a day nothing but the date, the shifts and away', () => {
         const table = build({ absences: away })
         for (const day of table.people.flatMap(p => p.days)) {
-            expect(Object.keys(day).sort()).toEqual(['away', 'date', 'shifts'])
+            expect(Object.keys(day).sort()).toEqual(['away', 'breaks', 'date', 'shifts'])
         }
     })
 

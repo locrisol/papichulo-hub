@@ -105,8 +105,21 @@ export function drawWeek(canvas, table) {
     const noteLines = table.notes.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
+    // Each band measured against its own width, which is however many day
+    // columns it runs across rather than one of them.
+    font(11, '700')
+    const bandWords = (table.bands || []).map(band => [
+        band.runsIn ? '\u2039' : '', band.label, band.runsOn ? '\u203a' : '',
+    ].filter(Boolean).join(' '))
+    const bandLines = bandWords.map((words, i) => wrapLines(
+        words,
+        probe.dayCol * table.bands[i].span - 22,
+        t => c.measureText(t).width,
+    ))
+
     const l = sheetLayout(table, {
         ...cols,
+        bandLines: bandLines.map(lines => lines.length),
         eventLines: Math.max(1, ...eventCards.map(cardLines)),
         deliveryLines: Math.max(1, ...chipsPerDay.map(cardLines)),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
@@ -302,6 +315,9 @@ export function drawWeek(canvas, table) {
     rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH, RULE_ROW, 2)
     y += l.metaH
 
+    let bandsTop = 0
+    let bandsBottom = 0
+
     // ---- what runs across the week, as one bar each
     //
     // A discount week is one thing, so it is drawn once across the days it
@@ -310,17 +326,27 @@ export function drawWeek(canvas, table) {
     // edge of the sheet cannot say on its own.
     if (l.bandsH) {
         box(l.pad, y, l.width - l.pad * 2, l.bandsH, '#ffffff')
+        font(11, '700')
+        // Named like every other row. A blank left column read as a strip of
+        // colour nobody had labelled, on a sheet where STORE HOURS, EVENTS and
+        // ALSO ON all say what they are.
+        text('WHAT IS ON', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
+
+        bandsTop = y
+        let bandY = y + 3
         table.bands.forEach((band, i) => {
             const colours = kindColours(band.kind)
-            const top = y + 4 + i * 20
+            const height = l.bandHeights[i]
             const x = l.columnX(band.start)
             const w = l.dayCol * band.span
-            box(x + 2, top, w - 4, 17, colours.fill)
-            box(x + 2, top, 3, 17, colours.bar)
-            font(11, '700')
-            const words = `${band.runsIn ? '\u2039 ' : ''}${band.label}${band.runsOn ? ' \u203a' : ''}`
-            text(words, x + 9, top + 9, { colour: colours.ink })
+            box(x + 2, bandY, w - 4, height - 4, colours.fill)
+            box(x + 2, bandY, 3, height - 4, colours.bar)
+            bandLines[i].forEach((line, n) => {
+                text(line, x + 9, bandY + 11 + n * 14, { colour: colours.ink })
+            })
+            bandY += height
         })
+        bandsBottom = y + l.bandsH
         rule(l.pad, y + l.bandsH, l.width - l.pad, y + l.bandsH, RULE_ROW, 2)
         y += l.bandsH
     }
@@ -384,11 +410,11 @@ export function drawWeek(canvas, table) {
                 marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
             })
             font(10)
-            const stack = day.shifts.length
-            day.shifts.forEach((s, n) => {
+            const stack = day.breaks.length
+            day.breaks.forEach((words, n) => {
                 // In the middle of the break half rather than hard against the
                 // line above it, which left the row bottom heavy.
-                text(s.break, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
+                text(words, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
                     align: 'center', colour: RED, max: l.dayCol - 8,
                 })
             })
@@ -463,7 +489,17 @@ export function drawWeek(canvas, table) {
         // White over the two green bands, because a cream rule on dark green is
         // no rule at all.
         rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
-        rule(x, gridTop, x, gridBottom - l.totalH, RULE_DAY)
+
+        // Nothing across the bands. A bar that says one thing from Tuesday to
+        // Saturday, cut into five by the lines between the days, reads as five
+        // things again, which is the whole thing the band was drawn to stop.
+        if (bandsBottom) {
+            rule(x, gridTop, x, bandsTop, RULE_DAY)
+            rule(x, bandsBottom, x, gridBottom - l.totalH, RULE_DAY)
+        } else {
+            rule(x, gridTop, x, gridBottom - l.totalH, RULE_DAY)
+        }
+
         rule(x, gridBottom - l.totalH, x, gridBottom, 'rgba(255,255,255,0.3)')
     }
 

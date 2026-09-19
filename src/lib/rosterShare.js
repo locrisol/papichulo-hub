@@ -12,7 +12,7 @@ import { DAY_NAMES } from '@/lib/events'
 import { dayState, availabilityOn, availabilityStart } from '@/lib/availability'
 import { fullDate, shortDate } from '@/lib/dates'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
+    weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, shiftEdges,
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extrasFor, extraLabel } from '@/lib/dayExtras'
@@ -111,6 +111,10 @@ export function weekTable({
                 // looked like a day nobody had got round to filling.
                 away: wholeDaysOn(absences, row.employee.id, day.date).length > 0
                     || dayState(availabilityOn(row.employee, day.date, availableFrom), day.date) === 'none',
+                // The day's breaks rather than each shift's, the same as the
+                // screen. A split day where neither stretch earns one printed
+                // No break twice, which is one fact said twice.
+                breaks: dayBreakLabels(day.shifts),
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)
@@ -121,7 +125,6 @@ export function weekTable({
                         text: `${start} - ${end}`,
                         opens: edges.opening,
                         closes: edges.closing,
-                        break: breakLabel(s.break_minutes),
                     }
                 }),
             }
@@ -253,7 +256,7 @@ export function wrapLines(text, maxWidth, measure) {
 // eventLines is how many lines the busiest day of events needs. It is measured
 // by whoever is drawing, because only they know how wide their letters are.
 export function sheetLayout(table, {
-    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1,
+    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1, bandLines = null,
     nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
     // The three columns either side of the week used to be fixed, and they were
@@ -276,10 +279,23 @@ export function sheetLayout(table, {
     const titleH = 62
     const headH = 44
     const metaH = 32
-    // One line each, and nothing at all when the week has none. A band is a
-    // single bar with a single label on it, so it does not need measuring the
-    // way a column of cards does.
-    const bandsH = table.bands?.length ? table.bands.length * 20 + 8 : 0
+    // Each band as tall as its own words need, and nothing at all when the
+    // week has none.
+    //
+    // One line each was the first version and it was wrong in the one case
+    // that matters: a two day band carries a long name in two columns of room,
+    // so the words ran out of the bar and across the days beside it. They wrap
+    // now, the same as the events and the notes already do, which is the rule
+    // this sheet follows everywhere else: written out in full rather than cut
+    // short.
+    //
+    // bandLines is one count per band, measured by whoever is drawing, because
+    // only they know how wide their own lettering is and each band has its own
+    // width to fit inside.
+    const bandHeights = (table.bands || []).map(
+        (_, i) => (bandLines?.[i] ?? 1) * 14 + 8,
+    )
+    const bandsH = bandHeights.length ? bandHeights.reduce((t, n) => t + n, 0) + 6 : 0
     const eventsH = Math.max(metaH, eventLines * 15 + 14)
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
@@ -312,7 +328,8 @@ export function sheetLayout(table, {
 
     return {
         width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
-        titleH, headH, metaH, bandsH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
+        titleH, headH, metaH, bandsH, bandHeights,
+        eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         holidayX: width - pad - hoursCol - holidayCol,
         holidayCentreX: width - pad - hoursCol - holidayCol / 2,
