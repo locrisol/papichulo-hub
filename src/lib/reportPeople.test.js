@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workingThatWeek, paperworkState, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '@/lib/reportPeople'
+import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '@/lib/reportPeople'
 
 const WEEK = '2026-08-09'
 
@@ -142,5 +142,54 @@ describe('right to work', () => {
     it('leaves food safety asking everybody, since anybody handling food needs it', () => {
         const out = paperworkState(team, 'food_safety_expires', WEEK)
         expect(out.missing).toHaveLength(5)
+    })
+})
+
+// Whether somebody applied to renew is the difference between waiting on the
+// post and not being allowed on next week's roster, and it has to be frozen
+// with the report: renewed in October must not change what September said.
+describe('carrying the renewal into the frozen figures', () => {
+    const team = [
+        { full_name: 'Iliana', work_permission: 'stamp2', work_permission_expires: '2026-08-23', permission_renewal_applied: '2026-08-01' },
+        { full_name: 'Majo', work_permission: 'stamp2', work_permission_expires: '2026-09-13' },
+        { full_name: 'Ana', work_permission: 'unrestricted' },
+    ]
+    const state = paperworkState(team, 'work_permission_expires', '2026-09-20', permissionNeedsExpiry)
+
+    it('says when one was applied for', () => {
+        const summary = paperworkSummary(state, { renewals: true })
+        expect(summary.expired.find(p => p.name === 'Iliana').applied).toBe('2026-08-01')
+    })
+
+    // Null, not missing. The mail reads undefined as "this kind of paperwork has
+    // no renewals at all" and null as "it does and nobody applied", and the two
+    // must not collapse into one another.
+    it('says null when nobody did, rather than leaving it out', () => {
+        const summary = paperworkSummary(state, { renewals: true })
+        const majo = summary.expired.find(p => p.name === 'Majo')
+        expect(majo.applied).toBe(null)
+        expect('applied' in majo).toBe(true)
+    })
+
+    it('leaves the key off entirely when it was not asked for', () => {
+        const summary = paperworkSummary(state)
+        expect('applied' in summary.expired[0]).toBe(false)
+    })
+
+    // You cannot have applied to renew a permission nobody has recorded.
+    it('says nothing about a renewal for somebody with nothing on file', () => {
+        const none = paperworkState(
+            [{ full_name: 'Sam', work_permission: 'stamp2' }],
+            'work_permission_expires', '2026-09-20', permissionNeedsExpiry)
+        const summary = paperworkSummary(none, { renewals: true })
+        expect('applied' in summary.missing[0]).toBe(false)
+    })
+
+    // The whole point of freezing it. A key that vanishes through JSON is a
+    // key the mail never sees, and the figures make that trip every time.
+    it('survives being stored and read back', () => {
+        const summary = JSON.parse(JSON.stringify(paperworkSummary(state, { renewals: true })))
+        expect(summary.expired.find(p => p.name === 'Majo').applied).toBe(null)
+        expect(summary.expired.find(p => p.name === 'Iliana').applied).toBe('2026-08-01')
     })
 })

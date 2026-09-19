@@ -113,21 +113,36 @@ export function daysUntil(on, from) {
 // Names, not just counts. "Two certificates run out this month" sends somebody
 // to the Hub to find out who; the names are the whole reason the line is worth
 // sending.
-function names(list, field) {
+// `renewals` says this kind of paperwork is something you apply to renew.
+//
+// A right to work stamp is. A food safety certificate is not: you sit the
+// course again. So the key is only put on the entries it means something for,
+// and its absence is how the mail tells the two apart. **Absent and null are
+// different answers here** and both have to survive the round trip through
+// JSON, which is why nothing at all is written for food rather than a null:
+// undefined is "this does not have renewals", null is "it does and nobody has
+// applied", and JSON.stringify drops the first and keeps the second.
+function names(list, field, renewals) {
     return list.map(entry => {
         const person = field ? entry.person : entry
-        return { name: person.full_name || person.name || 'Somebody', on: field ? entry.on : null }
+        return {
+            name: person.full_name || person.name || 'Somebody',
+            on: field ? entry.on : null,
+            ...(renewals ? { applied: person.permission_renewal_applied || null } : {}),
+        }
     })
 }
 
-export function paperworkSummary(state) {
+export function paperworkSummary(state, { renewals = false } = {}) {
     if (!state) return null
     return {
         total: state.total,
         fine: state.fine,
         ok: state.ok,
+        // Nothing on file has no renewal to talk about. You cannot have applied
+        // to renew a permission nobody has recorded.
         missing: names(state.missing),
-        expired: names(state.expired, 'on'),
-        expiring: names(state.expiring, 'on'),
+        expired: names(state.expired, 'on', renewals),
+        expiring: names(state.expiring, 'on', renewals),
     }
 }

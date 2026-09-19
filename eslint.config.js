@@ -50,7 +50,7 @@ export default defineConfig([
     },
   },
   {
-    // The four that have to reach out, and the only four.
+    // The five that have to reach out, and the only five.
     //
     // Each edge function deploys on its own, folder and all, so its code cannot
     // live in src and @/ cannot address it. These tests import the deployed file
@@ -60,6 +60,7 @@ export default defineConfig([
       'src/lib/reportEmail.test.js',
       'src/lib/rosterEmail.test.js',
       'src/lib/diaryGoogle.test.js',
+      'src/lib/ticketmaster.test.js',
     ],
     rules: {
       'no-restricted-imports': 'off',

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
-    escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH,
+    escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
+    renewalWords,
     deliverable, isJustTheGoodbye, replyToFor,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -441,7 +442,7 @@ describe('what the first send got wrong', () => {
     })
 
     it('draws the section headings as a filled bar', () => {
-        expect(mail.html).toContain('background:#182F24;border-radius:8px')
+        expect(mail.html).toContain(`background:#182F24;padding:14px ${SIDE}px`)
     })
 })
 
@@ -655,7 +656,10 @@ describe('people and operations', () => {
     const mail = reportEmail(base)
 
     it('is a card rather than text against the edge of the message', () => {
-        expect(mail.html).toContain(`padding:14px ${20}px 0`)
+        // The standard gutter rather than the number it happens to be. Written
+        // as 20 it went on passing after the gutter moved to 16, against a
+        // width nobody had chosen.
+        expect(mail.html).toContain(`padding:14px ${SIDE}px 0`)
         expect(mail.html).toContain('border-left:5px solid')
     })
 
@@ -800,22 +804,86 @@ describe('the profit and loss section is two tables, not one', () => {
     })
 })
 
-describe('a section heading is wider than what is under it', () => {
+// The message runs to the edge of the screen on a phone.
+//
+// It used to sit in a rounded card inside a ten point gutter, and the gutter was
+// then paid twice more: twenty four on the body cell and twenty again on every
+// row of figures. Fifty five points each side, a quarter of a phone, before a
+// figure was drawn. Only the phone changes: the maximum width still holds it to
+// a column on anything bigger.
+describe('the message runs to the edge', () => {
     const mail = reportEmail(base)
 
-    it('does not pay the gutter the rows below it pay', () => {
-        expect(mail.html).toContain('<tr><td style="padding:28px 0 12px;">')
-        expect(mail.html).toContain('<td style="padding:0 20px;">')
+    it('has no gutter outside it', () => {
+        expect(mail.html).toContain(`background:${'#F7F5F0'};padding:0;`)
     })
 
-    it('takes that gutter back inside the bar, so the title does not move', () => {
-        // Without this the heading text lands twenty points left of every label
-        // and the bar reads as belonging to nothing.
-        expect(mail.html).toContain('border-radius:8px;padding:12px 35px;')
+    it('has no corners or border to cut it off from the screen', () => {
+        expect(mail.html).not.toContain('border-radius:14px')
+        expect(mail.html).toContain(`max-width:${WIDTH}px;background:#ffffff;overflow:hidden;`)
     })
 
-    it('keeps its corners, so the overhang reads as meant', () => {
-        expect(mail.html).toContain('border-radius:8px')
+    // The one that stops the old bug coming back: the body cell and the rows
+    // inside it were both insetting the same content.
+    it('pays the gutter once, on the rows', () => {
+        expect(mail.html).toContain('<tr><td style="padding:18px 0 26px;">')
+        expect(mail.html).toContain(`<td style="padding:0 ${SIDE}px;">`)
+    })
+
+    it('still holds itself to a column on a computer', () => {
+        expect(mail.html).toContain(`max-width:${WIDTH}px`)
+    })
+})
+
+// It used to run wider than the figures under it, taking the gutter back inside
+// the bar so the title did not move. That was right while the message had a
+// gutter of its own. It has none now, so the bar runs the whole width and the
+// title lines up with every label under it.
+describe('a section heading', () => {
+    const mail = reportEmail(base)
+    const chip = n => `padding:4px 0;">${n}</td>`
+
+    it('runs the full width of the message', () => {
+        expect(mail.html).toContain('<tr><td style="padding:36px 0 14px;">')
+        expect(mail.html).toContain(`background:${'#182F24'};padding:14px ${SIDE}px`)
+    })
+
+    // A band says where a section starts and says nothing at all once you have
+    // scrolled past it, which on a phone is most of the time.
+    it('says which of the seven it is', () => {
+        for (const n of [1, 2, 3, 4, 5, 6, 7]) {
+            expect(mail.html, `section ${n}`).toContain(chip(n))
+        }
+    })
+
+    it('numbers them in the order they are read', () => {
+        const at = n => mail.html.indexOf(chip(n))
+        for (const n of [2, 3, 4, 5, 6, 7]) {
+            expect(at(n), `${n} after ${n - 1}`).toBeGreaterThan(at(n - 1))
+        }
+    })
+
+    // The reason the number is handed in rather than counted inside heading().
+    // A counter kept in the module is right on the first mail and wrong on the
+    // fortieth the same isolate renders, which is the shape of bug that only
+    // ever shows up where nobody is looking.
+    it('starts again at one on the next mail', () => {
+        const second = reportEmail(base)
+        expect(second.html).toContain(chip(1))
+        expect(second.html).not.toContain(chip(8))
+    })
+
+    // The number is threaded from reportEmail through the section function to
+    // heading(), which is three places it could be dropped, and dropping it
+    // draws a box with the word undefined in it rather than failing.
+    it('never draws the box with nothing in it', () => {
+        const one = reportEmail({
+            ...base,
+            sections: [{ key: 'marketing', title: 'Marketing', sort_order: 0, items: [] }],
+        })
+        expect(one.html).toContain('>Marketing<')
+        expect(one.html).toContain(chip(1))
+        expect(one.html).not.toContain('padding:4px 0;">undefined</td>')
     })
 })
 
@@ -1053,5 +1121,109 @@ describe('replyToFor, on a report', () => {
 
     it('falls through a bad author address to the secret', () => {
         expect(replyToFor('someone@papichulo.test', 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+    })
+})
+
+// A chart is the shape of a thing and the figures under it are that shape
+// written out. Reading the numbers first and being shown the picture afterwards
+// is the wrong way round: by then you have done the work it was going to save.
+describe('where the charts sit', () => {
+    const mail = reportEmail(base)
+    const at = t => {
+        const i = mail.html.indexOf(t)
+        expect(i, `not found: ${t}`).toBeGreaterThan(-1)
+        return i
+    }
+
+    it('opens sales and costs with its picture', () => {
+        expect(at('x.test/sales.png')).toBeLessThan(at('>Net sales<'))
+    })
+
+    // Net earnings is what is left after the platforms, so the picture of what
+    // they cost belongs on the near side of that box.
+    it('puts what the platforms cost before what is left after them', () => {
+        expect(at('x.test/delivery.png')).toBeLessThan(at('>Net earnings<'))
+    })
+
+    it('and the earnings picture after it', () => {
+        expect(at('x.test/earnings.png')).toBeGreaterThan(at('>Net earnings<'))
+    })
+
+    it('opens online sales with its picture', () => {
+        expect(at('x.test/online.png')).toBeLessThan(at('Overall rating'))
+    })
+
+    it('opens corporate sales with its picture', () => {
+        expect(at('x.test/corporate.png')).toBeLessThan(at('>Corporate Ltd<'))
+    })
+})
+
+// The difference between the two things a date in the past can mean: somebody
+// waiting on the post, and somebody who cannot legally be on next week's
+// roster. An owner reading four names has no way to tell them apart.
+describe('whether a renewal was applied for', () => {
+    it('says so, with the date', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-08-12' }))
+            .toContain('Renewal applied for 12 Aug 2026')
+    })
+
+    it('says plainly when nobody has', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: null }))
+            .toContain('No renewal applied for')
+    })
+
+    // The one that earns nothing and the one somebody has to act on today.
+    // Left as two dates in a list it is a subtraction nobody does at speed.
+    it('says when it was applied for too late', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-20' }))
+            .toContain('after it ran out')
+    })
+
+    it('does not say it was late when it was not', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-13' }))
+            .not.toContain('after it ran out')
+    })
+
+    // A food safety certificate is not renewed, it is sat again. undefined is
+    // "this kind has no renewals" and null is "it does and nobody applied", and
+    // the two must not read the same.
+    it('says nothing at all for paperwork that has no renewal', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13' })).toBe('')
+        expect(renewalWords(null)).toBe('')
+    })
+})
+
+describe('the people section, with renewals', () => {
+    const mail = reportEmail({
+        ...base,
+        figures: {
+            ...figures,
+            paperwork: {
+                ...figures.paperwork,
+                permits: {
+                    total: 4, fine: 1, ok: false, missing: [],
+                    expired: [
+                        { name: 'Iliana', on: '2026-08-23', applied: '2026-08-01' },
+                        { name: 'Majo', on: '2026-09-13', applied: null },
+                    ],
+                    expiring: [{ name: 'Camila', on: '2026-10-18', applied: '2026-09-30' }],
+                },
+            },
+        },
+    })
+
+    it('puts the answer under each name that needs one', () => {
+        expect(mail.html).toContain('Renewal applied for 1 Aug 2026')
+        expect(mail.html).toContain('No renewal applied for')
+        expect(mail.html).toContain('Renewal applied for 30 Sept 2026')
+    })
+
+    // The food safety card sits in the same section and must stay quiet about
+    // something it does not have.
+    it('leaves the certificates alone', () => {
+        const people = mail.html.slice(
+            mail.html.indexOf('Food safety certificates'),
+            mail.html.indexOf('Right to work'))
+        expect(people).not.toContain('Renewal')
     })
 })
