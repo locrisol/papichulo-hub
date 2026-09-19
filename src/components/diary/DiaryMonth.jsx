@@ -1,6 +1,6 @@
 import { addDays } from '@/lib/dates'
 import { DAY_NAMES } from '@/lib/events'
-import { bandsForWeek, kindChip, kindDot } from '@/lib/diary'
+import { bandsForWeek, kindChip, kindDot, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
 
 // The month, as six weeks that do not change height as you step through them.
@@ -44,7 +44,9 @@ function BandRow({ bands, onOpen, canEdit }) {
     )
 }
 
-export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelect, onOpen, canEdit }) {
+export default function DiaryMonth({
+    viewMonth, today, byDate, selected, onSelect, onOpen, canEdit, restaurants,
+}) {
     // Starts on the Sunday before the first, so the columns line up with the
     // day names above them.
     const gridStart = addDays(viewMonth, -new Date(`${viewMonth}T00:00:00`).getDay())
@@ -154,18 +156,37 @@ export default function DiaryMonth({ viewMonth, today, byDate, selected, onSelec
                 )
             })}
 
-            {/* The day you tapped, in full, under the grid. Nothing is ever cut
-                off on a phone because nothing is asked to fit. */}
-            <div className="sm:hidden border-t border-border bg-white p-3 rounded-b-xl">
+            {/* The day you tapped, in full, under the grid.
+                On a phone this is the only way to read a day at all, since a
+                cell there holds dots. On a computer it is what makes "+2 more"
+                honest: that button said there was something and then had
+                nowhere to show it, which is a button that lies.
+                So it is here on both, and it only hides itself on a computer
+                when the day is empty, where a permanent "Nothing on" under
+                every month would be noise. */}
+            <div className={`border-t border-border bg-white p-3 rounded-b-xl ${
+                onSelectedDay.length ? 'block' : 'block sm:hidden'
+            }`}>
                 <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">
                     {new Date(`${selected}T00:00:00`).toDateString()}
                 </p>
                 {onSelectedDay.length === 0 ? (
                     <p className="text-sm text-muted italic">Nothing on.</p>
                 ) : (
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1.5">
                         {onSelectedDay.map(item => (
-                            <DiaryChip key={item.key} item={item} onOpen={onOpen} canEdit={canEdit} />
+                            <div key={item.key} className="flex flex-wrap items-baseline gap-x-2">
+                                <span className="flex-1 min-w-0">
+                                    <DiaryChip item={item} onOpen={onOpen} canEdit={canEdit} />
+                                </span>
+                                {item.source === 'diary' && (
+                                    <span className="text-[0.65rem] text-muted whitespace-nowrap">
+                                        {timeLabel(item.entry)}
+                                        {' \u00b7 '}
+                                        {scopeLabel(item.entry, restaurants)}
+                                    </span>
+                                )}
+                            </div>
                         ))}
                     </div>
                 )}

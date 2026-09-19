@@ -76,7 +76,7 @@ const KIND = {
         google: null,
     },
     delivery: {
-        label: 'Delivery',
+        label: 'Corporate',
         chip: 'bg-white text-gray-700 border-l-gray-500',
         tag: 'bg-gray-100 text-gray-700',
         dot: 'bg-gray-500',
@@ -418,9 +418,17 @@ export function itemsByDate(items, layers) {
         out[item.date].push(item)
     }
 
+    // All day first, because it runs across everything inside it. Then what is
+    // one off about the day. Then the corporate orders, last, because they are
+    // the standing arrangement: Feedr every Tuesday is not what you look at
+    // this day for, and putting it above a catering job buries the thing that
+    // actually makes the day different.
+    const rank = item => (item.allDay ? 0 : (item.source === 'delivery' ? 2 : 1))
+
     for (const date of Object.keys(out)) {
         out[date].sort((a, b) => {
-            if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+            const group = rank(a) - rank(b)
+            if (group) return group
             if (!a.time !== !b.time) return a.time ? -1 : 1
             if (a.time && b.time) {
                 const gap = toMinutes(a.time) - toMinutes(b.time)

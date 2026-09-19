@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
-import TimeField from '@/components/ui/TimeField'
+import ClockField from '@/components/ui/ClockField'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
@@ -83,12 +83,10 @@ function PhoneShape({ rows, dates, picked, onPick, onSet }) {
 
                                 {on ? (
                                     <>
-                                        <TimeField
+                                        <ClockField
                                             value={at}
                                             onChange={v => onSet(date, row.name, v)}
-                                            allowEmpty
                                             compact
-                                            placeholder="No time"
                                             aria-label={`${row.name} time on ${date}`}
                                         />
                                         <button
@@ -153,12 +151,10 @@ function GridShape({ rows, dates, onSet }) {
                                     <td key={date} className="px-1 py-1 text-center border-r border-border last:border-r-0">
                                         {on ? (
                                             <span className="inline-flex items-center gap-1">
-                                                <TimeField
+                                                <ClockField
                                                     value={at}
                                                     onChange={v => onSet(date, row.name, v)}
-                                                    allowEmpty
                                                     compact
-                                                    placeholder="No time"
                                                     aria-label={`${row.name} time on ${date}`}
                                                 />
                                                 <button
@@ -279,7 +275,7 @@ export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, 
     }
 
     return (
-        <Modal title="Also on, the whole week" onClose={onClose} width="max-w-4xl">
+        <Modal title="Corporate orders, the whole week" onClose={onClose} width="max-w-4xl">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
@@ -317,7 +313,6 @@ export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, 
                             value={adding}
                             onChange={e => setAdding(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOneOff() } }}
-                            placeholder="Extraction cleaning"
                         />
                         <button
                             type="button"

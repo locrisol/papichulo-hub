@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
-import TimeField from '@/components/ui/TimeField'
+import ClockField from '@/components/ui/ClockField'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import { supabase } from '@/lib/supabase'
@@ -270,7 +270,6 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         className={fieldClass}
                         value={form.title}
                         onChange={e => set('title', e.target.value)}
-                        placeholder="Blanchardstown 40th birthday"
                     />
                 </div>
 
@@ -296,21 +295,17 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <TimeField
+                        <ClockField
                             value={form.starts_at}
                             onChange={v => set('starts_at', v)}
-                            allowEmpty
                             compact
-                            placeholder="All day"
                             aria-label="The time it starts"
                         />
                         <span className="text-sm text-muted font-semibold">to</span>
-                        <TimeField
+                        <ClockField
                             value={form.ends_at}
                             onChange={v => set('ends_at', v)}
-                            allowEmpty
                             compact
-                            placeholder="Not said"
                             aria-label="The time it finishes"
                             disabled={!form.starts_at}
                         />
@@ -346,7 +341,6 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         className={fieldClass}
                         value={form.location}
                         onChange={e => set('location', e.target.value)}
-                        placeholder="Only if it is not at the restaurant"
                     />
                 </div>
 
@@ -384,7 +378,6 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         className={fieldClass}
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
-                        placeholder="60 people, two vegan, collection at 18:45"
                     />
                 </div>
 

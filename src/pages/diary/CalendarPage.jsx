@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { can, MANAGERS } from '@/lib/access'
-import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
 import {
@@ -17,6 +17,7 @@ import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
 import DiaryList from '@/components/diary/DiaryList'
 import DiaryDialog from '@/components/diary/DiaryDialog'
+import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import EventModal from '@/components/forecast/EventModal'
 
 // One screen for what is coming up.
@@ -37,11 +38,12 @@ const VIEWS = [
     { id: 'list', label: 'List' },
 ]
 
-// Deliveries are near term by their nature: the Feedr schedule for three weeks
-// away does not exist yet. On in the week, where it is what you are working
-// from, and off in the month and the list, where it would crowd the next
-// fortnight and then lie about the far end by being empty.
-const OFF_BY_DEFAULT = { month: ['delivery'], list: ['delivery'], week: [] }
+// Everything on, everywhere. The corporate orders were off in the month and
+// the list to start with, on the grounds that the schedule for three weeks out
+// does not exist yet so the far end would look emptier than it is. He asked for
+// them on, and the near fortnight is what he opens the month for, so the reason
+// was answering a question nobody was asking.
+const OFF_BY_DEFAULT = { month: [], list: [], week: [] }
 
 const WIDE = '(min-width: 1024px)'
 
@@ -75,6 +77,7 @@ export default function CalendarPage() {
 
     const [editing, setEditing] = useState(null)
     const [openEvent, setOpenEvent] = useState(null)
+    const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [syncing, setSyncing] = useState(false)
     const [note, setNote] = useState('')
 
@@ -262,13 +265,26 @@ export default function CalendarPage() {
                     )}
 
                     {canWrite && (
-                        <button
-                            type="button"
-                            onClick={() => openAdd()}
-                            className="hidden sm:inline-flex px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg transition-colors hover:bg-orange-600"
-                        >
-                            + Add
-                        </button>
+                        <>
+                            {/* The corporate orders arrive as a schedule for a
+                                week, so they go in as a week. He looked for this
+                                here before he looked for it on the roster, which
+                                settles where it belongs. */}
+                            <button
+                                type="button"
+                                onClick={() => setWeekExtrasOpen(true)}
+                                className={secondaryButton}
+                            >
+                                Corporate week
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openAdd()}
+                                className="hidden sm:inline-flex px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg transition-colors hover:bg-orange-600"
+                            >
+                                + Add
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -313,6 +329,7 @@ export default function CalendarPage() {
                         onSelect={setSelected}
                         onOpen={open}
                         canEdit={canWrite}
+                        restaurants={restaurants}
                     />
                 ) : view === 'week' ? (
                     <DiaryWeek
@@ -350,6 +367,16 @@ export default function CalendarPage() {
             )}
 
             {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
+
+            {weekExtrasOpen && (
+                <WeekExtrasModal
+                    dates={weekDates(view === 'week' ? weekStart : weekStartOf(selected || today))}
+                    dayNotes={dayNotes}
+                    restaurant={activeRestaurant}
+                    onClose={() => setWeekExtrasOpen(false)}
+                    onSaved={() => { setWeekExtrasOpen(false); setRefresh(n => n + 1) }}
+                />
+            )}
 
             {editing && (
                 <DiaryDialog

@@ -10,7 +10,7 @@ import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absence
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor } from '@/lib/dayExtras'
-import { bandsForWeek, kindChip, showsOnRoster, onDate, timeLabel } from '@/lib/diary'
+import { bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel } from '@/lib/diary'
 import {
     weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -210,7 +210,10 @@ export default function RosterWeek({
                                     onClick={() => onOpenDiary?.(entry)}
                                     className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)}`}
                                 >
-                                    {runsIn && '\u2039 '}{entry.title}{runsOn && ' \u203a'}
+                                    {runsIn && '‹ '}
+                                    <span className="uppercase tracking-wide">{kindLabel(entry.kind)}</span>
+                                    {` (${entry.title})`}
+                                    {runsOn && ' ›'}
                                 </button>
                             </td>
                             {start + span < dates.length && (
@@ -308,7 +311,16 @@ export default function RosterWeek({
                                                 </span>{' '}
                                             </>
                                         )}
-                                        {entry.title}
+                                        {/* The kind first, because on a row
+                                            that also holds Feedr and Clockmeal,
+                                            what you need at a glance is what
+                                            sort of thing it is. The name alone
+                                            does not say whether somebody has to
+                                            cook for it. */}
+                                        <span className="font-bold uppercase tracking-wide">
+                                            {kindLabel(entry.kind)}
+                                        </span>
+                                        {` (${entry.title})`}
                                     </span>
                                 )), ...extras.map(extra => (
                                     // One chip each, because two of them as

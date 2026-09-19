@@ -449,7 +449,17 @@ describe('what a day holds, in order', () => {
 
     it('puts the all day one first and then the times in order', () => {
         const titles = itemsByDate(built())[day].map(i => i.title)
-        expect(titles).toEqual(['15% off wraps', 'Feedr', 'Fontaines D.C.', 'Blanchardstown 40th', 'Late one'])
+        expect(titles).toEqual(['15% off wraps', 'Fontaines D.C.', 'Blanchardstown 40th', 'Feedr', 'Late one'])
+    })
+
+    // Feedr at noon is earlier than the catering at seven and still comes
+    // after it. The corporate orders are the standing arrangement, so putting
+    // them above a catering job buries the thing that makes the day different.
+    it('puts the corporate orders last, whatever time they are at', () => {
+        const order = itemsByDate(built())[day]
+        const corporate = order.findIndex(i => i.title === 'Feedr')
+        const catering = order.findIndex(i => i.title === 'Blanchardstown 40th')
+        expect(corporate).toBeGreaterThan(catering)
     })
 
     // A delivery with no time is the one thing that cannot be placed in the
