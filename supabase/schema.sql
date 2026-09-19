@@ -966,6 +966,7 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
     "contact_name" "text",
     "contact_detail" "text",
     "note" "text",
+    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
     "google_event_ids" "jsonb",
     "google_synced_at" timestamp with time zone,
@@ -984,6 +985,7 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
 COMMENT ON TABLE "public"."diary_entries" IS 'What is coming up that somebody had to be told about: catering, meetings, promotions, maintenance. What is on at the Arena arrives on its own and lives in events; the deliveries a restaurant usually gets are ticked onto a day and live in day_notes.extras. This is the third kind, the one with a customer or a person on the other end of it.';
 COMMENT ON COLUMN "public"."diary_entries"."ends_at" IS 'Null is allowed and means nobody said. The same rule the roster already follows for deliveries: something arriving some time on Tuesday is still worth having, and refusing it only means somebody invents a time to get it in.';
 COMMENT ON COLUMN "public"."diary_entries"."ends_on" IS 'Null means the same day. A promotion running the 22nd to the 28th is one row rather than seven, so the roster can draw it as one band and the calendar as one thing.';
+COMMENT ON COLUMN "public"."diary_entries"."labels" IS 'Short words saying who or what an entry is for, e.g. Students or Corporate. Free text with no list behind it: what is offered next time is whatever has been used before, so nothing has to be set up for a new restaurant. Kept apart from the title because the title is the thing itself and these are how it is grouped, and because a title cannot be asked a question.';
 COMMENT ON COLUMN "public"."diary_entries"."google_event_ids" IS 'The calendar id to the event id Google gave back, as {"<calendar id>":"<event id>"}. A map rather than one column because an entry for two restaurants is written to two calendars and both have to be updated when it changes. Null means it has never been written.';
 COMMENT ON COLUMN "public"."diary_entries"."google_synced_at" IS 'When Google last accepted it. Null after a save means the write failed and the entry is only in the Hub, which the screen says out loud. A failed write must never lose the entry and must never be reported as a success.';
 COMMENT ON COLUMN "public"."diary_entries"."restaurant_ids" IS 'Which restaurants, and only when the scope is sites. Empty for all_sites and for private, which the check constraint enforces so there is no second way to say the same thing.';
@@ -1002,6 +1004,11 @@ CREATE INDEX "idx_diary_entries_restaurants" ON "public"."diary_entries" USING "
 
 -- A foreign key with no index behind it is what the advisor flagged last time.
 CREATE INDEX "idx_diary_entries_created_by" ON "public"."diary_entries" USING "btree" ("created_by");
+
+-- Asking which entries carry a label is the whole reason this is an array
+-- rather than a word in the title, so it gets the index that makes the question
+-- cheap before anybody asks it in anger.
+CREATE INDEX "idx_diary_entries_labels" ON "public"."diary_entries" USING "gin" ("labels");
 
 
 -- -- The record of what happened ---------------------------------------

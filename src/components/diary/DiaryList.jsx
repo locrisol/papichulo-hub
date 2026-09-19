@@ -1,5 +1,7 @@
 import { agendaRows, dayName } from '@/lib/events'
-import { kindChip, kindTag, kindLabel, scopeLabel, timeLabel, layerOf } from '@/lib/diary'
+import {
+    kindChip, kindTag, kindLabel, scopeLabel, timeLabel, layerOf, labelsOf,
+} from '@/lib/diary'
 
 // What have I got coming up, and when.
 //
@@ -42,6 +44,18 @@ function Row({ item, restaurants, onOpen, canEdit }) {
                 </p>
                 {entry?.note && (
                     <p className="text-xs text-muted mt-0.5 break-words">{entry.note}</p>
+                )}
+                {/* Beside the name and not inside it. The name is the offer and
+                    these are how it is grouped, and a list is where somebody
+                    scans for them. */}
+                {labelsOf(entry).length > 0 && (
+                    <p className="flex flex-wrap gap-1 mt-1">
+                        {labelsOf(entry).map(label => (
+                            <span key={label} className="text-[0.6rem] font-bold uppercase tracking-wider text-gray-700 bg-gray-100 rounded px-1.5 py-0.5">
+                                {label}
+                            </span>
+                        ))}
+                    </p>
                 )}
             </div>
 

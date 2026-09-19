@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
 import AutoTextarea from '@/components/ui/AutoTextarea'
@@ -11,7 +11,9 @@ import {
     modalFooter, secondaryButton, primaryButton, rowButton,
     labelClass, fieldClass, dateField, hintClass,
 } from '@/lib/controlStyles'
-import { KINDS, kindLabel, kindTag, scopeFrom, entryProblem } from '@/lib/diary'
+import {
+    KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed,
+} from '@/lib/diary'
 import { writeToGoogle } from '@/lib/diaryGoogle'
 
 // Putting something in the diary.
@@ -124,6 +126,7 @@ function startingForm(entry, date, restaurants, fallbackRestaurantId) {
             contact_detail: entry.contact_detail || '',
             note: entry.note || '',
             status: entry.status || 'confirmed',
+            labels: entry.labels || [],
             mode: entry.scope === 'sites' ? 'sites' : entry.scope,
             restaurantIds: entry.restaurant_ids || [],
         }
@@ -145,6 +148,7 @@ function startingForm(entry, date, restaurants, fallbackRestaurantId) {
         contact_detail: '',
         note: '',
         status: 'confirmed',
+        labels: [],
         mode: 'sites',
         restaurantIds: mine,
     }
@@ -159,6 +163,36 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
     )
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+
+    // Whatever has been used before, offered as chips.
+    //
+    // Read off the entries themselves rather than a list somebody maintains,
+    // so typing Students once offers it forever after, at both restaurants,
+    // with nothing to set up and nothing to keep in step. One small query when
+    // the form opens: the column is an array of short words and there are not
+    // many of them.
+    const [known, setKnown] = useState([])
+    const [adding, setAdding] = useState('')
+
+    useEffect(() => {
+        let alive = true
+        supabase.from('diary_entries').select('labels').then(({ data }) => {
+            if (alive) setKnown(labelsUsed(data))
+        })
+        return () => { alive = false }
+    }, [])
+
+    const has = label => form.labels.some(l => l.toLowerCase() === label.toLowerCase())
+    const toggleLabel = label => set('labels', has(label)
+        ? form.labels.filter(l => l.toLowerCase() !== label.toLowerCase())
+        : cleanLabels([...form.labels, label]))
+
+    function addLabel() {
+        const label = adding.trim()
+        if (!label) return
+        setAdding('')
+        set('labels', cleanLabels([...form.labels, label]))
+    }
 
     const set = (key, value) => setForm(f => ({ ...f, [key]: value }))
     const problem = entryProblem(form)
@@ -181,6 +215,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
             contact_detail: form.contact_detail.trim() || null,
             note: form.note.trim() || null,
             status: form.status,
+            labels: cleanLabels(form.labels),
         }
 
         const { data, error: err } = entry
@@ -329,6 +364,51 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                             restaurantIds={form.restaurantIds}
                             restaurants={restaurants}
                         />
+                    </p>
+                </div>
+
+                <div>
+                    <span className={labelClass}>
+                        Labels <span className="text-muted font-normal">optional</span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                        {[...new Set([...form.labels, ...known])].map(label => (
+                            <button
+                                key={label}
+                                type="button"
+                                onClick={() => toggleLabel(label)}
+                                aria-pressed={has(label)}
+                                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                    has(label)
+                                        ? 'bg-sidebar border-sidebar text-white'
+                                        : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex gap-2">
+                        <input
+                            className={fieldClass}
+                            value={adding}
+                            onChange={e => setAdding(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLabel() } }}
+                            placeholder="Students"
+                            aria-label="A new label"
+                        />
+                        <button
+                            type="button"
+                            onClick={addLabel}
+                            disabled={!adding.trim()}
+                            className={secondaryButton}
+                        >
+                            Add
+                        </button>
+                    </div>
+                    <p className={hintClass}>
+                        Who or what it is for. Anything typed here is offered next time, so the
+                        same word gets used rather than four spellings of it.
                     </p>
                 </div>
 

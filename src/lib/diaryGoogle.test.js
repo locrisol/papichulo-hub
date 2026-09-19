@@ -286,3 +286,32 @@ describe('asking the function to write it', () => {
         expect(invoke).not.toHaveBeenCalled()
     })
 })
+
+describe('a label reaches Google', () => {
+    const promo = {
+        id: 'p1', kind: 'promotion', title: '15% off wraps',
+        starts_on: '2026-09-22', ends_on: '2026-09-28',
+    }
+
+    // The title line, not the description. A Google month view is a list of
+    // titles and that is where somebody scans, and a title has the room a
+    // narrow roster cell does not.
+    it('puts it in the title, after the name', () => {
+        expect(eventBody({ ...promo, labels: ['Students'] }).summary)
+            .toBe('15% off wraps [Students]')
+    })
+
+    it('takes several', () => {
+        expect(eventBody({ ...promo, labels: ['Students', 'Lunch'] }).summary)
+            .toBe('15% off wraps [Students] [Lunch]')
+    })
+
+    it('leaves the title alone when there are none', () => {
+        expect(eventBody(promo).summary).toBe('15% off wraps')
+        expect(eventBody({ ...promo, labels: [] }).summary).toBe('15% off wraps')
+    })
+
+    it('ignores an empty one rather than writing a pair of brackets', () => {
+        expect(eventBody({ ...promo, labels: ['', '  '] }).summary).toBe('15% off wraps')
+    })
+})

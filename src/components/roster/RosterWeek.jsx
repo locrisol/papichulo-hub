@@ -10,7 +10,9 @@ import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absence
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor } from '@/lib/dayExtras'
-import { bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel } from '@/lib/diary'
+import {
+    bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel, labelsOf,
+} from '@/lib/diary'
 import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
     shiftEdges,
@@ -232,6 +234,15 @@ export default function RosterWeek({
                                     {runsIn && '‹ '}
                                     <span className="uppercase tracking-wide">{kindLabel(entry.kind)}</span>
                                     {` (${entry.title})`}
+                                    {/* The band runs across days and has the
+                                        room for them. The chip on a single day
+                                        does not, and there the name is the part
+                                        that has to survive. */}
+                                    {labelsOf(entry).map(label => (
+                                        <span key={label} className="ml-1.5 font-normal opacity-75">
+                                            [{label}]
+                                        </span>
+                                    ))}
                                     {runsOn && ' ›'}
                                 </button>
                             </td>

@@ -16,7 +16,7 @@ import {
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extrasFor, extraLabel } from '@/lib/dayExtras'
-import { onDate, showsOnRoster, kindLabel, bandsForWeek } from '@/lib/diary'
+import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
 
 // A day somebody is not there, as it goes out.
 //
@@ -146,7 +146,13 @@ export function weekTable({
     // is one bar that says what it is rather than five chips that each say it
     // again.
     const bands = bandsForWeek(running, dates || []).map(b => ({
-        label: `${kindLabel(b.entry.kind)} (${b.entry.title})`,
+        // The labels ride on the band because a band has the width for them.
+        // The chip on a single day does not, and there the name is the part
+        // that has to survive being cut.
+        label: [
+            `${kindLabel(b.entry.kind)} (${b.entry.title})`,
+            ...labelsOf(b.entry).map(l => `[${l}]`),
+        ].join(' '),
         kind: b.entry.kind,
         start: b.start,
         span: b.span,

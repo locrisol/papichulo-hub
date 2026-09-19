@@ -509,3 +509,22 @@ describe('what is on reaches the shared week', () => {
         expect(build().deliveries.every(d => Array.isArray(d))).toBe(true)
     })
 })
+
+describe('a label on a band', () => {
+    const promotion = {
+        id: 'p1', kind: 'promotion', title: '15% off wraps', scope: 'all_sites',
+        starts_on: DATES[0], ends_on: DATES[2], starts_at: null, status: 'confirmed',
+    }
+
+    // A band runs across days and has the width. The chip on a single day does
+    // not, and there the name is the part that has to survive being cut.
+    it('rides on the band, after the name', () => {
+        const t = build({ diary: [{ ...promotion, labels: ['Students'] }] })
+        expect(t.bands[0].label).toBe('Promotion (15% off wraps) [Students]')
+    })
+
+    it('leaves the band alone when there are none', () => {
+        expect(build({ diary: [promotion] }).bands[0].label)
+            .toBe('Promotion (15% off wraps)')
+    })
+})

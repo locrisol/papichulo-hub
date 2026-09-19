@@ -115,6 +115,19 @@ export function description(entry) {
 //
 // The Hub's own id is stored on the event where nobody sees it, so the two stay
 // tied together even if our column is ever lost.
+// What a label adds to the title.
+//
+// In the title rather than buried in the description, because a Google month
+// view is a list of titles and that is where somebody scans. The title line has
+// the room the roster's narrow cell does not, which is the whole rule for where
+// these show: wherever there is space for them.
+function titleOf(entry) {
+    const labels = (entry.labels || [])
+        .map(l => String(l ?? '').trim())
+        .filter(Boolean)
+    return labels.length ? `${entry.title} ${labels.map(l => `[${l}]`).join(' ')}` : entry.title
+}
+
 export function eventBody(entry, origin) {
     const times = eventTimes(entry)
     // Built here rather than by the caller, so the shape of the link is in the
@@ -123,7 +136,7 @@ export function eventBody(entry, origin) {
     const hubUrl = origin ? `${String(origin).replace(/\/$/, '')}/calendar` : ''
 
     return {
-        summary: entry.title,
+        summary: titleOf(entry),
         description: description(entry),
         location: entry.location || undefined,
         colorId: colourFor(entry.kind),

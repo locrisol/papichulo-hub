@@ -1,12 +1,14 @@
 # Migrations
 
-Two in here, and the next one is `009`.
+Three in here, and the next one is `010`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
 - **`008_the_diary.sql`** adds `diary_entries` and one column on `restaurants`.
+- **`009_diary_labels.sql`** adds `labels`, so a promotion can say who it is for
+  without the answer living inside its own name.
 
-Neither has a backup newer than it yet, so neither can go.
+None has a backup newer than it yet, so none can go.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,

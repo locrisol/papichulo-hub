@@ -6,6 +6,7 @@ import {
     sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
     showsOnRoster, entryProblem,
     LAYERS, layerOf, calendarItems, itemsByDate,
+    cleanLabels, labelsUsed, labelsOf,
 } from './diary'
 
 const RESTAURANTS = [
@@ -475,5 +476,50 @@ describe('what a day holds, in order', () => {
 
     it('shows everything when it is not told which layers', () => {
         expect(itemsByDate(built())[day]).toHaveLength(5)
+    })
+})
+
+describe('what an entry is for', () => {
+    it('trims and drops the empty ones', () => {
+        expect(cleanLabels([' Students ', '', '   ', 'Corporate'])).toEqual(['Students', 'Corporate'])
+    })
+
+    // Students and students are one label. The one somebody typed first is the
+    // one that shows, so the form does not quietly restyle what they wrote.
+    it('never carries the same word twice, whatever the case', () => {
+        expect(cleanLabels(['Students', 'students', 'STUDENTS'])).toEqual(['Students'])
+    })
+
+    it('keeps the order they were given in', () => {
+        expect(cleanLabels(['Corporate', 'Students'])).toEqual(['Corporate', 'Students'])
+    })
+
+    it('copes with nothing at all', () => {
+        expect(cleanLabels(null)).toEqual([])
+        expect(cleanLabels([null, undefined, 3])).toEqual(['3'])
+    })
+
+    // Read off the entries rather than a list somebody maintains, so there is
+    // nothing to keep in step and no settings screen to forget.
+    it('offers back whatever has been used before, once each', () => {
+        const entries = [
+            { labels: ['Students', 'Lunch'] },
+            { labels: ['students'] },
+            { labels: [] },
+            {},
+        ]
+        expect(labelsUsed(entries)).toEqual(['Lunch', 'Students'])
+    })
+
+    // A list of chips somebody scans should not reshuffle itself every time an
+    // entry is added.
+    it('puts them in an order that does not move', () => {
+        expect(labelsUsed([{ labels: ['Zoe'] }, { labels: ['Alpha'] }])).toEqual(['Alpha', 'Zoe'])
+    })
+
+    it('reads them off one entry too', () => {
+        expect(labelsOf({ labels: [' Students ', 'Students'] })).toEqual(['Students'])
+        expect(labelsOf({})).toEqual([])
+        expect(labelsOf(null)).toEqual([])
     })
 })

@@ -172,6 +172,51 @@ export function scopeFrom({ mode, restaurantIds }) {
     return { scope: 'sites', restaurant_ids: [...new Set(restaurantIds || [])] }
 }
 
+// -- What it is for ----------------------------------------------------
+//
+// Short words saying who an entry is aimed at: Students, Corporate, Staff. He
+// was going to type them into the name, as "[Students] 15% off wraps", and the
+// reason not to is that he wants to ask something of them later. A name cannot
+// be asked a question, and three spellings of Students arrive within a year.
+//
+// There is no list behind them and no settings screen. What is offered next
+// time is whatever has been used before, so a new restaurant needs nobody to
+// set anything up, which is the same rule the calendar id follows.
+
+// Tidied on the way in, because these are compared and grouped.
+//
+// Trimmed, empties dropped, and the same word never twice. Case is kept as it
+// was typed and ignored when comparing, so Students and students are one label
+// and the one somebody typed first is the one that shows.
+export function cleanLabels(list) {
+    const seen = new Set()
+    const out = []
+    for (const raw of list || []) {
+        const label = String(raw ?? '').trim()
+        if (!label) continue
+        const key = label.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(label)
+    }
+    return out
+}
+
+// Everything that has been used before, for the form to offer.
+//
+// Read off the entries themselves rather than a list somebody maintains, so it
+// is right by construction and there is nothing to keep in step. In the order
+// they read, which is alphabetical, because a list of chips somebody scans
+// should not reshuffle itself every time an entry is added.
+export function labelsUsed(entries) {
+    return cleanLabels((entries || []).flatMap(e => e?.labels || []))
+        .sort((a, b) => a.localeCompare(b))
+}
+
+export function labelsOf(entry) {
+    return cleanLabels(entry?.labels)
+}
+
 // -- When it is ---------------------------------------------------------
 
 // The last day it covers. Null ends_on means it is a one day thing, which is
