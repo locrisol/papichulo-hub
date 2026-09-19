@@ -74,8 +74,20 @@ const dayKey = (employeeId, date) => `${employeeId}|${date}`
 //
 // Rows keep their ids where there are ids to go round. Anything left over is
 // handed back so the caller knows what to delete.
-function joinUp(rows, breakRules) {
+//
+// Which id a merged row keeps is not arbitrary, and that took a while to see.
+// shift_requests points at the two shifts it is about and both foreign keys are
+// ON DELETE CASCADE, so deleting the wrong one deletes the request itself: the
+// manager presses Approve, the shifts merge, the row that says who agreed what
+// is gone, and the status update written a moment later hits nothing at all.
+// The ids a request points at are kept first for that reason.
+//
+// It is not a guarantee. Three rows merging into one still has to lose two, and
+// if both halves of a request land on the same person on the same day one of
+// them goes. That swap is not a swap anybody would ask for.
+function joinUp(rows, breakRules, keepIds) {
     const spare = rows.map(r => r.id).filter(Boolean)
+    if (keepIds?.size) spare.sort((a, b) => (keepIds.has(b) ? 1 : 0) - (keepIds.has(a) ? 1 : 0))
     const out = []
 
     for (const row of rows) {
@@ -158,12 +170,16 @@ export function weekAfter(request, shifts, breakRules) {
     const out = all.filter(s => !dirty.has(dayKey(s.employee_id, s.shift_date)))
     const removedIds = []
 
+    // The two rows this request hangs off. See joinUp: deleting one of them
+    // deletes the request with it.
+    const keepIds = new Set([request?.give_shift_id, request?.take_shift_id].filter(Boolean))
+
     for (const key of dirty) {
         const [employeeId, date] = key.split('|')
         const mine = all
             .filter(s => s.employee_id === employeeId && s.shift_date === date)
             .sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
-        const joined = joinUp(mine, breakRules)
+        const joined = joinUp(mine, breakRules, keepIds)
         out.push(...joined.rows)
         removedIds.push(...joined.spare)
     }

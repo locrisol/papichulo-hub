@@ -55,6 +55,29 @@ describe('weekAfter', () => {
         expect(removedIds).toHaveLength(1)
     })
 
+    // Two shifts became one and one of the two ids had to go. Which one is not
+    // a detail: shift_requests points at both of these shifts and both foreign
+    // keys are ON DELETE CASCADE, so deleting the id the request hangs off
+    // deletes the request. The manager presses Approve, the row saying who
+    // agreed what disappears, and the status update a moment later writes to
+    // nothing.
+    it('keeps the shifts the request hangs off when two of them merge', () => {
+        // Ben is on the Wednesday morning. Ana gives him her evening, so the
+        // two meet and join, and hers is the later of the two.
+        const week = [
+            shift('evening', 'ana', WED, '15:00', '21:00'),
+            shift('morning', 'ben', WED, '09:00', '15:00'),
+        ]
+        const request = {
+            from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 'evening',
+        }
+        const { shifts, removedIds } = weekAfter(request, week)
+
+        expect(shifts).toHaveLength(1)
+        expect(shifts[0]).toMatchObject({ id: 'evening', employee_id: 'ben', starts_at: '09:00', ends_at: '21:00' })
+        expect(removedIds).toEqual(['morning'])
+    })
+
     it('leaves the asker with the half they kept', () => {
         const request = {
             from_employee_id: 'ana', to_employee_id: 'ben',
