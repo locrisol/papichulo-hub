@@ -50,6 +50,18 @@ export function AuthProvider({ children }) {
         setLoading(false)
     }
 
+  // Read the row again.
+  //
+  // This context holds the row every permission check reads, so anything that
+  // changes it has to say so. Without it a preference saved on Tuesday is not
+  // the one the app uses until the next time somebody signs in, which for a
+  // setting about signing in is exactly the wrong moment to be a version
+  // behind.
+  async function refreshUser() {
+      const id = session?.user?.id
+      if (id) await fetchUser(id)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -71,7 +83,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, error }}>
+    <AuthContext.Provider value={{ session, user, loading, error, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

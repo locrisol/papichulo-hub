@@ -109,9 +109,13 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "restaurant_id" "uuid",
     "is_active" boolean DEFAULT true NOT NULL,
     "is_test" boolean DEFAULT false NOT NULL,
+    "landing_page" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee')))
+    CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee'))),
+    CONSTRAINT "users_landing_page_is_a_path" CHECK ((("landing_page" IS NULL) OR ("landing_page" ~ '^/[a-z0-9/-]{0,60}$')))
 );
+
+COMMENT ON COLUMN "public"."users"."landing_page" IS 'The page this account opens on after signing in. Null lands where the role always did. The app checks it is still allowed before using it, because nothing here can.';
 
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
@@ -1290,6 +1294,24 @@ CREATE OR REPLACE FUNCTION "public"."get_my_restaurant_id"() RETURNS "uuid"
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
   SELECT restaurant_id FROM public.users WHERE id = auth.uid() AND is_active;
+$$;
+
+-- Saving your own landing page without being able to save anything else.
+--
+-- users_write is deliberately one sided: you may write the rows below you and
+-- never your own, which is right and is also why nobody could save their own
+-- preference. A policy works on rows, so it cannot say "this column only", and
+-- widening users_write to include your own row would let anybody make
+-- themselves a super admin. A function that writes one column of one row can.
+-- The id comes from the session rather than from a parameter, so there is
+-- nothing to pass it that would reach somebody else.
+CREATE OR REPLACE FUNCTION "public"."set_my_landing_page"("page" "text") RETURNS "void"
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  UPDATE public.users
+     SET landing_page = nullif(btrim(page), '')
+   WHERE id = auth.uid() AND is_active;
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_employee_id"() RETURNS "uuid"

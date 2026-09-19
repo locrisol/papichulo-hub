@@ -5,7 +5,7 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
+import { DAY_NAMES, dayName, watchesVenue } from '@/lib/events'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
 import DateStepper from '@/components/ui/DateStepper'
@@ -17,10 +17,10 @@ import {
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
-import { emailTheAnswer } from '@/lib/timeOffMail'
+import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
-import { writesFor, requestsOnShift } from '@/lib/shiftRequests'
+import { writesFor, requestsOnShift, shiftIdsOf, LIVE_STATES } from '@/lib/shiftRequests'
 import RosterDay from '@/components/roster/RosterDay'
 import RosterWeek from '@/components/roster/RosterWeek'
 import ShareWeekButton from '@/components/roster/ShareWeekButton'
@@ -36,6 +36,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { atRestaurant } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
@@ -94,6 +95,11 @@ export default function RosterPage() {
     const [nearbyShifts, setNearbyShifts] = useState([])
     // What two people have agreed between them and are waiting on.
     const [requests, setRequests] = useState([])
+    // The shifts those requests name where they are not in the week on screen.
+    // Kept out of `shifts` deliberately: the week is the week, and a swap for a
+    // fortnight's time is not part of it. These are only so the desk can say
+    // what a request is about and which week to open to deal with it.
+    const [otherShifts, setOtherShifts] = useState([])
     const [deskOpen, setDeskOpen] = useState(false)
     const [view, setView] = useState('day')
     const [settingsOpen, setSettingsOpen] = useState(null)
@@ -106,16 +112,50 @@ export default function RosterPage() {
     const date = dates[dayIndex]
     const weekEnd = dates[6]
 
-    // The asks about this week's shifts. Nothing about the roster waits on
-    // them, so they are fetched on their own and a failure here leaves the week
-    // on screen rather than taking it down.
+    // The asks. Nothing about the roster waits on them, so they are fetched on
+    // their own and a failure here leaves the week on screen rather than
+    // taking it down.
+    //
+    // Two questions, and only one of them is about this week.
+    //
+    // **Everything still going somewhere, whatever week it is for.** Two people
+    // agreeing a swap for a fortnight's time were invisible from every week but
+    // that one, so the count on the menu said there was something to approve and
+    // the roster in front of you said there was not. Time off was fixed this way
+    // in the same place and the swaps were missed.
+    //
+    // **Everything about this week's shifts, whatever its state.** That half is
+    // genuinely week shaped: it is what marks a cell as already asked about.
+    //
+    // The restaurant filter is belt and braces. A policy already keeps this to
+    // your own, and saying it here means a bug in a policy cannot quietly widen
+    // what a manager is looking at.
     async function loadRequests(weekShifts) {
         const ids = (weekShifts || []).map(s => s.id)
-        if (ids.length === 0) { setRequests([]); return }
+        const wanted = [
+            `status.in.(${LIVE_STATES.join(',')})`,
+            ...(ids.length > 0
+                ? [`give_shift_id.in.(${ids.join(',')})`, `take_shift_id.in.(${ids.join(',')})`]
+                : []),
+        ]
+
         const { data } = await supabase.from('shift_requests').select('*')
-            .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+            .eq('restaurant_id', restaurantId)
+            .or(wanted.join(','))
             .order('created_at', { ascending: false })
-        setRequests(data || [])
+
+        const asks = data || []
+        setRequests(asks)
+
+        // The shifts those requests name, where the week does not already have
+        // them. Without these the desk can count a swap it cannot describe.
+        const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
+        if (missing.length === 0) { setOtherShifts([]); return }
+
+        const { data: rows } = await supabase.from('roster_shifts')
+            .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
+            .in('id', missing)
+        setOtherShifts(rows || [])
     }
 
     useEffect(() => {
@@ -152,18 +192,28 @@ export default function RosterPage() {
             // What is on at the Arena. A concert at half six is the reason half
             // the week is rostered the way it is, so it belongs on the grid
             // rather than in somebody's head.
-            supabase.from('events').select('*')
-                .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
-                .order('event_time'),
+            //
+            // Only where the restaurant watches a venue. This asked for them
+            // with no test at all, so Dun Laoghaire got the Arena listings that
+            // Point Campus had synced, forty minutes away and nothing to do
+            // with its week. See watchesVenue.
+            watchesVenue(activeRestaurant)
+                ? supabase.from('events').select('*')
+                    .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
+                    .order('event_time')
+                : Promise.resolve({ data: [], error: null }),
             // The diary: catering, meetings, promotions. Overlapping the
             // week rather than starting in it, the same reason the absences
             // below are asked for that way: a discount week that began last
             // Thursday still covers Monday.
             //
-            // No restaurant filter. Which entries this restaurant can see is
-            // the scope, and the scope is read by the policy in the database
-            // rather than by a clause here. A group wide promotion has no
-            // restaurant on it at all and a filter would drop it.
+            // No restaurant clause on the query, and that part was right: a
+            // group wide promotion carries no restaurant at all and a clause
+            // would drop it. What was missing is the sort afterwards. The
+            // policy answers whether you may read an entry, which is not the
+            // same question as whether it belongs to the restaurant you have
+            // switched to, and for a super admin the two answers differ. See
+            // atRestaurant.
             supabase.from('diary_entries').select('*')
                 .lte('starts_on', addDays(weekStart, 6))
                 .or(`ends_on.gte.${weekStart},and(ends_on.is.null,starts_on.gte.${weekStart})`)
@@ -200,7 +250,7 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
-        setDiary(diaryRes.data || [])
+        setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
         setAllWaiting(askRes.data || [])
@@ -419,6 +469,8 @@ export default function RosterPage() {
     ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.
+    // Every week, not this one, which is what the count on the menu has always
+    // meant and what the button beside it did not.
     const agreed = requests.filter(r => r.status === 'accepted')
 
     // The same checks, run against a week that does not exist yet. It is how
@@ -489,6 +541,9 @@ export default function RosterPage() {
 
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // Last, after every write above has gone through. Both of them are
+        // being told the roster has changed, and it has to have changed first.
+        emailTheShiftDecision(request.id)
         load({ quiet: true })
     }
 
@@ -501,6 +556,9 @@ export default function RosterPage() {
         }).eq('id', request.id)
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // A no is worth as much as a yes here. Two people agreed something
+        // between them and are both waiting to find out whether it counts.
+        emailTheShiftDecision(request.id)
         loadRequests(shifts)
     }
 
@@ -1093,6 +1151,7 @@ export default function RosterPage() {
                 <RequestDeskModal
                     requests={agreed}
                     shifts={shifts}
+                    otherShifts={otherShifts}
                     employees={roster}
                     breakRules={activeRestaurant?.break_rules}
                     dayNotes={dayNotes}
@@ -1101,6 +1160,16 @@ export default function RosterPage() {
                     saving={saving}
                     onApprove={async request => { await approveRequest(request); setDeskOpen(false) }}
                     onRefuse={refuseRequest}
+                    onGoToWeek={date => {
+                        // The desk is left open on purpose. Stepping the week
+                        // refetches everything underneath it, so the request
+                        // that was a line of text a moment ago comes back with
+                        // an Approve on it, which is the whole point of the
+                        // button. Closing it would put the manager back where
+                        // they started with one more click to make.
+                        setWeekStart(weekStartOf(date))
+                        setView('week')
+                    }}
                     onClose={() => setDeskOpen(false)}
                 />
             )}

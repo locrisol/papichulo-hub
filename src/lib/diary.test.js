@@ -6,7 +6,7 @@ import {
     sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
     showsOnRoster, entryProblem,
     LAYERS, layerOf, calendarItems, itemsByDate,
-    cleanLabels, labelsUsed, labelsOf,
+    cleanLabels, labelsUsed, labelsOf, atRestaurant,
 } from './diary'
 
 const RESTAURANTS = [
@@ -521,5 +521,49 @@ describe('what an entry is for', () => {
         expect(labelsOf({ labels: [' Students ', 'Students'] })).toEqual(['Students'])
         expect(labelsOf({})).toEqual([])
         expect(labelsOf(null)).toEqual([])
+    })
+})
+
+// The one the database cannot answer.
+//
+// The policy says whether you may read an entry. Which restaurant you are
+// looking at is the switcher, which is the app's own idea, so a super admin who
+// may read every site's entries was shown Point Campus catering on the Dun
+// Laoghaire roster. Nothing leaked and it was still wrong.
+describe('whether an entry belongs to the restaurant you are looking at', () => {
+    it('keeps one marked for that restaurant', () => {
+        expect(atRestaurant(catering, 'pc')).toBe(true)
+    })
+
+    it('drops one marked for the other', () => {
+        expect(atRestaurant(catering, 'dl')).toBe(false)
+    })
+
+    // The reason a restaurant_id clause on the query would have been the wrong
+    // fix. A group wide promotion carries no restaurant at all.
+    it('keeps a group wide one everywhere', () => {
+        const everywhere = { ...promotion, scope: 'all_sites', restaurant_ids: [] }
+        expect(atRestaurant(everywhere, 'pc')).toBe(true)
+        expect(atRestaurant(everywhere, 'dl')).toBe(true)
+    })
+
+    // It carries no restaurant, the policy already limits it to whoever wrote
+    // it, and a note to yourself does not stop being yours because you switched
+    // shop.
+    it('keeps a private one wherever you are', () => {
+        const mine = { ...catering, scope: 'private', restaurant_ids: [] }
+        expect(atRestaurant(mine, 'dl')).toBe(true)
+    })
+
+    it('keeps one marked for both', () => {
+        expect(atRestaurant({ ...catering, restaurant_ids: ['pc', 'dl'] }, 'dl')).toBe(true)
+    })
+
+    // A sites entry with an empty list is refused by a CHECK on the table, so
+    // this is about not throwing rather than about a row anybody will see.
+    it('drops a site entry naming nowhere, and copes with nothing at all', () => {
+        expect(atRestaurant({ ...catering, restaurant_ids: [] }, 'pc')).toBe(false)
+        expect(atRestaurant({ ...catering, restaurant_ids: null }, 'pc')).toBe(false)
+        expect(atRestaurant(null, 'pc')).toBe(false)
     })
 })
