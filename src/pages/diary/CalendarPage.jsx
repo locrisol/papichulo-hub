@@ -6,8 +6,9 @@ import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
+import { watchesVenue } from '@/lib/events'
 import {
-    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot,
+    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
 } from '@/lib/diary'
 import {
     card, pageTitle, secondaryButton, segmentTrack, segmentButton, jumpButton, jumpLabel,
@@ -106,7 +107,12 @@ export default function CalendarPage() {
         ? addDays(today, 120)
         : (view === 'week' ? addDays(weekStart, 6) : addDays(weekStartOf(viewMonth), 41))
 
-    const arenaOn = Boolean(activeRestaurant?.forecasting_enabled)
+    // Whether this restaurant watches a venue, not whether it forecasts.
+    // Knowing there are nine thousand people next door at half six is a
+    // rostering fact and should not go away because somebody turned a
+    // forecast off. It is the same test the roster uses now, which it was
+    // not: that screen asked for the events with no test at all.
+    const arenaOn = watchesVenue(activeRestaurant)
 
     useEffect(() => {
         if (!activeRestaurant) return undefined
@@ -162,7 +168,11 @@ export default function CalendarPage() {
             const failed = [diary, events, notes, places].find(r => r.error)
             if (failed) setError(friendlyError(failed.error))
 
-            setEntries(diary.data || [])
+            // Only this restaurant's. The policy answers whether you may
+            // read an entry and a super admin may read every site's, which
+            // is not the same as them belonging on the restaurant you have
+            // switched to. See atRestaurant.
+            setEntries((diary.data || []).filter(e => atRestaurant(e, activeRestaurant.id)))
             setArena(events.data || [])
             setDayNotes(notes.data || [])
             setRestaurants(places.data || [])

@@ -386,6 +386,33 @@ export function showsOnRoster(entry) {
     return entry.status !== 'cancelled'
 }
 
+// Whether an entry belongs to the restaurant somebody is looking at.
+//
+// **This is not the same question the database answers, and that is the whole
+// point of it.** The policy on diary_entries answers "am I allowed to read
+// this", and for a store manager the two questions have the same answer, which
+// is why there was no filter here for a while and nothing looked wrong.
+//
+// They come apart in two places. A super admin may read every site's entries by
+// design, so the policy lets them all through. And which restaurant you are
+// *looking at* is the app's own idea, held in the restaurant switcher: the
+// database has never heard of it and answers for the one on your account. So a
+// Point Campus catering job turned up on the Dun Laoghaire roster. Nothing
+// leaked, everybody who saw it was allowed to, and it was still wrong.
+//
+// A group wide entry belongs everywhere, which is why a restaurant_id clause on
+// the query would have been the wrong fix: it would drop every promotion that
+// runs at both.
+//
+// Private ones stay. They carry no restaurant at all, the policy already limits
+// them to whoever wrote them, and a note to yourself does not become somebody
+// else's business or stop being yours because you switched shop.
+export function atRestaurant(entry, restaurantId) {
+    if (!entry) return false
+    if (entry.scope === 'sites') return (entry.restaurant_ids || []).includes(restaurantId)
+    return true
+}
+
 // -- What is wrong with it before it is saved --------------------------
 
 export function entryProblem(form) {

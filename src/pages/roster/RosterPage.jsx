@@ -5,7 +5,7 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
-import { DAY_NAMES, dayName } from '@/lib/events'
+import { DAY_NAMES, dayName, watchesVenue } from '@/lib/events'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
 import DateStepper from '@/components/ui/DateStepper'
@@ -36,6 +36,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { atRestaurant } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
@@ -191,18 +192,28 @@ export default function RosterPage() {
             // What is on at the Arena. A concert at half six is the reason half
             // the week is rostered the way it is, so it belongs on the grid
             // rather than in somebody's head.
-            supabase.from('events').select('*')
-                .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
-                .order('event_time'),
+            //
+            // Only where the restaurant watches a venue. This asked for them
+            // with no test at all, so Dun Laoghaire got the Arena listings that
+            // Point Campus had synced, forty minutes away and nothing to do
+            // with its week. See watchesVenue.
+            watchesVenue(activeRestaurant)
+                ? supabase.from('events').select('*')
+                    .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
+                    .order('event_time')
+                : Promise.resolve({ data: [], error: null }),
             // The diary: catering, meetings, promotions. Overlapping the
             // week rather than starting in it, the same reason the absences
             // below are asked for that way: a discount week that began last
             // Thursday still covers Monday.
             //
-            // No restaurant filter. Which entries this restaurant can see is
-            // the scope, and the scope is read by the policy in the database
-            // rather than by a clause here. A group wide promotion has no
-            // restaurant on it at all and a filter would drop it.
+            // No restaurant clause on the query, and that part was right: a
+            // group wide promotion carries no restaurant at all and a clause
+            // would drop it. What was missing is the sort afterwards. The
+            // policy answers whether you may read an entry, which is not the
+            // same question as whether it belongs to the restaurant you have
+            // switched to, and for a super admin the two answers differ. See
+            // atRestaurant.
             supabase.from('diary_entries').select('*')
                 .lte('starts_on', addDays(weekStart, 6))
                 .or(`ends_on.gte.${weekStart},and(ends_on.is.null,starts_on.gte.${weekStart})`)
@@ -239,7 +250,7 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
-        setDiary(diaryRes.data || [])
+        setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
         setAllWaiting(askRes.data || [])

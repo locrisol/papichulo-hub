@@ -22,7 +22,7 @@ import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
-import { calendarItems, itemsByDate, showsOnRoster } from '@/lib/diary'
+import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -232,7 +232,11 @@ export default function MyShiftsPage() {
             setShifts(shiftRes.data || [])
             setColleagues(mateRes.data || [])
             setDayNotes(noteRes.data || [])
-            setDiary(diaryRes.data || [])
+            // Sorted here as well as by the policy. An employee has one
+            // restaurant and the two answers agree for them today, but the
+            // rule belongs in one place rather than in whichever screen
+            // happened to need it. See atRestaurant.
+            setDiary((diaryRes.data || []).filter(e => atRestaurant(e, mine.restaurant_id)))
             setAbsences(awayRes.data || [])
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
