@@ -60,7 +60,9 @@ export const WIDTH = 760
 // twenty each side it arrives on a phone about two thirds the width of the
 // figures above it. So every row of words pays the padding and a chart pays
 // none, which is what puts it edge to edge.
-const SIDE = 20
+// Exported so a test can say "the standard gutter" rather than repeat the
+// number, which is how a test comes to pass against a width nobody chose.
+export const SIDE = 16
 
 // Quoted printable, and the one rule this file has to obey.
 //
@@ -216,22 +218,36 @@ function band(colour, background, title, body) {
     </table>`
 }
 
-// A section heading.
+// A section heading, and which of the seven it is.
 //
 // A filled bar rather than small grey lettering over a short rule. Seven
 // sections deep in a mail read on a phone, the old one carried the same weight
 // as the figures around it and the whole report read as one long list. This one
 // you can find by scrolling.
-function heading(title) {
-    // It runs wider than the figures under it, by the width of the gutter they
-    // pay and it does not. That step is what makes scrolling past one read as
-    // the start of something rather than as another row. The bar takes the
-    // gutter back as its own padding, so the title stays exactly where it was
-    // and only the dark ground gets wider.
-    return `<tr><td style="padding:28px 0 12px;">
+//
+// It ran wider than the figures under it, by the width of the gutter they paid
+// and it did not, so the step read as the start of something. It runs the whole
+// width of the message now, which does the same job better and costs nothing:
+// the message has no gutter of its own any more.
+//
+// **The number is not decoration.** A band tells you where a section starts and
+// says nothing once you have scrolled past it, which on a phone is most of the
+// time. The seven are always the same seven in the same order, so "4" is a true
+// thing about the section and it is the answer to standing in the middle of a
+// long mail wondering which part this is.
+//
+// It is handed in rather than counted here. A counter kept in this module would
+// be right in a function that renders one mail and wrong in a test run that
+// renders forty, which is the sort of bug that only ever shows up in the one
+// place nobody is looking.
+function heading(title, number) {
+    return `<tr><td style="padding:36px 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};border-radius:8px;padding:12px ${SIDE + 15}px;font-family:${FONT};">
-                <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</div>
+            <tr><td style="background:${DARK};padding:14px ${SIDE}px;font-family:${FONT};">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                    ${number ? `<td width="26" align="center" style="background:#ffffff2e;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
+                    <td style="${number ? `padding-left:12px;` : ''}font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
+                </tr></table>
             </td></tr>
         </table>
     </td></tr>`
@@ -381,7 +397,7 @@ function salesAndCosts(section, f, charts) {
         t.packaging ? `packaging ${t.packaging}%` : null,
     ].filter(Boolean).join(', ')
 
-    return heading(section.title) + figures([
+    return heading(section.title, section.number) + figures([
         line({ label: 'Net sales', value: money(f.net), total: true }),
         line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
         line({ label: 'Food', value: withShare(f.food, f.foodPct, costTone(f.foodPct, t.food)) }),
@@ -460,7 +476,7 @@ function profitAndLoss(section, f, charts) {
         }))
     }
 
-    return heading(section.title) + figures(rows.slice(0, paidFrom))
+    return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
         + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
         + bigFigure({
             label: 'Net earnings',
@@ -593,7 +609,7 @@ function platformSection(section, f, charts, bucket, chartKey) {
         ? note('No platforms were tracked for this week.')
         : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
 
-    return heading(section.title) + body
+    return heading(section.title, section.number) + body
         + chart(charts[chartKey], bucket === 'online_platform'
             ? 'What each platform took, week by week.'
             : 'Corporate sales, week by week.')
@@ -649,7 +665,7 @@ function paperwork(state, title) {
 
 function peopleAndOps(section, f) {
     const paper = f.paperwork || {}
-    return heading(section.title)
+    return heading(section.title, section.number)
         + paperwork(paper.food, 'Food safety certificates')
         + paperwork(paper.permits, 'Right to work')
         + comments(sectionComments(section))
@@ -668,7 +684,7 @@ function weeksOpen(openedOn, weekStart) {
 function supportActions(section, weekStart) {
     const actions = of(section, 'action').filter(a => !a.done_on)
     if (actions.length === 0) {
-        return heading(section.title) + note('Nothing outstanding.')
+        return heading(section.title, section.number) + note('Nothing outstanding.')
     }
 
     const rows = actions.map(action => {
@@ -680,14 +696,14 @@ function supportActions(section, weekStart) {
         })
     })
 
-    return heading(section.title) + figures(rows) + comments(sectionComments(section))
+    return heading(section.title, section.number) + figures(rows) + comments(sectionComments(section))
 }
 
 // A section somebody added. It has no figures of its own, only what was written
 // in it, which is the whole reason it exists.
 function ownSection(section) {
     const written = sectionComments(section)
-    return heading(section.title)
+    return heading(section.title, section.number)
         + (written.length ? comments(written) : note('Nothing written this week.'))
 }
 
@@ -748,9 +764,13 @@ export function reportEmail({
         support_actions: s => supportActions(s, weekStart),
     }
 
+    // Numbered in the order they are drawn, which is the order they are read
+    // and the only order that could be meant. Counted here rather than inside
+    // heading(), because a counter living in the module would keep climbing
+    // across every mail the same isolate renders.
     const body = [...sections]
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .map(section => (known[section.key] || ownSection)(section))
+        .map((section, i) => (known[section.key] || ownSection)({ ...section, number: i + 1 }))
         .join('')
 
     const hubButton = appUrl
@@ -772,25 +792,24 @@ export function reportEmail({
 <meta name="supported-color-schemes" content="light dark" /></head>
 <body style="margin:0;padding:0;background:${CREAM};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="background:${CREAM};padding:24px 10px;">
+    style="background:${CREAM};padding:0;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="width:100%;max-width:${WIDTH}px;background:#ffffff;border-radius:14px;
-    border:1px solid ${BORDER};overflow:hidden;">
+    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;">
 
-    <tr><td style="background:${DARK};padding:22px 24px;font-family:${FONT};">
+    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};">
         <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#ffffff99;">Weekly summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
         <div style="margin-top:4px;font-size:14px;color:#ffffffcc;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
     </td></tr>
 
-    <tr><td style="padding:22px 24px 30px;">
+    <tr><td style="padding:18px 0 26px;">
         ${bands}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>
         <div style="margin-top:34px;">${hubButton}</div>
     </td></tr>
 
-    <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px 24px;
+    <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px ${SIDE}px;
         font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${publisher
             ? `Written up by ${escapeHtml(publisher)}. Replies come straight back to them.` : ''}</td></tr>
 
