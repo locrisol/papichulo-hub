@@ -5,69 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import BackToTop from '@/components/layout/BackToTop'
 import { ScrollProvider } from '@/context/ScrollContext'
-import { can, ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
+import { can, MANAGERS } from '@/lib/access'
+import { navItems, navTarget } from '@/lib/nav'
 
-// Sidebar navigation.
-//
-// Items are grouped by `section`, and the sections render in the order they
-// first appear in this array, so moving an item can move a whole heading.
-//
-// This is only half of who can reach what. It decides what a role is offered.
-// App.jsx decides what happens if somebody types the address anyway, and both
-// read the same lists out of lib/access.js so they cannot disagree.
-//
-// Anything not built yet is left out entirely rather than added and disabled. A
-// link that goes nowhere is worse than no link.
-const navItems = [
-    { path: '/dashboard', label: 'Cost Dashboard', icon: 'costs', section: 'Overview', roles: MANAGERS },
-    { path: '/reports', label: 'Reports', icon: 'weekly', section: 'Overview', roles: MANAGERS },
-
-    // Sales module. Daily Sales is the per-day entry form; Weekly Sales is the
-    // Sunday to Saturday grid where a whole week can be entered in one pass.
-    // `search` is appended when navigating: Daily Sales asks for the day view
-    // explicitly, otherwise the day form redirects wide screens to the grid and
-    // the link would appear to do nothing.
-    { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
-    { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations', roles: MANAGERS },
-    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations', roles: MANAGERS },
-    { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
-    { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
-    { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },
-
-    // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
-    { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },
-    { path: '/catalogue/menu-items', label: 'Menu Items', icon: 'menu', section: 'Catalogue', roles: MANAGERS },
-    // Employees can see suppliers on purpose: if a delivery is wrong they need
-    // the rep's number. Nothing here is commercially sensitive.
-    { path: '/catalogue/suppliers', label: 'Suppliers', icon: 'suppliers', section: 'Catalogue', roles: ALL_ROLES },
-
-    { path: '/inventory/stock-takes', label: 'Stock Takes', icon: 'stk', section: 'Inventory', roles: ALL_ROLES },
-    { path: '/inventory/public-allergens', label: 'Public Allergens', icon: 'alg', section: 'Inventory', roles: MANAGERS },
-
-    // Everyone sees this. Nothing on it is sensitive, and the people working a
-    // concert night are the ones who most need to know it is happening.
-    //
-    // No longer gated on forecasting. It used to be the Arena and nothing else,
-    // so a restaurant with no venue had nothing to look at; now the Arena is one
-    // layer on it and the rest of it is the same everywhere.
-    { path: '/calendar', label: 'Calendar', icon: 'forecast', section: 'Analytics', roles: ALL_ROLES },
-
-    { path: '/my-shifts', label: 'My shifts', icon: 'weekly', section: 'People', roles: ALL_ROLES },
-    { path: '/roster', label: 'Roster', icon: 'weekly', section: 'People', roles: MANAGERS },
-    { path: '/team', label: 'Team', icon: 'users', section: 'People', roles: MANAGERS },
-
-
-    // Accounts and the sign in record. Everything a manager needs to do with a
-    // person lives under Team; this page is only about who can get in, so it is
-    // Super Admin's. Team keeps working either way, it reads the users table
-    // itself and the policy decides what comes back.
-    { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
-
-    // What the database recorded, which is a different question from who got
-    // in and belongs beside it rather than inside it.
-    { path: '/settings/changes', label: 'Changes', icon: 'weekly', section: 'Settings', roles: ADMIN_ONLY },
-    { path: '/settings/restaurant', label: 'Restaurant', icon: 'restaurant', section: 'Settings', roles: RESTAURANT_CONFIG },
-]
 
 // Heroicons outline paths, referenced by the `icon` key on each nav item.
 const icons = {
@@ -84,6 +24,7 @@ const icons = {
     forecast: "M13 10V3L4 14h7v7l9-11h-7z",
     alg: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
     users: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+    cog: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     restaurant: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
     menu: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
 }
@@ -210,7 +151,7 @@ export default function AppLayout({ children }) {
                                 return (
                                     <button
                                         key={item.path}
-                                        onClick={() => { navigate(item.path + (item.search || '')); setSidebarOpen(false) }}
+                                        onClick={() => { navigate(navTarget(item)); setSidebarOpen(false) }}
                                         className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors border-r-4 ${isActive
                                             ? 'bg-sidebar-active text-white border-accent'
                                             : 'text-green-300 border-transparent hover:text-white hover:bg-sidebar-active'

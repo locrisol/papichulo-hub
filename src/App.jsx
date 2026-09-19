@@ -21,7 +21,7 @@ import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
 import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 import { useAuth } from '@/context/auth'
-import { homeFor } from '@/lib/access'
+import { landingFor } from '@/lib/nav'
 
 // Every screen is fetched when somebody actually opens it.
 //
@@ -36,6 +36,7 @@ import { homeFor } from '@/lib/access'
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
 const ChangesPage = lazy(() => import('@/pages/settings/ChangesPage'))
 const RestaurantPage = lazy(() => import('@/pages/settings/RestaurantPage'))
+const PreferencesPage = lazy(() => import('@/pages/settings/PreferencesPage'))
 const SuppliersPage = lazy(() => import('@/pages/inventory/SuppliersPage'))
 const ProductsPage = lazy(() => import('@/pages/inventory/ProductsPage'))
 const ProductPricesPage = lazy(() => import('@/pages/inventory/ProductPricesPage'))
@@ -148,6 +149,7 @@ export default function App() {
                 <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
                 <Route path="/settings/changes" element={<RequireRole allowed={ADMIN_ONLY}><ChangesPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
+                <Route path="/settings/preferences" element={<RequireRole allowed={MANAGERS}><PreferencesPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />
               </Routes>
@@ -160,10 +162,14 @@ export default function App() {
   )
 }
 
-// The dashboard is no use to an employee, who cannot read any of it, so send
-// them where their work actually is.
+// Where somebody lands, which is their own choice where they have made one.
+//
+// The dashboard is no use to an employee, who cannot read any of it, so the
+// answer with nothing chosen is still the screen their work is on. What they
+// chose is checked against what they may open rather than trusted, because a
+// role can be lowered after the choice was made. See landingFor.
 function HomeRedirect() {
     const { session, user, loading } = useAuth()
     if (loading || (session && !user)) return null
-    return <Navigate to={homeFor(user)} replace />
+    return <Navigate to={landingFor(user)} replace />
 }
