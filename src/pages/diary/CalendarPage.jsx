@@ -65,7 +65,10 @@ export default function CalendarPage() {
 
     const [viewMonth, setViewMonth] = useState(monthStart(today))
     const [weekStart, setWeekStart] = useState(weekStartOf(today))
-    const [selected, setSelected] = useState(today)
+    // Nothing open until somebody opens something. Today's row was expanded on
+    // arrival, which pushed the rest of the month down before anybody had asked
+    // it a question, and on a phone it answered a tap nobody had made.
+    const [selected, setSelected] = useState(null)
 
     const [entries, setEntries] = useState([])
     const [arena, setArena] = useState([])
