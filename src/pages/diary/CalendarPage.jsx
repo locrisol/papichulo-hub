@@ -129,6 +129,7 @@ export default function CalendarPage() {
             // This came over from the Events screen along with everything else.
             // Deleting that page without carrying the sync would have left the
             // Arena layer quietly frozen on whatever was last fetched.
+            //
             // The restaurant, never the venue. The function reads the venue
             // off that restaurant's own row, so nothing the browser says can
             // point the quota at a venue of somebody else's choosing.
