@@ -15,7 +15,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
 } from '@/lib/roster'
-import { checkWeek, findingsByEmployee, overlapFindings } from '@/lib/workRules'
+import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
 import { emailTheAnswer } from '@/lib/timeOffMail'
 import { absenceRange } from '@/lib/absences'
@@ -405,8 +405,15 @@ export default function RosterPage() {
     // have scrolled past. Double bookings join them here and only here: they
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
+    //
+    // Paperwork does not come down here. A permit or a food safety certificate
+    // is a standing fact about the person, the same on Monday as on Friday, and
+    // it stays in the banner at the top. Beside a name on a row of shifts it
+    // made the row's warning mean two things at once, so a number beside
+    // somebody had to be opened to find out whether the week was wrong or the
+    // filing was.
     const alerts = findingsByEmployee([
-        ...findings, ...overlapFindings(clashes, employeesById), ...fullDayNotes,
+        ...aboutThisWeek(findings), ...overlapFindings(clashes, employeesById), ...fullDayNotes,
     ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.

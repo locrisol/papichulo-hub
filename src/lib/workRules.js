@@ -555,6 +555,33 @@ export function checkWeek({
 // The roster reads down a column of names, so a warning that only exists in a
 // banner above the grid is a warning nobody sees. This is what lets the row
 // itself carry it.
+// What a finding is about, which decides where it is allowed to appear.
+//
+// A work permit expiring and a food safety certificate running out are about a
+// person's paperwork. They are true all week, they are the same on Monday as on
+// Friday, and nothing about the grid changes them. Putting them beside a name
+// on a row of shifts made the row's warning mean two different things at once,
+// so a manager reading "3" beside somebody had to open it to find out whether
+// the week was wrong or the filing was.
+//
+// So paperwork lives in the banner at the top, where it is a standing fact
+// about the person, and the row keeps what is about this week: hours against a
+// limit, rest between shifts, days off, availability, a clash, a minor rostered
+// too long or too late.
+//
+// Matched on the front of the kind rather than by listing every one, so a new
+// permission check lands in the right half without anybody remembering to come
+// back here.
+const PAPERWORK = /^(permission|foodSafety)/
+
+export function isPaperwork(finding) {
+    return PAPERWORK.test(String(finding?.kind || ''))
+}
+
+export function aboutThisWeek(findings) {
+    return (findings || []).filter(f => !isPaperwork(f))
+}
+
 export function findingsByEmployee(findings) {
     const out = {}
     for (const finding of findings || []) {

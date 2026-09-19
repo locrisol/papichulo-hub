@@ -49,9 +49,28 @@ export default function RosterWeek({
     alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
     shiftMark, staff = false,
 }) {
-    // Whose warnings are open, one at a time. Blocks are never in here: those
-    // stay on screen, because a block is the reason the week will not publish.
-    const [openAlerts, setOpenAlerts] = useState(null)
+    // Whose warnings have been shut, rather than whose are open.
+    //
+    // They start open, all of them. Closed by default they were a number beside
+    // a name that you had to press to find out what it meant, on a screen whose
+    // whole job is telling you what is wrong with the week before you send it
+    // out. Now the week says what is wrong with it and you can put away the
+    // ones you have dealt with.
+    //
+    // Several at once rather than one at a time, for the same reason: reading
+    // two people's warnings meant opening one and losing the other.
+    //
+    // Blocks are never shut by this. AlertStrip draws them whatever this says,
+    // because a block is the reason the week will not publish.
+    const [shutAlerts, setShutAlerts] = useState(() => new Set())
+
+    const alertsOpen = id => !shutAlerts.has(id)
+    const toggleAlerts = id => setShutAlerts(was => {
+        const next = new Set(was)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+    })
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -410,10 +429,9 @@ export default function RosterWeek({
                                         </span>
                                         <AlertBadge
                                             findings={mineAlerts}
-                                            open={openAlerts === row.employee.id}
+                                            open={alertsOpen(row.employee.id)}
                                             onToggle={hasWarnings(mineAlerts)
-                                                ? () => setOpenAlerts(
-                                                    openAlerts === row.employee.id ? null : row.employee.id)
+                                                ? () => toggleAlerts(row.employee.id)
                                                 : undefined}
                                         />
                                     </span>
@@ -605,7 +623,7 @@ export default function RosterWeek({
                             hasAlerts ? (
                                 <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
                                     <td colSpan={dates.length + (anyHoliday ? 3 : 2)} className="p-0">
-                                        <AlertStrip findings={mineAlerts} open={openAlerts === row.employee.id} />
+                                        <AlertStrip findings={mineAlerts} open={alertsOpen(row.employee.id)} />
                                     </td>
                                 </tr>
                             ) : null,

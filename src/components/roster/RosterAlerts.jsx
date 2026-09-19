@@ -27,9 +27,13 @@ function Triangle({ className = '' }) {
 // The mark beside a name. Nothing at all when there is nothing wrong, so a
 // clean week looks exactly as it did before any of this.
 //
-// A button when there are warnings to open, and a plain mark when there are
-// only blocks, because a block is already open underneath and there is nothing
-// left for pressing it to do.
+// A button when there are warnings to put away, and a plain mark when there are
+// only blocks, because a block stays on screen whatever this says and there is
+// nothing left for pressing it to do.
+//
+// They start open now. Closed by default this was a number beside a name that
+// you had to press to find out what it meant, on a screen whose whole job is
+// saying what is wrong with the week before it goes out.
 export function AlertBadge({ findings, open, onToggle }) {
     if (!findings?.length) return null
 
