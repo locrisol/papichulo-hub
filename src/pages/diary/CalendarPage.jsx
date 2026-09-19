@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { can, MANAGERS } from '@/lib/access'
-import { todayISO, weekStartOf, weekDates, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
+import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
 import {
@@ -275,7 +275,7 @@ export default function CalendarPage() {
                                 onClick={() => setWeekExtrasOpen(true)}
                                 className={secondaryButton}
                             >
-                                Corporate week
+                                Corporate schedule
                             </button>
                             <button
                                 type="button"
@@ -370,8 +370,7 @@ export default function CalendarPage() {
 
             {weekExtrasOpen && (
                 <WeekExtrasModal
-                    dates={weekDates(view === 'week' ? weekStart : weekStartOf(selected || today))}
-                    dayNotes={dayNotes}
+                    startOn={view === 'week' ? weekStart : (selected || today)}
                     restaurant={activeRestaurant}
                     onClose={() => setWeekExtrasOpen(false)}
                     onSaved={() => { setWeekExtrasOpen(false); setRefresh(n => n + 1) }}

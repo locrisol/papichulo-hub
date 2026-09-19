@@ -1,4 +1,4 @@
-import { addDays } from '@/lib/dates'
+import { addDays, fullDate } from '@/lib/dates'
 import { DAY_NAMES } from '@/lib/events'
 import { bandsForWeek, kindChip, kindDot, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
@@ -40,6 +40,46 @@ function BandRow({ bands, onOpen, canEdit }) {
                     </div>
                 </div>
             ))}
+        </div>
+    )
+}
+
+// A day opened out, under the week it is in.
+//
+// On a phone this is the only way to read a day at all, since a cell there
+// holds coloured dots and nothing else. On a computer it is what makes "+2
+// more" honest: that button said there was something and then had nowhere to
+// show it, which is a button that lies.
+//
+// It hides itself on a computer when the day is empty, because a permanent
+// "Nothing on" sitting inside every month is noise. On a phone it stays, since
+// there it is the answer to a tap and an empty answer is still an answer.
+function DayPanel({ date, items, restaurants, onOpen, canEdit }) {
+    return (
+        <div className={`border-y border-border bg-app-bg px-3 py-2.5 ${items.length ? 'block' : 'block sm:hidden'}`}>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">
+                {fullDate(date)}
+            </p>
+            {items.length === 0 ? (
+                <p className="text-sm text-muted italic">Nothing on.</p>
+            ) : (
+                <div className="flex flex-col gap-1.5">
+                    {items.map(item => (
+                        <div key={item.key} className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="flex-1 min-w-0">
+                                <DiaryChip item={item} onOpen={onOpen} canEdit={canEdit} />
+                            </span>
+                            {item.source === 'diary' && (
+                                <span className="text-[0.65rem] text-muted whitespace-nowrap">
+                                    {timeLabel(item.entry)}
+                                    {' \u00b7 '}
+                                    {scopeLabel(item.entry, restaurants)}
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
@@ -91,6 +131,8 @@ export default function DiaryMonth({
                     week,
                 )
 
+                const holdsSelected = week.includes(selected)
+
                 return (
                     <div key={week[0]}>
                         <BandRow bands={bands} onOpen={onOpen} canEdit={canEdit} />
@@ -109,15 +151,23 @@ export default function DiaryMonth({
                                 return (
                                     <div
                                         key={date}
-                                        className={`border-r border-b border-border last:border-r-0 min-h-[3rem] sm:min-h-[6rem] ${dim ? 'bg-gray-50' : 'bg-white'}`}
+                                        className={`relative border-r border-b border-border last:border-r-0 min-h-[3rem] sm:min-h-[6rem] ${dim ? 'bg-gray-50' : 'bg-white'} ${selected === date ? 'ring-2 ring-inset ring-accent' : ''}`}
                                     >
+                                        {/* The whole square opens the day, not
+                                            just the number in the corner of it.
+                                            A button laid under the contents
+                                            rather than wrapped around them,
+                                            because the chips are buttons of
+                                            their own and a button inside a
+                                            button is not a thing. */}
                                         <button
                                             type="button"
                                             onClick={() => onSelect(date)}
-                                            aria-label={date}
+                                            aria-label={fullDate(date)}
                                             aria-pressed={selected === date}
-                                            className={`w-full text-left px-1 pt-1 ${selected === date ? 'ring-2 ring-inset ring-accent' : ''}`}
-                                        >
+                                            className="absolute inset-0 w-full h-full"
+                                        />
+                                        <div className="relative pointer-events-none px-1 pt-1">
                                             {dayNumber(date)}
 
                                             {/* A phone: a dot each, because
@@ -132,9 +182,9 @@ export default function DiaryMonth({
                                                     />
                                                 ))}
                                             </span>
-                                        </button>
+                                        </div>
 
-                                        <div className="hidden sm:flex flex-col gap-0.5 px-1 pb-1">
+                                        <div className="relative hidden sm:flex flex-col gap-0.5 px-1 pb-1">
                                             {items.slice(0, ROOM_FOR).map(item => (
                                                 <DiaryChip key={item.key} item={item} onOpen={onOpen} canEdit={canEdit} compact />
                                             ))}
@@ -152,45 +202,25 @@ export default function DiaryMonth({
                                 )
                             })}
                         </div>
+
+                        {/* The day opens under its own row rather than at the
+                            foot of the month. At the bottom it was six weeks
+                            away from the square you clicked, which is why he
+                            could barely see it: you press a cell in the second
+                            week and the answer appears below the sixth. */}
+                        {holdsSelected && (
+                            <DayPanel
+                                date={selected}
+                                items={onSelectedDay}
+                                restaurants={restaurants}
+                                onOpen={onOpen}
+                                canEdit={canEdit}
+                            />
+                        )}
                     </div>
                 )
             })}
 
-            {/* The day you tapped, in full, under the grid.
-                On a phone this is the only way to read a day at all, since a
-                cell there holds dots. On a computer it is what makes "+2 more"
-                honest: that button said there was something and then had
-                nowhere to show it, which is a button that lies.
-                So it is here on both, and it only hides itself on a computer
-                when the day is empty, where a permanent "Nothing on" under
-                every month would be noise. */}
-            <div className={`border-t border-border bg-white p-3 rounded-b-xl ${
-                onSelectedDay.length ? 'block' : 'block sm:hidden'
-            }`}>
-                <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">
-                    {new Date(`${selected}T00:00:00`).toDateString()}
-                </p>
-                {onSelectedDay.length === 0 ? (
-                    <p className="text-sm text-muted italic">Nothing on.</p>
-                ) : (
-                    <div className="flex flex-col gap-1.5">
-                        {onSelectedDay.map(item => (
-                            <div key={item.key} className="flex flex-wrap items-baseline gap-x-2">
-                                <span className="flex-1 min-w-0">
-                                    <DiaryChip item={item} onOpen={onOpen} canEdit={canEdit} />
-                                </span>
-                                {item.source === 'diary' && (
-                                    <span className="text-[0.65rem] text-muted whitespace-nowrap">
-                                        {timeLabel(item.entry)}
-                                        {' \u00b7 '}
-                                        {scopeLabel(item.entry, restaurants)}
-                                    </span>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
         </div>
     )
 }

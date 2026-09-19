@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Modal from '@/components/ui/Modal'
 import ClockField from '@/components/ui/ClockField'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { shortDate } from '@/lib/dates'
+import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO } from '@/lib/dates'
 import { DAY_NAMES } from '@/lib/events'
 import { friendlyError } from '@/lib/errors'
 import {
@@ -187,21 +187,56 @@ function GridShape({ rows, dates, onSet }) {
     )
 }
 
-export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, onSaved }) {
+export default function WeekExtrasModal({ startOn, restaurant, onClose, onSaved }) {
     const { user } = useAuth()
 
-    // Worked on here and written once, rather than a round trip per tick. A
-    // schedule is entered in one pass and it should be saved in one.
-    const [notes, setNotes] = useState(
-        () => dates.map(date => ({
-            note_date: date,
-            extras: extrasFor((dayNotes || []).find(n => n.note_date === date)),
-        })),
-    )
+    // It carries its own week and fetches its own days.
+    //
+    // This was lifted from the roster, where the page has exactly one week on
+    // screen and could simply hand it over. The calendar has a month, a week
+    // and a list, so there is no week to hand over, and the first version made
+    // you go and click a date before the button would do anything useful.
+    // Which week you are on belongs to this screen, so this screen holds it.
+    const [week, setWeek] = useState(() => weekStartOf(startOn || todayISO()))
+    const dates = weekDates(week)
+
+    const [notes, setNotes] = useState([])
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        if (!restaurant?.id) return undefined
+        let alive = true
+
+        async function load() {
+            setLoading(true)
+            const days = weekDates(week)
+            const { data } = await supabase
+                .from('day_notes').select('note_date, extras')
+                .eq('restaurant_id', restaurant.id)
+                .gte('note_date', days[0]).lte('note_date', days[6])
+
+            if (!alive) return
+            // Worked on here and written once at the end, rather than a round
+            // trip per tick. A schedule is entered in one pass and should be
+            // saved in one.
+            setNotes(days.map(date => ({
+                note_date: date,
+                extras: extrasFor((data || []).find(n => n.note_date === date)),
+            })))
+            setLoading(false)
+        }
+
+        load()
+        return () => { alive = false }
+    }, [restaurant?.id, week])
     // Named here but on no day yet, because naming a thing and saying when it
     // is are two decisions, and putting it on every day would be a guess. The
     // grid only knows about names on the usual list or already on a day, so
     // these ride along until one of the two is true.
+    // Days somebody took something off. Without this an emptied day is
+    // indistinguishable from one that never had anything, and the change
+    // would not be written.
+    const [touched, setTouched] = useState(() => new Set())
     const [oneOffs, setOneOffs] = useState([])
     const [picked, setPicked] = useState(null)
     const [adding, setAdding] = useState('')
@@ -213,6 +248,7 @@ export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, 
     // null takes it off the day. Anything else puts it on, at that time or at
     // no time, which are two different answers.
     function onSet(date, name, time) {
+        setTouched(was => new Set(was).add(date))
         setNotes(list => list.map(note => {
             if (note.note_date !== date) return note
             if (time === null) return { ...note, extras: removeExtra(note.extras, name) }
@@ -250,9 +286,14 @@ export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, 
         //
         // A day that already had a row is always written, because taking the
         // last delivery off it is a change and has to be saved.
-        const had = new Set((dayNotes || []).map(n => n.note_date))
+        // Everything in the week. The screen fetched the days itself, so it
+        // cannot tell which of them had a row before, and writing an empty one
+        // for a day that never had anything would fill day_notes with days that
+        // are perfectly ordinary. Upsert only the days that carry something,
+        // and for the rest write the empty on the ones that are on screen as
+        // having had something taken off.
         const rowsToSave = notes
-            .filter(note => note.extras.length > 0 || had.has(note.note_date))
+            .filter(note => note.extras.length > 0 || touched.has(note.note_date))
             .map(note => ({
                 restaurant_id: restaurant.id,
                 note_date: note.note_date,
@@ -279,12 +320,33 @@ export default function WeekExtrasModal({ dates, dayNotes, restaurant, onClose, 
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                        <p className="text-sm font-bold text-gray-900">{weekMonthLabel(week)}</p>
+                        <p className="text-xs text-muted">{restaurant?.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setWeek(w => addDays(w, -7))}
+                            className={secondaryButton} aria-label="The week before">&#8249;</button>
+                        <button type="button" onClick={() => setWeek(weekStartOf(todayISO()))}
+                            className={secondaryButton}>This week</button>
+                        <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
+                            className={secondaryButton} aria-label="The week after">&#8250;</button>
+                    </div>
+                </div>
+
                 <p className={`${hintClass} mb-3 mt-0`}>
                     The schedule arrives as a week, so it goes in as a week. Tap a day to put
                     something on it, and tap the time to change it.
                 </p>
 
-                {rows.length === 0 ? (
+                {/* Anything typed and not saved is lost on a week step, which
+                    is why the step is beside the heading and not beside the
+                    grid: it reads as changing what you are looking at rather
+                    than as part of filling it in. */}
+                {loading ? (
+                    <p className="text-sm text-muted">Loading the week...</p>
+                ) : rows.length === 0 ? (
                     <p className="text-sm text-muted italic">
                         Nothing on the usual list yet. Add one below, or set the usual ones up in
                         the restaurant settings.

@@ -1066,8 +1066,7 @@ export default function RosterPage() {
 
             {weekExtrasOpen && (
                 <WeekExtrasModal
-                    dates={dates}
-                    dayNotes={dayNotes}
+                    startOn={weekStart}
                     restaurant={activeRestaurant}
                     onClose={() => setWeekExtrasOpen(false)}
                     onSaved={() => { setWeekExtrasOpen(false); load({ quiet: true }) }}
