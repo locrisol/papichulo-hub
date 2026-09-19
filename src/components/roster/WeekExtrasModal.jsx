@@ -12,6 +12,7 @@ import {
 } from '@/lib/dayExtras'
 import {
     modalFooter, secondaryButton, primaryButton, fieldClass, labelClass, hintClass,
+    jumpButton, jumpLabel,
 } from '@/lib/controlStyles'
 
 // The Feedr schedule, in one go.
@@ -328,8 +329,16 @@ export default function WeekExtrasModal({ startOn, restaurant, onClose, onSaved 
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={() => setWeek(w => addDays(w, -7))}
                             className={secondaryButton} aria-label="The week before">&#8249;</button>
+                        {/* Not a button that says This week wherever you are.
+                            Standing on week 31 and being offered "This week"
+                            says nothing about what pressing it does, and the
+                            colour alone is something you have to already know
+                            the meaning of. Same pair the roster and every other
+                            stepper in the app uses. */}
                         <button type="button" onClick={() => setWeek(weekStartOf(todayISO()))}
-                            className={secondaryButton}>This week</button>
+                            className={jumpButton(week === weekStartOf(todayISO()))}>
+                            {jumpLabel(week === weekStartOf(todayISO()))}
+                        </button>
                         <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
                             className={secondaryButton} aria-label="The week after">&#8250;</button>
                     </div>

@@ -10,7 +10,7 @@ import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot,
 } from '@/lib/diary'
 import {
-    card, pageTitle, secondaryButton, segmentTrack, segmentButton,
+    card, pageTitle, secondaryButton, segmentTrack, segmentButton, jumpButton, jumpLabel,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DiaryMonth from '@/components/diary/DiaryMonth'
@@ -229,6 +229,15 @@ export default function CalendarPage() {
         setRefresh(n => n + 1)
     }
 
+    // The jump says what pressing it does, and only says where you are when
+    // you are already there. Which unit it talks about follows the view: a
+    // month view offering to take you to this week would be answering a
+    // question you did not ask.
+    const unit = view === 'month' ? 'month' : 'week'
+    const atNow = view === 'month'
+        ? viewMonth === monthStart(today)
+        : weekStart === weekStartOf(today)
+
     const heading = view === 'month'
         ? monthLabel(viewMonth)
         : (view === 'week' ? weekMonthLabel(weekStart) : 'The next four months')
@@ -265,13 +274,13 @@ export default function CalendarPage() {
                             </button>
                             <button
                                 type="button"
-                                className={secondaryButton}
+                                className={jumpButton(atNow)}
                                 onClick={() => {
                                     setViewMonth(monthStart(today))
                                     setWeekStart(weekStartOf(today))
                                 }}
                             >
-                                Today
+                                {jumpLabel(atNow, unit)}
                             </button>
                             <button type="button" onClick={() => step(1)} className={secondaryButton} aria-label="Forward">
                                 &#8250;
