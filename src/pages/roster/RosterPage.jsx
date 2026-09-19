@@ -1016,6 +1016,8 @@ export default function RosterPage() {
                     breakRules={activeRestaurant?.break_rules}
                     onResizeShift={resizeShift}
                     events={events.filter(ev => ev.event_date === date)}
+                    diary={diary}
+                    onOpenDiary={entry => setEditingDiary(entry)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({

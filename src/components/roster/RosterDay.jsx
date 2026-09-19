@@ -8,6 +8,7 @@ import { hasWarnings } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '@/lib/absences'
 import { partWords, partDaySpans } from '@/lib/timeOff'
 import { extrasFor, extraLabel, extraLanes } from '@/lib/dayExtras'
+import { onDate, showsOnRoster, kindLabel, kindChip, kindDot } from '@/lib/diary'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor, hourLabelStep,
@@ -61,12 +62,14 @@ export default function RosterDay({
     dayHours,
     dayNote,
     events,
+    diary,
     gridHours,
     breakRules,
     onOpenShift,
     onNewShift,
     onDragShift,
     onResizeShift,
+    onOpenDiary,
 }) {
     // Whose warnings are open, one at a time. Seven rows of amber under a grid
     // you came to read is a grid you cannot read, and a warning nobody can see
@@ -115,10 +118,29 @@ export default function RosterDay({
     // reason the middle of the day needs another pair of hands, and neither of
     // them is in the ticketing API that fills What is on.
     //
+    // The calendar's own entries share the strip now: a catering job, a meeting
+    // or a maintenance visit is the same question as a delivery, which is what
+    // else is happening today, and answering it in two places would mean
+    // reading two.
+    //
     // Split by whether it has a time. One can be put on the grid where it
     // happens and the other cannot, and pretending otherwise would mean drawing
     // an office delivery at midnight because that is where nothing sorts to.
-    const extras = extrasFor(dayNote)
+    // What is on, from the calendar, drawn on the same strip as the corporate
+    // orders. Two tables and one question: what else is happening today.
+    //
+    // Shaped into the same {name, time} the strip already packs into lanes, so
+    // a catering job at noon and Feedr at noon cannot land on top of each
+    // other. The lane packer keeps only the name and the time, so the kind is
+    // looked back up by name to colour it.
+    const commitments = onDate((diary || []).filter(showsOnRoster), date).map(e => ({
+        name: `${kindLabel(e.kind)} (${e.title})`,
+        time: e.starts_at ? String(e.starts_at).slice(0, 5) : '',
+        entry: e,
+    }))
+    const byName = new Map(commitments.map(c => [c.name.toLowerCase(), c]))
+
+    const extras = [...commitments, ...extrasFor(dayNote)]
     const extraRows = extraLanes(extras)
     const looseExtras = extras.filter(e => !e.time)
 
@@ -353,27 +375,61 @@ export default function RosterDay({
                                 <span className="block text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
                                     Also on
                                 </span>
-                                {looseExtras.map(extra => (
-                                    <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
-                                        {extra.name}
-                                    </span>
-                                ))}
+                                {looseExtras.map(extra => {
+                                    const mine = byName.get(extra.name.toLowerCase())
+                                    return mine ? (
+                                        <button
+                                            key={extra.name}
+                                            type="button"
+                                            onClick={() => onOpenDiary?.(mine.entry)}
+                                            className={`block w-full text-left text-[0.625rem] truncate rounded border-l-[3px] px-1 ${kindChip(mine.entry.kind)}`}
+                                        >
+                                            {extra.name}
+                                        </button>
+                                    ) : (
+                                        <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
+                                            {extra.name}
+                                        </span>
+                                    )
+                                })}
                             </div>
                             <div className="flex-1 py-1">
                                 {extraRows.map((row, i) => (
                                     <div key={i} className="relative h-4 mb-0.5 last:mb-0">
-                                        {row.map(extra => (
-                                            <span
-                                                key={extra.name}
-                                                className="absolute top-0 bottom-0 flex items-center"
-                                                style={{ left: `${pct(toMinutes(extra.time))}%` }}
-                                            >
-                                                <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
-                                                <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
-                                                    {extraLabel(extra)}
+                                        {row.map(extra => {
+                                            const mine = byName.get(extra.name.toLowerCase())
+                                            // kindDot is the solid colour and
+                                            // kindChip the soft fill. Pulling
+                                            // the one out of the other by
+                                            // string surgery worked and was a
+                                            // class name nobody had written
+                                            // down, which is how a colour
+                                            // quietly stops being generated.
+                                            const tick = mine ? kindChip(mine.entry.kind) : ''
+                                            const bar = mine ? kindDot(mine.entry.kind) : 'bg-slate-400'
+                                            return (
+                                                <span
+                                                    key={extra.name}
+                                                    className="absolute top-0 bottom-0 flex items-center"
+                                                    style={{ left: `${pct(toMinutes(extra.time))}%` }}
+                                                >
+                                                    <span className={`w-0.5 self-stretch flex-shrink-0 ${bar}`} />
+                                                    {mine ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onOpenDiary?.(mine.entry)}
+                                                            className={`text-[0.625rem] font-semibold whitespace-nowrap px-1 rounded ${tick}`}
+                                                        >
+                                                            {extraLabel(extra)}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                                            {extraLabel(extra)}
+                                                        </span>
+                                                    )}
                                                 </span>
-                                            </span>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                 ))}
                             </div>
