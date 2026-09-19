@@ -674,3 +674,34 @@ describe('what a finding is about', () => {
         expect(aboutThisWeek(null)).toEqual([])
     })
 })
+
+describe('a split day is not a short turnaround', () => {
+    // Majo works nine to one, goes to her English class, and comes back at
+    // half five. One working day with a gap in the middle, which is ordinary
+    // here, and the eleven hours is about the rest between one day and the
+    // next.
+    it('ignores the gap between two shifts on the same day', () => {
+        const shifts = [shift(WEEK[0], '09:00', '13:00'), shift(WEEK[0], '17:30', '23:00')]
+        expect(shortestGap(shifts, WEEK).hours).toBe(Infinity)
+    })
+
+    // The pair that matters is still measured, from the end of the last shift
+    // of the day rather than from the first.
+    it('still measures from the end of a split day to the next morning', () => {
+        const shifts = [
+            shift(WEEK[0], '09:00', '13:00'),
+            shift(WEEK[0], '17:30', '23:00'),
+            shift(WEEK[1], '08:00', '16:00'),
+        ]
+        expect(shortestGap(shifts, WEEK).hours).toBe(9)
+    })
+
+    it('does not let a split day hide a genuinely tight turnaround', () => {
+        const shifts = [
+            shift(WEEK[0], '09:00', '13:00'),
+            shift(WEEK[0], '17:30', '23:00'),
+            shift(WEEK[1], '06:00', '14:00'),
+        ]
+        expect(shortestGap(shifts, WEEK).hours).toBe(7)
+    })
+})

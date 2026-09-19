@@ -484,7 +484,7 @@ export default function RosterWeek({
                                                     ? { outline: '2px dashed #d97706', outlineOffset: '-3px' }
                                                     : {}),
                                             }}
-                                            className={`${cell} text-center ${
+                                            className={`${cell} group/cell text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                             }`}
                                         >
@@ -583,6 +583,32 @@ export default function RosterWeek({
                                                     </span>
                                                 )
                                             })}
+
+                                            {/* Another one on a day that
+                                                already has one.
+                                                A split day is ordinary here:
+                                                nine to one, then back at half
+                                                five after a class. The plus
+                                                only appeared on an empty cell,
+                                                so the second shift could be
+                                                added from the day view and
+                                                nowhere else, which is a long
+                                                way to go for something the week
+                                                is perfectly able to say.
+                                                Quiet until the cell is hovered,
+                                                because a week of plus signs
+                                                between the shifts is noise on
+                                                the screen people read most. */}
+                                            {!staff && day.shifts.length > 0 && !offKind && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onNewShift?.(row.employee.id, day.date)}
+                                                    className="block w-full text-muted/0 group-hover/cell:text-muted hover:!text-accent-ink hover:bg-accent-light/50 rounded text-[0.6875rem] leading-tight transition-colors focus:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                                                    aria-label={`Add another shift for ${row.employee.full_name} on ${fullDate(day.date)}`}
+                                                >
+                                                    +
+                                                </button>
+                                            )}
                                         </td>
                                     )
                                 })}

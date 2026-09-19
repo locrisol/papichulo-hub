@@ -292,6 +292,21 @@ export function shortestGap(shifts, weekDates) {
         const before = sorted[i - 1]
         const then = sorted[i]
         if (!thisWeek(before) && !thisWeek(then)) continue
+
+        // A split day is not a short turnaround.
+        //
+        // Majo works nine to one, goes to her English class, and comes back at
+        // half five. That is one working day with a gap in the middle of it,
+        // which is an ordinary arrangement here, and the eleven hours is about
+        // the rest between one working day and the next. Measured shift to
+        // shift it called every split day a rest problem, which is both wrong
+        // and the fastest way to teach somebody to ignore the warnings.
+        //
+        // The pair that matters is still measured: shifts are in order, so the
+        // last one of a day is what the first of the next day is compared
+        // against.
+        if (before.shift_date === then.shift_date) continue
+
         const gap = startOf(then) - endOf(before)
         if (gap < best) { best = gap; after = before }
     }
@@ -509,7 +524,7 @@ export function checkWeek({
             const gap = shortestGap(around, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
                 add('warn', 'dailyRest',
-                    `${name} has only ${gap.hours.toFixed(1)} hours between two shifts, against ${settings.dailyRest.hours}.`)
+                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, against ${settings.dailyRest.hours}.`)
             }
         }
 
