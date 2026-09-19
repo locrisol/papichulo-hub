@@ -33,6 +33,7 @@ const KIND = {
         bar: '#BC552B',
         fill: '#F7EAE2',
         ink: '#9A4A26',
+        edge: '#DDB49A',
         google: '6', // Tangerine, the nearest to the Hub's orange
     },
     meeting: {
@@ -43,6 +44,7 @@ const KIND = {
         bar: '#15803D',
         fill: '#F0FDF4',
         ink: '#14532D',
+        edge: '#A7D5B8',
         google: '10', // Basil
     },
     promotion: {
@@ -53,6 +55,7 @@ const KIND = {
         bar: '#D97706',
         fill: '#FFFBEB',
         ink: '#78350F',
+        edge: '#E8C089',
         google: '5', // Banana
     },
     maintenance: {
@@ -63,6 +66,7 @@ const KIND = {
         bar: '#64748B',
         fill: '#F1F5F9',
         ink: '#1E293B',
+        edge: '#C0C8D2',
         google: '8', // Graphite
     },
     other: {
@@ -73,6 +77,7 @@ const KIND = {
         bar: '#78716C',
         fill: '#F5F5F4',
         ink: '#292524',
+        edge: '#CBC6C2',
         google: '7', // Peacock
     },
 
@@ -91,6 +96,7 @@ const KIND = {
         bar: '#7E22CE',
         fill: '#FAF5FF',
         ink: '#581C87',
+        edge: '#C9A7E6',
         google: null,
     },
     delivery: {
@@ -101,6 +107,7 @@ const KIND = {
         bar: '#6B7280',
         fill: '#FFFFFF',
         ink: '#374151',
+        edge: '#CBD5E1',
         google: null,
     },
 }
@@ -126,9 +133,15 @@ export function kindDot(kind) {
 // The same colours as real values, for the two things that cannot read a class
 // name: the picture and the PDF. One source for what a catering job looks like,
 // so the sheet pinned to the wall and the screen beside it agree.
+//
+// edge is the outline, and it is there because the fill alone is not enough.
+// A pale yellow strip on a white sheet gives no answer to the one question the
+// band exists to answer, which is when the thing stops. Every other card on
+// these sheets is a fill with a line round it, and the bands were the only
+// thing without one.
 export function kindColours(kind) {
     const one = KIND[kind] || FALLBACK
-    return { bar: one.bar, fill: one.fill, ink: one.ink }
+    return { bar: one.bar, fill: one.fill, ink: one.ink, edge: one.edge }
 }
 
 export function kindGoogleColour(kind) {

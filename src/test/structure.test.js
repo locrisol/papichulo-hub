@@ -93,7 +93,7 @@ describe('every file in lib has a test', () => {
     // when you write its test, and the list can only ever get shorter.
     const NO_TEST_YET = [
         'access', 'controlStyles', 'donut', 'productPrice', 'reportCharts',
-        'rosterPdf', 'stockTakePdf', 'supabase',
+        'stockTakePdf', 'supabase',
         'timeOffMail', 'timeOffPdf', 'wasteReasons',
     ]
 

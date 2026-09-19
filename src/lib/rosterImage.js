@@ -344,7 +344,15 @@ export function drawWeek(canvas, table) {
             const height = l.bandHeights[i]
             const x = l.columnX(band.start)
             const w = l.dayCol * band.span
-            box(x + 2, bandY, w - 4, height - 4, colours.fill)
+            // Filled, then a line round it, then the solid tick down the
+            // left. Without the outline a pale fill on a white sheet gave no
+            // answer to the one thing the band is for, which is when it stops.
+            roundedPath(x + 2, bandY, w - 4, height - 4, 4)
+            c.fillStyle = colours.fill
+            c.fill()
+            c.strokeStyle = colours.edge
+            c.lineWidth = 1
+            c.stroke()
             box(x + 2, bandY, 3, height - 4, colours.bar)
             bandLines[i].forEach((line, n) => {
                 text(line, x + 9, bandY + 11 + n * 14, { colour: colours.ink })
@@ -487,7 +495,12 @@ export function drawWeek(canvas, table) {
     // covered the people, which left the store hours, the events and what each
     // day came to floating in seven unmarked spaces.
     const edges = []
-    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    // The six inside the week, which are the only ones the bands interrupt.
+    const betweenDays = new Set()
+    for (let i = 0; i <= 7; i++) {
+        edges.push(l.columnX(i))
+        if (i > 0 && i < 7) betweenDays.add(l.columnX(i))
+    }
     if (l.holidayCol) edges.push(l.holidayX)
     edges.push(l.hoursX)
     for (const x of edges) {
@@ -495,10 +508,16 @@ export function drawWeek(canvas, table) {
         // no rule at all.
         rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
 
-        // Nothing across the bands. A bar that says one thing from Tuesday to
-        // Saturday, cut into five by the lines between the days, reads as five
-        // things again, which is the whole thing the band was drawn to stop.
-        if (bandsBottom) {
+        // Only the dividers between one weekday and the next stop at the
+        // bands. A bar running Tuesday to Saturday cut into five by them reads
+        // as five things again, which is what the band was drawn to stop.
+        //
+        // The edges of the week are a different job and they carry on: the one
+        // before Sunday closes the names off, and the ones after Saturday hold
+        // Holiday and Hours apart. Those are the sides of a table rather than
+        // marks inside it, and a table with no right hand side looks unfinished
+        // whatever is in the row.
+        if (bandsBottom && betweenDays.has(x)) {
             rule(x, gridTop, x, bandsTop, RULE_DAY)
             rule(x, bandsBottom, x, gridBottom - l.totalH, RULE_DAY)
         } else {
