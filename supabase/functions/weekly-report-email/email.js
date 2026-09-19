@@ -397,7 +397,15 @@ function salesAndCosts(section, f, charts) {
         t.packaging ? `packaging ${t.packaging}%` : null,
     ].filter(Boolean).join(', ')
 
-    return heading(section.title, section.number) + figures([
+    // The chart first, under the band.
+    //
+    // It is the shape of the week, and the figures under it are that shape
+    // written out. Reading the numbers and then being shown the picture is the
+    // wrong way round: by then you have already done the work the picture was
+    // going to save you.
+    return heading(section.title, section.number)
+        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
+        + figures([
         line({ label: 'Net sales', value: money(f.net), total: true }),
         line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
         line({ label: 'Food', value: withShare(f.food, f.foodPct, costTone(f.foodPct, t.food)) }),
@@ -412,7 +420,6 @@ function salesAndCosts(section, f, charts) {
             + (targetNote
                 ? ` Green is at or under target, amber within two points over, red past that. This week was judged against ${targetNote}.`
                 : ''))
-        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
         + comments(sectionComments(section))
 }
 
@@ -476,8 +483,12 @@ function profitAndLoss(section, f, charts) {
         }))
     }
 
+    // The platform costs go under the platform costs, and net earnings is what
+    // is left after them, so the picture of what they cost belongs on the near
+    // side of that box rather than three screens past it.
     return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
         + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
+        + chart(charts.delivery, 'What each platform has cost, week by week.')
         + bigFigure({
             label: 'Net earnings',
             value: money(f.earnings),
@@ -487,7 +498,6 @@ function profitAndLoss(section, f, charts) {
         + note('Net earnings is what is left of net sales after the food, the packaging, the '
             + 'people, the fixed overheads and the delivery platforms. The share under it is '
             + 'against net sales, the same as every other share on this report.')
-        + chart(charts.delivery, 'What each platform has cost, week by week.')
         + chart(charts.earnings, 'Net earnings, week by week.')
         + comments(sectionComments(section))
 }
@@ -609,11 +619,46 @@ function platformSection(section, f, charts, bucket, chartKey) {
         ? note('No platforms were tracked for this week.')
         : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
 
-    return heading(section.title, section.number) + body
+    // Under the band, the same as sales and costs. A section that opens with
+    // the shape of the thing and then breaks it down by platform reads in the
+    // order somebody actually wants it.
+    return heading(section.title, section.number)
         + chart(charts[chartKey], bucket === 'online_platform'
             ? 'What each platform took, week by week.'
             : 'Corporate sales, week by week.')
+        + body
         + comments(sectionComments(section))
+}
+
+// Whether somebody applied to renew, under their name.
+//
+// It is the difference between the two things a date in the past can mean.
+// Somebody whose stamp ran out and who has applied is waiting on the post and
+// may well still be able to work; somebody who has not is a person who cannot
+// legally be on next week's roster, and an owner reading a list of four names
+// has no way to tell which is which.
+//
+// Only for paperwork that has renewals at all, which is the right to work stamp
+// and not the food safety certificate: you sit that course again rather than
+// applying to renew it. **undefined means this kind has no renewals. null means
+// it does and nobody applied.** See names() in reportPeople.js, where the
+// difference is made to survive JSON.
+//
+// A date applied for AFTER it ran out is said out loud rather than left to be
+// worked out from two dates in a list, because it is the one that earns nothing
+// and it is the one somebody has to do something about today.
+export function renewalWords(person) {
+    if (person?.applied === undefined) return ''
+
+    if (!person.applied) {
+        return `<br /><span style="font-size:13px;color:${RED};">&nbsp;&nbsp;&nbsp;No renewal applied for</span>`
+    }
+
+    const late = person.on && person.applied > person.on
+    return `<br /><span style="font-size:13px;color:${late ? AMBER : MUTED};">`
+        + `&nbsp;&nbsp;&nbsp;Renewal applied for ${fmtDate(person.applied)}`
+        + (late ? ', after it ran out' : '')
+        + '</span>'
 }
 
 // The paperwork, from the copy frozen with the report rather than from the staff
@@ -636,7 +681,9 @@ function paperwork(state, title) {
     const group = (label, people, withDate) => {
         if (people.length === 0) return
         const names = people
-            .map(p => '&bull;&nbsp;' + escapeHtml(p.name) + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : ''))
+            .map(p => '&bull;&nbsp;' + escapeHtml(p.name)
+                + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : '')
+                + renewalWords(p))
             .join('<br />')
         groups.push(`<div style="margin-top:12px;font-family:${FONT};font-size:13px;color:${MUTED};">${label}</div>`
             + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)

@@ -366,7 +366,7 @@ export default function ReportPage() {
             // else about anybody.
             const { data: team } = await supabase
                 .from('employees')
-                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission, work_permission_expires')
+                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission, work_permission_expires, permission_renewal_applied')
                 .eq('restaurant_id', head.restaurant_id)
             setEmployees(team || [])
 
@@ -557,8 +557,12 @@ export default function ReportPage() {
             targets,
             paperwork: {
                 food: paperworkSummary(paperworkState(onTheBooks, 'food_safety_expires', asOf)),
-                permits: paperworkSummary(paperworkState(
-                    onTheBooks, 'work_permission_expires', asOf, permissionNeedsExpiry)),
+                // Frozen with whether a renewal had been applied for, because
+                // that is the difference between somebody who cannot legally be
+                // on next week's roster and somebody who is waiting on the post.
+                permits: paperworkSummary(
+                    paperworkState(onTheBooks, 'work_permission_expires', asOf, permissionNeedsExpiry),
+                    { renewals: true }),
             },
         })
     }

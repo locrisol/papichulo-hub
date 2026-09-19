@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
+    renewalWords,
     deliverable, isJustTheGoodbye, replyToFor,
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -1120,5 +1121,109 @@ describe('replyToFor, on a report', () => {
 
     it('falls through a bad author address to the secret', () => {
         expect(replyToFor('someone@papichulo.test', 'hub@papichulo.ie')).toBe('hub@papichulo.ie')
+    })
+})
+
+// A chart is the shape of a thing and the figures under it are that shape
+// written out. Reading the numbers first and being shown the picture afterwards
+// is the wrong way round: by then you have done the work it was going to save.
+describe('where the charts sit', () => {
+    const mail = reportEmail(base)
+    const at = t => {
+        const i = mail.html.indexOf(t)
+        expect(i, `not found: ${t}`).toBeGreaterThan(-1)
+        return i
+    }
+
+    it('opens sales and costs with its picture', () => {
+        expect(at('x.test/sales.png')).toBeLessThan(at('>Net sales<'))
+    })
+
+    // Net earnings is what is left after the platforms, so the picture of what
+    // they cost belongs on the near side of that box.
+    it('puts what the platforms cost before what is left after them', () => {
+        expect(at('x.test/delivery.png')).toBeLessThan(at('>Net earnings<'))
+    })
+
+    it('and the earnings picture after it', () => {
+        expect(at('x.test/earnings.png')).toBeGreaterThan(at('>Net earnings<'))
+    })
+
+    it('opens online sales with its picture', () => {
+        expect(at('x.test/online.png')).toBeLessThan(at('Overall rating'))
+    })
+
+    it('opens corporate sales with its picture', () => {
+        expect(at('x.test/corporate.png')).toBeLessThan(at('>Corporate Ltd<'))
+    })
+})
+
+// The difference between the two things a date in the past can mean: somebody
+// waiting on the post, and somebody who cannot legally be on next week's
+// roster. An owner reading four names has no way to tell them apart.
+describe('whether a renewal was applied for', () => {
+    it('says so, with the date', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-08-12' }))
+            .toContain('Renewal applied for 12 Aug 2026')
+    })
+
+    it('says plainly when nobody has', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: null }))
+            .toContain('No renewal applied for')
+    })
+
+    // The one that earns nothing and the one somebody has to act on today.
+    // Left as two dates in a list it is a subtraction nobody does at speed.
+    it('says when it was applied for too late', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-20' }))
+            .toContain('after it ran out')
+    })
+
+    it('does not say it was late when it was not', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13', applied: '2026-09-13' }))
+            .not.toContain('after it ran out')
+    })
+
+    // A food safety certificate is not renewed, it is sat again. undefined is
+    // "this kind has no renewals" and null is "it does and nobody applied", and
+    // the two must not read the same.
+    it('says nothing at all for paperwork that has no renewal', () => {
+        expect(renewalWords({ name: 'Majo', on: '2026-09-13' })).toBe('')
+        expect(renewalWords(null)).toBe('')
+    })
+})
+
+describe('the people section, with renewals', () => {
+    const mail = reportEmail({
+        ...base,
+        figures: {
+            ...figures,
+            paperwork: {
+                ...figures.paperwork,
+                permits: {
+                    total: 4, fine: 1, ok: false, missing: [],
+                    expired: [
+                        { name: 'Iliana', on: '2026-08-23', applied: '2026-08-01' },
+                        { name: 'Majo', on: '2026-09-13', applied: null },
+                    ],
+                    expiring: [{ name: 'Camila', on: '2026-10-18', applied: '2026-09-30' }],
+                },
+            },
+        },
+    })
+
+    it('puts the answer under each name that needs one', () => {
+        expect(mail.html).toContain('Renewal applied for 1 Aug 2026')
+        expect(mail.html).toContain('No renewal applied for')
+        expect(mail.html).toContain('Renewal applied for 30 Sept 2026')
+    })
+
+    // The food safety card sits in the same section and must stay quiet about
+    // something it does not have.
+    it('leaves the certificates alone', () => {
+        const people = mail.html.slice(
+            mail.html.indexOf('Food safety certificates'),
+            mail.html.indexOf('Right to work'))
+        expect(people).not.toContain('Renewal')
     })
 })
