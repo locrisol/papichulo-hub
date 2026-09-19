@@ -129,11 +129,13 @@ export default function CalendarPage() {
             // This came over from the Events screen along with everything else.
             // Deleting that page without carrying the sync would have left the
             // Arena layer quietly frozen on whatever was last fetched.
-            const venueId = activeRestaurant.forecasting_venue_id
-            if (canWrite && arenaOn && venueId && syncIsDue()) {
+            // The restaurant, never the venue. The function reads the venue
+            // off that restaurant's own row, so nothing the browser says can
+            // point the quota at a venue of somebody else's choosing.
+            if (canWrite && arenaOn && syncIsDue()) {
                 try {
                     setSyncing(true)
-                    const r = await syncEvents(supabase, venueId)
+                    const r = await syncEvents(supabase, activeRestaurant.id)
                     markSynced()
                     if (r.added > 0) {
                         setNote(`Found ${r.added} new ${r.added === 1 ? 'event' : 'events'} at the Arena.`)
