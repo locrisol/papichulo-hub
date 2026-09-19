@@ -14,7 +14,8 @@ import { openGaps } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
-    LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift,
+    LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift, shiftIdsOf,
+    requestDate,
 } from '@/lib/shiftRequests'
 import { emailTheShiftAsk, emailTheShiftAnswer } from '@/lib/rosterMail'
 import DateStepper from '@/components/ui/DateStepper'
@@ -94,6 +95,11 @@ export default function MyShiftsPage() {
     const [openingHours, setOpeningHours] = useState(null)
     const [breakRules, setBreakRules] = useState(null)
     const [requests, setRequests] = useState([])
+    // The shifts a request points at, which are often not in the week on
+    // screen. Kept apart from `shifts` on purpose: these are two shifts fetched
+    // by id so a card can say what it is about, not a week, and folding them in
+    // would put somebody else's Saturday into the grid.
+    const [askShifts, setAskShifts] = useState([])
     const [asking, setAsking] = useState(null)
     // My own time off, whole rows this time rather than the away view, because
     // these are mine and I am allowed to know why I asked.
@@ -109,6 +115,54 @@ export default function MyShiftsPage() {
 
     const today = todayISO()
     const dates = weekDates(weekStart)
+
+    // The asks, in two halves, and they answer two different questions.
+    //
+    // **Anything still going somewhere with my name on it, whatever week it is
+    // for.** That is the half that was missing. A request is a thing somebody
+    // is waiting on an answer to, and it does not stop waiting because the week
+    // on screen moved: getting an email about next Saturday and having to work
+    // out which week to step to before you can say yes is not an answer.
+    //
+    // **Anything about this week's shifts, whoever it is between.** That one is
+    // genuinely week shaped. It is what marks a cell as already asked about, so
+    // two people do not ask the same person for the same shift.
+    //
+    // Then the shifts those requests name, by id, because a card cannot say
+    // what it is about without them and half of them are in another week.
+    //
+    // Declared above the effect that calls it rather than below. It works
+    // either way, a function declaration being hoisted, but the React Compiler
+    // reads the file in order and will not optimise a component that uses
+    // something before it is written.
+    async function loadAsks(weekShifts, meId = me?.id) {
+        const ids = (weekShifts || []).map(s => s.id)
+        const wanted = [
+            ...(meId ? [`from_employee_id.eq.${meId}`, `to_employee_id.eq.${meId}`] : []),
+            ...(ids.length > 0
+                ? [`give_shift_id.in.(${ids.join(',')})`, `take_shift_id.in.(${ids.join(',')})`]
+                : []),
+        ]
+        if (wanted.length === 0) { setRequests([]); setAskShifts([]); return }
+
+        const { data } = await supabase.from('shift_requests').select('*')
+            .or(wanted.join(','))
+            .order('created_at', { ascending: false })
+
+        const asks = data || []
+        setRequests(asks)
+
+        // Only the ones the week does not already have. Nothing is fetched at
+        // all on a week where every request happens to be about it, which is
+        // most weeks.
+        const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
+        if (missing.length === 0) { setAskShifts([]); return }
+
+        const { data: rows } = await supabase.from('roster_shifts')
+            .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
+            .in('id', missing)
+        setAskShifts(rows || [])
+    }
 
     useEffect(() => {
         let live = true
@@ -186,16 +240,21 @@ export default function MyShiftsPage() {
             setMyTimeOff(offRes.data || [])
             setReady(true)
 
-            // The asks about this week, fetched after it rather than beside it
-            // because they are looked up by the shifts they are about. Nobody
-            // is waiting on this to read their own Tuesday.
-            const ids = (shiftRes.data || []).map(row => row.id)
-            if (ids.length === 0) { setRequests([]); return }
-            const { data: asks } = await supabase.from('shift_requests').select('*')
-                .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
-                .order('created_at', { ascending: false })
+            // The asks, fetched after the week rather than beside it. Nobody is
+            // waiting on this to read their own Tuesday.
+            //
+            // Two questions, and they are genuinely different. One is "what is
+            // waiting on me", which has nothing to do with which week is on
+            // screen: somebody gets an email about next Saturday, opens the Hub
+            // on a Tuesday, and has to be able to answer it without first
+            // working out which week to step to. The other is "has anybody
+            // already asked about this shift", which is about this week only and
+            // is what marks a cell so two people do not ask the same person
+            // twice.
+            // `mine` rather than the state, which React has not handed back
+            // yet on this pass.
             if (!live) return
-            setRequests(asks || [])
+            await loadAsks(shiftRes.data || [], mine.id)
         }
 
         load()
@@ -247,24 +306,36 @@ export default function MyShiftsPage() {
 
     // Everything about this week that is still going somewhere.
     const liveAsks = requests.filter(r => LIVE_STATES.includes(r.status))
+
+    // This week's shifts first, then the ones fetched because a request points
+    // at them. A card cannot say what it is about without the shift, so a
+    // request from another week drew an empty card before these were fetched.
+    const shiftById = id => shifts.find(s => s.id === id) || askShifts.find(s => s.id === id) || null
+
     // Everything with your name on either end, whichever end that is.
     //
     // Not only the live ones. A request that was turned down has to say so
     // somewhere, or the person who sent it goes on believing it is going
     // through and does not turn up. The only one left out is one you took back
     // yourself, since you already know about that.
-    const involving = requests.filter(r =>
-        r.status !== 'withdrawn'
-        && (r.from_employee_id === me?.id || r.to_employee_id === me?.id))
-    const shiftById = id => shifts.find(s => s.id === id) || null
+    //
+    // The two halves are treated differently and they have to be. **Anything
+    // still going somewhere shows whatever week it is for**, because that is
+    // the whole reason these are fetched by name rather than by week now.
+    // **Anything already answered shows only while the shift is still to
+    // come**, because otherwise every request either of us has ever been part
+    // of piles up above the week for ever, and a list that long is a list
+    // nobody reads, including the one line in it that mattered.
+    const involving = requests.filter(r => {
+        if (r.status === 'withdrawn') return false
+        if (r.from_employee_id !== me?.id && r.to_employee_id !== me?.id) return false
+        if (LIVE_STATES.includes(r.status)) return true
+        const when = requestDate(r, shiftById)
+        return !when || when >= today
+    })
 
     async function reload() {
-        const ids = shifts.map(s => s.id)
-        if (ids.length === 0) return
-        const { data } = await supabase.from('shift_requests').select('*')
-            .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
-            .order('created_at', { ascending: false })
-        setRequests(data || [])
+        await loadAsks(shifts)
     }
 
     async function reloadTimeOff() {
@@ -442,8 +513,10 @@ export default function MyShiftsPage() {
                             shiftById={shiftById}
                             hoursOn={hoursOn}
                             saving={saving}
+                            dates={dates}
                             onAnswer={waitingOn(r, me.id, false) === 'answer' ? answer : null}
                             onWithdraw={r.from_employee_id === me.id ? withdraw : null}
+                            onGoToWeek={date => setWeekStart(weekStartOf(date))}
                         />
                     ))}
                 </div>
@@ -837,9 +910,15 @@ function DayCard({
 // Two lines, because a request has two halves and either can be empty. The
 // second line is missing on a plain cover, which is exactly what a plain cover
 // is, and there was no need to invent a word for it.
-function RequestCard({ request, meId, nameOf, shiftById, hoursOn, saving, onAnswer, onWithdraw }) {
+function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving, onAnswer, onWithdraw, onGoToWeek }) {
     const who = id => (id === meId ? 'You' : nameOf(id))
     const state = stateOf(request.status)
+    // A card is above a week it may have nothing to do with, and the date
+    // on it is the only thing saying so. Answering works from here either
+    // way, which is the point, but somebody deciding whether they can take
+    // a Saturday usually wants to see what else they are on that week.
+    const when = requestDate(request, shiftById)
+    const elsewhere = when && !(dates || []).includes(when)
 
     const half = (shiftId, from, to, takerId) => {
         const shift = shiftById(shiftId)
@@ -895,6 +974,24 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, saving, onAnsw
 
             {request.message && (
                 <p className="text-sm text-gray-600 mt-2 italic">{request.message}</p>
+            )}
+
+            {elsewhere && (
+                <p className="text-xs text-muted mt-2">
+                    Not this week.
+                    {onGoToWeek && (
+                        <>
+                            {' '}
+                            <button
+                                type="button"
+                                onClick={() => onGoToWeek(when)}
+                                className="underline font-medium text-accent-ink"
+                            >
+                                Open that week
+                            </button>
+                        </>
+                    )}
+                </p>
             )}
 
             <div className="flex flex-wrap gap-2 mt-3">

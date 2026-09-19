@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
-    waitingOn, requestsOnShift, writesFor, newFindings,
+    waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -372,5 +372,52 @@ describe('newFindings', () => {
     it('has nothing to say when the swap broke nothing', () => {
         const same = [finding('dailyRest', 'ana', 'Ana has only 9 hours.')]
         expect(newFindings(same, same)).toEqual([])
+    })
+})
+
+// Both screens fetch a week at a time, which is right for a roster and wrong
+// for a request. These two are what lets a screen show one from another week:
+// the ids to go and get, and the day to say it is on.
+describe('the shifts a set of requests points at', () => {
+    it('takes both ends of every one of them', () => {
+        const ids = shiftIdsOf([
+            { give_shift_id: 's1', take_shift_id: 's2' },
+            { give_shift_id: 's3', take_shift_id: null },
+        ])
+        expect(ids.sort()).toEqual(['s1', 's2', 's3'])
+    })
+
+    // Two people can both be asking about the same Saturday, and fetching it
+    // twice is a longer query for the same row.
+    it('names one shift once', () => {
+        expect(shiftIdsOf([
+            { give_shift_id: 's1', take_shift_id: null },
+            { give_shift_id: null, take_shift_id: 's1' },
+        ])).toEqual(['s1'])
+    })
+
+    it('copes with nothing at all', () => {
+        expect(shiftIdsOf(null)).toEqual([])
+        expect(shiftIdsOf([{}])).toEqual([])
+    })
+})
+
+describe('the day a request is about', () => {
+    const find = id => WEEK.find(s => s.id === id) || null
+
+    it('is the earlier of the two shifts', () => {
+        expect(requestDate({ give_shift_id: 's3', take_shift_id: 's1' }, find)).toBe(WED)
+    })
+
+    it('is the one there is, when there is only one', () => {
+        expect(requestDate({ give_shift_id: 's3' }, find)).toBe(THU)
+    })
+
+    // Not an error. A screen that cannot say when something is should say it
+    // cannot, rather than draw a row with a gap where the date goes.
+    it('is nothing when neither shift is in hand', () => {
+        expect(requestDate({ give_shift_id: 'gone' }, find)).toBe(null)
+        expect(requestDate({}, find)).toBe(null)
+        expect(requestDate(null, find)).toBe(null)
     })
 })

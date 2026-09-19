@@ -284,6 +284,36 @@ export function requestsOnShift(requests, shiftId) {
         && (r.give_shift_id === shiftId || r.take_shift_id === shiftId))
 }
 
+// The shifts a set of requests points at.
+//
+// Both screens fetch a week at a time, which is right for a roster and wrong
+// for a request: something waiting on you is not waiting only while you happen
+// to be looking at the right seven days. So the requests are fetched by who
+// they are about, and then the two shifts each one names are fetched by id,
+// whatever week those turn out to be in. Two small queries rather than three
+// weeks of somebody else's roster.
+export function shiftIdsOf(requests) {
+    const ids = new Set()
+    for (const request of requests || []) {
+        if (request?.give_shift_id) ids.add(request.give_shift_id)
+        if (request?.take_shift_id) ids.add(request.take_shift_id)
+    }
+    return [...ids]
+}
+
+// The day a request is about: the earlier of the two shifts it names.
+//
+// Null when neither shift is in hand, which is not an error. A screen that
+// cannot say when something is should say it cannot, rather than draw a row
+// with a gap where the date goes.
+export function requestDate(request, shiftById) {
+    const dates = [request?.give_shift_id, request?.take_shift_id]
+        .map(id => (id ? shiftById?.(id)?.shift_date : null))
+        .filter(Boolean)
+        .sort()
+    return dates[0] || null
+}
+
 // What has to be written for a request to become true.
 //
 // Three lists, because that is what the database takes. Rows that changed keep
