@@ -9,6 +9,7 @@
 // picture cannot say something the roster did not.
 
 import { sheetLayout, wrapLines, AWAY } from '@/lib/rosterShare'
+import { kindColours } from '@/lib/diary'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -300,6 +301,29 @@ export function drawWeek(canvas, table) {
     // the top read as their own things rather than as shading behind the week.
     rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH, RULE_ROW, 2)
     y += l.metaH
+
+    // ---- what runs across the week, as one bar each
+    //
+    // A discount week is one thing, so it is drawn once across the days it
+    // covers rather than as a chip repeated on each of them. The arrows say it
+    // began before this week or carries on after it, which a bar clipped at the
+    // edge of the sheet cannot say on its own.
+    if (l.bandsH) {
+        box(l.pad, y, l.width - l.pad * 2, l.bandsH, '#ffffff')
+        table.bands.forEach((band, i) => {
+            const colours = kindColours(band.kind)
+            const top = y + 4 + i * 20
+            const x = l.columnX(band.start)
+            const w = l.dayCol * band.span
+            box(x + 2, top, w - 4, 17, colours.fill)
+            box(x + 2, top, 3, 17, colours.bar)
+            font(11, '700')
+            const words = `${band.runsIn ? '\u2039 ' : ''}${band.label}${band.runsOn ? ' \u203a' : ''}`
+            text(words, x + 9, top + 9, { colour: colours.ink })
+        })
+        rule(l.pad, y + l.bandsH, l.width - l.pad, y + l.bandsH, RULE_ROW, 2)
+        y += l.bandsH
+    }
 
     // ---- what is on, written out in full rather than cut short
     box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)

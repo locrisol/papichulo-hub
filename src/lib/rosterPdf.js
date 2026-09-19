@@ -1,4 +1,10 @@
 import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
+import { kindColours } from '@/lib/diary'
+
+// The PDF works in three numbers rather than a string of six letters. One
+// place that knows how to turn one into the other, so a colour written down
+// once in lib/diary reaches both sheets and the screen unchanged.
+const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
 
 // jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
 //
@@ -303,6 +309,26 @@ export async function weekPdf(table, restaurantName, weekStart) {
 
             top += heights[n] + gap
         })
+    }
+
+    // ---- what runs across the week, as one bar each
+    //
+    // A discount week is one thing, so it is drawn once across the days it
+    // covers rather than as a chip repeated on each of them. The arrows say it
+    // began before this week or carries on after it.
+    if (l.bandsH) {
+        table.bands.forEach((band, i) => {
+            const colours = kindColours(band.kind)
+            const top = y + h(4 + i * 20)
+            const x = l.columnX(band.start)
+            const w = l.dayCol * band.span
+            box(x + 2, top, w - 4, h(17), rgbOf(colours.fill))
+            box(x + 2, top, 3, h(17), rgbOf(colours.bar))
+            const words = `${band.runsIn ? '‹ ' : ''}${band.label}${band.runsOn ? ' ›' : ''}`
+            at(words, x + 9, top + h(11), { size: 7, style: 'bold', rgb: rgbOf(colours.ink) })
+        })
+        y += h(l.bandsH)
+        bandRule()
     }
 
     // Written out in full over as many lines as it needs, rather than cut short.

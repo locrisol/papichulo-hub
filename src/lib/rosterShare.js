@@ -16,7 +16,7 @@ import {
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extrasFor, extraLabel } from '@/lib/dayExtras'
-import { onDate, showsOnRoster, kindLabel } from '@/lib/diary'
+import { onDate, showsOnRoster, kindLabel, bandsForWeek } from '@/lib/diary'
 
 // A day somebody is not there, as it goes out.
 //
@@ -80,11 +80,6 @@ export function weekTable({
         return hours ? `${hours.open} to ${hours.close}` : ''
     })
 
-    const whatIsOn = (dates || []).map(d => (events || [])
-        .filter(e => e.event_date === d)
-        .map(e => (e.event_time ? `${e.name} (doors ${shortTime(e.event_time)})` : e.name))
-        .join(', '))
-
     // A shift is kept in parts rather than as one string, because the start and
     // the finish are marked separately.
     //
@@ -140,15 +135,28 @@ export function weekTable({
     // where one thing ended and the next began. They are separate things and
     // they get separate lines.
     // What is on from the calendar, in the same shape the deliveries are in,
-    // so every way of sharing a week carries it without any of them learning
-    // about a new kind of thing. A week printed and pinned up that leaves the
-    // catering off is worse than one that never had it.
-    //
-    // Anything running several days repeats on each of them here. The screen
-    // draws one band across the week and a flat sheet has no band to draw, so
-    // saying it on each day it covers is the honest version rather than saying
-    // it once on the Monday and leaving Thursday looking clear.
-    const commitments = (dates || []).map(d => onDate((diary || []).filter(showsOnRoster), d)
+    // so neither sheet has to learn about a new kind of thing. A week printed
+    // and pinned up that leaves the catering off is worse than one that never
+    // had it.
+    const running = (diary || []).filter(showsOnRoster)
+
+    // Anything covering more than one day is a band across the days it covers,
+    // the same as on screen. It used to repeat on each of them, because a flat
+    // sheet had no band to draw; now both sheets draw one, so a discount week
+    // is one bar that says what it is rather than five chips that each say it
+    // again.
+    const bands = bandsForWeek(running, dates || []).map(b => ({
+        label: `${kindLabel(b.entry.kind)} (${b.entry.title})`,
+        kind: b.entry.kind,
+        start: b.start,
+        span: b.span,
+        runsIn: b.runsIn,
+        runsOn: b.runsOn,
+    }))
+    const banded = new Set(bandsForWeek(running, dates || []).map(b => b.entry.id))
+
+    const commitments = (dates || []).map(d => onDate(running, d)
+        .filter(e => !banded.has(e.id))
         .map(e => ({
             name: `${kindLabel(e.kind)} (${e.title})`,
             time: e.starts_at ? shortTime(e.starts_at) : '',
@@ -182,7 +190,7 @@ export function weekTable({
         subtitle: dates?.length ? `${fullDate(dates[0])} to ${fullDate(dates[6])}` : '',
         head,
         storeHours,
-        whatIsOn,
+        bands,
         eventsOn,
         deliveries,
         extras,
@@ -210,72 +218,6 @@ export function weekTable({
 //
 // Three bytes at the front settle it. Excel, Sheets and Numbers all understand
 // them and none of them show them.
-export const CSV_BOM = '\uFEFF'
-
-// The spreadsheet.
-//
-// A comma separated file rather than a real workbook, because Sheets and Excel
-// both open one and it needs nothing added to the project. A workbook would be
-// about four hundred kilobytes of dependency to make the columns slightly
-// prettier.
-//
-// Lines end the way the standard says and the way Excel expects rather than the
-// way this file happens to be written.
-export function weekCsv(table) {
-    const rows = []
-    const escape = value => {
-        const text = String(value ?? '')
-        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-    }
-    const line = cells => rows.push(cells.map(escape).join(','))
-
-    // The holiday column is only there in a week that needs it, and every row
-    // has to agree about that or the columns walk sideways.
-    const tail = table.anyHoliday ? ['Holiday', 'Hours'] : ['Hours']
-    const pad = table.anyHoliday ? ['', ''] : ['']
-
-    line([table.title, ...table.head.map(h => h.day), ...tail])
-    line(['', ...table.head.map(h => h.label), ...pad])
-    line(['Store hours', ...table.storeHours, ...pad])
-    line(['Events', ...table.whatIsOn, ...pad])
-    if (table.deliveries.some(d => d.length)) {
-        line(['Also on', ...table.deliveries.map(d => d.join(', ')), ...pad])
-    }
-
-    for (const person of table.people) {
-        line([person.name, ...person.days.map(d => {
-            const shifts = d.shifts.map(s => s.text).join(' / ')
-            // The same rule the sheet and the picture follow. A day with a
-            // shift on it is an ordinary day, whatever somebody usually does.
-            if (d.shifts.length > 0) return shifts
-            return d.away ? AWAY.label : shifts
-        }), ...(table.anyHoliday ? [person.holiday] : []), person.hours])
-        line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ...pad])
-    }
-
-    line(['Notes', ...table.notes, ...pad])
-    line([
-        'Hours on the day',
-        ...table.dayHours,
-        ...(table.anyHoliday ? [''] : []),
-        table.totalHours,
-    ])
-    for (const message of table.messages) line([message])
-    if (table.standing) line([table.standing])
-
-    return rows.join('\r\n')
-}
-
-// Breaking a line of text so it fits a column.
-//
-// The measuring is handed in rather than done here, because a canvas measures
-// with its own context and a PDF measures with its own, and neither belongs in
-// a file that knows nothing about either. It also means this can be tested with
-// a ruler that counts characters.
-//
-// A single word longer than the column goes on a line of its own and overflows
-// it. Breaking a word in half to fit reads worse than a name running slightly
-// wide, and an event with one word that long has never happened.
 export function wrapLines(text, maxWidth, measure) {
     const words = String(text ?? '').split(/\s+/).filter(Boolean)
     if (words.length === 0) return []
@@ -328,6 +270,10 @@ export function sheetLayout(table, {
     const titleH = 62
     const headH = 44
     const metaH = 32
+    // One line each, and nothing at all when the week has none. A band is a
+    // single bar with a single label on it, so it does not need measuring the
+    // way a column of cards does.
+    const bandsH = table.bands?.length ? table.bands.length * 20 + 8 : 0
     const eventsH = Math.max(metaH, eventLines * 15 + 14)
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
@@ -353,14 +299,14 @@ export function sheetLayout(table, {
     const standingH = table.standing ? 30 : 0
     const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH + eventsH + deliveriesH
+    const height = pad * 2 + titleH + headH + metaH + bandsH + eventsH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
 
     return {
         width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
-        titleH, headH, metaH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
+        titleH, headH, metaH, bandsH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         holidayX: width - pad - hoursCol - holidayCol,
         holidayCentreX: width - pad - hoursCol - holidayCol / 2,

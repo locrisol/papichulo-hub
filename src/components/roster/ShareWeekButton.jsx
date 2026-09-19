@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { secondaryButton } from '@/lib/controlStyles'
-import { weekTable, weekCsv, shareName, CSV_BOM } from '@/lib/rosterShare'
+import { weekTable, shareName } from '@/lib/rosterShare'
 import { weekImageBlob } from '@/lib/rosterImage'
 import { weekPdf } from '@/lib/rosterPdf'
 
@@ -74,12 +74,6 @@ export default function ShareWeekButton({
         }
     }
 
-    function downloadCsv() {
-        // The mark goes on the file rather than into the text, so the string
-        // itself stays something plain that can be read and tested.
-        const blob = new Blob([CSV_BOM, weekCsv(build())], { type: 'text/csv;charset=utf-8' })
-        save(blob, shareName(restaurantName, weekStart, 'csv'))
-    }
 
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -93,9 +87,6 @@ export default function ShareWeekButton({
             </button>
             <button type="button" onClick={() => weekPdf(build(), restaurantName, weekStart)} disabled={disabled} className={secondaryButton}>
                 PDF
-            </button>
-            <button type="button" onClick={downloadCsv} disabled={disabled} className={secondaryButton}>
-                Spreadsheet
             </button>
             {showing && <span className="text-xs text-muted">{showing}</span>}
         </div>

@@ -30,6 +30,9 @@ const KIND = {
         chip: 'bg-accent-light text-accent-ink border-l-accent',
         tag: 'bg-accent-light text-accent-ink',
         dot: 'bg-accent',
+        bar: '#BC552B',
+        fill: '#F7EAE2',
+        ink: '#9A4A26',
         google: '6', // Tangerine, the nearest to the Hub's orange
     },
     meeting: {
@@ -37,6 +40,9 @@ const KIND = {
         chip: 'bg-green-50 text-green-900 border-l-green-700',
         tag: 'bg-green-50 text-green-900',
         dot: 'bg-green-700',
+        bar: '#15803D',
+        fill: '#F0FDF4',
+        ink: '#14532D',
         google: '10', // Basil
     },
     promotion: {
@@ -44,6 +50,9 @@ const KIND = {
         chip: 'bg-amber-50 text-amber-900 border-l-amber-600',
         tag: 'bg-amber-50 text-amber-900',
         dot: 'bg-amber-600',
+        bar: '#D97706',
+        fill: '#FFFBEB',
+        ink: '#78350F',
         google: '5', // Banana
     },
     maintenance: {
@@ -51,6 +60,9 @@ const KIND = {
         chip: 'bg-slate-100 text-slate-800 border-l-slate-500',
         tag: 'bg-slate-100 text-slate-800',
         dot: 'bg-slate-500',
+        bar: '#64748B',
+        fill: '#F1F5F9',
+        ink: '#1E293B',
         google: '8', // Graphite
     },
     other: {
@@ -58,6 +70,9 @@ const KIND = {
         chip: 'bg-stone-100 text-stone-800 border-l-stone-500',
         tag: 'bg-stone-100 text-stone-800',
         dot: 'bg-stone-500',
+        bar: '#78716C',
+        fill: '#F5F5F4',
+        ink: '#292524',
         google: '7', // Peacock
     },
 
@@ -73,6 +88,9 @@ const KIND = {
         chip: 'bg-purple-50 text-purple-900 border-l-purple-700',
         tag: 'bg-purple-50 text-purple-900',
         dot: 'bg-purple-700',
+        bar: '#7E22CE',
+        fill: '#FAF5FF',
+        ink: '#581C87',
         google: null,
     },
     delivery: {
@@ -80,6 +98,9 @@ const KIND = {
         chip: 'bg-white text-gray-700 border-l-gray-500',
         tag: 'bg-gray-100 text-gray-700',
         dot: 'bg-gray-500',
+        bar: '#6B7280',
+        fill: '#FFFFFF',
+        ink: '#374151',
         google: null,
     },
 }
@@ -100,6 +121,14 @@ export function kindTag(kind) {
 
 export function kindDot(kind) {
     return (KIND[kind] || FALLBACK).dot
+}
+
+// The same colours as real values, for the two things that cannot read a class
+// name: the picture and the PDF. One source for what a catering job looks like,
+// so the sheet pinned to the wall and the screen beside it agree.
+export function kindColours(kind) {
+    const one = KIND[kind] || FALLBACK
+    return { bar: one.bar, fill: one.fill, ink: one.ink }
 }
 
 export function kindGoogleColour(kind) {
