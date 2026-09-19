@@ -16,7 +16,7 @@ import { weekPdf } from '@/lib/rosterPdf'
 // browser, it falls back to saving the file, which is what a laptop was going
 // to do anyway.
 export default function ShareWeekButton({
-    dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+    dates, employees, shifts, dayNotes, events, diary, openingHours, absences, standingNote,
     restaurantName, weekStart, disabled,
 }) {
     const [busy, setBusy] = useState('')
@@ -35,7 +35,7 @@ export default function ShareWeekButton({
     const showing = note?.week === weekStart ? note.text : ''
 
     const build = () => weekTable({
-        dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+        dates, employees, shifts, dayNotes, events, diary, openingHours, absences, standingNote,
         restaurantName,
     })
 

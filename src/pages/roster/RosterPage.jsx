@@ -957,6 +957,7 @@ export default function RosterPage() {
                         shifts={shifts}
                         dayNotes={dayNotes}
                         events={events}
+                        diary={diary}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
                         standingNote={activeRestaurant?.roster_note}

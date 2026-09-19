@@ -16,6 +16,7 @@ import {
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extrasFor, extraLabel } from '@/lib/dayExtras'
+import { onDate, showsOnRoster, kindLabel } from '@/lib/diary'
 
 // A day somebody is not there, as it goes out.
 //
@@ -55,7 +56,7 @@ export function shareName(restaurantName, weekStart, extension) {
 // it does on screen, so nobody can read a finishing time off a printed copy that
 // the screen never showed them.
 export function weekTable({
-    dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
+    dates, employees, shifts, dayNotes, events, diary, openingHours, restaurantName, absences,
     standingNote, today,
 }) {
     // The first date somebody's availability is allowed to say anything about.
@@ -138,12 +139,30 @@ export function weekTable({
     // where the column ran out, so where a line ended had nothing to do with
     // where one thing ended and the next began. They are separate things and
     // they get separate lines.
-    const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel))
+    // What is on from the calendar, in the same shape the deliveries are in,
+    // so every way of sharing a week carries it without any of them learning
+    // about a new kind of thing. A week printed and pinned up that leaves the
+    // catering off is worse than one that never had it.
+    //
+    // Anything running several days repeats on each of them here. The screen
+    // draws one band across the week and a flat sheet has no band to draw, so
+    // saying it on each day it covers is the honest version rather than saying
+    // it once on the Monday and leaving Thursday looking clear.
+    const commitments = (dates || []).map(d => onDate((diary || []).filter(showsOnRoster), d)
+        .map(e => ({
+            name: `${kindLabel(e.kind)} (${e.title})`,
+            time: e.starts_at ? shortTime(e.starts_at) : '',
+        })))
+
+    const deliveries = (dates || []).map((d, i) => [
+        ...commitments[i].map(extraLabel),
+        ...extrasFor(noteFor(d)).map(extraLabel),
+    ])
 
     // The same things again with the time and the name still apart, because a
     // sheet draws them as a card each with one of the two picked out, and only
     // the CSV wants them flattened into a string.
-    const extras = (dates || []).map(d => extrasFor(noteFor(d)))
+    const extras = (dates || []).map((d, i) => [...commitments[i], ...extrasFor(noteFor(d))])
     const eventsOn = (dates || []).map(d => (events || [])
         .filter(e => e.event_date === d)
         .map(e => ({ name: e.name, time: e.event_time ? shortTime(e.event_time) : '' })))

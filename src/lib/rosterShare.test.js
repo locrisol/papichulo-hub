@@ -535,3 +535,59 @@ describe('holiday hours on a shared week', () => {
         expect(weekCsv(build())).not.toContain('Holiday')
     })
 })
+
+describe('what is on reaches the shared week', () => {
+    const catering = {
+        id: 'c1', kind: 'catering', title: 'Trinity dept lunch', scope: 'sites',
+        starts_on: DATES[2], ends_on: null, starts_at: '12:00:00', status: 'confirmed',
+    }
+    const promotion = {
+        id: 'p1', kind: 'promotion', title: '15% off wraps', scope: 'all_sites',
+        starts_on: DATES[0], ends_on: DATES[2], starts_at: null, status: 'confirmed',
+    }
+
+    // A week printed and pinned up that leaves the catering off is worse than
+    // one that never had it.
+    it('puts a catering job on its day, with the kind in front of the name', () => {
+        const t = build({ diary: [catering] })
+        expect(t.deliveries[2]).toContain('12:00 Catering (Trinity dept lunch)')
+        expect(t.deliveries[1]).toEqual([])
+    })
+
+    // The screen draws one band across the week and a flat sheet has no band,
+    // so saying it on each day is honest where saying it once is not.
+    it('repeats something running several days on each day it covers', () => {
+        const t = build({ diary: [promotion] })
+        expect(t.deliveries[0]).toContain('Promotion (15% off wraps)')
+        expect(t.deliveries[2]).toContain('Promotion (15% off wraps)')
+        expect(t.deliveries[3]).toEqual([])
+    })
+
+    it('keeps the time and the name apart for the sheet, the way deliveries are', () => {
+        const t = build({ diary: [catering] })
+        expect(t.extras[2][0]).toEqual({ name: 'Catering (Trinity dept lunch)', time: '12:00' })
+    })
+
+    // The form promises nobody else sees a private one, and a printed week
+    // pinned to a wall is about as seen as anything gets.
+    it('never shares a private entry', () => {
+        const t = build({ diary: [{ ...catering, scope: 'private' }] })
+        expect(t.deliveries[2]).toEqual([])
+    })
+
+    it('leaves a cancelled one off too, since nobody is needed for it', () => {
+        const t = build({ diary: [{ ...catering, status: 'cancelled' }] })
+        expect(t.deliveries[2]).toEqual([])
+    })
+
+    it('puts what is on before the deliveries, the same order the screen uses', () => {
+        const notes = [{ note_date: DATES[2], extras: [{ name: 'Feedr', time: '12:00' }] }]
+        const t = build({ diary: [catering], dayNotes: notes })
+        expect(t.deliveries[2][0]).toContain('Catering')
+        expect(t.deliveries[2][1]).toContain('Feedr')
+    })
+
+    it('changes nothing at all on a week with no diary', () => {
+        expect(build().deliveries.every(d => Array.isArray(d))).toBe(true)
+    })
+})
