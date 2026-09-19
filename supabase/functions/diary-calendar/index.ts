@@ -15,13 +15,24 @@
 // The secrets it needs:
 //
 //   GOOGLE_SERVICE_ACCOUNT        the whole key JSON, as one line
-//   GOOGLE_IMPERSONATE            hub@papichulo.ie
 //   GOOGLE_ALL_SITES_CALENDAR_ID  the group calendar
+//   GOOGLE_IMPERSONATE            optional, and see below
 //
-// The service account impersonates hub@ rather than a person, because hub@ owns
-// the three calendars and a person leaves. It is never given a real person to
-// impersonate: that would take its reach from three shared calendars to every
-// calendar in the company, which is a lot to buy one convenience.
+// There are two ways to let this write to the calendars, and the difference is
+// what the key can reach if it ever leaks.
+//
+// Leave GOOGLE_IMPERSONATE unset and the token is the service account itself.
+// It can then touch exactly the calendars that have been shared with its own
+// address and nothing else. Setting one up is a share on each calendar, done by
+// whoever makes it, at the same moment they copy its id.
+//
+// Set GOOGLE_IMPERSONATE to hub@papichulo.ie and the token is hub@ instead,
+// through domain wide delegation. Nothing has to be shared, because hub@ owns
+// all three. The cost is that the delegation is granted per scope and not per
+// user: a key that leaks can ask to be any address in the domain and read or
+// write that person's calendar.
+//
+// Either way it is never given a real person to impersonate.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { eventBody, calendarsFor, plan } from './google.js'
@@ -67,21 +78,21 @@ function pemToBytes(pem: string) {
 
 // A signed assertion, traded for an access token.
 //
-// sub is the impersonation: the token comes out as hub@ rather than as the
-// service account, which is what domain wide delegation is for and why the
-// calendars do not have to be shared with the service account by hand.
+// sub is the whole of the difference between the two ways of setting this up.
+// With it the token comes out as that address, through domain wide delegation.
+// Without it the token is the service account itself, and it reaches only the
+// calendars shared with its own address.
 async function accessToken() {
     const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT')
     if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT is not set')
 
     const key = JSON.parse(raw)
     const subject = Deno.env.get('GOOGLE_IMPERSONATE')
-    if (!subject) throw new Error('GOOGLE_IMPERSONATE is not set')
 
     const now = Math.floor(Date.now() / 1000)
     const claim = {
         iss: key.client_email,
-        sub: subject,
+        ...(subject ? { sub: subject } : {}),
         scope: 'https://www.googleapis.com/auth/calendar',
         aud: 'https://oauth2.googleapis.com/token',
         iat: now,
@@ -116,9 +127,10 @@ async function accessToken() {
 
     const body = await answer.json()
     if (!answer.ok) {
-        // Google's own words, which say far more than a status code. The usual
-        // one is that delegation was not granted for the scope, and that is a
-        // thing to go and fix rather than a thing to retry.
+        // Google's own words, which say far more than a status code. With
+        // delegation the usual one is that it was not granted for the scope;
+        // without it, that the calendar was never shared with the service
+        // account. Both are a thing to go and fix rather than to retry.
         throw new Error(`Google refused the token: ${body.error_description || body.error || answer.status}`)
     }
     return body.access_token as string
