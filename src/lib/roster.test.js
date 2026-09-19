@@ -4,6 +4,7 @@ import {
     hoursForDay, shiftEdges, endLabel, shiftsOverlap, findOverlaps, totals, publishState,
     fmtHours, hoursForDate, timelineRange, staffAt, staffPerSlot, weekRows, dayTotals, tint, DEFAULT_BREAK_RULES,
     hourLabelStep,
+    dayBreakLabels,
 } from '@/lib/roster'
 
 const shift = (starts_at, ends_at, extra = {}) => ({
@@ -536,5 +537,40 @@ describe('hourLabelStep', () => {
 
     it('never asks for less than one hour', () => {
         expect(hourLabelStep(600, 600)).toBe(1)
+    })
+})
+
+describe('what a day of breaks reads as', () => {
+    const shift = minutes => ({ id: String(minutes), break_minutes: minutes })
+
+    // A split day is two shifts, and two that each earn nothing came out as
+    // "No break" twice. Nothing owed all day is one fact about the day.
+    it('says No break once for a split day that earns none', () => {
+        expect(dayBreakLabels([shift(0), shift(0)])).toEqual(['No break'])
+    })
+
+    // 15 and 15 is thirty minutes owed. Printing it once would hide half.
+    it('keeps two real breaks as two', () => {
+        expect(dayBreakLabels([shift(15), shift(15)])).toEqual(['15 minutes', '15 minutes'])
+    })
+
+    // Which stretch carries the break is the thing somebody needs to know, so
+    // the one that earns nothing still says so.
+    it('says both when one stretch earns a break and the other does not', () => {
+        expect(dayBreakLabels([shift(0), shift(15)])).toEqual(['No break', '15 minutes'])
+    })
+
+    it('says nothing at all on a day with no shifts', () => {
+        expect(dayBreakLabels([])).toEqual([])
+        expect(dayBreakLabels(null)).toEqual([])
+    })
+
+    it('reads one shift the way it always did', () => {
+        expect(dayBreakLabels([shift(30)])).toEqual(['30 minutes'])
+        expect(dayBreakLabels([shift(0)])).toEqual(['No break'])
+    })
+
+    it('treats a missing break as none rather than throwing', () => {
+        expect(dayBreakLabels([{ id: 'a' }, { id: 'b' }])).toEqual(['No break'])
     })
 })

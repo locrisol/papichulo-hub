@@ -83,11 +83,13 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "usual_extras" "jsonb",
     "roster_note" "text",
     "mail_from" "text",
+    "google_calendar_id" "text",
     "sort_order" integer DEFAULT 0 NOT NULL,
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
+COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
 COMMENT ON COLUMN "public"."restaurants"."opening_hours" IS 'The usual week, as {"0":{"open":"10:00","close":"21:00"}, ...} keyed by weekday with Sunday as 0. A day that is missing or null means the store does not normally open that day. Null overall means nobody has set them yet, and the roster then simply marks nothing as opening or closing rather than guessing.';
 COMMENT ON COLUMN "public"."restaurants"."roster_note" IS 'The line of small print at the bottom of every shared week. Migration 029 replaced this with a message per day on the grounds that a fixed line stops being read, which was half right: the per day message is the one people read, and there is still a standing sentence every roster needs to carry. Both exist now and neither prints when it is empty.';
@@ -935,6 +937,80 @@ ALTER TABLE ONLY "public"."events"
 CREATE INDEX "idx_events_date" ON "public"."events" USING "btree" ("event_date");
 
 
+-- -- The diary --------------------------------------------------------
+--
+-- What is coming up that somebody had to be told about.
+--
+-- Three kinds of thing land on a day and they are deliberately three
+-- tables. events arrives from Ticketmaster on its own. day_notes.extras is
+-- the deliveries a restaurant usually gets, ticked onto a day off a list.
+-- This is the third: the ones with a customer or a person on the other end,
+-- which is why it is the only one of the three with a contact and a state.
+--
+-- It is also the only table in here where a row can belong to more than one
+-- restaurant. Everything else carries a single restaurant_id. The
+-- requirement here is genuinely many to many, so the scope decides, and
+-- restaurant_ids means nothing unless the scope says sites.
+
+CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "kind" "text" NOT NULL,
+    "title" "text" NOT NULL,
+    "scope" "text" NOT NULL,
+    "restaurant_ids" "uuid"[] DEFAULT '{}'::"uuid"[] NOT NULL,
+    "starts_on" "date" NOT NULL,
+    "ends_on" "date",
+    "starts_at" time without time zone,
+    "ends_at" time without time zone,
+    "location" "text",
+    "contact_name" "text",
+    "contact_detail" "text",
+    "note" "text",
+    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
+    "google_event_ids" "jsonb",
+    "google_synced_at" timestamp with time zone,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
+    CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
+    CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
+    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK ((CASE WHEN ("scope" = 'sites'::"text") THEN ("cardinality"("restaurant_ids") >= 1) ELSE ("cardinality"("restaurant_ids") = 0) END)),
+    CONSTRAINT "diary_entries_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "starts_on"))),
+    CONSTRAINT "diary_entries_no_finish_without_a_start" CHECK ((("ends_at" IS NULL) OR ("starts_at" IS NOT NULL))),
+    CONSTRAINT "diary_entries_private_has_an_owner" CHECK ((("scope" <> 'private'::"text") OR ("created_by" IS NOT NULL)))
+);
+
+COMMENT ON TABLE "public"."diary_entries" IS 'What is coming up that somebody had to be told about: catering, meetings, promotions, maintenance. What is on at the Arena arrives on its own and lives in events; the deliveries a restaurant usually gets are ticked onto a day and live in day_notes.extras. This is the third kind, the one with a customer or a person on the other end of it.';
+COMMENT ON COLUMN "public"."diary_entries"."ends_at" IS 'Null is allowed and means nobody said. The same rule the roster already follows for deliveries: something arriving some time on Tuesday is still worth having, and refusing it only means somebody invents a time to get it in.';
+COMMENT ON COLUMN "public"."diary_entries"."ends_on" IS 'Null means the same day. A promotion running the 22nd to the 28th is one row rather than seven, so the roster can draw it as one band and the calendar as one thing.';
+COMMENT ON COLUMN "public"."diary_entries"."labels" IS 'Short words saying who or what an entry is for, e.g. Students or Corporate. Free text with no list behind it: what is offered next time is whatever has been used before, so nothing has to be set up for a new restaurant. Kept apart from the title because the title is the thing itself and these are how it is grouped, and because a title cannot be asked a question.';
+COMMENT ON COLUMN "public"."diary_entries"."google_event_ids" IS 'The calendar id to the event id Google gave back, as {"<calendar id>":"<event id>"}. A map rather than one column because an entry for two restaurants is written to two calendars and both have to be updated when it changes. Null means it has never been written.';
+COMMENT ON COLUMN "public"."diary_entries"."google_synced_at" IS 'When Google last accepted it. Null after a save means the write failed and the entry is only in the Hub, which the screen says out loud. A failed write must never lose the entry and must never be reported as a success.';
+COMMENT ON COLUMN "public"."diary_entries"."restaurant_ids" IS 'Which restaurants, and only when the scope is sites. Empty for all_sites and for private, which the check constraint enforces so there is no second way to say the same thing.';
+COMMENT ON COLUMN "public"."diary_entries"."scope" IS 'Who it is for, and it decides three things at once: who can see it, which Google calendar it is written to, and which rosters it appears on. all_sites is the whole group and is not the same as ticking every restaurant, because it goes to the group calendar.';
+COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody''s week.';
+
+ALTER TABLE ONLY "public"."diary_entries"
+    ADD CONSTRAINT "diary_entries_pkey" PRIMARY KEY ("id");
+
+-- Read by date range every time the calendar or a roster week is opened.
+CREATE INDEX "idx_diary_entries_dates" ON "public"."diary_entries" USING "btree" ("starts_on", "ends_on");
+
+-- The select policy asks whether one restaurant is in the array, which is what
+-- a gin index on an array is for.
+CREATE INDEX "idx_diary_entries_restaurants" ON "public"."diary_entries" USING "gin" ("restaurant_ids");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_diary_entries_created_by" ON "public"."diary_entries" USING "btree" ("created_by");
+
+-- Asking which entries carry a label is the whole reason this is an array
+-- rather than a word in the title, so it gets the index that makes the question
+-- cheap before anybody asks it in anger.
+CREATE INDEX "idx_diary_entries_labels" ON "public"."diary_entries" USING "gin" ("labels");
+
+
 -- -- The record of what happened ---------------------------------------
 --
 -- Who signed in, and what changed.
@@ -1182,6 +1258,14 @@ ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_report_id_fkey" FOREIGN KEY ("report_id") REFERENCES "public"."weekly_reports"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."report_items"
     ADD CONSTRAINT "report_items_section_id_fkey" FOREIGN KEY ("section_id") REFERENCES "public"."report_sections"("id") ON DELETE CASCADE;
+
+-- -- The diary --------------------------------------------------------
+
+-- No cascade, the same as every other created_by here. Deleting somebody
+-- who wrote entries should be refused rather than quietly taking the
+-- entries with them.
+ALTER TABLE ONLY "public"."diary_entries"
+    ADD CONSTRAINT "diary_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 
 
 -- ======================================================================
@@ -1999,6 +2083,23 @@ CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "auth
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
+-- -- The diary --------------------------------------------------------
+
+ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
+
+-- Everybody who works here reads what is on, because a catering job matters
+-- most to the person who has to make it. Private is the exception and answers
+-- only to the person who wrote it.
+CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )))));
+
+-- Managers and above write. A store manager or an owner can only put an entry
+-- on their own restaurant, so restaurant_ids has to be contained by the one
+-- they are at; a super admin is the only one who can write an entry that lands
+-- on somebody else's site. Only an owner or a super admin speaks for the whole
+-- group, because a discount week is not one restaurant's decision.
+CREATE POLICY "diary_entries_write" ON "public"."diary_entries" TO "authenticated" USING (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )])))))) WITH CHECK (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )]))))));
+
+
 -- -- The record of what happened ---------------------------------------
 
 ALTER TABLE "public"."login_events" ENABLE ROW LEVEL SECURITY;
@@ -2230,6 +2331,7 @@ CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON 
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 

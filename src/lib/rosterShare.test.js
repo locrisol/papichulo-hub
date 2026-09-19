@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    shareName, weekTable, weekCsv, sheetLayout, wrapLines, AWAY, CSV_BOM,
+    shareName, weekTable, sheetLayout, wrapLines,
 } from '@/lib/rosterShare'
 import { ABSENCE_KINDS } from '@/lib/absences'
 
@@ -68,10 +68,22 @@ describe('weekTable', () => {
         expect(t.people[0].days[3].shifts[0].end).toBe('Closing')
     })
 
-    it('carries the breaks beside the times', () => {
+    // On the day rather than on each shift, the same as the screen. A split
+    // day where neither stretch earns one printed No break twice, which is one
+    // fact said twice.
+    it('carries the breaks on the day', () => {
         const t = build()
-        expect(t.people[0].days[1].shifts[0].break).toBe('30 minutes')
-        expect(t.people[1].days[1].shifts[0].break).toBe('No break')
+        expect(t.people[0].days[1].breaks).toEqual(['30 minutes'])
+        expect(t.people[1].days[1].breaks).toEqual(['No break'])
+    })
+
+    it('says No break once for a split day that earns none', () => {
+        const split = [
+            { id: 'a', employee_id: 'e1', shift_date: DATES[1], starts_at: '09:00', ends_at: '13:00', break_minutes: 0 },
+            { id: 'b', employee_id: 'e1', shift_date: DATES[1], starts_at: '17:30', ends_at: '21:00', break_minutes: 0 },
+        ]
+        const t = build({ shifts: split })
+        expect(t.people[0].days[1].breaks).toEqual(['No break'])
     })
 
     it('leaves an empty day empty rather than putting a dash in a spreadsheet', () => {
@@ -133,7 +145,7 @@ describe('weekTable', () => {
         const t = build({
             events: [{ id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' }],
         })
-        expect(t.whatIsOn[4]).toBe('Westlife (doors 18:00)')
+        expect(t.eventsOn[4].map(e => (e.time ? `${e.name} (doors ${e.time})` : e.name)).join(', ')).toBe('Westlife (doors 18:00)')
     })
 
     it('runs two events on one day together rather than losing one', () => {
@@ -143,7 +155,7 @@ describe('weekTable', () => {
                 { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
             ],
         })
-        expect(t.whatIsOn[4]).toBe('One (doors 13:00), Two (doors 19:00)')
+        expect(t.eventsOn[4].map(e => (e.time ? `${e.name} (doors ${e.time})` : e.name)).join(', ')).toBe('One (doors 13:00), Two (doors 19:00)')
     })
 
     it('adds each person and each day up', () => {
@@ -166,56 +178,6 @@ describe('weekTable', () => {
         const t = weekTable({ dates: DATES, employees: [], shifts: [], openingHours })
         expect(t.people).toEqual([])
         expect(t.totalHours).toBe('0.00')
-    })
-})
-
-describe('weekCsv', () => {
-    it('gives a row per person and a row of breaks under it', () => {
-        const lines = weekCsv(build()).split('\n')
-        expect(lines[4]).toContain('Ana')
-        expect(lines[5]).toContain('Breaks')
-    })
-
-    it('starts with the days and their dates', () => {
-        const lines = weekCsv(build()).split('\n')
-        expect(lines[0]).toContain('Point Campus')
-        expect(lines[0]).toContain('Sun')
-        expect(lines[0]).toContain('Hours')
-        expect(lines[1]).toContain('23/08/2026')
-    })
-
-    it('quotes anything with a comma in it, or the columns shift', () => {
-        const table = build({
-            events: [
-                { id: 'v1', event_date: DATES[4], name: 'One', event_time: '13:00:00' },
-                { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
-            ],
-        })
-        const line = weekCsv(table).split('\r\n').find(l => l.startsWith('Events'))
-        expect(line).toContain('"One (doors 13:00), Two (doors 19:00)"')
-    })
-
-    it('doubles a quote inside a value rather than ending the field', () => {
-        const table = build({ dayNotes: [{ note_date: DATES[0], note: 'The "big" clean' }] })
-        const line = weekCsv(table).split('\n').find(l => l.startsWith('Notes'))
-        expect(line).toContain('"The ""big"" clean"')
-    })
-
-    it('runs two shifts on one day together in one cell', () => {
-        const table = build({
-            shifts: [
-                ...shifts,
-                { id: 's4', employee_id: 'e1', shift_date: DATES[1], starts_at: '18:00', ends_at: '21:00', break_minutes: 0 },
-            ],
-        })
-        const line = weekCsv(table).split('\n').find(l => l.startsWith('Ana'))
-        expect(line).toContain('09:00 - 17:00 / 18:00 - 21:00')
-    })
-
-    it('ends with the totals', () => {
-        const lines = weekCsv(build()).split('\n')
-        const totals = lines.find(l => l.startsWith('Hours on the day'))
-        expect(totals).toContain('19.50')
     })
 })
 
@@ -377,60 +339,19 @@ describe('time off on a shared week', () => {
     it('gives a day nothing but the date, the shifts and away', () => {
         const table = build({ absences: away })
         for (const day of table.people.flatMap(p => p.days)) {
-            expect(Object.keys(day).sort()).toEqual(['away', 'date', 'shifts'])
+            expect(Object.keys(day).sort()).toEqual(['away', 'breaks', 'date', 'shifts'])
         }
     })
 
-    it('says it in the spreadsheet without saying why', () => {
-        const csv = weekCsv(build({ absences: away }))
-        expect(csv).toContain(AWAY.label)
-        expect(csv).not.toContain('sick')
-    })
 
     // A shift on a day somebody is down as away is still a shift, and the
     // printed copy has to show it or the roster and the wall disagree.
-    it('a day with a shift on it is an ordinary day, whatever is behind it', () => {
-        // Ana is down as away and rostered anyway, which happens: the app warns
-        // about it rather than refusing. Once it is on the roster it is a shift
-        // she is doing, so it goes out as one and says nothing else. What she
-        // usually does was weighed up before she was put on, and that belongs
-        // on the screen where the decision gets made, not on the wall after.
-        const clash = [{ ...away[0], starts_on: DATES[1], ends_on: DATES[1] }]
-        const csv = weekCsv(build({ absences: clash }))
-        expect(csv).toContain('09:00')
-        expect(csv).not.toContain(AWAY.label)
-    })
 
-    it('still says it on a day nobody is on', () => {
-        const csv = weekCsv(build({ absences: away }))
-        expect(csv).toContain(AWAY.label)
-    })
 })
 
 // What Excel does with the file, which is not the same question as what is in
 // it. A week came back with a name mangled and every shift reading a stray
 // symbol where the dash should be, and none of that was in the string.
-describe('a spreadsheet Excel can actually read', () => {
-    it('carries the mark that says which alphabet it is', () => {
-        expect(CSV_BOM).toBe('\uFEFF')
-    })
-
-    it('ends its lines the way the standard says', () => {
-        const csv = weekCsv(build())
-        expect(csv).toContain('\r\n')
-        expect(csv.split('\r\n').length).toBeGreaterThan(5)
-    })
-
-    // A plain hyphen and nothing cleverer. The dash between two times is the
-    // one character on the sheet that has to survive being read as the wrong
-    // alphabet, and the pretty one does not.
-    it('separates the times with a plain hyphen', () => {
-        const csv = weekCsv(build())
-        expect(csv).toContain('09:00 - 17:00')
-        expect(csv).not.toMatch(/[\u2010-\u2015]/)
-    })
-})
-
 // The other things a day has on, and the line at the bottom of every roster.
 describe('deliveries and the standing note', () => {
     const notes = [{
@@ -459,10 +380,6 @@ describe('deliveries and the standing note', () => {
         expect(build({ dayNotes: loose }).deliveries[1]).toEqual(['12:00 Feedr', 'Office delivery'])
     })
 
-    it('gives the spreadsheet a row only when there is something in it', () => {
-        expect(weekCsv(build({ dayNotes: notes }))).toContain('Also on')
-        expect(weekCsv(build())).not.toContain('Also on')
-    })
 
     // The sheet is a fixed height worked out before anything is drawn, so a
     // week with no deliveries has to come out shorter rather than carrying an
@@ -489,10 +406,6 @@ describe('deliveries and the standing note', () => {
         expect(build({ standingNote: '   ' }).standing).toBe('')
     })
 
-    it('prints it at the bottom of the spreadsheet', () => {
-        const csv = weekCsv(build({ standingNote: 'Swaps need a manager.' }))
-        expect(csv.trimEnd().endsWith('Swaps need a manager.')).toBe(true)
-    })
 })
 
 // The holiday column, which is only there in a week that needs one.
@@ -530,8 +443,100 @@ describe('holiday hours on a shared week', () => {
         expect(withHoliday.dayCol).toBeLessThan(plain.dayCol)
     })
 
-    it('gives the spreadsheet a column only when there is one', () => {
-        expect(weekCsv(build({ absences: holiday('e1') }))).toContain('Holiday')
-        expect(weekCsv(build())).not.toContain('Holiday')
+})
+
+describe('what is on reaches the shared week', () => {
+    const catering = {
+        id: 'c1', kind: 'catering', title: 'Trinity dept lunch', scope: 'sites',
+        starts_on: DATES[2], ends_on: null, starts_at: '12:00:00', status: 'confirmed',
+    }
+    const promotion = {
+        id: 'p1', kind: 'promotion', title: '15% off wraps', scope: 'all_sites',
+        starts_on: DATES[0], ends_on: DATES[2], starts_at: null, status: 'confirmed',
+    }
+
+    // A week printed and pinned up that leaves the catering off is worse than
+    // one that never had it.
+    it('puts a catering job on its day, with the kind in front of the name', () => {
+        const t = build({ diary: [catering] })
+        expect(t.deliveries[2]).toContain('12:00 Catering (Trinity dept lunch)')
+        expect(t.deliveries[1]).toEqual([])
+    })
+
+    // One thing, drawn once. It used to repeat on each day it covered, because
+    // a flat sheet had no band to draw, and now both sheets draw one.
+    it('draws something running several days as one band', () => {
+        const t = build({ diary: [promotion] })
+        expect(t.bands).toHaveLength(1)
+        expect(t.bands[0]).toMatchObject({
+            label: 'Promotion (15% off wraps)', kind: 'promotion', start: 0, span: 3,
+        })
+        expect(t.deliveries[0]).toEqual([])
+        expect(t.deliveries[2]).toEqual([])
+    })
+
+    it('leaves a one day thing as a chip rather than a band of one column', () => {
+        const t = build({ diary: [catering] })
+        expect(t.bands).toEqual([])
+        expect(t.deliveries[2]).toContain('12:00 Catering (Trinity dept lunch)')
+    })
+
+    // A bar clipped at the edge of the sheet cannot say on its own that it
+    // began before the week or carries on after it.
+    it('says when one began before the week or runs past it', () => {
+        const long = { ...promotion, starts_on: '2026-08-01', ends_on: '2026-12-01' }
+        const t = build({ diary: [long] })
+        expect(t.bands[0]).toMatchObject({ start: 0, span: 7, runsIn: true, runsOn: true })
+    })
+
+    it('gives the sheet no band row to draw when the week has none', () => {
+        expect(build().bands).toEqual([])
+    })
+
+    it('keeps the time and the name apart for the sheet, the way deliveries are', () => {
+        const t = build({ diary: [catering] })
+        expect(t.extras[2][0]).toEqual({ name: 'Catering (Trinity dept lunch)', time: '12:00' })
+    })
+
+    // The form promises nobody else sees a private one, and a printed week
+    // pinned to a wall is about as seen as anything gets.
+    it('never shares a private entry', () => {
+        const t = build({ diary: [{ ...catering, scope: 'private' }] })
+        expect(t.deliveries[2]).toEqual([])
+    })
+
+    it('leaves a cancelled one off too, since nobody is needed for it', () => {
+        const t = build({ diary: [{ ...catering, status: 'cancelled' }] })
+        expect(t.deliveries[2]).toEqual([])
+    })
+
+    it('puts what is on before the deliveries, the same order the screen uses', () => {
+        const notes = [{ note_date: DATES[2], extras: [{ name: 'Feedr', time: '12:00' }] }]
+        const t = build({ diary: [catering], dayNotes: notes })
+        expect(t.deliveries[2][0]).toContain('Catering')
+        expect(t.deliveries[2][1]).toContain('Feedr')
+    })
+
+    it('changes nothing at all on a week with no diary', () => {
+        expect(build().deliveries.every(d => Array.isArray(d))).toBe(true)
+    })
+})
+
+describe('a label on a band', () => {
+    const promotion = {
+        id: 'p1', kind: 'promotion', title: '15% off wraps', scope: 'all_sites',
+        starts_on: DATES[0], ends_on: DATES[2], starts_at: null, status: 'confirmed',
+    }
+
+    // A band runs across days and has the width. The chip on a single day does
+    // not, and there the name is the part that has to survive being cut.
+    it('rides on the band, after the name', () => {
+        const t = build({ diary: [{ ...promotion, labels: ['Students'] }] })
+        expect(t.bands[0].label).toBe('Promotion (15% off wraps) [Students]')
+    })
+
+    it('leaves the band alone when there are none', () => {
+        expect(build({ diary: [promotion] }).bands[0].label)
+            .toBe('Promotion (15% off wraps)')
     })
 })

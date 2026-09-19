@@ -12,14 +12,24 @@ describe('timeOptions', () => {
     })
 
     it('labels each one as the time it is', () => {
-        expect(timeOptions()[60]).toEqual({ value: '15:00', label: '15:00' })
+        expect(timeOptions()[60]).toMatchObject({ value: '15:00', label: '15:00' })
     })
 
     describe('starting at the trading day', () => {
-        it('puts the opening hour first', () => {
+        // Two hours before the doors, not at them. Starting exactly at opening
+        // put everything earlier at the very bottom, so reaching 08:30 for a
+        // store opening at 09:00 meant scrolling the whole day. Somebody is in
+        // before the doors most days.
+        it('starts two hours before the store opens', () => {
             const opts = timeOptions({ dayStart: '07:00' })
-            expect(values(opts)[0]).toBe('07:00')
-            expect(values(opts)[1]).toBe('07:15')
+            expect(values(opts)[0]).toBe('05:00')
+            expect(values(opts)[1]).toBe('05:15')
+        })
+
+        it('has the opening hour a short way down, not at the bottom', () => {
+            const opts = values(timeOptions({ dayStart: '09:00' }))
+            expect(opts.indexOf('09:00')).toBe(8)
+            expect(opts.indexOf('08:30')).toBe(6)
         })
 
         it('still offers every other time, because a 02:00 finish is a normal Saturday', () => {
@@ -27,11 +37,17 @@ describe('timeOptions', () => {
             const opts = timeOptions({ dayStart: '07:00' })
             expect(opts).toHaveLength(96)
             expect(values(opts)).toContain('02:00')
-            expect(values(opts).at(-1)).toBe('06:45')
+            expect(values(opts).at(-1)).toBe('04:45')
         })
 
         it('rounds an opening time that is not on the grid down to it', () => {
-            expect(values(timeOptions({ dayStart: '07:07' }))[0]).toBe('07:00')
+            expect(values(timeOptions({ dayStart: '07:07' }))[0]).toBe('05:00')
+        })
+
+        // A store opening at half past midnight starts its list the night
+        // before rather than at a negative number.
+        it('wraps back into the day before when opening is early enough', () => {
+            expect(values(timeOptions({ dayStart: '00:30' }))[0]).toBe('22:30')
         })
 
         it('ignores an opening time it cannot read', () => {
@@ -76,7 +92,7 @@ describe('timeOptions', () => {
 
         it('says so rather than showing a time no clock has', () => {
             const last = timeOptions({ endOfDay: true }).at(-1)
-            expect(last).toEqual({ value: '24:00', label: 'End of day' })
+            expect(last).toMatchObject({ value: '24:00', label: 'End of day' })
         })
 
         it('goes last whatever the list starts at', () => {
@@ -108,5 +124,33 @@ describe('onTheGrid', () => {
         expect(onTheGrid(END_OF_DAY)).toBe(true)
         expect(onTheGrid('')).toBe(true)
         expect(onTheGrid(null)).toBe(true)
+    })
+})
+
+describe('marking the hours somebody cannot work', () => {
+    // Asked of every time, so the week view can say it before you pick one
+    // rather than after. The day view already hatches them.
+    const free = t => t >= '09:00' && t < '15:00'
+
+    it('says so in the words, not only in a colour', () => {
+        const opts = timeOptions({ free })
+        expect(opts.find(o => o.value === '08:00').label).toBe('08:00 (cannot work)')
+        expect(opts.find(o => o.value === '10:00').label).toBe('10:00')
+    })
+
+    it('carries the answer as a flag too, for whatever draws it', () => {
+        const opts = timeOptions({ free })
+        expect(opts.find(o => o.value === '08:00').free).toBe(false)
+        expect(opts.find(o => o.value === '10:00').free).toBe(true)
+    })
+
+    // A shift sometimes has to be built across hours somebody would rather not
+    // do. Hiding them makes that impossible instead of merely deliberate.
+    it('keeps every time in the list, marked rather than missing', () => {
+        expect(timeOptions({ free })).toHaveLength(96)
+    })
+
+    it('marks nothing when it is not asked to', () => {
+        expect(timeOptions().every(o => o.free)).toBe(true)
     })
 })

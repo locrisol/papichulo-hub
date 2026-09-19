@@ -283,6 +283,7 @@ export const badge =
 // is not. The orange still marks being there, and now agrees with the words.
 export function jumpLabel(isCurrent, unit = 'week') {
     if (unit === 'day') return isCurrent ? 'Today' : 'Go to today'
+    if (unit === 'month') return isCurrent ? 'This month' : 'Go to current month'
     return isCurrent ? 'This week' : 'Go to current week'
 }
 

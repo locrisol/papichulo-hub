@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { secondaryButton } from '@/lib/controlStyles'
-import { weekTable, weekCsv, shareName, CSV_BOM } from '@/lib/rosterShare'
+import { weekTable, shareName } from '@/lib/rosterShare'
 import { weekImageBlob } from '@/lib/rosterImage'
 import { weekPdf } from '@/lib/rosterPdf'
 
@@ -16,7 +16,7 @@ import { weekPdf } from '@/lib/rosterPdf'
 // browser, it falls back to saving the file, which is what a laptop was going
 // to do anyway.
 export default function ShareWeekButton({
-    dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+    dates, employees, shifts, dayNotes, events, diary, openingHours, absences, standingNote,
     restaurantName, weekStart, disabled,
 }) {
     const [busy, setBusy] = useState('')
@@ -35,7 +35,7 @@ export default function ShareWeekButton({
     const showing = note?.week === weekStart ? note.text : ''
 
     const build = () => weekTable({
-        dates, employees, shifts, dayNotes, events, openingHours, absences, standingNote,
+        dates, employees, shifts, dayNotes, events, diary, openingHours, absences, standingNote,
         restaurantName,
     })
 
@@ -74,12 +74,6 @@ export default function ShareWeekButton({
         }
     }
 
-    function downloadCsv() {
-        // The mark goes on the file rather than into the text, so the string
-        // itself stays something plain that can be read and tested.
-        const blob = new Blob([CSV_BOM, weekCsv(build())], { type: 'text/csv;charset=utf-8' })
-        save(blob, shareName(restaurantName, weekStart, 'csv'))
-    }
 
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -93,9 +87,6 @@ export default function ShareWeekButton({
             </button>
             <button type="button" onClick={() => weekPdf(build(), restaurantName, weekStart)} disabled={disabled} className={secondaryButton}>
                 PDF
-            </button>
-            <button type="button" onClick={downloadCsv} disabled={disabled} className={secondaryButton}>
-                Spreadsheet
             </button>
             {showing && <span className="text-xs text-muted">{showing}</span>}
         </div>

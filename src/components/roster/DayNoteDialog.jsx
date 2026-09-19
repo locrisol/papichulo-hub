@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import TimeField from '@/components/ui/TimeField'
+import ClockField from '@/components/ui/ClockField'
 import Modal from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
@@ -141,12 +141,12 @@ export default function DayNoteDialog({
                             )}
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                            <TimeField
+                            <ClockField
                                 value={form.opensAt}
                                 onChange={v => set("opensAt", v)}
                                 aria-label="Opens at"
                                 />
-                            <TimeField
+                            <ClockField
                                 value={form.closesAt}
                                 onChange={v => set("closesAt", v)}
                                 aria-label="Closes at"
@@ -212,7 +212,6 @@ export default function DayNoteDialog({
                         value={form.note}
                         onChange={e => set('note', e.target.value)}
                         className={fieldClass}
-                        placeholder="Deep Cleaning Day"
                     />
                 </ModalSection>
                 )}
@@ -272,7 +271,7 @@ export default function DayNoteDialog({
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>
-                                    <TimeField
+                                    <ClockField
                                         value={extra.time}
                                         onChange={v => set("extras", setExtraTime(form.extras, extra.name, v))}
                                         aria-label={extra.name + " time"}
@@ -302,10 +301,9 @@ export default function DayNoteDialog({
                                 value={oneOff.name}
                                 onChange={e => setOneOff(o => ({ ...o, name: e.target.value }))}
                                 className={fieldClass}
-                                placeholder="Coffee machine service"
                             />
                         </div>
-                        <TimeField
+                        <ClockField
                             value={oneOff.time}
                             onChange={v => setOneOff(o => ({ ...o, time: v }))}
                             aria-label="Time for the one off"
@@ -337,7 +335,6 @@ export default function DayNoteDialog({
                         onChange={e => set('message', e.target.value)}
                         rows={2}
                         className={fieldClass}
-                        placeholder="What happened"
                     />
                     <p className={hintClass}>For example, deliveries go to the back door this week.</p>
                 </ModalSection>

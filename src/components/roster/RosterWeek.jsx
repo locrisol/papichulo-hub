@@ -11,7 +11,10 @@ import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor } from '@/lib/dayExtras'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
+    bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel, labelsOf,
+} from '@/lib/diary'
+import {
+    weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
     shiftEdges,
 } from '@/lib/roster'
 
@@ -44,12 +47,32 @@ import {
 // The hours stay. Everybody sees everybody's, which is a decision rather than an
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, events, openingHours, standingNote, today,
-    alerts, absences, onOpenShift, onNewShift, onOpenDay, shiftMark, staff = false,
+    dates, employees, shifts, positions, dayNotes, events, diary, openingHours, standingNote, today,
+    alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
+    shiftMark, staff = false,
 }) {
-    // Whose warnings are open, one at a time. Blocks are never in here: those
-    // stay on screen, because a block is the reason the week will not publish.
-    const [openAlerts, setOpenAlerts] = useState(null)
+    // Whose warnings have been shut, rather than whose are open.
+    //
+    // They start open, all of them. Closed by default they were a number beside
+    // a name that you had to press to find out what it meant, on a screen whose
+    // whole job is telling you what is wrong with the week before you send it
+    // out. Now the week says what is wrong with it and you can put away the
+    // ones you have dealt with.
+    //
+    // Several at once rather than one at a time, for the same reason: reading
+    // two people's warnings meant opening one and losing the other.
+    //
+    // Blocks are never shut by this. AlertStrip draws them whatever this says,
+    // because a block is the reason the week will not publish.
+    const [shutAlerts, setShutAlerts] = useState(() => new Set())
+
+    const alertsOpen = id => !shutAlerts.has(id)
+    const toggleAlerts = id => setShutAlerts(was => {
+        const next = new Set(was)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+    })
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
     const rows = weekRows(employees, shifts, dates)
@@ -61,7 +84,25 @@ export default function RosterWeek({
     // get typed in. Staff cannot type anything, so for them an empty one is a
     // line of dashes taking up space on a week they are trying to read.
     const showEvents = !staff || (events || []).length > 0
-    const showExtras = !staff || (dayNotes || []).some(n => extrasFor(n).length > 0)
+
+    // What reaches the roster at all. Private never does, because the form
+    // promises nobody else sees it and this is where the staff read the week.
+    // Cancelled never does either: the entry is worth keeping, it just does not
+    // need anybody on any more.
+    const onNow = (diary || []).filter(showsOnRoster)
+
+    // Anything running more than a day is a band across the days it covers,
+    // once, rather than the same chip printed on each of them. Five chips read
+    // as five things and a discount week is one thing.
+    const bands = bandsForWeek(onNow, dates)
+    const banded = new Set(bands.map(b => b.entry.id))
+
+    // Everything else joins the deliveries on the day it is on.
+    const diaryOn = d => onDate(onNow, d).filter(e => !banded.has(e.id))
+
+    const showExtras = !staff
+        || (dayNotes || []).some(n => extrasFor(n).length > 0)
+        || dates.some(d => diaryOn(d).length > 0)
 
     // Down the middle, not up at the top.
     //
@@ -121,7 +162,7 @@ export default function RosterWeek({
                 </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
-                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 bg-sidebar z-10">
+                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 z-10 bg-sidebar z-10">
                             Staff
                         </th>
                         {dates.map((d, i) => (
@@ -148,7 +189,7 @@ export default function RosterWeek({
                         on at the Arena, red for anything the manager wants read.
                         Only the people rows are on white. */}
                     <tr className="bg-slate-100 border-b border-slate-200">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 bg-slate-100">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 z-10 bg-slate-100">
                             Store hours
                         </td>
                         {dates.map(d => {
@@ -173,8 +214,52 @@ export default function RosterWeek({
                         {tail}
                     </tr>
 
+                    {/* What is on, as a band across the days it runs.
+                        One row each so the columns line up with the days
+                        underneath them: a grid inside one wide cell only lines
+                        up while every column happens to be the same width, and
+                        the first bank holiday would have broken it. */}
+                    {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
+                        <tr key={entry.id} className="border-b border-border bg-white">
+                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 z-10 bg-white">
+                                {i === 0 ? 'What is on' : ''}
+                            </td>
+                            {start > 0 && <td className={cell} colSpan={start} />}
+                            <td className={`${cell} p-1`} colSpan={span}>
+                                {/* A label where nothing is listening. The
+                                    shared week has no handler, and a bar that
+                                    looks pressable and does nothing is worse
+                                    than a plain one. */}
+                                <button
+                                    type="button"
+                                    disabled={!onOpenDiary}
+                                    onClick={() => onOpenDiary?.(entry)}
+                                    className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)} ${onOpenDiary ? '' : 'cursor-default'}`}
+                                >
+                                    {runsIn && '‹ '}
+                                    <span className="uppercase tracking-wide">{kindLabel(entry.kind)}</span>
+                                    {` (${entry.title})`}
+                                    {/* The band runs across days and has the
+                                        room for them. The chip on a single day
+                                        does not, and there the name is the part
+                                        that has to survive. */}
+                                    {labelsOf(entry).map(label => (
+                                        <span key={label} className="ml-1.5 font-normal opacity-75">
+                                            [{label}]
+                                        </span>
+                                    ))}
+                                    {runsOn && ' ›'}
+                                </button>
+                            </td>
+                            {start + span < dates.length && (
+                                <td className={cell} colSpan={dates.length - start - span} />
+                            )}
+                            {tail}
+                        </tr>
+                    ))}
+
                     {showEvents && <tr className="bg-accent-light/60 border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 bg-accent-light">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 z-10 bg-accent-light">
                             Events
                         </td>
                         {dates.map(d => {
@@ -211,14 +296,68 @@ export default function RosterWeek({
                         is in it is a row you cannot use to put the first thing
                         in. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
-                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
-                                Also on
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 z-10 bg-slate-50">
+                                {/* The label is the way into the whole week at
+                                    once, because a delivery schedule arrives as
+                                    a week and putting it in a day at a time
+                                    means opening seven days to type three
+                                    times. The + on a single day is still there
+                                    for when that is all you want. */}
+                                {staff ? 'Also on' : (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenWeekExtras?.()}
+                                        className="text-left hover:text-accent-ink transition-colors"
+                                        title="Put in a whole week at once"
+                                    >
+                                        Also on <span aria-hidden="true">&#9662;</span>
+                                    </button>
+                                )}
                             </td>
                             {dates.map(d => {
                                 const extras = extrasFor(noteFor(d))
-                                const inside = extras.length === 0 ? (
+                                // The diary first, because a catering job is
+                                // something somebody committed to and a
+                                // delivery is something that turns up. Both are
+                                // the same chip with a different edge: two
+                                // kinds of thing on one day, and this row is
+                                // about the day rather than about which table
+                                // they came out of.
+                                //
+                                // Not a button, though it looks like one it
+                                // could be. For a manager this whole cell is
+                                // already a button that opens the day, and a
+                                // button inside a button is not a thing. The
+                                // band above is pressable because it has a cell
+                                // to itself; these are read here and changed on
+                                // the calendar.
+                                const commitments = diaryOn(d)
+                                const inside = (extras.length === 0 && commitments.length === 0) ? (
                                     <span className="text-muted text-xs">{staff ? '' : '+'}</span>
-                                ) : extras.map(extra => (
+                                ) : [...commitments.map(entry => (
+                                    <span
+                                        key={entry.id}
+                                        className={`block rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words text-left ${kindChip(entry.kind)}`}
+                                    >
+                                        {entry.starts_at && (
+                                            <>
+                                                <span className="font-bold tabular-nums">
+                                                    {timeLabel(entry).split(' to ')[0]}
+                                                </span>{' '}
+                                            </>
+                                        )}
+                                        {/* The kind first, because on a row
+                                            that also holds Feedr and Clockmeal,
+                                            what you need at a glance is what
+                                            sort of thing it is. The name alone
+                                            does not say whether somebody has to
+                                            cook for it. */}
+                                        <span className="font-bold uppercase tracking-wide">
+                                            {kindLabel(entry.kind)}
+                                        </span>
+                                        {` (${entry.title})`}
+                                    </span>
+                                )), ...extras.map(extra => (
                                     // One chip each, because two of them as
                                     // plain lines read as one paragraph, and
                                     // the time picked out from the name because
@@ -246,7 +385,7 @@ export default function RosterWeek({
                                         )}
                                         <span className="text-slate-600">{extra.name}</span>
                                     </span>
-                                ))
+                                ))]
                                 return (
                                     <td key={d} className={`${cell} text-center p-0`}>
                                         {/* The same way in as an empty cell on
@@ -290,7 +429,7 @@ export default function RosterWeek({
                             // before, so the week read as fourteen rows rather
                             // than seven.
                             <tr key={row.employee.id} className="border-b border-gray-100">
-                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 bg-white">
+                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 z-10 bg-white">
                                     <span className="flex items-center gap-2">
                                         <span
                                             className="w-1 h-6 rounded-full flex-shrink-0"
@@ -306,10 +445,9 @@ export default function RosterWeek({
                                         </span>
                                         <AlertBadge
                                             findings={mineAlerts}
-                                            open={openAlerts === row.employee.id}
+                                            open={alertsOpen(row.employee.id)}
                                             onToggle={hasWarnings(mineAlerts)
-                                                ? () => setOpenAlerts(
-                                                    openAlerts === row.employee.id ? null : row.employee.id)
+                                                ? () => toggleAlerts(row.employee.id)
                                                 : undefined}
                                         />
                                     </span>
@@ -362,7 +500,7 @@ export default function RosterWeek({
                                                     ? { outline: '2px dashed #d97706', outlineOffset: '-3px' }
                                                     : {}),
                                             }}
-                                            className={`${cell} text-center ${
+                                            className={`${cell} group/cell text-center ${
                                                 note?.is_closed ? 'bg-red-50' : day.date === today ? 'bg-accent-light/40' : ''
                                             }`}
                                         >
@@ -461,6 +599,32 @@ export default function RosterWeek({
                                                     </span>
                                                 )
                                             })}
+
+                                            {/* Another one on a day that
+                                                already has one.
+                                                A split day is ordinary here:
+                                                nine to one, then back at half
+                                                five after a class. The plus
+                                                only appeared on an empty cell,
+                                                so the second shift could be
+                                                added from the day view and
+                                                nowhere else, which is a long
+                                                way to go for something the week
+                                                is perfectly able to say.
+                                                Quiet until the cell is hovered,
+                                                because a week of plus signs
+                                                between the shifts is noise on
+                                                the screen people read most. */}
+                                            {!staff && day.shifts.length > 0 && !offKind && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onNewShift?.(row.employee.id, day.date)}
+                                                    className="block w-full text-muted/0 group-hover/cell:text-muted hover:!text-accent-ink hover:bg-accent-light/50 rounded text-[0.6875rem] leading-tight transition-colors focus:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                                                    aria-label={`Add another shift for ${row.employee.full_name} on ${fullDate(day.date)}`}
+                                                >
+                                                    +
+                                                </button>
+                                            )}
                                         </td>
                                     )
                                 })}
@@ -483,15 +647,13 @@ export default function RosterWeek({
                                 // and closes under that instead.
                                 className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
                             >
-                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 bg-white leading-tight">
+                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 z-10 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
                                     <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight">
-                                        {day.shifts.length === 0 ? '' : day.shifts.map(s => (
-                                            <span key={s.id} className="block">
-                                                {breakLabel(s.break_minutes)}
-                                            </span>
+                                        {dayBreakLabels(day.shifts).map((words, i) => (
+                                            <span key={i} className="block">{words}</span>
                                         ))}
                                     </td>
                                 ))}
@@ -501,7 +663,7 @@ export default function RosterWeek({
                             hasAlerts ? (
                                 <tr key={`${row.employee.id}-alerts`} className="border-b-2 border-border">
                                     <td colSpan={dates.length + (anyHoliday ? 3 : 2)} className="p-0">
-                                        <AlertStrip findings={mineAlerts} open={openAlerts === row.employee.id} />
+                                        <AlertStrip findings={mineAlerts} open={alertsOpen(row.employee.id)} />
                                     </td>
                                 </tr>
                             ) : null,
@@ -511,7 +673,7 @@ export default function RosterWeek({
                     {/* Anything the manager wants read, and what each day came
                         to. */}
                     <tr className="bg-red-50 border-b border-red-100">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 bg-red-50">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 z-10 bg-red-50">
                             Notes
                         </td>
                         {dates.map(d => (
@@ -523,7 +685,7 @@ export default function RosterWeek({
                     </tr>
 
                     <tr className="bg-sidebar font-semibold text-white">
-                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 bg-sidebar">
+                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 z-10 bg-sidebar">
                             Hours on the day
                         </td>
                         {perDay.map(d => (

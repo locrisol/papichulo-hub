@@ -126,3 +126,55 @@ export function usualProblem(list) {
     }
     return ''
 }
+
+// The whole week at once, which is the shape the schedule arrives in.
+//
+// The Feedr schedule comes every Thursday and the Lunch Team one every Friday,
+// each of them about one delivery across a week. Entering that a day at a time
+// means opening seven days to type three times, and the time that differs on
+// one of them is the easiest thing in the world to miss.
+//
+// A row per delivery, a column per day, and a cell holds the time rather than a
+// tick. The time is the half that varies, showing it costs the same as showing
+// a tick, and it answers the question a tick raises.
+//
+// null means it is not on that day. An empty string means it is on and nobody
+// said when, which is a real answer and not the same as not being on.
+export function weekGrid(usualExtras, dayNotes, dates) {
+    const days = dates || []
+    const onDate = {}
+    for (const date of days) {
+        onDate[date] = extrasFor((dayNotes || []).find(n => n.note_date === date))
+    }
+
+    // The usual list first and in its own order, because that is the order
+    // somebody set and the order they will look for. Anything ticked onto a day
+    // that is not on the usual list follows, since a one off still has to be
+    // visible or the grid disagrees with the roster beside it.
+    const rows = []
+    const seen = new Set()
+
+    for (const usual of cleanExtras(usualExtras)) {
+        seen.add(usual.name.toLowerCase())
+        rows.push({ name: usual.name, usualTime: usual.time, usual: true })
+    }
+
+    for (const date of days) {
+        for (const extra of onDate[date]) {
+            const key = extra.name.toLowerCase()
+            if (seen.has(key)) continue
+            seen.add(key)
+            rows.push({ name: extra.name, usualTime: '', usual: false })
+        }
+    }
+
+    return rows.map(row => ({
+        ...row,
+        onDay: Object.fromEntries(days.map(date => {
+            const found = onDate[date].find(e => e.name.toLowerCase() === row.name.toLowerCase())
+            return [date, found ? (found.time || '') : null]
+        })),
+        count: days.filter(date => onDate[date]
+            .some(e => e.name.toLowerCase() === row.name.toLowerCase())).length,
+    }))
+}

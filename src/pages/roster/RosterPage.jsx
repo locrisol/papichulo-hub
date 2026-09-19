@@ -15,7 +15,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
 } from '@/lib/roster'
-import { checkWeek, findingsByEmployee, overlapFindings } from '@/lib/workRules'
+import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
 import { emailTheAnswer } from '@/lib/timeOffMail'
 import { absenceRange } from '@/lib/absences'
@@ -30,11 +30,14 @@ import RosterRulesModal from '@/components/settings/RosterRulesModal'
 import ShiftDialog from '@/components/roster/ShiftDialog'
 import TimeOffDialog from '@/components/roster/TimeOffDialog'
 import WeeklyExtrasModal from '@/components/roster/WeeklyExtrasModal'
+import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import RequestDeskModal from '@/components/roster/RequestDeskModal'
 import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import DiaryDialog from '@/components/diary/DiaryDialog'
+import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
 // Building the week.
 //
@@ -79,6 +82,11 @@ export default function RosterPage() {
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
     const [events, setEvents] = useState([])
+    const [diary, setDiary] = useState([])
+    const [restaurants, setRestaurants] = useState([])
+    const [editingDiary, setEditingDiary] = useState(null)
+    const [viewingDiary, setViewingDiary] = useState(null)
+    const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [priorHours, setPriorHours] = useState({})
     // The week either side. Only the rest checks read it: a break between two
     // shifts does not stop on a Saturday night, so they cannot be worked out
@@ -132,7 +140,7 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes, askRes] = await Promise.all([
+        const [empRes, posRes, shiftRes, noteRes, eventRes, diaryRes, placeRes, offRes, askRes] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -147,6 +155,23 @@ export default function RosterPage() {
             supabase.from('events').select('*')
                 .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
                 .order('event_time'),
+            // The diary: catering, meetings, promotions. Overlapping the
+            // week rather than starting in it, the same reason the absences
+            // below are asked for that way: a discount week that began last
+            // Thursday still covers Monday.
+            //
+            // No restaurant filter. Which entries this restaurant can see is
+            // the scope, and the scope is read by the policy in the database
+            // rather than by a clause here. A group wide promotion has no
+            // restaurant on it at all and a filter would drop it.
+            supabase.from('diary_entries').select('*')
+                .lte('starts_on', addDays(weekStart, 6))
+                .or(`ends_on.gte.${weekStart},and(ends_on.is.null,starts_on.gte.${weekStart})`)
+                .order('starts_on'),
+            // For the diary dialog, which has to name every restaurant an entry
+            // could be put on rather than only the one whose week is open.
+            supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
+                .eq('is_active', true).order('sort_order'),
             // Anything overlapping the week, which is not the same as anything
             // starting in it. A fortnight off that began last Thursday still
             // covers Monday and would be missed by a date range on starts_on.
@@ -175,6 +200,8 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         setEvents(eventRes.data || [])
+        setDiary(diaryRes.data || [])
+        setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
         setAllWaiting(askRes.data || [])
         setLoading(false)
@@ -380,8 +407,15 @@ export default function RosterPage() {
     // have scrolled past. Double bookings join them here and only here: they
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
+    //
+    // Paperwork does not come down here. A permit or a food safety certificate
+    // is a standing fact about the person, the same on Monday as on Friday, and
+    // it stays in the banner at the top. Beside a name on a row of shifts it
+    // made the row's warning mean two things at once, so a number beside
+    // somebody had to be opened to find out whether the week was wrong or the
+    // filing was.
     const alerts = findingsByEmployee([
-        ...findings, ...overlapFindings(clashes, employeesById), ...fullDayNotes,
+        ...aboutThisWeek(findings), ...overlapFindings(clashes, employeesById), ...fullDayNotes,
     ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.
@@ -925,6 +959,7 @@ export default function RosterPage() {
                         shifts={shifts}
                         dayNotes={dayNotes}
                         events={events}
+                        diary={diary}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
                         standingNote={activeRestaurant?.roster_note}
@@ -950,6 +985,9 @@ export default function RosterPage() {
                     positions={positions}
                     dayNotes={dayNotes}
                     events={events}
+                    diary={diary}
+                    onOpenDiary={entry => setViewingDiary(entry)}
+                    onOpenWeekExtras={() => setWeekExtrasOpen(true)}
                     openingHours={activeRestaurant?.opening_hours}
                     standingNote={activeRestaurant?.roster_note}
                     today={today}
@@ -981,6 +1019,8 @@ export default function RosterPage() {
                     breakRules={activeRestaurant?.break_rules}
                     onResizeShift={resizeShift}
                     events={events.filter(ev => ev.event_date === date)}
+                    diary={diary}
+                    onOpenDiary={entry => setViewingDiary(entry)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({
@@ -1035,6 +1075,16 @@ export default function RosterPage() {
             )}
 
             {settingsOpen === 'weekly' && <WeeklyExtrasModal onClose={() => setSettingsOpen(null)} />}
+
+            {weekExtrasOpen && (
+                <WeekExtrasModal
+                    startOn={weekStart}
+                    canStepWeeks={false}
+                    restaurant={activeRestaurant}
+                    onClose={() => setWeekExtrasOpen(false)}
+                    onSaved={() => { setWeekExtrasOpen(false); load({ quiet: true }) }}
+                />
+            )}
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
@@ -1085,6 +1135,32 @@ export default function RosterPage() {
                         setAnswering(null)
                     }}
                     onClose={() => setAnswering(null)}
+                />
+            )}
+
+            {/* Read first, the same as everything else on these screens, and
+                edited from a button inside it. A promotion running across the
+                week opens from the band it is drawn as, so a date that turns
+                out to be wrong is fixed where it is wrong. */}
+            {viewingDiary && (
+                <DiaryEntryModal
+                    entry={viewingDiary}
+                    restaurants={restaurants}
+                    canEdit
+                    /* The route is managers and above, so anybody who can
+                       reach this page can change it. */
+                    onEdit={() => { setEditingDiary(viewingDiary); setViewingDiary(null) }}
+                    onClose={() => setViewingDiary(null)}
+                />
+            )}
+
+            {editingDiary && (
+                <DiaryDialog
+                    entry={editingDiary}
+                    date={editingDiary.starts_on}
+                    restaurants={restaurants}
+                    onClose={() => setEditingDiary(null)}
+                    onSaved={() => { setEditingDiary(null); load({ quiet: true }) }}
                 />
             )}
         </div>
