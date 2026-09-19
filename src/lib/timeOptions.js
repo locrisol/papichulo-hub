@@ -62,7 +62,12 @@ function grid() {
 // puts the opening hour first, so the times anybody actually wants are at the
 // top with nothing to scroll past, and every other time in the day is still
 // there, further down, where a late finish belongs.
-export function timeOptions({ value = '', dayStart = '', endOfDay = false } = {}) {
+// free is asked of every time in the list, and says whether that person can
+// actually work then. Anything it says no to keeps its place and is marked,
+// rather than being taken out: a shift sometimes has to be built across hours
+// somebody would rather not do, and a picker that hides them makes that
+// impossible instead of merely deliberate.
+export function timeOptions({ value = '', dayStart = '', endOfDay = false, free } = {}) {
     const from = toMinutes(dayStart)
     const opening = from >= 0 ? Math.floor(from / STEP) * STEP : 0
     // Wrapped, so a store opening at 00:30 starts its list at 22:30 the night
@@ -83,10 +88,20 @@ export function timeOptions({ value = '', dayStart = '', endOfDay = false } = {}
         minutes.sort((a, b) => rank(a) - rank(b))
     }
 
-    const options = minutes.map(m => ({ value: toTime(m), label: toTime(m) }))
+    // The words rather than only a colour.
+    //
+    // An option's colour is honoured on a desktop browser and ignored on a
+    // phone, where the operating system draws the list itself. The colour is
+    // still set, because where it works it is read without reading. But the
+    // meaning has to be in the text or half the people using this never see it.
+    const options = minutes.map(m => {
+        const time = toTime(m)
+        const can = free ? free(time) : true
+        return { value: time, label: can ? time : `${time} (cannot work)`, free: can }
+    })
 
     // Last, because it is the far edge of the day whatever the list starts at.
-    if (endOfDay) options.push({ value: END_OF_DAY, label: label(END_OF_DAY) })
+    if (endOfDay) options.push({ value: END_OF_DAY, label: label(END_OF_DAY), free: true })
 
     return options
 }

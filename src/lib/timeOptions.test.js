@@ -12,7 +12,7 @@ describe('timeOptions', () => {
     })
 
     it('labels each one as the time it is', () => {
-        expect(timeOptions()[60]).toEqual({ value: '15:00', label: '15:00' })
+        expect(timeOptions()[60]).toMatchObject({ value: '15:00', label: '15:00' })
     })
 
     describe('starting at the trading day', () => {
@@ -92,7 +92,7 @@ describe('timeOptions', () => {
 
         it('says so rather than showing a time no clock has', () => {
             const last = timeOptions({ endOfDay: true }).at(-1)
-            expect(last).toEqual({ value: '24:00', label: 'End of day' })
+            expect(last).toMatchObject({ value: '24:00', label: 'End of day' })
         })
 
         it('goes last whatever the list starts at', () => {
@@ -124,5 +124,33 @@ describe('onTheGrid', () => {
         expect(onTheGrid(END_OF_DAY)).toBe(true)
         expect(onTheGrid('')).toBe(true)
         expect(onTheGrid(null)).toBe(true)
+    })
+})
+
+describe('marking the hours somebody cannot work', () => {
+    // Asked of every time, so the week view can say it before you pick one
+    // rather than after. The day view already hatches them.
+    const free = t => t >= '09:00' && t < '15:00'
+
+    it('says so in the words, not only in a colour', () => {
+        const opts = timeOptions({ free })
+        expect(opts.find(o => o.value === '08:00').label).toBe('08:00 (cannot work)')
+        expect(opts.find(o => o.value === '10:00').label).toBe('10:00')
+    })
+
+    it('carries the answer as a flag too, for whatever draws it', () => {
+        const opts = timeOptions({ free })
+        expect(opts.find(o => o.value === '08:00').free).toBe(false)
+        expect(opts.find(o => o.value === '10:00').free).toBe(true)
+    })
+
+    // A shift sometimes has to be built across hours somebody would rather not
+    // do. Hiding them makes that impossible instead of merely deliberate.
+    it('keeps every time in the list, marked rather than missing', () => {
+        expect(timeOptions({ free })).toHaveLength(96)
+    })
+
+    it('marks nothing when it is not asked to', () => {
+        expect(timeOptions().every(o => o.free)).toBe(true)
     })
 })
