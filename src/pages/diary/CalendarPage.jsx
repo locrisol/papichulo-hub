@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -211,9 +211,7 @@ export default function CalendarPage() {
     // for its day card, rather than a second pattern for the same thing, and it
     // is safe here because the day opens below its own row so the square you
     // pressed does not move out from under you.
-    const pickDay = useCallback(date => {
-        setSelected(was => (was === date ? null : date))
-    }, [])
+    const pickDay = date => setSelected(was => (was === date ? null : date))
 
     // And Escape, because it is what people try.
     useEffect(() => {
