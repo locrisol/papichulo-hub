@@ -17,11 +17,22 @@
 //   the table in one step rather than being carried back through a browser that
 //   could change it on the way.
 //
+// **Two kinds of caller, and they want different things.**
+//
+//   A person, with their own token, asking about the restaurant they are
+//   looking at. That is the calendar, and it only asks twice a day per browser.
+//
+//   The schedule, with the service key, asking about all of them. Nobody has to
+//   open a page for that one, which is the whole point of it: the listings used
+//   to go stale for as long as no manager happened to look.
+//
 // Deploy it the ordinary way, with the caller's key checked:
 //
 //   supabase functions deploy arena-events
 //
-// There is a signed in person behind every call, so leave JWT verification on.
+// There is a signed in person behind every call except the schedule's, and the
+// schedule carries the service key, which satisfies the same check. So leave
+// JWT verification on.
 //
 //   TICKETMASTER_KEY   a Discovery API consumer key
 //
@@ -53,19 +64,87 @@ const json = (body: unknown, status = 200) =>
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
+type Admin = ReturnType<typeof createClient>
+
+// One restaurant brought up to date.
+//
+// Nothing ever deletes. An event that has dropped out of Ticketmaster because
+// it has happened is exactly the one worth keeping: the API forgets, so our
+// table has to be the memory.
+async function syncOne(admin: Admin, venueId: string, key: string) {
+    const res = await fetch(discoveryUrl(venueId, key))
+    if (!res.ok) {
+        // Deliberately not the body. Ticketmaster puts the key back in its own
+        // error text, and this answer goes to a browser.
+        throw new Error(`Ticketmaster said no (${res.status}).`)
+    }
+
+    const fetched = eventsFrom(await res.json())
+    if (fetched.length === 0) return { added: 0, total: 0 }
+
+    // Only to report how many are new. If this is racing another sync the count
+    // may be off, which does not matter: the upsert below is what is correct.
+    const { data: existing } = await admin
+        .from('events').select('ticketmaster_id')
+        .in('ticketmaster_id', fetched.map(e => e.ticketmaster_id))
+
+    const now = new Date().toISOString()
+    const { error } = await admin
+        .from('events')
+        .upsert(fetched.map(e => ({ ...e, last_seen_at: now })), { onConflict: 'ticketmaster_id' })
+
+    if (error) throw new Error(error.message)
+
+    return { added: fetched.length - (existing || []).length, total: fetched.length }
+}
+
 Deno.serve(async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS })
     if (request.method !== 'POST') return json({ error: 'Post only' }, 405)
 
     const url = Deno.env.get('SUPABASE_URL')!
-    const admin = createClient(url, serviceKey())
+    const secret = serviceKey()
+    const admin = createClient(url, secret)
 
-    // ---------- who is calling ----------
-    const authHeader = request.headers.get('Authorization') || ''
+    const key = Deno.env.get('TICKETMASTER_KEY')
+    if (!key) return json({ error: 'TICKETMASTER_KEY is not set on this function' }, 500)
+
+    const bearer = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+
+    // ---------- the schedule ----------
+    //
+    // Recognised by carrying the service key itself, which is the only thing
+    // that holds it. There is no second secret to set and nothing extra to keep
+    // in step: whatever can already do anything to this database is the one
+    // thing allowed to ask for every restaurant at once.
+    if (bearer && bearer === secret) {
+        const { data: places } = await admin
+            .from('restaurants').select('id, name, forecasting_venue_id')
+            .eq('is_active', true)
+            .not('forecasting_venue_id', 'is', null)
+
+        const done: Record<string, unknown>[] = []
+        for (const place of places || []) {
+            try {
+                const out = await syncOne(admin, place.forecasting_venue_id, key)
+                done.push({ restaurant: place.name, ...out })
+            } catch (err) {
+                // One venue refusing must not stop the others. The log is the
+                // only place anybody will see this, so it says which.
+                console.error('arena-events', place.name, err)
+                done.push({ restaurant: place.name, error: String(err) })
+            }
+        }
+
+        console.log('arena-events schedule', JSON.stringify(done))
+        return json({ ran: done.length, restaurants: done })
+    }
+
+    // ---------- a person ----------
     const caller = createClient(
         url,
         Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_PUBLISHABLE_KEY')!,
-        { global: { headers: { Authorization: authHeader } } },
+        { global: { headers: { Authorization: request.headers.get('Authorization') || '' } } },
     )
     const { data: { user } } = await caller.auth.getUser()
     if (!user) return json({ error: 'Not signed in' }, 401)
@@ -98,35 +177,8 @@ Deno.serve(async (request) => {
     const venueId = place?.forecasting_venue_id
     if (!venueId) return json({ added: 0, total: 0, why: 'no venue on this restaurant' })
 
-    const key = Deno.env.get('TICKETMASTER_KEY')
-    if (!key) return json({ error: 'TICKETMASTER_KEY is not set on this function' }, 500)
-
     try {
-        const res = await fetch(discoveryUrl(venueId, key))
-        if (!res.ok) {
-            // Deliberately not the body. Ticketmaster puts the key back in its
-            // own error text, and this answer goes to a browser.
-            return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
-        }
-
-        const fetched = eventsFrom(await res.json())
-        if (fetched.length === 0) return json({ added: 0, total: 0 })
-
-        // Only to report how many are new. If this is racing another sync the
-        // count may be off, which does not matter: the upsert below is what is
-        // correct.
-        const { data: existing } = await admin
-            .from('events').select('ticketmaster_id')
-            .in('ticketmaster_id', fetched.map(e => e.ticketmaster_id))
-
-        const now = new Date().toISOString()
-        const { error } = await admin
-            .from('events')
-            .upsert(fetched.map(e => ({ ...e, last_seen_at: now })), { onConflict: 'ticketmaster_id' })
-
-        if (error) throw new Error(error.message)
-
-        return json({ added: fetched.length - (existing || []).length, total: fetched.length })
+        return json(await syncOne(admin, venueId, key))
     } catch (err) {
         console.error('arena-events', err)
         return json({ error: String(err) }, 502)
