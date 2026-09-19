@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -204,6 +204,22 @@ export default function CalendarPage() {
         else if (canWrite) setEditing({ entry: thing, date: thing.starts_on })
     }
 
+    // Press the same day again and it shuts. The same gesture My Shifts uses
+    // for its day card, rather than a second pattern for the same thing, and it
+    // is safe here because the day opens below its own row so the square you
+    // pressed does not move out from under you.
+    const pickDay = useCallback(date => {
+        setSelected(was => (was === date ? null : date))
+    }, [])
+
+    // And Escape, because it is what people try.
+    useEffect(() => {
+        if (!selected) return undefined
+        const onKey = e => { if (e.key === 'Escape') setSelected(null) }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [selected])
+
     function openAdd(date) {
         setEditing({ entry: null, date: date || selected || today })
     }
@@ -253,7 +269,6 @@ export default function CalendarPage() {
                                 onClick={() => {
                                     setViewMonth(monthStart(today))
                                     setWeekStart(weekStartOf(today))
-                                    setSelected(today)
                                 }}
                             >
                                 Today
@@ -326,7 +341,7 @@ export default function CalendarPage() {
                         today={today}
                         byDate={byDate}
                         selected={selected}
-                        onSelect={setSelected}
+                        onSelect={pickDay}
                         onOpen={open}
                         canEdit={canWrite}
                         restaurants={restaurants}
