@@ -22,6 +22,18 @@ import { toMinutes, toTime } from '@/lib/roster'
 const STEP = 15
 const DAY = 24 * 60
 
+// How much room the list leaves before the doors open.
+//
+// It used to begin exactly at the opening time, which put everything earlier at
+// the very bottom: a store opening at 09:00 meant scrolling a whole day to
+// reach 08:30. Somebody is in before the doors on most days, setting up or
+// taking a delivery, so the quarter hours just before opening are among the
+// likeliest picks in the list and they were the furthest away in it.
+//
+// Two hours rather than one, because the odd day needs more than the usual
+// half hour and the point is not having to scroll on that day either.
+const LEAD_IN = 2 * 60
+
 // The end of the day, which is not 23:45 and is not a time of day at all.
 //
 // availability stores "until the end of the day" as 24:00, which a native time
@@ -52,7 +64,10 @@ function grid() {
 // there, further down, where a late finish belongs.
 export function timeOptions({ value = '', dayStart = '', endOfDay = false } = {}) {
     const from = toMinutes(dayStart)
-    const start = from >= 0 ? Math.floor(from / STEP) * STEP : 0
+    const opening = from >= 0 ? Math.floor(from / STEP) * STEP : 0
+    // Wrapped, so a store opening at 00:30 starts its list at 22:30 the night
+    // before rather than at a negative number.
+    const start = from >= 0 ? ((opening - LEAD_IN) % DAY + DAY) % DAY : 0
 
     const minutes = grid().map(m => (m + start) % DAY)
 

@@ -16,10 +16,20 @@ describe('timeOptions', () => {
     })
 
     describe('starting at the trading day', () => {
-        it('puts the opening hour first', () => {
+        // Two hours before the doors, not at them. Starting exactly at opening
+        // put everything earlier at the very bottom, so reaching 08:30 for a
+        // store opening at 09:00 meant scrolling the whole day. Somebody is in
+        // before the doors most days.
+        it('starts two hours before the store opens', () => {
             const opts = timeOptions({ dayStart: '07:00' })
-            expect(values(opts)[0]).toBe('07:00')
-            expect(values(opts)[1]).toBe('07:15')
+            expect(values(opts)[0]).toBe('05:00')
+            expect(values(opts)[1]).toBe('05:15')
+        })
+
+        it('has the opening hour a short way down, not at the bottom', () => {
+            const opts = values(timeOptions({ dayStart: '09:00' }))
+            expect(opts.indexOf('09:00')).toBe(8)
+            expect(opts.indexOf('08:30')).toBe(6)
         })
 
         it('still offers every other time, because a 02:00 finish is a normal Saturday', () => {
@@ -27,11 +37,17 @@ describe('timeOptions', () => {
             const opts = timeOptions({ dayStart: '07:00' })
             expect(opts).toHaveLength(96)
             expect(values(opts)).toContain('02:00')
-            expect(values(opts).at(-1)).toBe('06:45')
+            expect(values(opts).at(-1)).toBe('04:45')
         })
 
         it('rounds an opening time that is not on the grid down to it', () => {
-            expect(values(timeOptions({ dayStart: '07:07' }))[0]).toBe('07:00')
+            expect(values(timeOptions({ dayStart: '07:07' }))[0]).toBe('05:00')
+        })
+
+        // A store opening at half past midnight starts its list the night
+        // before rather than at a negative number.
+        it('wraps back into the day before when opening is early enough', () => {
+            expect(values(timeOptions({ dayStart: '00:30' }))[0]).toBe('22:30')
         })
 
         it('ignores an opening time it cannot read', () => {
