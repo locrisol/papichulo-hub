@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
-import { landingChoices, pageLabel } from '@/lib/nav'
+import { landingChoices, landingFor, pageLabel } from '@/lib/nav'
 import { homeFor } from '@/lib/access'
 import { card, pageTitle, labelClass, hintClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -64,7 +64,15 @@ export default function PreferencesPage() {
                         onChange={e => { setLanding(e.target.value); setSaved('') }}
                         className={fieldClass}
                     >
-                        <option value="">{pageLabel(homeFor(user))} (what it does now)</option>
+                        {/* What choosing nothing means, and nothing more than
+                            that. It said "what it does now", which was true
+                            until somebody chose something else and then sat
+                            there claiming the Hub still opened on the dashboard
+                            while it opened on the calendar. What it does now is
+                            a fact about the account, not about this option, so
+                            it is said once beside the button and read from the
+                            row that was saved. */}
+                        <option value="">{pageLabel(homeFor(user))} (nothing chosen)</option>
                         {sections.map(section => (
                             <optgroup key={section} label={section}>
                                 {choices.filter(c => c.section === section).map(c => (
@@ -74,18 +82,27 @@ export default function PreferencesPage() {
                         ))}
                     </select>
                     <p className={hintClass}>
-                        Where the Hub opens after you sign in. Only pages your account can
-                        open are on the list, and it is checked again every time you sign in,
-                        so this can never leave you landing on a page that refuses you.
+                        Only pages your account can open are on the list, and it is checked
+                        again every time you sign in, so this can never leave you landing on
+                        a page that refuses you.
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <button type="submit" disabled={saving} className={primaryButton()}>
                         {saving ? 'Saving...' : 'Save'}
                     </button>
                     {saved && <span className="text-sm text-green-700">{saved}</span>}
                 </div>
+
+                {/* Read off the saved row rather than off the box above it, so
+                    it says what the Hub does and not what you have picked but
+                    not saved yet. Those are different sentences and only one of
+                    them is true. */}
+                <p className="text-sm text-muted">
+                    Signing in takes you to{' '}
+                    <strong className="text-gray-900">{pageLabel(landingFor(user))}</strong>.
+                </p>
             </form>
         </div>
     )
