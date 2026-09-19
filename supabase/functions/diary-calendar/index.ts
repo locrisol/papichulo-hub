@@ -16,21 +16,23 @@
 //
 //   GOOGLE_SERVICE_ACCOUNT        the whole key JSON, as one line
 //   GOOGLE_ALL_SITES_CALENDAR_ID  the group calendar
-//   GOOGLE_IMPERSONATE            optional, and see below
+//   GOOGLE_IMPERSONATE            hub@papichulo.ie, and see below
 //
 // There are two ways to let this write to the calendars, and the difference is
 // what the key can reach if it ever leaks.
 //
-// Leave GOOGLE_IMPERSONATE unset and the token is the service account itself.
-// It can then touch exactly the calendars that have been shared with its own
-// address and nothing else. Setting one up is a share on each calendar, done by
-// whoever makes it, at the same moment they copy its id.
+// Set GOOGLE_IMPERSONATE to hub@papichulo.ie and the token is hub@ through
+// domain wide delegation. Nothing has to be shared, because hub@ owns all
+// three calendars. The cost is that delegation is granted per scope and not per
+// user, so a key that leaks can ask to be any address in the domain.
 //
-// Set GOOGLE_IMPERSONATE to hub@papichulo.ie and the token is hub@ instead,
-// through domain wide delegation. Nothing has to be shared, because hub@ owns
-// all three. The cost is that the delegation is granted per scope and not per
-// user: a key that leaks can ask to be any address in the domain and read or
-// write that person's calendar.
+// Leave it unset and the token is the service account itself, reaching only
+// what has been shared with its own address. That is the smaller blast radius
+// and it is the one we wanted. **It does not work on this domain**: external
+// calendar sharing is limited to free and busy here, so Google greys out every
+// write permission for an address ending .iam.gserviceaccount.com. Checked on
+// 19 September 2026. Loosening that domain setting to get around it would be a
+// worse trade than the delegation one, so delegation it is.
 //
 // Either way it is never given a real person to impersonate.
 
@@ -76,6 +78,18 @@ function pemToBytes(pem: string) {
     return Uint8Array.from(raw, c => c.charCodeAt(0))
 }
 
+// The narrowest scope that does the job.
+//
+// calendar.events can create, change and delete events on calendars the
+// identity already reaches. The wider auth/calendar can also make calendars,
+// delete them and change who they are shared with, and this needs none of that.
+//
+// It matters more than usual here. Domain wide delegation is granted per scope
+// and not per user, so whatever is authorised is authorised against everybody
+// in the domain. This is the difference between a leaked key being able to
+// write events in people's calendars and being able to delete the calendars.
+const SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+
 // A signed assertion, traded for an access token.
 //
 // sub is the whole of the difference between the two ways of setting this up.
@@ -93,7 +107,7 @@ async function accessToken() {
     const claim = {
         iss: key.client_email,
         ...(subject ? { sub: subject } : {}),
-        scope: 'https://www.googleapis.com/auth/calendar',
+        scope: SCOPE,
         aud: 'https://oauth2.googleapis.com/token',
         iat: now,
         exp: now + 3600,
