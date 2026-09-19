@@ -12,7 +12,7 @@ import { AWAY } from '@/lib/rosterShare'
 import { extrasFor } from '@/lib/dayExtras'
 import { bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel } from '@/lib/diary'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, tint,
+    weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
     shiftEdges,
 } from '@/lib/roster'
 
@@ -636,10 +636,8 @@ export default function RosterWeek({
                                 </td>
                                 {row.days.map(day => (
                                     <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight">
-                                        {day.shifts.length === 0 ? '' : day.shifts.map(s => (
-                                            <span key={s.id} className="block">
-                                                {breakLabel(s.break_minutes)}
-                                            </span>
+                                        {dayBreakLabels(day.shifts).map((words, i) => (
+                                            <span key={i} className="block">{words}</span>
                                         ))}
                                     </td>
                                 ))}

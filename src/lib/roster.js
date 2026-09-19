@@ -99,6 +99,23 @@ export function breakLabel(minutes) {
     return minutes > 0 ? `${minutes} minutes` : 'No break'
 }
 
+// What a day's breaks read as, given every shift on it.
+//
+// A split day is two shifts, so the week printed a break line for each, and two
+// shifts that each earn nothing came out as "No break" twice. Nothing owed all
+// day is one fact about the day and not one per shift.
+//
+// Only that case collapses. Two real breaks stay two, because 15 and 15 is
+// thirty minutes owed and printing it once would hide half of it, and a day
+// where one stretch earns a break and the other does not still says both, since
+// which stretch carries it is the thing somebody needs to know.
+export function dayBreakLabels(shifts) {
+    if (!shifts?.length) return []
+    const minutes = shifts.map(s => s?.break_minutes ?? 0)
+    if (minutes.every(m => m === 0)) return [breakLabel(0)]
+    return minutes.map(breakLabel)
+}
+
 // The store's hours for a given weekday, or nothing if it has never been set.
 export function hoursForDay(openingHours, date) {
     if (!openingHours || !date) return null
