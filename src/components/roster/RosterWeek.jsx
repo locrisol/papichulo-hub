@@ -162,7 +162,7 @@ export default function RosterWeek({
                 </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
-                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 bg-sidebar z-10">
+                        <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 z-10 bg-sidebar z-10">
                             Staff
                         </th>
                         {dates.map((d, i) => (
@@ -189,7 +189,7 @@ export default function RosterWeek({
                         on at the Arena, red for anything the manager wants read.
                         Only the people rows are on white. */}
                     <tr className="bg-slate-100 border-b border-slate-200">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 bg-slate-100">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-slate-200 sticky left-0 z-10 bg-slate-100">
                             Store hours
                         </td>
                         {dates.map(d => {
@@ -221,15 +221,20 @@ export default function RosterWeek({
                         the first bank holiday would have broken it. */}
                     {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
                         <tr key={entry.id} className="border-b border-border bg-white">
-                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 bg-white">
+                            <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 z-10 bg-white">
                                 {i === 0 ? 'What is on' : ''}
                             </td>
                             {start > 0 && <td className={cell} colSpan={start} />}
                             <td className={`${cell} p-1`} colSpan={span}>
+                                {/* A label where nothing is listening. The
+                                    shared week has no handler, and a bar that
+                                    looks pressable and does nothing is worse
+                                    than a plain one. */}
                                 <button
                                     type="button"
+                                    disabled={!onOpenDiary}
                                     onClick={() => onOpenDiary?.(entry)}
-                                    className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)}`}
+                                    className={`block w-full text-left truncate rounded-md border-l-[3px] px-2 py-0.5 text-[0.6875rem] font-bold ${kindChip(entry.kind)} ${onOpenDiary ? '' : 'cursor-default'}`}
                                 >
                                     {runsIn && '‹ '}
                                     <span className="uppercase tracking-wide">{kindLabel(entry.kind)}</span>
@@ -254,7 +259,7 @@ export default function RosterWeek({
                     ))}
 
                     {showEvents && <tr className="bg-accent-light/60 border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 bg-accent-light">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 z-10 bg-accent-light">
                             Events
                         </td>
                         {dates.map(d => {
@@ -291,7 +296,7 @@ export default function RosterWeek({
                         is in it is a row you cannot use to put the first thing
                         in. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
-                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 bg-slate-50">
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 z-10 bg-slate-50">
                                 {/* The label is the way into the whole week at
                                     once, because a delivery schedule arrives as
                                     a week and putting it in a day at a time
@@ -424,7 +429,7 @@ export default function RosterWeek({
                             // before, so the week read as fourteen rows rather
                             // than seven.
                             <tr key={row.employee.id} className="border-b border-gray-100">
-                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 bg-white">
+                                <td className="px-3 py-1.5 border-r border-border align-middle sticky left-0 z-10 bg-white">
                                     <span className="flex items-center gap-2">
                                         <span
                                             className="w-1 h-6 rounded-full flex-shrink-0"
@@ -642,7 +647,7 @@ export default function RosterWeek({
                                 // and closes under that instead.
                                 className={hasAlerts ? 'border-b border-gray-100' : 'border-b-2 border-border'}
                             >
-                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 bg-white leading-tight">
+                                <td className="px-3 py-0 pl-6 text-[0.625rem] text-muted border-r border-border sticky left-0 z-10 bg-white leading-tight">
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
@@ -668,7 +673,7 @@ export default function RosterWeek({
                     {/* Anything the manager wants read, and what each day came
                         to. */}
                     <tr className="bg-red-50 border-b border-red-100">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 bg-red-50">
+                        <td className="px-3 py-1.5 text-xs font-semibold text-red-800 border-r border-red-100 sticky left-0 z-10 bg-red-50">
                             Notes
                         </td>
                         {dates.map(d => (
@@ -680,7 +685,7 @@ export default function RosterWeek({
                     </tr>
 
                     <tr className="bg-sidebar font-semibold text-white">
-                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 bg-sidebar">
+                        <td className="px-3 py-2 text-xs border-r border-white/20 sticky left-0 z-10 bg-sidebar">
                             Hours on the day
                         </td>
                         {perDay.map(d => (

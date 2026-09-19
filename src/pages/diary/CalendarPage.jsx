@@ -17,6 +17,7 @@ import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
 import DiaryList from '@/components/diary/DiaryList'
 import DiaryDialog from '@/components/diary/DiaryDialog'
+import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import EventModal from '@/components/forecast/EventModal'
 
@@ -79,6 +80,7 @@ export default function CalendarPage() {
     const [refresh, setRefresh] = useState(0)
 
     const [editing, setEditing] = useState(null)
+    const [viewing, setViewing] = useState(null)
     const [openEvent, setOpenEvent] = useState(null)
     const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [syncing, setSyncing] = useState(false)
@@ -199,12 +201,15 @@ export default function CalendarPage() {
         else if (view === 'week') setWeekStart(w => addDays(w, by * 7))
     }
 
-    // What pressing a thing does depends on what it is. A diary entry opens for
-    // editing, if you are allowed to edit. An Arena listing opens the modal that
-    // already knows how to draw one, and nobody can change it.
+    // Pressing a thing opens it to be read, whatever it is.
+    //
+    // A diary entry used to drop you straight into a form with a Save button,
+    // which is a strange thing to be handed when all you did was press a chip
+    // to find out what it was. An Arena listing opened and told you about
+    // itself. Two answers to the same gesture, and only one of them was right.
     function open(thing) {
         if (thing?.ticketmaster_id || thing?.event_date) setOpenEvent(thing)
-        else if (canWrite) setEditing({ entry: thing, date: thing.starts_on })
+        else setViewing(thing)
     }
 
     // Press the same day again and it shuts. The same gesture My Shifts uses
@@ -254,8 +259,15 @@ export default function CalendarPage() {
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className={segmentTrack}>
+                {/* Full width rows on a phone, their own widths on a
+                    computer.
+                    Left to wrap on their own these came out as three ragged
+                    lines with a big empty arrow at the end of one and a lone
+                    button on the next, which is what he meant by odd. Each
+                    group takes the whole line instead, so the stack reads as
+                    three deliberate rows rather than a spill. */}
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div className={`${segmentTrack} w-full sm:w-auto`}>
                         {VIEWS.map(v => (
                             <button
                                 key={v.id}
@@ -269,13 +281,20 @@ export default function CalendarPage() {
                     </div>
 
                     {view !== 'list' && (
-                        <>
-                            <button type="button" onClick={() => step(-1)} className={secondaryButton} aria-label="Back">
-                                &#8249;
-                            </button>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
                             <button
                                 type="button"
-                                className={jumpButton(atNow)}
+                                onClick={() => step(-1)}
+                                className={`${secondaryButton} flex-none w-11`}
+                                aria-label="Back"
+                            >
+                                &#8249;
+                            </button>
+                            {/* The one that says something takes the room the
+                                two arrows do not need. */}
+                            <button
+                                type="button"
+                                className={`${jumpButton(atNow)} flex-1 sm:flex-none`}
                                 onClick={() => {
                                     setViewMonth(monthStart(today))
                                     setWeekStart(weekStartOf(today))
@@ -283,10 +302,15 @@ export default function CalendarPage() {
                             >
                                 {jumpLabel(atNow, unit)}
                             </button>
-                            <button type="button" onClick={() => step(1)} className={secondaryButton} aria-label="Forward">
+                            <button
+                                type="button"
+                                onClick={() => step(1)}
+                                className={`${secondaryButton} flex-none w-11`}
+                                aria-label="Forward"
+                            >
                                 &#8250;
                             </button>
-                        </>
+                        </div>
                     )}
 
                     {canWrite && (
@@ -298,7 +322,7 @@ export default function CalendarPage() {
                             <button
                                 type="button"
                                 onClick={() => setWeekExtrasOpen(true)}
-                                className={secondaryButton}
+                                className={`${secondaryButton} w-full sm:w-auto`}
                             >
                                 Corporate schedule
                             </button>
@@ -392,6 +416,16 @@ export default function CalendarPage() {
             )}
 
             {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
+
+            {viewing && (
+                <DiaryEntryModal
+                    entry={viewing}
+                    restaurants={restaurants}
+                    canEdit={canWrite}
+                    onEdit={() => { setEditing({ entry: viewing, date: viewing.starts_on }); setViewing(null) }}
+                    onClose={() => setViewing(null)}
+                />
+            )}
 
             {weekExtrasOpen && (
                 <WeekExtrasModal

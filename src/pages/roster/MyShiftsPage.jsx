@@ -19,6 +19,7 @@ import {
 import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
+import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster } from '@/lib/diary'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
@@ -84,6 +85,10 @@ export default function MyShiftsPage() {
     const [colleagues, setColleagues] = useState([])
     const [dayNotes, setDayNotes] = useState([])
     const [diary, setDiary] = useState([])
+    // Read only. Nobody here can change one, and until now nobody here
+    // could read one either: the band was a bar with nothing listening to
+    // it, which is the same dead control in a different place.
+    const [viewingDiary, setViewingDiary] = useState(null)
     const [absences, setAbsences] = useState([])
     const [openingHours, setOpeningHours] = useState(null)
     const [breakRules, setBreakRules] = useState(null)
@@ -462,6 +467,7 @@ export default function MyShiftsPage() {
                             dayNotes={dayNotes}
                             events={[]}
                             diary={diary}
+                            onOpenDiary={entry => setViewingDiary(entry)}
                             openingHours={openingHours}
                             absences={absences}
                             today={today}
@@ -585,6 +591,17 @@ export default function MyShiftsPage() {
                         </p>
                     ))}
                 </div>
+            )}
+
+            {/* No Edit inside it. Nobody on this screen can change a diary
+                entry, and the modal says so by not offering. */}
+            {viewingDiary && (
+                <DiaryEntryModal
+                    entry={viewingDiary}
+                    restaurants={[]}
+                    canEdit={false}
+                    onClose={() => setViewingDiary(null)}
+                />
             )}
         </>
     )

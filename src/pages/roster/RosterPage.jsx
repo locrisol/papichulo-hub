@@ -37,6 +37,7 @@ import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DiaryDialog from '@/components/diary/DiaryDialog'
+import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
 // Building the week.
 //
@@ -84,6 +85,7 @@ export default function RosterPage() {
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
+    const [viewingDiary, setViewingDiary] = useState(null)
     const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [priorHours, setPriorHours] = useState({})
     // The week either side. Only the rest checks read it: a break between two
@@ -984,7 +986,7 @@ export default function RosterPage() {
                     dayNotes={dayNotes}
                     events={events}
                     diary={diary}
-                    onOpenDiary={entry => setEditingDiary(entry)}
+                    onOpenDiary={entry => setViewingDiary(entry)}
                     onOpenWeekExtras={() => setWeekExtrasOpen(true)}
                     openingHours={activeRestaurant?.opening_hours}
                     standingNote={activeRestaurant?.roster_note}
@@ -1018,7 +1020,7 @@ export default function RosterPage() {
                     onResizeShift={resizeShift}
                     events={events.filter(ev => ev.event_date === date)}
                     diary={diary}
-                    onOpenDiary={entry => setEditingDiary(entry)}
+                    onOpenDiary={entry => setViewingDiary(entry)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({
@@ -1136,9 +1138,22 @@ export default function RosterPage() {
                 />
             )}
 
-            {/* A promotion running across the week opens from the band it is
-                drawn as, so a date that turns out to be wrong is fixed where it
-                is wrong rather than on another screen. */}
+            {/* Read first, the same as everything else on these screens, and
+                edited from a button inside it. A promotion running across the
+                week opens from the band it is drawn as, so a date that turns
+                out to be wrong is fixed where it is wrong. */}
+            {viewingDiary && (
+                <DiaryEntryModal
+                    entry={viewingDiary}
+                    restaurants={restaurants}
+                    canEdit
+                    /* The route is managers and above, so anybody who can
+                       reach this page can change it. */
+                    onEdit={() => { setEditingDiary(viewingDiary); setViewingDiary(null) }}
+                    onClose={() => setViewingDiary(null)}
+                />
+            )}
+
             {editingDiary && (
                 <DiaryDialog
                     entry={editingDiary}
