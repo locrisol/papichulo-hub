@@ -188,7 +188,9 @@ function GridShape({ rows, dates, onSet }) {
     )
 }
 
-export default function WeekExtrasModal({ startOn, restaurant, onClose, onSaved }) {
+export default function WeekExtrasModal({
+    startOn, restaurant, onClose, onSaved, canStepWeeks = true,
+}) {
     const { user } = useAuth()
 
     // It carries its own week and fetches its own days.
@@ -326,22 +328,32 @@ export default function WeekExtrasModal({ startOn, restaurant, onClose, onSaved 
                         <p className="text-sm font-bold text-gray-900">{weekMonthLabel(week)}</p>
                         <p className="text-xs text-muted">{restaurant?.name}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setWeek(w => addDays(w, -7))}
-                            className={secondaryButton} aria-label="The week before">&#8249;</button>
-                        {/* Not a button that says This week wherever you are.
-                            Standing on week 31 and being offered "This week"
-                            says nothing about what pressing it does, and the
-                            colour alone is something you have to already know
-                            the meaning of. Same pair the roster and every other
-                            stepper in the app uses. */}
-                        <button type="button" onClick={() => setWeek(weekStartOf(todayISO()))}
-                            className={jumpButton(week === weekStartOf(todayISO()))}>
-                            {jumpLabel(week === weekStartOf(todayISO()))}
-                        </button>
-                        <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
-                            className={secondaryButton} aria-label="The week after">&#8250;</button>
-                    </div>
+                    {/* Only where the caller does not already have a week on
+                        screen.
+                        Opened from the roster it is the week you are looking
+                        at, and stepping away from it inside here would let you
+                        save changes to a week that is not on screen, close,
+                        and find the roster apparently unchanged. Opened from
+                        the calendar there is no week to disagree with, and
+                        month and list views have none at all, so the stepper is
+                        the only way to say which one you mean. */}
+                    {canStepWeeks && (
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => setWeek(w => addDays(w, -7))}
+                                className={secondaryButton} aria-label="The week before">&#8249;</button>
+                            {/* Not a button that says This week wherever you
+                                are. Standing on week 31 and being offered
+                                "This week" says nothing about what pressing it
+                                does, and the colour alone is something you have
+                                to already know the meaning of. */}
+                            <button type="button" onClick={() => setWeek(weekStartOf(todayISO()))}
+                                className={jumpButton(week === weekStartOf(todayISO()))}>
+                                {jumpLabel(week === weekStartOf(todayISO()))}
+                            </button>
+                            <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
+                                className={secondaryButton} aria-label="The week after">&#8250;</button>
+                        </div>
+                    )}
                 </div>
 
                 <p className={`${hintClass} mb-3 mt-0`}>
