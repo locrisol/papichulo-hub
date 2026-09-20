@@ -352,31 +352,48 @@ export default function CalendarPage() {
     // Past dates are renamed too. A week that has been and gone reading
     // differently from the same thing next month is a worse answer than
     // consistency nobody will look at.
-    async function rename(event, to, all = false) {
+    async function rename(event, to, all = false, until) {
         const name = String(to ?? '').trim()
         const display_name = name && name !== event.name ? name : null
-        if (display_name === (event.display_name ?? null) && !all) return
+        const ends_on = String(until ?? '').trim() || null
 
-        const where = supabase.from('events').update({ display_name })
+        // The name can go to every date of a residency. **An end date never
+        // does**: six nights of a tour are six one night things, and giving
+        // them all the same last day would draw one band over the lot.
+        const change = { display_name }
+        const mine = { display_name, ends_on }
+
+        const where = supabase.from('events')
         const { data, error: failed } = all
-            ? await where.eq('place_id', event.place_id).eq('name', event.name).select('id')
-            : await where.eq('id', event.id).select('id')
+            ? await where.update(change).eq('place_id', event.place_id).eq('name', event.name).select('id')
+            : await where.update(mine).eq('id', event.id).select('id')
 
         if (failed) { setError(friendlyError(failed)); return }
         // The same trap the keep fell into: no rows changed reads as success.
         if (!data?.length) {
-            setError('That could not be saved, so the name is unchanged.')
+            setError('That could not be saved, so nothing has changed.')
             return
+        }
+
+        // The end date only ever lands on the one that was open, so it is
+        // written on its own when the name went to the others.
+        if (all && ends_on !== (event.ends_on ?? null)) {
+            await where.update({ ends_on }).eq('id', event.id)
         }
 
         const hits = e => (all
             ? e.place_id === event.place_id && e.name === event.name
             : e.id === event.id)
+        const patch = e => ({
+            ...e,
+            display_name,
+            ...(e.id === event.id ? { ends_on } : {}),
+        })
 
-        setEvents(was => was.map(e => (hits(e) ? { ...e, display_name } : e)))
-        setPending(was => was.map(e => (hits(e) ? { ...e, display_name } : e)))
+        setEvents(was => was.map(e => (hits(e) ? patch(e) : e)))
+        setPending(was => was.map(e => (hits(e) ? patch(e) : e)))
         setOpenEvent(was => (was?.event && hits(was.event)
-            ? { ...was, event: { ...was.event, display_name } }
+            ? { ...was, event: patch(was.event) }
             : was))
     }
 

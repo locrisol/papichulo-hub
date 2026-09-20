@@ -176,7 +176,7 @@ export function weekTable({
     // saying it again on every card under it is the place said twice.
     const headlines = ownRows(nearby, nearbyPlaces).map(group => ({
         name: placeName(group.place, { short: true }),
-        kind: group.rows[0]?.kind || 'nearby',
+        kind: group.kind,
         perDay: (dates || []).map(d => rowsOn(group.rows, d).map(row => ({
             name: chipWords(row, { withPlace: false }),
             time: row.time,

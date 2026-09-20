@@ -286,7 +286,7 @@ export default function RosterWeek({
                         sandwich delivery, and sitting fourth in a cell
                         under one is the wrong way round. */}
                     {headlines.map(group => {
-                        const look = kindTag(group.rows[0]?.kind || 'nearby')
+                        const look = kindTag(group.kind)
                         return (
                             <tr key={group.place.id} className="border-b border-border bg-white">
                                 <td className={`px-3 py-1.5 text-xs font-semibold border-r border-border sticky left-0 z-10 ${look}`}>

@@ -259,14 +259,24 @@ export function ownRows(rows, places) {
 
     // Seeded first, so a place with nothing on this week still gets a row and
     // keeps the order the settings screen put them in.
+    //
+    // **With a colour on it, which an empty week has nothing else to get one
+    // from.** The Arena's row came out blue on a quiet week and purple on a
+    // busy one, because the colour was read off the first listing and a row
+    // with no listings has no first. A place having a row of its own is exactly
+    // what makes it purple, so the group knows without being told.
     for (const place of places || []) {
-        if (place?.id) groups.set(place.id, { place, rows: [] })
+        if (place?.id) groups.set(place.id, { place, kind: 'arena', rows: [] })
     }
 
     for (const row of rows || []) {
         if (!row?.ownRow || !row.place?.id) continue
-        if (!groups.has(row.place.id)) groups.set(row.place.id, { place: row.place, rows: [] })
-        groups.get(row.place.id).rows.push(row)
+        if (!groups.has(row.place.id)) {
+            groups.set(row.place.id, { place: row.place, kind: 'arena', rows: [] })
+        }
+        const group = groups.get(row.place.id)
+        group.kind = row.kind || group.kind
+        group.rows.push(row)
     }
 
     return [...groups.values()]

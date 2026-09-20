@@ -792,3 +792,21 @@ describe('two names that might be one building', () => {
         expect(couldBeSamePlace('', 'Odeon Point Square')).toBe(false)
     })
 })
+
+// The Arena's row came out blue on a quiet week and purple on a busy one,
+// because the colour was read off the first listing and a row with no listings
+// has no first.
+describe('a row keeps its colour on a week with nothing on', () => {
+    it('is the headline colour whether or not anything is on', () => {
+        expect(ownRows([], [arena])[0].kind).toBe('arena')
+        expect(ownRows(nearbyRows([gig], pairs, {}), [arena])[0].kind).toBe('arena')
+    })
+
+    it('takes the colour from the listings when they disagree', () => {
+        const pair = [{ place: arena, relation: 'city', distance_km: 2, is_active: true, own_row: true,
+            }]
+        const big = { ...arena, capacity: 82300 }
+        const rows = nearbyRows([gig], [{ ...pair[0], place: big }], {})
+        expect(ownRows(rows, [big])[0].kind).toBe('city')
+    })
+})

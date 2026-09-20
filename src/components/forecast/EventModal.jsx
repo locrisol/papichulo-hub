@@ -6,7 +6,9 @@ import {
 } from '@/lib/nearby'
 import { fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
-import { badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow } from '@/lib/controlStyles'
+import {
+    badge, fieldClass, labelClass, dateField, secondaryButton, checkbox, checkRow,
+} from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
 //
@@ -26,6 +28,7 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
     // Before the early return, because a hook cannot sit behind one. The empty
     // string is never used: there is no modal to type into without an event.
     const [name, setName] = useState(() => eventName(row?.event) || '')
+    const [ends, setEnds] = useState(() => row?.event?.ends_on || '')
     // Ticked by default when there is more than one, because a tour is one
     // decision rather than six and renaming one night of six is the answer
     // almost nobody wants.
@@ -155,12 +158,37 @@ export default function EventModal({ row, canEdit = false, sameName = 0, onRenam
                             />
                             <button
                                 type="button"
-                                disabled={name.trim() === eventName(event)}
-                                onClick={() => onRename(event, name, sameName > 1 && all)}
+                                disabled={name.trim() === eventName(event) && ends === (event.ends_on || '')}
+                                onClick={() => onRename(event, name, sameName > 1 && all, ends)}
                                 className={`${secondaryButton} disabled:opacity-50`}
                             >
                                 Save
                             </button>
+                        </div>
+
+                        {/* A listing page often gives one date for something
+                            that runs for four. The Convention Centre's says
+                            "Date : 27 September 2026" for a conference that
+                            runs the 27th to the 30th, and the range is only on
+                            the conference's own page, which we do not fetch.
+                            So the reading is right and thin, and a person who
+                            knows better can say so. */}
+                        <div className="mt-3">
+                            <label className={labelClass} htmlFor="event-ends">
+                                Runs until, if it is more than a day
+                            </label>
+                            <input
+                                id="event-ends"
+                                type="date"
+                                className={dateField}
+                                value={ends}
+                                min={event.event_date}
+                                onChange={e => setEnds(e.target.value)}
+                            />
+                            <p className="text-xs text-muted mt-1">
+                                Leave it empty for a single day. This one only, even when the name
+                                is being changed on several.
+                            </p>
                         </div>
 
                         {/* A residency is one name on six nights, and renaming
