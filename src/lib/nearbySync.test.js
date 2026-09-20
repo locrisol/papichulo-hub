@@ -407,28 +407,52 @@ describe('the feed and the reading agree what a listing is called', () => {
 // useful. Nominatim turns away a lot of datacentre traffic and an edge function
 // is datacentre traffic: both restaurants still had no latitude after a search,
 // with nothing written and nothing to show for it.
+// The geocoder is the one part of this that can refuse us and say nothing
+// useful, so the box takes a point as readily as an address. What a person
+// actually pastes is whatever Google handed them, which is rarely two plain
+// numbers.
 describe('a point typed rather than looked up', () => {
-    it('takes a pair of numbers', () => {
+    it('takes two plain numbers', () => {
         expect(pointTyped('53.348071, -6.229920'))
             .toEqual({ latitude: 53.348071, longitude: -6.229920 })
-    })
-
-    it('does not mind the spacing', () => {
         expect(pointTyped('  53.2935 -6.1348 ')).toEqual({ latitude: 53.2935, longitude: -6.1348 })
-        expect(pointTyped('53,-6')).toEqual({ latitude: 53, longitude: -6 })
     })
 
+    // What he pasted, and what Google's own panel shows.
+    it('takes degrees with the hemisphere on them', () => {
+        expect(pointTyped('53.3486° N, 6.2285° W'))
+            .toEqual({ latitude: 53.3486, longitude: -6.2285 })
+        expect(pointTyped('53.3486 N 6.2285 W'))
+            .toEqual({ latitude: 53.3486, longitude: -6.2285 })
+    })
+
+    it('takes degrees, minutes and seconds', () => {
+        const point = pointTyped('53°20\'54.9"N 6°13\'42.6"W')
+        expect(point.latitude).toBeCloseTo(53.3486, 4)
+        expect(point.longitude).toBeCloseTo(-6.2285, 4)
+    })
+
+    // **Ireland is west of Greenwich.** A paste that drops the W lands in
+    // Kazakhstan without complaining, so the letter decides the sign.
+    it('reads west as a minus', () => {
+        expect(pointTyped('53.3486 N, 6.2285 E').longitude).toBe(6.2285)
+        expect(pointTyped('53.3486 S, 6.2285 W')).toEqual({ latitude: -53.3486, longitude: -6.2285 })
+    })
+
+    // An address with numbers in it is still an address. "12 Marine Road,
+    // Dublin 1" is two numbers and is not a point, and an Eircode has letters
+    // in it too, so both go to the geocoder where they belong.
     it('knows an address when it sees one', () => {
+        expect(pointTyped('12 Marine Road, Dublin 1')).toBe(null)
+        expect(pointTyped('D01 V2K7')).toBe(null)
         expect(pointTyped('North Wall Quay, Dublin 1')).toBe(null)
-        expect(pointTyped('Dublin Docklands')).toBe(null)
         expect(pointTyped('')).toBe(null)
         expect(pointTyped(null)).toBe(null)
     })
 
-    // A pair of numbers off the wrong end of the world is a typo rather than a
-    // place, and taking it would put a restaurant in the sea.
     it('refuses a pair that is not on the map', () => {
         expect(pointTyped('153.3, -6.2')).toBe(null)
         expect(pointTyped('53.3, -186.2')).toBe(null)
+        expect(pointTyped('53.3486')).toBe(null)
     })
 })

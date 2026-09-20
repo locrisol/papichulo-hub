@@ -585,7 +585,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     className={fieldClass}
                                     value={address}
                                     onChange={e => setAddress(e.target.value)}
-                                    placeholder={activeRestaurant?.location || '12 Marine Road, Dun Laoghaire'}
+                                    placeholder={activeRestaurant?.location || 'D01 V2K7, or 53.3486 N, 6.2285 W'}
                                 />
                             </div>
                             <button type="submit" disabled={searching} className={secondaryButton}>
@@ -596,9 +596,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 takes a pair of numbers too. Right click the spot
                                 in Google Maps and it hands you them. */}
                             <p className="text-xs text-muted w-full">
-                                An address, or a pair of coordinates like{' '}
-                                <code className="font-mono">53.348071, -6.229920</code>. Whatever
-                                you give it is remembered, so this is asked once.
+                                An Eircode, an address, or coordinates in any of the shapes
+                                Google gives them:{' '}
+                                <code className="font-mono">53.3486&deg; N, 6.2285&deg; W</code>.
+                                Whatever you give it is remembered, so this is asked once.
                             </p>
                         </form>
 

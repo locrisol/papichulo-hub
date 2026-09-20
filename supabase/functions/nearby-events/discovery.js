@@ -290,11 +290,39 @@ export function geocodeUrl(address) {
 // of numbers needs nobody's permission. Anybody can get them by right clicking
 // a spot in Google Maps.
 export function pointTyped(text) {
-    const pair = /^\s*(-?\d{1,3}(?:\.\d+)?)[ ,]+(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(String(text || ''))
-    if (!pair) return null
+    const said = String(text || '')
 
-    const latitude = Number(pair[1])
-    const longitude = Number(pair[2])
+    // A string with words in it is an address, whatever numbers are in it.
+    // "12 Marine Road, Dublin 1" has two numbers and is not a point, and an
+    // Eircode has letters in it too, so both go to the geocoder where they
+    // belong. N, S, E and W are struck out first because they are the one kind
+    // of letter that does belong in a point.
+    if (/[a-z]/i.test(said.replace(/[NSEW]/gi, ''))) return null
+
+    const letters = (said.match(/[NSEW]/gi) || []).map(l => l.toUpperCase())
+    const numbers = (said.match(/-?\d+(?:\.\d+)?/g) || []).map(Number)
+
+    // Two numbers is decimal, four is degrees and minutes, six is degrees,
+    // minutes and seconds. Google shows the last of those in its own panel and
+    // hands over the first when you right click, so both turn up in practice.
+    const each = numbers.length / 2
+    if (![1, 2, 3].includes(each)) return null
+    if (letters.length && letters.length !== 2) return null
+
+    const sum = ([d, m = 0, s = 0]) => (d < 0 ? -1 : 1) * (Math.abs(d) + m / 60 + s / 3600)
+
+    let latitude = sum(numbers.slice(0, each))
+    let longitude = sum(numbers.slice(each))
+
+    // **The hemisphere is not decoration.** Ireland is west of Greenwich, so
+    // "6.2285 W" is a negative longitude, and a paste that drops the W lands in
+    // Kazakhstan without complaining. Latitude first because that is the order
+    // every source writes them in.
+    if (letters.length === 2) {
+        latitude = Math.abs(latitude) * (letters[0] === 'S' ? -1 : 1)
+        longitude = Math.abs(longitude) * (letters[1] === 'W' ? -1 : 1)
+    }
+
     if (!Number.isFinite(latitude) || Math.abs(latitude) > 90) return null
     if (!Number.isFinite(longitude) || Math.abs(longitude) > 180) return null
     return { latitude, longitude }
