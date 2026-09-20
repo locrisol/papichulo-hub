@@ -170,7 +170,7 @@ export default function ImportDialog({
     }
 
     return (
-        <Modal title="Read the till's report" onClose={onClose} width="max-w-lg">
+        <Modal title="Upload the till's report" onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
@@ -199,6 +199,8 @@ export default function ImportDialog({
                             onChange={e => take(e.target.files?.[0])}
                         />
                         {busy && <p className="text-xs text-muted mt-2">Reading...</p>}
+
+                        <Steps />
                     </div>
                 )}
 
@@ -224,18 +226,27 @@ export default function ImportDialog({
                             type="button"
                             disabled={waiting.length > 0}
                             onClick={() => setStage('ready')}
-                            className={`${primaryButton} disabled:opacity-50`}
+                            className={primaryButton()}
                         >
                             {waiting.length
                                 ? `${waiting.length} still to answer`
-                                : 'Carry on'}
+                                : 'Continue'}
                         </button>
                     </>
                 )}
                 {stage === 'ready' && (
                     <>
                         <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
-                        <button type="button" disabled={busy} onClick={apply} className={primaryButton}>
+                        {/* Green rather than the accent orange. Every other
+                            primary button in the app sends something out or
+                            saves something; this one brings a file in, and it
+                            is the last press before a week is written to. */}
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={apply}
+                            className={primaryButton('md', 'good')}
+                        >
                             {busy ? 'Reading in...' : 'Read it in'}
                         </button>
                     </>
@@ -321,11 +332,44 @@ function Names({ names, people, answers, onAnswer }) {
     )
 }
 
+// Where the file comes from, because nobody remembers a path through somebody
+// else's till and the report is four menus in. His words, and the format
+// matters: the same report exports ten ways and only two of them can be read.
+function Steps() {
+    const steps = [
+        'In Pixel Point, go to Employee, then Time Cards.',
+        'Choose the Employee Shift Summary with Overtime.',
+        'Set the dates so they take in the whole week, then run it.',
+        'Press Export, and choose XML as the file format and All Pages.',
+        'If the browser says the download was blocked, choose Keep.',
+    ]
+
+    return (
+        <div className="mt-4 pt-3 border-t border-border">
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
+                Where the file comes from
+            </p>
+            <ol className="text-xs text-muted list-decimal pl-4 space-y-1">
+                {steps.map(step => <li key={step}>{step}</li>)}
+            </ol>
+        </div>
+    )
+}
+
+// The weeks the rest of the file belongs to, named rather than counted, so the
+// answer to "where did the other half go" is on the screen that dropped them.
+function otherWeeks(read) {
+    const weeks = (read?.outsideWeeks || []).map(shortDate)
+    if (!weeks.length) return ''
+    if (weeks.length === 1) return `the week of ${weeks[0]}`
+    return `the weeks of ${weeks.slice(0, -1).join(', ')} and ${weeks[weeks.length - 1]}`
+}
+
 function Ready({ plan, read }) {
     return (
         <div>
             <p className="text-sm text-gray-900 mb-3">
-                <strong>{read.shifts.length} shifts</strong> in the file.
+                <strong>{read.shifts.length} shifts</strong> for this week.
             </p>
             <ul className="text-sm text-gray-900 space-y-1 mb-3">
                 <Line>{plan.filled} day{plan.filled === 1 ? '' : 's'} with nothing on {plan.filled === 1 ? 'it' : 'them'} yet</Line>
@@ -338,8 +382,15 @@ function Ready({ plan, read }) {
                         Breaks are paid here.
                     </Line>
                 )}
+                {/* A file often covers more than one week: his real export ran
+                    the 6th to the 19th. Only the week on screen is written to,
+                    so the rest are named rather than dropped quietly, and the
+                    same file read in again on that week picks them up. */}
                 {read.outside > 0 && (
-                    <Line>{read.outside} outside this week, left for the week they belong to</Line>
+                    <Line>
+                        {read.outside} for {otherWeeks(read)}. Open that week and upload
+                        the same file to read them in.
+                    </Line>
                 )}
             </ul>
             {plan.asks.length > 0 && (

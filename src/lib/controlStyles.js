@@ -27,12 +27,28 @@
 // caller adding its own padding beside a padding already in here would be two
 // classes setting one property, and which of them wins is decided by where
 // they land in the compiled stylesheet, not by the order they are written.
-export function primaryButton(size = 'md') {
+//
+// **It has to be called.** `className={primaryButton}` hands React a function,
+// which it drops, so the button comes out as plain words with nothing around
+// it; writing it inside a template string is worse, because the source is
+// stringified and the odd class that happens to be quote-free lands while the
+// padding does not. Both of those shipped in the import dialog. structure.test
+// watches for it now.
+//
+// Green is for reading something in rather than sending something out. Orange
+// is the accent and stays the default: it is the colour of the one action on a
+// screen, and having two colours of primary button in one dialog is only right
+// where the second one is a different kind of act.
+export function primaryButton(size = 'md', tone = 'accent') {
     const pad = { sm: 'px-3 py-1.5', md: 'px-4 py-2', lg: 'px-6 py-2.5', xl: 'px-6 py-3' }[size]
         || 'px-4 py-2'
 
-    return `${pad} bg-accent text-white text-sm font-medium rounded-lg `
-        + 'transition-colors hover:bg-orange-600 disabled:opacity-50'
+    const colour = tone === 'good'
+        ? 'bg-green-700 hover:bg-green-800'
+        : 'bg-accent hover:bg-orange-600'
+
+    return `${pad} ${colour} text-white text-sm font-medium rounded-lg `
+        + 'transition-colors disabled:opacity-50'
 }
 
 // Ordinary secondary button: Log waste, Week view, Day view, Manage Categories,

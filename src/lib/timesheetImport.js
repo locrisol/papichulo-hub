@@ -10,6 +10,8 @@
 // a fixed offset after a marker rather than under a column. The marker is the
 // literal "Reference #:" that follows every employee name.
 
+import { weekStartOf } from '@/lib/dates'
+
 // A CSV reader, because there is not one in the project and this file is the
 // only thing that needs one. Quoted fields, doubled quotes inside them, and
 // commas inside quotes. No streaming: the file is forty lines.
@@ -334,5 +336,12 @@ export function insideWeek(read, weekStart, weekEnd) {
         // Said out loud so the screen can mention it rather than quietly
         // dropping rows somebody exported on purpose.
         outside: (read?.shifts || []).length - shifts.length,
+        // And which weeks they are, so the screen can name them. A range picked
+        // by hand is usually a fortnight: his first real export ran the 6th to
+        // the 19th, and "35 outside this week" leaves you wondering where they
+        // went. "The week of 6 Sep" tells you where to go and get them.
+        outsideWeeks: [...new Set((read?.shifts || [])
+            .filter(line => !mine(line))
+            .map(line => weekStartOf(line.work_date)))].sort(),
     }
 }

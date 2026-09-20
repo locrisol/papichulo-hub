@@ -182,3 +182,37 @@ describe('a page does not decide how wide it is', () => {
         expect(found, 'AppLayout decides how wide a page is').toEqual([])
     })
 })
+
+describe('a style that is a function gets called', () => {
+    // Some of the controls are functions because they take a size or a tone.
+    // The import dialog used one as if it were a string, twice, and the two
+    // mistakes looked like two different bugs.
+    //
+    // `className={primaryButton}` hands React a function, which it drops, so
+    // the button rendered as plain dark words with nothing around it.
+    // `` className={`${primaryButton} ...`} `` is worse: the function's own
+    // source is stringified, so the handful of classes that happen to sit
+    // outside quote marks land and the padding, which does not, is gone. That
+    // one showed up as a button with a margin problem, which is a much harder
+    // thing to go looking for than a missing pair of brackets.
+    const style = sources['../lib/controlStyles.js']
+    const FUNCTIONS = [...style.matchAll(/^export function (\w+)/gm)].map(m => m[1])
+    const users = sourcePaths.filter(p => sources[p].includes("from '@/lib/controlStyles'"))
+
+    it('has functions to watch, and files using them', () => {
+        expect(FUNCTIONS.length).toBeGreaterThan(2)
+        expect(users.length).toBeGreaterThan(20)
+    })
+
+    it.each(users)('%s calls them', path => {
+        // The import line names them without calling them and is the one place
+        // that is meant to.
+        const body = sources[path]
+            .replace(/import\s*\{[^}]*\}\s*from\s*'@\/lib\/controlStyles'/g, '')
+        const bare = FUNCTIONS.filter(name => (
+            new RegExp(String.raw`\b${name}\b\s*(?!\()`).test(body)
+        ))
+
+        expect(bare, 'these are functions: call them, or the class is dropped').toEqual([])
+    })
+})

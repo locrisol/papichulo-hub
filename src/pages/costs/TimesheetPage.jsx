@@ -469,7 +469,7 @@ export default function TimesheetPage() {
                     onClick={() => setImporting(true)}
                     className={`${secondaryButton} ml-auto`}
                 >
-                    Read the till&apos;s report
+                    Upload the till&apos;s report
                 </button>
 
                 <div className="text-right">

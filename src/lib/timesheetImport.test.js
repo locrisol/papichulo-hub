@@ -286,4 +286,29 @@ describe('a file that covers more than the week', () => {
         expect(mine.outside).toBe(1)
         expect(mine.breaks).toHaveLength(1)
     })
+
+    // He exported the 6th to the 19th and only the 13th to the 19th went in,
+    // which is right and looked like half the file had been swallowed. Saying
+    // which weeks the rest belong to is the difference between a number and an
+    // instruction.
+    it('says which weeks the rest belong to', () => {
+        const read = {
+            shifts: [
+                { work_date: '2026-09-02' }, { work_date: '2026-09-08' },
+                { work_date: '2026-09-09' }, { work_date: '2026-09-15' },
+            ],
+            breaks: [],
+        }
+        const mine = insideWeek(read, '2026-09-13', '2026-09-19')
+
+        expect(mine.outside).toBe(3)
+        // The two days in the same week are one answer, in date order.
+        expect(mine.outsideWeeks).toEqual(['2026-08-30', '2026-09-06'])
+    })
+
+    it('says nothing about other weeks when the file is one week', () => {
+        const mine = insideWeek({ shifts: [{ work_date: '2026-09-15' }], breaks: [] }, '2026-09-13', '2026-09-19')
+        expect(mine.outside).toBe(0)
+        expect(mine.outsideWeeks).toEqual([])
+    })
 })
