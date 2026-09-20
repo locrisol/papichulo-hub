@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
+import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
 import { personWeek, weekTotals, unanswered, STATE_KEYS } from '@/lib/timesheet'
+import { kindLabel as absenceLabel } from '@/lib/absences'
 import { card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
@@ -37,6 +39,7 @@ const VIEWS = [
 
 export default function TimesheetPage() {
     const { user } = useAuth()
+    const confirm = useConfirm()
     const { activeRestaurant } = useRestaurant()
 
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
@@ -50,6 +53,15 @@ export default function TimesheetPage() {
 
     const [people, setPeople] = useState([])
     const [entries, setEntries] = useState([])
+    // A cell nobody has saved anything into yet.
+    //
+    // The boxes are controlled, so their value comes from an entry. A cell with
+    // no entry had nothing to hold what was being typed, React put the empty
+    // value straight back on every keystroke, and **nothing could be typed into
+    // an empty cell at all**. One pending row per person per day, which is as
+    // many as anybody can be typing into at once, and it becomes a real entry
+    // the moment there is a start time to save.
+    const [drafts, setDrafts] = useState({})
     const [absences, setAbsences] = useState([])
     const [shifts, setShifts] = useState([])
 
@@ -107,6 +119,7 @@ export default function TimesheetPage() {
                 && (!p.started_on || p.started_on <= weekEnd)
             )))
             setEntries(worked.data || [])
+            setDrafts({})
             setAbsences(away.data || [])
             setShifts(rostered.data || [])
             loadedKey.current = key
@@ -117,10 +130,17 @@ export default function TimesheetPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart])
 
+    // What is saved, plus what is being typed. The grid cannot tell them apart
+    // and does not need to: a draft is an entry with no id yet.
+    const shown = useMemo(
+        () => [...entries, ...Object.values(drafts)],
+        [entries, drafts],
+    )
+
     const rows = useMemo(() => people.map(person => personWeek({
-        person, weekStart, entries, absences, shifts,
+        person, weekStart, entries: shown, absences, shifts,
         restaurantRate, sundayPremium: premium,
-    })), [people, weekStart, entries, absences, shifts, restaurantRate, premium])
+    })), [people, weekStart, shown, absences, shifts, restaurantRate, premium])
 
     const totals = weekTotals(rows, premium)
     const waiting = unanswered(rows)
@@ -135,15 +155,43 @@ export default function TimesheetPage() {
 
     // ---- writing -----------------------------------------------------------
 
+    const keyFor = (person, cell) => `${person.id}|${cell.date}`
+
     // Typing only moves what is on screen. Nothing reaches the database until
     // the box is left, so a half typed time is never saved and a week is not
     // written thirty times while somebody thinks.
     function type(person, cell, entry, field, value) {
-        setEntries(was => was.map(e => (e.id === entry.id ? { ...e, [field]: value } : e)))
-        if (!entry.id) setDraft({ person, cell, [field]: value })
+        if (entry.id) {
+            setEntries(was => was.map(e => (e.id === entry.id ? { ...e, [field]: value } : e)))
+            return
+        }
+        // Nothing saved here yet, so it goes in the draft for this cell. This
+        // is the line that was missing: without it the box had nowhere to put
+        // what was typed and went straight back to empty.
+        const key = keyFor(person, cell)
+        setDrafts(was => ({
+            ...was,
+            [key]: {
+                ...(was[key] || { starts_at: '', ends_at: '' }),
+                id: null,
+                employee_id: person.id,
+                work_date: cell.date,
+                kind: 'worked',
+                source: 'typed',
+                [field]: value,
+            },
+        }))
     }
 
-    const [draft, setDraft] = useState(null)
+    function forget(person, cell) {
+        const key = keyFor(person, cell)
+        setDrafts(was => {
+            if (!(key in was)) return was
+            const next = { ...was }
+            delete next[key]
+            return next
+        })
+    }
 
     async function settle(person, cell, entry, field, raw) {
         const value = settleTime(raw) || null
@@ -157,19 +205,28 @@ export default function TimesheetPage() {
             return save(entry.id, { [field]: value })
         }
 
-        // A new one needs a start. Typing the out time first is legitimate and
-        // rare, so it waits for the in rather than inventing one.
-        const start = field === 'starts_at' ? value : draft?.starts_at
-        if (!start) { setDraft({ person, cell, [field]: value }); return }
+        const draft = drafts[keyFor(person, cell)] || {}
+        const start = field === 'starts_at' ? value : draft.starts_at
+        const end = field === 'ends_at' ? value : draft.ends_at
 
+        // Nothing typed at all, so there is nothing to keep.
+        if (!start && !end) { forget(person, cell); return }
+
+        // A row needs a start. Typing the out time first is legitimate and
+        // rare, so the draft holds it and waits rather than inventing one.
+        if (!start) {
+            setDrafts(was => ({ ...was, [keyFor(person, cell)]: { ...draft, id: null, employee_id: person.id, work_date: cell.date, kind: 'worked', source: 'typed', ends_at: end } }))
+            return
+        }
+
+        forget(person, cell)
         await create({
             employee_id: person.id,
             work_date: cell.date,
             starts_at: start,
-            ends_at: field === 'ends_at' ? value : null,
+            ends_at: end || null,
             source: 'typed',
         })
-        setDraft(null)
     }
 
     async function create(row) {
@@ -250,9 +307,24 @@ export default function TimesheetPage() {
         })
     }
 
+    // Asked first, both ways round. **Time off is not a timesheet record**: it
+    // is the same row the roster and the team page read, and deleting it here
+    // takes it off those as well. Worth a sentence before it goes.
     async function clear(person, cell) {
         setError('')
+
         if (cell.absence) {
+            const ok = await confirm({
+                title: 'Delete this time off?',
+                message: `${absenceLabel(cell.absence.kind)} for ${person.full_name}, `
+                    + `${fullDate(cell.absence.starts_on)}`
+                    + `${cell.absence.ends_on !== cell.absence.starts_on ? ` to ${fullDate(cell.absence.ends_on)}` : ''}. `
+                    + 'It goes from the roster and the team page too, not just from here.',
+                confirmLabel: 'Delete',
+                tone: 'danger',
+            })
+            if (!ok) return
+
             setSaving(true)
             const { error: failed } = await supabase.from('absences').delete().eq('id', cell.absence.id)
             setSaving(false)
@@ -260,7 +332,20 @@ export default function TimesheetPage() {
             setAbsences(was => was.filter(a => a.id !== cell.absence.id))
             return
         }
+
+        if (!cell.entries.length) { forget(person, cell); return }
+
+        const ok = await confirm({
+            title: 'Delete these times?',
+            message: `${person.full_name}, ${fullDate(cell.date)}. `
+                + `${cell.entries.length === 1 ? 'The clock in and out go' : 'Both shifts go'} for good.`,
+            confirmLabel: 'Delete',
+            tone: 'danger',
+        })
+        if (!ok) return
+
         for (const entry of cell.entries) await remove(entry)
+        forget(person, cell)
     }
 
     // The hours a holiday came to, typed in the cell rather than guessed. One
@@ -291,7 +376,18 @@ export default function TimesheetPage() {
         // A second span appears as an empty pair. It only becomes a row once
         // somebody types a start into it, which is the same path a first span
         // takes and means an abandoned one leaves nothing behind.
-        setDraft({ person, cell })
+        setDrafts(was => ({
+            ...was,
+            [keyFor(person, cell)]: {
+                id: null,
+                employee_id: person.id,
+                work_date: cell.date,
+                starts_at: '',
+                ends_at: '',
+                kind: 'worked',
+                source: 'typed',
+            },
+        }))
     }
 
     // The touch bar acts on whatever box has the cursor, so it needs to turn a

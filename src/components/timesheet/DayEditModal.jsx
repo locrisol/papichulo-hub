@@ -54,7 +54,7 @@ export default function DayEditModal({
                             </span>
                             {canEdit && (
                                 <button type="button" onClick={onClear} className={removeButton}>
-                                    Take it off
+                                    Delete
                                 </button>
                             )}
                         </div>
