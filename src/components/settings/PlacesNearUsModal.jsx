@@ -11,12 +11,12 @@ import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, pastWalking,
+    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem,
 } from '@/lib/nearby'
 
 const BLANK = {
     name: '', walk_minutes: '', page_url: '', ticketmaster_venue_id: '', capacity: '',
-    reading_key: 'date', page_depth: '1',
+    reading_key: 'date', page_depth: '1', relation: 'walk',
 }
 
 const TAG_LOOK = {
@@ -141,12 +141,15 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                 .insert(patch).select().single()
             if (e1) { setBusy(false); setError(friendlyError(e1)); return }
 
+            // Across town has no walking time, and saying one would be the
+            // sort of small lie that ends up on a roster.
+            const city = form.relation === 'city'
             const { error: e2 } = await supabase.from('restaurant_places').insert({
                 restaurant_id: activeRestaurant.id,
                 place_id: made.id,
-                relation: 'walk',
-                walk_minutes: minutes ?? WALKABLE_MINUTES,
-                sort_order: minutes ?? WALKABLE_MINUTES,
+                relation: city ? 'city' : 'walk',
+                walk_minutes: city ? null : (minutes ?? WALKABLE_MINUTES),
+                sort_order: city ? 99 : (minutes ?? WALKABLE_MINUTES),
             })
             setBusy(false)
             if (e2) { setError(friendlyError(e2)); return }
@@ -169,6 +172,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             capacity: row.place.capacity ?? '',
             reading_key: row.place.reading_key || 'date',
             page_depth: String(row.place.page_depth ?? 1),
+            relation: row.relation === 'city' ? 'city' : 'walk',
         })
     }
 
@@ -345,6 +349,27 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             </button>
                         ) : (
                             <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
+                                <div className="sm:col-span-2">
+                                    <label className={labelClass} htmlFor="place-relation">
+                                        Would somebody at this walk to us?
+                                    </label>
+                                    <select
+                                        id="place-relation"
+                                        className={fieldClass}
+                                        value={form.relation}
+                                        onChange={e => setForm({ ...form, relation: e.target.value })}
+                                    >
+                                        <option value="walk">Yes, it is a walk away</option>
+                                        <option value="city">No, but it fills the hotels near us</option>
+                                    </select>
+                                    {/* The one judgement in the whole feature,
+                                        and no API can make it. */}
+                                    <p className="text-xs text-muted mt-1">
+                                        The second one shows nothing until you type how many it
+                                        holds, and only counts over{' '}
+                                        {CITY_CAPACITY.toLocaleString('en-IE')}.
+                                    </p>
+                                </div>
                                 <div className="sm:col-span-2">
                                     <label className={labelClass} htmlFor="place-name">Name</label>
                                     <input
@@ -560,8 +585,13 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 function PlaceRow({ row, today, busy, onToggle, onEdit }) {
     const tag = placeTag(row.place, row)
     const read = readWords(row.place, today)
+    // A city place that is showing nothing says why, right here. Silence is
+    // the worst thing a rule can do: somebody who ticks Croke Park and sees
+    // nothing for a fortnight cannot tell whether it is quiet, broken, or
+    // waiting on them.
+    const stuck = cityProblem(row)
     const far = row.relation === 'city'
-        ? pastWalking(row.distance_km, row.place.capacity)
+        ? (stuck || pastWalking(row.distance_km, row.place.capacity) || 'across town')
         : walkWords(row.walk_minutes)
 
     return (
@@ -582,10 +612,10 @@ function PlaceRow({ row, today, busy, onToggle, onEdit }) {
             </button>
             <span
                 className={`text-[0.625rem] font-bold uppercase tracking-wider px-2 py-0.5 rounded border whitespace-nowrap ${
-                    TAG_LOOK[row.is_active ? tag.tone : 'off']
+                    TAG_LOOK[row.is_active && !stuck ? tag.tone : 'off']
                 }`}
             >
-                {row.is_active ? tag.text : 'Off'}
+                {!row.is_active ? 'Off' : (stuck ? 'Not counting' : tag.text)}
             </span>
         </div>
     )

@@ -61,8 +61,53 @@ export function dismissed(event) {
 
 // -- Which places a restaurant is actually watching ---------------------
 
-// Switched off is switched off, and the city ones answer to the restaurant's
-// own switch as well as their own.
+// Whether a city place is actually earning its badge.
+//
+// **The capacity is the rule and not a note beside it.** The settings screen
+// has said "anything over twenty thousand people, within five kilometres" since
+// this was built, and for a while that sentence was a description of an
+// intention: a place marked city showed everything it had, whatever its size,
+// because the only function that read a capacity was never called by anything.
+// He asked how the option worked and that is how it was found.
+//
+// So it is enforced here, at the only point that matters, which is whether a
+// listing reaches a screen. **Nothing from a city place shows until somebody
+// has typed how many it holds and that number clears the bar.** That is not an
+// obstacle, it is the whole idea: no API publishes a capacity, a person has to
+// look it up once, and until they do we have no reason to believe the place is
+// big enough to fill a hotel.
+//
+// A distance we do not have is allowed through. Every city place found by
+// searching carries one; one added by hand does not, and refusing it would mean
+// a place somebody deliberately marked as across town silently showing nothing.
+export function countsAsCity(pairing) {
+    const capacity = figure(pairing?.place?.capacity)
+    if (capacity === null || capacity < CITY_CAPACITY) return false
+    const km = figure(pairing?.distance_km)
+    return km === null || km <= CITY_RADIUS_KM
+}
+
+// Why a city place is showing nothing, in the words the settings row needs.
+//
+// Silence is the worst thing a rule can do. Somebody who ticks Croke Park and
+// sees nothing for a fortnight has no way to tell whether it is quiet, broken,
+// or waiting on them.
+export function cityProblem(pairing) {
+    if (pairing?.relation !== 'city') return ''
+
+    const capacity = figure(pairing?.place?.capacity)
+    if (capacity === null) return 'waiting on how many it holds'
+    if (capacity < CITY_CAPACITY) {
+        return `holds ${capacity.toLocaleString('en-IE')}, under the rule`
+    }
+
+    const km = figure(pairing?.distance_km)
+    if (km !== null && km > CITY_RADIUS_KM) return `${km} km away, past the rule`
+    return ''
+}
+
+// Switched off is switched off, and the city ones answer to three things rather
+// than one: the restaurant's switch, their own, and the rule itself.
 //
 // A restaurant nowhere near a city would get nothing but noise out of the city
 // rule, which is why it is a switch rather than always on.
@@ -71,7 +116,7 @@ export function watching(pairings, restaurant) {
     return (pairings || []).filter(p => (
         p?.place
         && p.is_active !== false
-        && (p.relation !== 'city' || cityOn)
+        && (p.relation !== 'city' || (cityOn && countsAsCity(p)))
     ))
 }
 

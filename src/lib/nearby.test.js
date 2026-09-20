@@ -6,6 +6,8 @@ import {
     notChecked,
     dismissed,
     watching,
+    countsAsCity,
+    cityProblem,
     placeIds,
     byPlace,
     kindOf,
@@ -79,6 +81,62 @@ describe('what counts as being watched', () => {
 
     it('maps places by id', () => {
         expect(byPlace(pairs).get('p2').walk_minutes).toBe(1)
+    })
+})
+
+// The settings screen has promised "anything over twenty thousand people,
+// within five kilometres" since this was built, and for a while that was a
+// description of an intention rather than a rule: the only function that read a
+// capacity was called by nothing, so a place marked city showed everything it
+// had whatever its size. He asked how the option worked and that is how it was
+// found.
+describe('the city rule is a rule', () => {
+    const croker = { id: 'p7', name: 'Croke Park' }
+    const pairFor = (capacity, km) => ({
+        place: { ...croker, capacity },
+        relation: 'city',
+        distance_km: km,
+        is_active: true,
+    })
+
+    it('counts one that is big enough and close enough', () => {
+        expect(countsAsCity(pairFor(82300, 2.5))).toBe(true)
+    })
+
+    // No API publishes a capacity, so a person looks it up once. Until they do
+    // we have no reason to believe the place fills a hotel.
+    it('counts nothing until somebody says how many it holds', () => {
+        expect(countsAsCity(pairFor(null, 2.5))).toBe(false)
+        expect(cityProblem(pairFor(null, 2.5))).toBe('waiting on how many it holds')
+    })
+
+    it('refuses one that is too small for the rule', () => {
+        expect(countsAsCity(pairFor(900, 2.5))).toBe(false)
+        expect(cityProblem(pairFor(900, 2.5))).toBe('holds 900, under the rule')
+    })
+
+    it('refuses one that is too far for the rule', () => {
+        expect(countsAsCity(pairFor(82300, 9))).toBe(false)
+        expect(cityProblem(pairFor(82300, 9))).toBe('9 km away, past the rule')
+    })
+
+    // One found by searching carries a distance; one added by hand does not,
+    // and refusing it would mean a place somebody deliberately marked as across
+    // town silently showing nothing.
+    it('allows a distance nobody measured', () => {
+        expect(countsAsCity(pairFor(82300, null))).toBe(true)
+        expect(cityProblem(pairFor(82300, null))).toBe('')
+    })
+
+    it('says nothing about a place somebody walks to', () => {
+        expect(cityProblem({ relation: 'walk', walk_minutes: 5 })).toBe('')
+    })
+
+    // The point of all of it: a city place that does not clear the rule reaches
+    // no screen at all.
+    it('keeps an unqualified city place off every screen', () => {
+        expect(placeIds(watching([pairFor(null, 2.5)], {}))).toEqual([])
+        expect(placeIds(watching([pairFor(82300, 2.5)], {}))).toEqual(['p7'])
     })
 })
 
