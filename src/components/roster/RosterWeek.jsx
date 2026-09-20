@@ -10,10 +10,10 @@ import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absence
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor, whatIsOn } from '@/lib/dayExtras'
-import { rowsOn } from '@/lib/nearby'
+import { rowsOn, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import NearbyChip from '@/components/nearby/NearbyChip'
 import {
-    bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel, labelsOf,
+    bandsForWeek, kindChip, kindLabel, kindTag, showsOnRoster, onDate, timeLabel, labelsOf,
 } from '@/lib/diary'
 import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
@@ -100,7 +100,13 @@ export default function RosterWeek({
     // What is on next door, on the day it is on. A run of days lands on every
     // day it covers, the same as a diary entry, because a market over three
     // weekends is one row and drawing it on the first day only is a lie.
-    const nearOn = d => rowsOn(nearby, d)
+    //
+    // Split first: a place with a row of its own is drawn above rather than in
+    // amongst the deliveries. For a manager that is one place and for staff it
+    // is the row they scan for.
+    const headlines = ownRows(nearby).filter(g => !staff || g.rows.length > 0)
+    const shared = sharedRows(nearby)
+    const nearOn = d => rowsOn(shared, d)
 
     // The row exists for a manager whether or not it has anything in it,
     // because it is also the way in: a row that only appears once something is
@@ -229,7 +235,12 @@ export default function RosterWeek({
                     {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
                         <tr key={entry.id} className="border-b border-border bg-white">
                             <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 z-10 bg-white">
-                                {i === 0 ? 'What is on' : ''}
+                                {/* Not "What is on", which said nothing and
+                                    sat two rows above "Also on" saying almost
+                                    the same thing. These are the entries that
+                                    run across more than one day: a promotion
+                                    over a week, a two day catering job. */}
+                                {i === 0 ? 'Ongoing' : ''}
                             </td>
                             {start > 0 && <td className={cell} colSpan={start} />}
                             <td className={`${cell} p-1`} colSpan={span}>
@@ -265,12 +276,45 @@ export default function RosterWeek({
                         </tr>
                     ))}
 
-                    {/* What is on next door used to have a row of its own, in
-                        the app's own orange, which put it in the same colour as
-                        catering and left the week reading as two lists of the
-                        same thing. It is in the row below now, in the order the
-                        day happens, because this row is about the day and not
-                        about which table a thing came out of. */}
+                    {/* The one place that is on its own scale gets a row
+                        with its name on it. See ownRows: a concert two
+                        minutes away is not the same kind of fact as a
+                        sandwich delivery, and sitting fourth in a cell
+                        under one is the wrong way round. */}
+                    {headlines.map(group => {
+                        const look = kindTag(group.rows[0]?.kind || 'nearby')
+                        return (
+                            <tr key={group.place.id} className="border-b border-border bg-white">
+                                <td className={`px-3 py-1.5 text-xs font-semibold border-r border-border sticky left-0 z-10 ${look}`}>
+                                    {placeName(group.place, { short: true })}
+                                </td>
+                                {dates.map(d => {
+                                    const on = rowsOn(group.rows, d)
+                                    return (
+                                        <td key={d} className={`${cell} text-center p-0`}>
+                                            {on.length === 0 ? (
+                                                <span className="block py-1.5 text-muted text-xs">—</span>
+                                            ) : (
+                                                <span className="flex flex-col gap-1 px-2 py-1.5">
+                                                    {on.map(row => (
+                                                        <NearbyChip key={row.event.id} row={row} short />
+                                                    ))}
+                                                </span>
+                                            )}
+                                        </td>
+                                    )
+                                })}
+                                {tail}
+                            </tr>
+                        )
+                    })}
+
+                    {/* Everything else next door is in this row rather
+                        than one of its own. It used to have one, in the app's
+                        orange, which put it in the same colour as catering and
+                        left the week reading as two lists of the same thing.
+                        In the order the day happens, because this row is about
+                        the day and not about which table a thing came out of. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
                             <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 z-10 bg-slate-50">
                                 {/* The label is the way into the whole week at

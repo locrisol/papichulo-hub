@@ -4,7 +4,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import {
-    modalFooter, secondaryButton, fieldClass, labelClass, checkbox, primaryButton,
+    modalFooter, secondaryButton, fieldClass, labelClass, checkbox, checkRow, primaryButton,
 } from '@/lib/controlStyles'
 import { ModalSectionBar } from '@/components/ui/ModalSection'
 import Modal from '@/components/ui/Modal'
@@ -16,7 +16,7 @@ import {
 
 const BLANK = {
     name: '', walk_minutes: '', page_url: '', ticketmaster_venue_id: '', capacity: '',
-    reading_key: 'date', page_depth: '1', relation: 'walk',
+    reading_key: 'date', page_depth: '1', relation: 'walk', own_row: false,
 }
 
 const TAG_LOOK = {
@@ -130,7 +130,12 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             const [one, two] = await Promise.all([
                 supabase.from('places').update(patch).eq('id', row.place.id),
                 supabase.from('restaurant_places')
-                    .update({ walk_minutes: minutes, sort_order: minutes ?? 0 })
+                    .update({
+                        walk_minutes: form.relation === 'city' ? null : minutes,
+                        relation: form.relation === 'city' ? 'city' : 'walk',
+                        own_row: form.own_row === true,
+                        sort_order: minutes ?? 0,
+                    })
                     .eq('id', editingId),
             ])
             setBusy(false)
@@ -149,6 +154,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                 place_id: made.id,
                 relation: city ? 'city' : 'walk',
                 walk_minutes: city ? null : (minutes ?? WALKABLE_MINUTES),
+                own_row: form.own_row === true,
                 sort_order: city ? 99 : (minutes ?? WALKABLE_MINUTES),
             })
             setBusy(false)
@@ -173,6 +179,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             reading_key: row.place.reading_key || 'date',
             page_depth: String(row.place.page_depth ?? 1),
             relation: row.relation === 'city' ? 'city' : 'walk',
+            own_row: row.own_row === true,
         })
     }
 
@@ -484,6 +491,28 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                         placeholder="Leave empty unless it sells tickets"
                                     />
                                 </div>
+                                <label className={`${checkRow} sm:col-span-2 cursor-pointer`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={form.own_row}
+                                        onChange={e => setForm({ ...form, own_row: e.target.checked })}
+                                        className={checkbox}
+                                    />
+                                    <span>
+                                        <span className="block text-sm font-medium text-gray-900">
+                                            Give it a row of its own on the roster
+                                        </span>
+                                        {/* For the one place on its own scale.
+                                            Nine thousand people two minutes
+                                            away is not the same kind of fact as
+                                            a sandwich delivery, and a week grid
+                                            that lists them together buries it. */}
+                                        <span className="block text-xs text-muted mt-0.5">
+                                            For the one place big enough that it should not sit
+                                            under a delivery. Everything else shares Also on.
+                                        </span>
+                                    </span>
+                                </label>
                                 <div className="sm:col-span-2 flex gap-2">
                                     <button type="submit" disabled={busy} className={primaryButton()}>
                                         {editingId ? 'Save' : 'Add it'}

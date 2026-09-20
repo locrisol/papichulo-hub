@@ -344,7 +344,7 @@ export function drawWeek(canvas, table) {
         // Named like every other row. A blank left column read as a strip of
         // colour nobody had labelled, on a sheet where STORE HOURS, EVENTS and
         // ALSO ON all say what they are.
-        text('WHAT IS ON', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
+        text('ONGOING', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
 
         bandsTop = y
         let bandY = y + 3

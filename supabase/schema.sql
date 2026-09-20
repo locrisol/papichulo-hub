@@ -994,6 +994,7 @@ CREATE TABLE IF NOT EXISTS "public"."restaurant_places" (
     "walk_minutes" integer,
     "distance_km" numeric(5,2),
     "is_active" boolean DEFAULT true NOT NULL,
+    "own_row" boolean DEFAULT false NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "restaurant_places_relation_known" CHECK (("relation" = ANY (ARRAY['walk'::"text", 'city'::"text"]))),
@@ -1003,6 +1004,7 @@ CREATE TABLE IF NOT EXISTS "public"."restaurant_places" (
 
 COMMENT ON TABLE "public"."restaurant_places" IS 'One restaurant being near one place, and how near. The distance lives here rather than on the place because it is a fact about the pair: the same theatre is five minutes from one shop and an hour from the next.';
 COMMENT ON COLUMN "public"."restaurant_places"."distance_km" IS 'Straight line, for the city rule, which asks whether something big is within a few kilometres. Only filled when a place arrived with a point on it, so it is null for everything typed by hand and the rule simply passes over those.';
+COMMENT ON COLUMN "public"."restaurant_places"."own_row" IS 'Whether this place gets a row of its own on the roster week, named after it, rather than sharing the Also on row with the catering and the deliveries. For the one place near a restaurant that is on its own scale: nine thousand people two minutes away is not the same kind of fact as a sandwich delivery, and a week grid that lists them together buries it. Off for almost everything.';
 COMMENT ON COLUMN "public"."restaurant_places"."relation" IS 'Why this counts. walk means somebody at it would come here rather than eat where they already are, and that is almost all of them. city means nobody walks from it and it is here because it fills the hotels beside us, which is a different fact and reads as a different badge.';
 COMMENT ON COLUMN "public"."restaurant_places"."walk_minutes" IS 'How long somebody would take to walk it. The one judgement a person has to make, because no API can answer whether a customer would rather come here than eat where they are. Worked out from the distance when a place is found by searching, and editable after.';
 

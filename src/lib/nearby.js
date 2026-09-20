@@ -190,6 +190,7 @@ export function nearbyRows(events, pairings, restaurant) {
             kind: kindOf(event, pairing),
             checked: !notChecked(event),
             time: event.event_time ? shortTime(event.event_time) : '',
+            ownRow: pairing.own_row === true,
         }
 
         // **Where it is, carried on the row itself.** The roster said it and
@@ -209,6 +210,38 @@ export function nearbyRows(events, pairings, restaurant) {
     }
 
     return rows
+}
+
+// The place important enough to have a row of its own.
+//
+// What is on near a restaurant shares the Also on row with the catering and the
+// deliveries, and that is right for almost all of it: a row that reads down the
+// day should not care which table a thing came out of.
+//
+// **It is wrong for one place.** The 3Arena is two minutes from Point Campus
+// and holds nine thousand people, and on a Thursday it sat fourth in a cell
+// under a Feedr drop and a Lunch Team drop. That is the wrong way round. The
+// deliveries are the standing arrangement and the concert is the reason the
+// evening is different, and a grid that lists them together buries the one that
+// changes the night. His words: by far the most important source affecting us.
+//
+// Grouped by place rather than listed flat, because the row is named after the
+// place and there is no point drawing a heading per listing.
+export function ownRows(rows) {
+    const groups = new Map()
+
+    for (const row of rows || []) {
+        if (!row?.ownRow || !row.place?.id) continue
+        if (!groups.has(row.place.id)) groups.set(row.place.id, { place: row.place, rows: [] })
+        groups.get(row.place.id).rows.push(row)
+    }
+
+    return [...groups.values()]
+}
+
+// Everything that is not somebody's headline, which is nearly all of it.
+export function sharedRows(rows) {
+    return (rows || []).filter(r => !r?.ownRow)
 }
 
 export function rowsOn(rows, date) {

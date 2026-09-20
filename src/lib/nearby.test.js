@@ -15,6 +15,8 @@ import {
     coversDate,
     nearbyRows,
     rowsOn,
+    ownRows,
+    sharedRows,
     waiting,
     placeName,
     chipWords,
@@ -40,7 +42,7 @@ const aviva = { id: 'p3', name: 'Aviva Stadium', ticketmaster_venue_id: 'KovZ917
 const park = { id: 'p4', name: "People's Park" }
 
 const pairs = [
-    { place: arena, relation: 'walk', walk_minutes: 2, is_active: true },
+    { place: arena, relation: 'walk', walk_minutes: 2, is_active: true, own_row: true },
     { place: odeon, relation: 'walk', walk_minutes: 1, is_active: true },
     { place: aviva, relation: 'city', distance_km: 2.8, is_active: true },
     { place: park, relation: 'walk', walk_minutes: 10, is_active: false },
@@ -264,6 +266,36 @@ describe('every listing says where it is', () => {
             {},
         )
         expect(row.title).toBe('3Arena open day')
+    })
+})
+
+// The 3Arena is two minutes from Point Campus and holds nine thousand people,
+// and on a Thursday it sat fourth in a cell under a Feedr drop and a Lunch Team
+// drop. That is the wrong way round: the deliveries are the standing
+// arrangement and the concert is the reason the evening is different.
+describe('one place can have a row of its own', () => {
+    const rows = nearbyRows([gig, film, match], pairs, {})
+
+    it('puts the headline place on its own and leaves the rest together', () => {
+        expect(ownRows(rows).map(g => g.place.name)).toEqual(['3Arena'])
+        expect(sharedRows(rows).map(r => r.event.id)).toEqual(['e2', 'e3'])
+    })
+
+    it('groups a place\'s listings under it rather than one heading each', () => {
+        const two = nearbyRows([gig, { ...gig, id: 'e9', name: 'Lankum' }], pairs, {})
+        const [group] = ownRows(two)
+        expect(group.rows.map(r => r.event.name)).toEqual(['Kings of Leon', 'Lankum'])
+    })
+
+    it('leaves everything in Also on when nothing is marked', () => {
+        const plain = pairs.map(p => ({ ...p, own_row: false }))
+        expect(ownRows(nearbyRows([gig, film], plain, {}))).toEqual([])
+        expect(sharedRows(nearbyRows([gig, film], plain, {}))).toHaveLength(2)
+    })
+
+    it('copes with nothing at all', () => {
+        expect(ownRows(null)).toEqual([])
+        expect(sharedRows(null)).toEqual([])
     })
 })
 

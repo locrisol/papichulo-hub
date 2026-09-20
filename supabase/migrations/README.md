@@ -1,6 +1,6 @@
 # Migrations
 
-Seven in here, and the next one is `014`.
+Eight in here, and the next one is `015`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
@@ -16,6 +16,8 @@ Seven in here, and the next one is `014`.
   readings are keyed, and points the cinema at a page that can be read at all.
 - **`013_four_more_pages_worth_reading.sql`** gives four more places a page, and
   fixes the council, which was being read six events at a time.
+- **`014_a_place_can_have_its_own_row.sql`** lets one place near a restaurant
+  have a roster row with its name on it, and gives the Arena its own back.
 
 None has a backup newer than it yet, so none can go.
 
