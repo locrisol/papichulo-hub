@@ -57,8 +57,8 @@ export function shareName(restaurantName, weekStart, extension) {
 // it does on screen, so nobody can read a finishing time off a printed copy that
 // the screen never showed them.
 export function weekTable({
-    dates, employees, shifts, dayNotes, nearby, diary, openingHours, restaurantName, absences,
-    standingNote, today,
+    dates, employees, shifts, dayNotes, nearby, nearbyPlaces, diary, openingHours, restaurantName,
+    absences, standingNote, today,
 }) {
     // The first date somebody's availability is allowed to say anything about.
     // Taken as an argument so it can be pinned in a test rather than moving
@@ -174,7 +174,7 @@ export function weekTable({
     //
     // The cards carry no place name. The band is named after the place, and
     // saying it again on every card under it is the place said twice.
-    const headlines = ownRows(nearby).map(group => ({
+    const headlines = ownRows(nearby, nearbyPlaces).map(group => ({
         name: placeName(group.place, { short: true }),
         kind: group.rows[0]?.kind || 'nearby',
         perDay: (dates || []).map(d => rowsOn(group.rows, d).map(row => ({
@@ -344,14 +344,17 @@ export function sheetLayout(table, {
         (_, i) => (bandLines?.[i] ?? 1) * 14 + 8,
     )
     const bandsH = bandHeights.length ? bandHeights.reduce((t, n) => t + n, 0) + 6 : 0
-    // A band each for the places big enough to have their own row, and nothing
-    // at all for a week where that place has nothing on. Measured the same way
-    // the deliveries are, one count per band from whoever is drawing.
-    const headlineHeights = (table.headlines || []).map((h, i) => (
-        h.perDay?.some(day => day.length)
-            ? Math.max(metaH, (headlineLines?.[i] ?? 1) * 15 + 12)
-            : 0
-    ))
+    // A band each for the places big enough to have their own row, **including
+    // the weeks they have nothing on**. That is the opposite of the rule Also
+    // on follows and it is deliberate: a missing row and a quiet week look the
+    // same, and only one of them has been checked. His call, and it holds for
+    // the picture as much as for the screen.
+    //
+    // Measured the same way the deliveries are, one count per band from
+    // whoever is drawing.
+    const headlineHeights = (table.headlines || []).map(
+        (_, i) => Math.max(metaH, (headlineLines?.[i] ?? 1) * 15 + 12),
+    )
     const headlinesH = headlineHeights.reduce((t, n) => t + n, 0)
 
     // Nothing at all when no day has one, rather than an empty band. Most weeks

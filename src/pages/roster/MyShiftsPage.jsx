@@ -23,7 +23,7 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { nearbyRows, PAIRING_COLUMNS } from '@/lib/nearby'
+import { nearbyRows, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -89,6 +89,7 @@ export default function MyShiftsPage() {
     const [dayNotes, setDayNotes] = useState([])
     const [diary, setDiary] = useState([])
     const [nearbyOn, setNearbyOn] = useState([])
+    const [nearbyPlaces, setNearbyPlaces] = useState([])
     // Read only. Nobody here can change one, and until now nobody here
     // could read one either: the band was a bar with nothing listening to
     // it, which is the same dead control in a different place.
@@ -257,6 +258,7 @@ export default function MyShiftsPage() {
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
             setNearbyOn(nearbyRows(eventRes.data, nearRes.data, restRes.data))
+            setNearbyPlaces(headlinePlaces(nearRes.data, restRes.data))
             setMyTimeOff(offRes.data || [])
             setReady(true)
 
@@ -569,6 +571,7 @@ export default function MyShiftsPage() {
                             positions={positions}
                             dayNotes={dayNotes}
                             nearby={nearbyOn}
+                            nearbyPlaces={nearbyPlaces}
                             diary={diary}
                             onOpenDiary={entry => setViewingDiary(entry)}
                             openingHours={openingHours}

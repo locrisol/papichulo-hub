@@ -49,7 +49,7 @@ import {
 // The hours stay. Everybody sees everybody's, which is a decision rather than an
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, nearby, diary, openingHours, standingNote, today,
+    dates, employees, shifts, positions, dayNotes, nearby, nearbyPlaces, diary, openingHours, standingNote, today,
     alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
     shiftMark, staff = false,
 }) {
@@ -104,7 +104,11 @@ export default function RosterWeek({
     // Split first: a place with a row of its own is drawn above rather than in
     // amongst the deliveries. For a manager that is one place and for staff it
     // is the row they scan for.
-    const headlines = ownRows(nearby).filter(g => !staff || g.rows.length > 0)
+    //
+    // **Always drawn, empty or not.** A week with no concert at the Arena has
+    // to say there is no concert at the Arena, because a missing row and a
+    // quiet week look the same and only one of them has been checked.
+    const headlines = ownRows(nearby, nearbyPlaces)
     const shared = sharedRows(nearby)
     const nearOn = d => rowsOn(shared, d)
 

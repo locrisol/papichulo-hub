@@ -17,6 +17,7 @@ import {
     rowsOn,
     ownRows,
     sharedRows,
+    headlinePlaces,
     waiting,
     placeName,
     chipWords,
@@ -294,9 +295,37 @@ describe('one place can have a row of its own', () => {
         expect(sharedRows(nearbyRows([gig, film], plain, {}))).toHaveLength(2)
     })
 
+    // A week with no concert has to say there is no concert. Built from the
+    // listings alone there is nothing to build a row out of, so the row
+    // vanishes and the week says nothing rather than saying nothing is on.
+    it('draws a place that has nothing on this week', () => {
+        const quiet = ownRows([], [arena])
+        expect(quiet).toHaveLength(1)
+        expect(quiet[0].place.name).toBe('3Arena')
+        expect(quiet[0].rows).toEqual([])
+    })
+
+    it('keeps the order the places were given in', () => {
+        const odeon = { id: 'p2', name: 'Odeon Point Square' }
+        expect(ownRows(rows, [odeon, arena]).map(g => g.place.id)).toEqual(['p2', 'p1'])
+    })
+
+    // Read off the pairings rather than the listings, which is what lets an
+    // empty week draw the row at all. Everything a pairing must pass to be
+    // watched applies here too.
+    it('finds the headline places among the pairings', () => {
+        expect(headlinePlaces(pairs, {}).map(p => p.name)).toEqual(['3Arena'])
+    })
+
+    it('leaves out one that is switched off', () => {
+        const off = pairs.map(p => (p.place === arena ? { ...p, is_active: false } : p))
+        expect(headlinePlaces(off, {})).toEqual([])
+    })
+
     it('copes with nothing at all', () => {
         expect(ownRows(null)).toEqual([])
         expect(sharedRows(null)).toEqual([])
+        expect(headlinePlaces(null, {})).toEqual([])
     })
 })
 

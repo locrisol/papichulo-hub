@@ -6,7 +6,7 @@ import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { nearbyRows, rowsOn, PAIRING_COLUMNS } from '@/lib/nearby'
+import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
 import DateStepper from '@/components/ui/DateStepper'
@@ -84,6 +84,9 @@ export default function RosterPage() {
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
     const [nearbyOn, setNearbyOn] = useState([])
+    // Kept apart from the listings so a place with nothing on this week still
+    // draws its row. See ownRows.
+    const [nearbyPlaces, setNearbyPlaces] = useState([])
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
@@ -270,6 +273,7 @@ export default function RosterPage() {
         // One pass, so the roster and the calendar cannot disagree about which
         // listing belongs to which shop. See lib/nearby.
         setNearbyOn(nearbyRows(eventRes.data, nearRes.data, activeRestaurant))
+        setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
@@ -1037,6 +1041,7 @@ export default function RosterPage() {
                         shifts={shifts}
                         dayNotes={dayNotes}
                         nearby={nearbyOn}
+                        nearbyPlaces={nearbyPlaces}
                         diary={diary}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
@@ -1063,6 +1068,7 @@ export default function RosterPage() {
                     positions={positions}
                     dayNotes={dayNotes}
                     nearby={nearbyOn}
+                    nearbyPlaces={nearbyPlaces}
                     diary={diary}
                     onOpenDiary={entry => setViewingDiary(entry)}
                     onOpenWeekExtras={() => setWeekExtrasOpen(true)}

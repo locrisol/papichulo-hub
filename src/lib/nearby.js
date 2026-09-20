@@ -239,8 +239,21 @@ export function nearbyRows(events, pairings, restaurant) {
 //
 // Grouped by place rather than listed flat, because the row is named after the
 // place and there is no point drawing a heading per listing.
-export function ownRows(rows) {
+//
+// **The places come in separately from the listings, and that is the point.**
+// Built from the listings alone, a week with no concert at the Arena has
+// nothing to build a row out of, so the row vanishes and the week says nothing
+// rather than saying nothing is on. Those are different answers: one of them
+// leaves somebody wondering whether it was checked. **His call**: for Point
+// Campus the row is always there, empty or not, and on the picture as well.
+export function ownRows(rows, places) {
     const groups = new Map()
+
+    // Seeded first, so a place with nothing on this week still gets a row and
+    // keeps the order the settings screen put them in.
+    for (const place of places || []) {
+        if (place?.id) groups.set(place.id, { place, rows: [] })
+    }
 
     for (const row of rows || []) {
         if (!row?.ownRow || !row.place?.id) continue
@@ -254,6 +267,18 @@ export function ownRows(rows) {
 // Everything that is not somebody's headline, which is nearly all of it.
 export function sharedRows(rows) {
     return (rows || []).filter(r => !r?.ownRow)
+}
+
+// The places with a row of their own, whether or not anything is on at them.
+//
+// Read off the pairings rather than off the listings, which is what lets an
+// empty week still draw the row. Everything a pairing has to pass to be watched
+// at all applies here too: switched off is switched off, and a city place still
+// has to clear the capacity rule.
+export function headlinePlaces(pairings, restaurant) {
+    return watching(pairings, restaurant)
+        .filter(p => p.own_row === true && p.place)
+        .map(p => p.place)
 }
 
 export function rowsOn(rows, date) {

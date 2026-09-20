@@ -215,14 +215,20 @@ describe('weekTable', () => {
         expect(t.extras[4]).toHaveLength(1)
     })
 
-    // A week where the Arena has nothing on should not carry an empty strip,
-    // the same rule Also on already follows.
-    it('reserves no height for a band with nothing in it', () => {
-        const quiet = build({
-            nearby: [{ ...headline[0], event: { ...headline[0].event, event_date: '2026-12-25' } }],
-        })
-        expect(sheetLayout(quiet).headlineHeights).toEqual([0])
-        expect(sheetLayout(build({ nearby: headline })).headlineHeights[0]).toBeGreaterThan(0)
+    // **The opposite of the rule Also on follows, and deliberately.** A missing
+    // row and a quiet week look the same, and only one of them has been
+    // checked. His call, and it holds for the picture as much as the screen.
+    it('draws the band on a week the place has nothing on', () => {
+        const arena = { id: 'p1', name: '3Arena', short_name: '3Arena' }
+        const quiet = build({ nearby: [], nearbyPlaces: [arena] })
+        expect(quiet.headlines).toHaveLength(1)
+        expect(quiet.headlines[0].name).toBe('3Arena')
+        expect(quiet.headlines[0].perDay.every(day => day.length === 0)).toBe(true)
+        expect(sheetLayout(quiet).headlineHeights[0]).toBeGreaterThan(0)
+    })
+
+    it('still finds the place off the listings when no list is handed in', () => {
+        expect(build({ nearby: headline }).headlines[0].name).toBe('3Arena')
     })
 
     it('makes room for the band in the sheet it is drawn on', () => {
