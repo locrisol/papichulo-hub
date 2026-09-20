@@ -94,6 +94,7 @@ const KIND = {
     // it. Purple, grey, orange, green, amber, slate and stone were all taken
     // before nearby events existed, so the two new ones are blue and indigo.
     arena: {
+        dash: 'border-purple-300',
         // Not 3Arena any more. It was the only ticketed venue the Hub could
         // hold when this was written, and the Pavilion and the Convention
         // Centre sell the same way. What these have in common is that somebody
@@ -124,6 +125,7 @@ const KIND = {
     // same badge whether it is a film opening, a regatta or a market.
     nearby: {
         label: 'Nearby',
+        dash: 'border-blue-300',
         chip: 'bg-blue-50 text-blue-900 border-l-blue-600',
         tag: 'bg-blue-50 text-blue-900',
         dot: 'bg-blue-600',
@@ -140,6 +142,7 @@ const KIND = {
     // telling two blues apart at eleven pixels.
     city: {
         label: 'City',
+        dash: 'border-indigo-300',
         chip: 'bg-indigo-50 text-indigo-900 border-l-indigo-700',
         tag: 'bg-indigo-50 text-indigo-900',
         dot: 'bg-indigo-700',
@@ -167,6 +170,22 @@ export function kindTag(kind) {
 
 export function kindDot(kind) {
     return (KIND[kind] || FALLBACK).dot
+}
+
+// The edge a chip wears when nobody has checked it yet.
+//
+// Dashed used to mean "nobody here typed this and nobody here can change it",
+// which was the Arena and only the Arena. The colour already says that, on all
+// three of the nearby kinds, so the dash was doing a job that was already done.
+//
+// It means one thing now: **a model read this off a page and no person has
+// looked at it.** That is a real difference worth a mark of its own, because
+// it is the difference between a fixture somebody sold tickets for and a
+// sentence a machine understood, and it sits beside a Keep button on the
+// calendar until somebody settles it.
+export function kindDash(kind) {
+    const edge = (KIND[kind] || FALLBACK).dash
+    return edge ? `border-y border-r border-dashed ${edge}` : ''
 }
 
 // The same colours as real values, for the two things that cannot read a class

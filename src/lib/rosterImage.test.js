@@ -79,7 +79,7 @@ describe('drawing a week', () => {
     it('names every row, so no band is a strip of colour nobody labelled', () => {
         const { canvas, calls } = fakeCanvas()
         drawWeek(canvas, table)
-        for (const label of ['STORE HOURS', 'WHAT IS ON', 'EVENTS', 'ALSO ON']) {
+        for (const label of ['STORE HOURS', 'WHAT IS ON', 'ALSO ON']) {
             expect(calls.fillText, label).toContain(label)
         }
     })

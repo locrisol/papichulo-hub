@@ -130,13 +130,14 @@ describe('nearbyRows', () => {
         expect(rows[0].time).toBe('18:30')
     })
 
-    // The roster is what somebody staffs off. A reading nobody has checked
-    // belongs on the calendar, where there is a Keep beside it.
-    it('keeps an unchecked reading off the roster and on the calendar', () => {
-        expect(nearbyRows(events, pairs, {}, { forRoster: true }).map(r => r.event.id))
-            .toEqual(['e1', 'e3'])
+    // Marked rather than held back. Hiding an unchecked reading from the
+    // roster until somebody opens the Calendar recreates the exact problem
+    // this was built for: a manager not hearing about the film across the road.
+    it('shows an unchecked reading everywhere, marked', () => {
         expect(nearbyRows(events, pairs, {}).map(r => r.event.id))
             .toEqual(['e1', 'e2', 'e3'])
+        expect(nearbyRows(events, pairs, {}).map(r => r.checked))
+            .toEqual([true, false, true])
     })
 
     it('never shows a dismissed one anywhere', () => {

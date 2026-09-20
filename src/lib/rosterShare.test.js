@@ -28,7 +28,6 @@ const build = (extra = {}) => weekTable({
     employees,
     shifts,
     dayNotes: [],
-    events: [],
     openingHours,
     restaurantName: 'Point Campus',
     ...extra,
@@ -141,21 +140,73 @@ describe('weekTable', () => {
         expect(t.storeHours[2]).toBe('Closed')
     })
 
-    it('puts what is on beside the day, with the doors time', () => {
+    // Next door joins the same row the catering and the deliveries are on,
+    // rather than having a band of its own in the app's orange above them.
+    // Two lists of the same thing, one of them wearing catering's colour.
+    it('puts what is on next door beside the day, with the place', () => {
         const t = build({
-            events: [{ id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' }],
+            nearby: [{
+                kind: 'arena',
+                time: '18:00',
+                place: { id: 'p1', name: '3Arena' },
+                event: { id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' },
+            }],
         })
-        expect(t.eventsOn[4].map(e => (e.time ? `${e.name} (doors ${e.time})` : e.name)).join(', ')).toBe('Westlife (doors 18:00)')
+        expect(t.extras[4]).toEqual([
+            { name: 'Westlife, 3Arena', time: '18:00', kind: 'arena', checked: true },
+        ])
     })
 
-    it('runs two events on one day together rather than losing one', () => {
+    it('runs two on one day together rather than losing one', () => {
         const t = build({
-            events: [
-                { id: 'v1', event_date: DATES[4], name: 'One', event_time: '13:00:00' },
-                { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
+            nearby: [
+                {
+                    kind: 'nearby',
+                    time: '13:00',
+                    place: { id: 'p1', name: 'Odeon' },
+                    event: { id: 'v1', event_date: DATES[4], name: 'One', event_time: '13:00:00' },
+                },
+                {
+                    kind: 'nearby',
+                    time: '19:00',
+                    place: { id: 'p1', name: 'Odeon' },
+                    event: { id: 'v2', event_date: DATES[4], name: 'Two', event_time: '19:00:00' },
+                },
             ],
         })
-        expect(t.eventsOn[4].map(e => (e.time ? `${e.name} (doors ${e.time})` : e.name)).join(', ')).toBe('One (doors 13:00), Two (doors 19:00)')
+        expect(t.extras[4].map(e => `${e.time} ${e.name}`))
+            .toEqual(['13:00 One, Odeon', '19:00 Two, Odeon'])
+    })
+
+    // A market over three weekends is one row, and drawing it on the first day
+    // only would be a lie about it.
+    it('draws a run of days on every day it covers', () => {
+        const t = build({
+            nearby: [{
+                kind: 'nearby',
+                time: '',
+                place: { id: 'p1', name: 'Point Square' },
+                event: {
+                    id: 'v1', name: 'Christmas market',
+                    event_date: DATES[1], ends_on: DATES[3],
+                },
+            }],
+        })
+        expect(t.extras.map(list => list.length)).toEqual([0, 1, 1, 1, 0, 0, 0])
+    })
+
+    // Marked rather than held back, the same as on screen.
+    it('marks one nobody has checked', () => {
+        const t = build({
+            nearby: [{
+                kind: 'nearby',
+                time: '',
+                checked: false,
+                place: { id: 'p1', name: 'Pavilion' },
+                event: { id: 'v1', name: 'Pentangle', event_date: DATES[4] },
+            }],
+        })
+        expect(t.extras[4][0].checked).toBe(false)
     })
 
     it('adds each person and each day up', () => {
@@ -199,11 +250,13 @@ describe('sheetLayout', () => {
         expect(l.hoursCentreX).toBeCloseTo(l.hoursX + l.hoursCol / 2, 6)
     })
 
-    it('makes the events row taller when a day needs more than one line', () => {
-        const one = sheetLayout(build(), { eventLines: 1 })
-        const three = sheetLayout(build(), { eventLines: 3 })
-        expect(three.eventsH).toBeGreaterThan(one.eventsH)
-        expect(three.height - one.height).toBe(three.eventsH - one.eventsH)
+    // One band now rather than two, so the one that grows is this one.
+    it('makes the row taller when a day needs more than one line', () => {
+        const withOne = build({ dayNotes: [{ note_date: DATES[0], extras: [{ name: 'Feedr', time: '12:00' }] }] })
+        const one = sheetLayout(withOne, { deliveryLines: 1 })
+        const three = sheetLayout(withOne, { deliveryLines: 3 })
+        expect(three.deliveriesH).toBeGreaterThan(one.deliveriesH)
+        expect(three.height - one.height).toBe(three.deliveriesH - one.deliveriesH)
     })
 
     it('grows with the number of people', () => {
@@ -493,9 +546,22 @@ describe('what is on reaches the shared week', () => {
         expect(build().bands).toEqual([])
     })
 
+    // The kind rides along so a card can be drawn in the colour it has on
+    // screen. Every card on this band used to be slate, so a catering job and
+    // a Feedr drop looked identical on the one copy that gets pinned up.
     it('keeps the time and the name apart for the sheet, the way deliveries are', () => {
         const t = build({ diary: [catering] })
-        expect(t.extras[2][0]).toEqual({ name: 'Catering (Trinity dept lunch)', time: '12:00' })
+        expect(t.extras[2][0]).toEqual({
+            name: 'Catering (Trinity dept lunch)', time: '12:00', kind: 'catering',
+        })
+    })
+
+    it('tells a delivery apart from a catering job by its kind', () => {
+        const t = build({
+            diary: [catering],
+            dayNotes: [{ note_date: DATES[2], extras: [{ name: 'Feedr', time: '13:00' }] }],
+        })
+        expect(t.extras[2].map(e => e.kind)).toEqual(['catering', 'delivery'])
     })
 
     // The form promises nobody else sees a private one, and a printed week

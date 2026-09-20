@@ -15,7 +15,8 @@ import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, shiftEdges,
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
-import { extrasFor, extraLabel } from '@/lib/dayExtras'
+import { extraLabel, whatIsOn } from '@/lib/dayExtras'
+import { rowsOn, chipWords } from '@/lib/nearby'
 import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
 
 // A day somebody is not there, as it goes out.
@@ -56,7 +57,7 @@ export function shareName(restaurantName, weekStart, extension) {
 // it does on screen, so nobody can read a finishing time off a printed copy that
 // the screen never showed them.
 export function weekTable({
-    dates, employees, shifts, dayNotes, events, diary, openingHours, restaurantName, absences,
+    dates, employees, shifts, dayNotes, nearby, diary, openingHours, restaurantName, absences,
     standingNote, today,
 }) {
     // The first date somebody's availability is allowed to say anything about.
@@ -164,25 +165,44 @@ export function weekTable({
     }))
     const banded = new Set(bandsForWeek(running, dates || []).map(b => b.entry.id))
 
-    const commitments = (dates || []).map(d => onDate(running, d)
-        .filter(e => !banded.has(e.id))
-        .map(e => ({
-            name: `${kindLabel(e.kind)} (${e.title})`,
-            time: e.starts_at ? shortTime(e.starts_at) : '',
-        })))
+    // Everything a day has on it, in the order it happens, whichever table it
+    // came out of. The same function the screen uses, so the sheet pinned to
+    // the wall and the screen beside it cannot put the same day in two
+    // different orders.
+    //
+    // What is on next door used to be a band of its own in the app's orange,
+    // above this one. That put it in the same colour as catering and made the
+    // week read as two lists of the same thing, so it is in here now.
+    //
+    // Each one carries its kind, which is what lets a card be drawn in the
+    // colour it has on screen. Before this they were all slate, so a catering
+    // job and a Feedr drop looked identical on the one copy of the week that
+    // gets printed and pinned up.
+    const extras = (dates || []).map(d => whatIsOn(
+        onDate(running, d).filter(e => !banded.has(e.id)),
+        noteFor(d),
+        rowsOn(nearby, d),
+    ).map(({ entry, extra, near }) => {
+        if (entry) {
+            return {
+                name: `${kindLabel(entry.kind)} (${entry.title})`,
+                time: entry.starts_at ? shortTime(entry.starts_at) : '',
+                kind: entry.kind,
+            }
+        }
+        if (near) {
+            return {
+                name: chipWords(near),
+                time: near.time,
+                kind: near.kind,
+                checked: near.checked !== false,
+            }
+        }
+        return { name: extra.name, time: extra.time, kind: 'delivery' }
+    }))
 
-    const deliveries = (dates || []).map((d, i) => [
-        ...commitments[i].map(extraLabel),
-        ...extrasFor(noteFor(d)).map(extraLabel),
-    ])
-
-    // The same things again with the time and the name still apart, because a
-    // sheet draws them as a card each with one of the two picked out, and only
-    // the CSV wants them flattened into a string.
-    const extras = (dates || []).map((d, i) => [...commitments[i], ...extrasFor(noteFor(d))])
-    const eventsOn = (dates || []).map(d => (events || [])
-        .filter(e => e.event_date === d)
-        .map(e => ({ name: e.name, time: e.event_time ? shortTime(e.event_time) : '' })))
+    // The same list flattened, which is the only thing the CSV wants.
+    const deliveries = extras.map(list => list.map(extraLabel))
 
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
@@ -200,7 +220,6 @@ export function weekTable({
         head,
         storeHours,
         bands,
-        eventsOn,
         deliveries,
         extras,
         people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
@@ -253,10 +272,10 @@ export function wrapLines(text, maxWidth, measure) {
 // how many pixels it has, it is how big the text is next to the whole width. A
 // wide sheet with small text loses either way.
 //
-// eventLines is how many lines the busiest day of events needs. It is measured
-// by whoever is drawing, because only they know how wide their letters are.
+// deliveryLines is how many lines the busiest day needs. It is measured by
+// whoever is drawing, because only they know how wide their own letters are.
 export function sheetLayout(table, {
-    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1, bandLines = null,
+    width = 1180, pad = 24, deliveryLines = 1, noteLines = 1, bandLines = null,
     nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
     // The three columns either side of the week used to be fixed, and they were
@@ -296,7 +315,6 @@ export function sheetLayout(table, {
         (_, i) => (bandLines?.[i] ?? 1) * 14 + 8,
     )
     const bandsH = bandHeights.length ? bandHeights.reduce((t, n) => t + n, 0) + 6 : 0
-    const eventsH = Math.max(metaH, eventLines * 15 + 14)
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
     const hasDeliveries = table.deliveries?.some(d => d.length)
@@ -321,7 +339,7 @@ export function sheetLayout(table, {
     const standingH = table.standing ? 30 : 0
     const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH + bandsH + eventsH + deliveriesH
+    const height = pad * 2 + titleH + headH + metaH + bandsH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
@@ -329,7 +347,7 @@ export function sheetLayout(table, {
     return {
         width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
         titleH, headH, metaH, bandsH, bandHeights,
-        eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
+        deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         holidayX: width - pad - hoursCol - holidayCol,
         holidayCentreX: width - pad - hoursCol - holidayCol / 2,

@@ -116,14 +116,20 @@ export function coversDate(event, date) {
 
 // The listings this restaurant should see, each carrying the place it is at.
 //
-// One pass rather than a filter at every call site, because the three tests
-// here have to agree on four screens and the one that disagreed last time was
-// the roster, which asked for the events with no test at all.
+// One pass rather than a filter at every call site, because the two tests here
+// have to agree on four screens and the one that disagreed last time was the
+// roster, which asked for the events with no test at all.
 //
-// forRoster is the review gate. A reading nobody has checked belongs on the
-// calendar, where there is a Keep beside it, and nowhere near a roster that
-// somebody is about to staff off.
-export function nearbyRows(events, pairings, restaurant, { forRoster = false } = {}) {
+// **An unchecked reading shows everywhere, marked, rather than being held
+// back.** That is the opposite of what was first drawn and it is right: the
+// problem this whole thing was built for is a manager not hearing about the
+// film opening across the road, and hiding it from the roster until somebody
+// happens to open the Calendar recreates exactly that problem. It carries
+// `checked: false` instead, and every screen draws that edge dashed.
+//
+// Dismissed is the one that goes nowhere, and it stays in the table precisely
+// so the next read of the same page does not offer it again.
+export function nearbyRows(events, pairings, restaurant) {
     const near = byPlace(watching(pairings, restaurant))
     const rows = []
 
@@ -131,7 +137,6 @@ export function nearbyRows(events, pairings, restaurant, { forRoster = false } =
         const pairing = near.get(event?.place_id)
         if (!pairing) continue
         if (dismissed(event)) continue
-        if (forRoster && !onRoster(event)) continue
         rows.push({
             event,
             place: pairing.place,
