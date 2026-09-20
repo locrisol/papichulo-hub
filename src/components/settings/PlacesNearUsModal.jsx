@@ -16,7 +16,7 @@ import {
 
 const BLANK = {
     name: '', walk_minutes: '', page_url: '', ticketmaster_venue_id: '', capacity: '',
-    reading_key: 'date',
+    reading_key: 'date', page_depth: '1',
 }
 
 const TAG_LOOK = {
@@ -118,6 +118,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             ticketmaster_venue_id: form.ticketmaster_venue_id.trim() || null,
             capacity: figure(form.capacity),
             reading_key: form.reading_key === 'title' ? 'title' : 'date',
+            // One unless somebody has said otherwise, and never more than the
+            // dozen the database will accept: every page is a fetch and a slice
+            // of what gets sent to be read.
+            page_depth: Math.max(1, Math.min(12, Number(form.page_depth) || 1)),
         }
         const minutes = figure(form.walk_minutes)
 
@@ -164,6 +168,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             ticketmaster_venue_id: row.place.ticketmaster_venue_id || '',
             capacity: row.place.capacity ?? '',
             reading_key: row.place.reading_key || 'date',
+            page_depth: String(row.place.page_depth ?? 1),
         })
     }
 
@@ -388,6 +393,33 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     <p className="text-xs text-muted mt-1">
                                         Read once a week. Anything found waits on the calendar for
                                         somebody to keep it.
+                                    </p>
+                                    {/* Two words rather than a second field,
+                                        because where the month or the page
+                                        number goes is part of the address and
+                                        only the address knows where. */}
+                                    <p className="text-xs text-muted mt-1">
+                                        Some sites hand over one month or a few events at a time.
+                                        Put <code className="font-mono">{'{month}'}</code> or{' '}
+                                        <code className="font-mono">{'{page}'}</code> in the address
+                                        where the site puts them and it will be read right through.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className={labelClass} htmlFor="place-depth">
+                                        How many pages to read
+                                    </label>
+                                    <input
+                                        id="place-depth"
+                                        className={fieldClass}
+                                        inputMode="numeric"
+                                        value={form.page_depth}
+                                        onChange={e => setForm({ ...form, page_depth: e.target.value })}
+                                    />
+                                    <p className="text-xs text-muted mt-1">
+                                        Only does anything when the address has{' '}
+                                        <code className="font-mono">{'{page}'}</code> in it. One
+                                        unless the site is stingy.
                                     </p>
                                 </div>
                                 <div className="sm:col-span-2">

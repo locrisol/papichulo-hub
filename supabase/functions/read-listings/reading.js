@@ -60,7 +60,128 @@ export function textFrom(html) {
         // listings page came out starting with it.
         .replace(/ *\n[\s]*/g, '\n')
         .trim()
-        .slice(0, MOST_TEXT)
+}
+
+// Stripped, de-duplicated, and only then cut to length.
+//
+// The order is the whole point. Capping first meant the council's 78,000
+// characters were cut to 40,000 of which 37,000 were the map block, so we paid
+// to send a list of names with no dates and dropped nothing that mattered
+// because nothing that mattered was ever in reach.
+export function readable(html) {
+    return dropRepeats(textFrom(html)).slice(0, MOST_TEXT)
+}
+
+// A page says the same thing over and over, and we pay for every word of it.
+//
+// The county council's listings page is a megabyte of HTML that strips to
+// 78,000 characters, of which **six events** are the whole point. The rest is a
+// map block underneath that names all 578 events in the county with no dates on
+// any of them, so it is both useless and the bulk of what we were sending.
+//
+// A line is allowed to appear a few times and then it stops being repeated.
+// Three because a real listing turns up twice on these pages, once as a card
+// and once on the map, and being cut to one would lose the half that carries
+// the date. Navigation, "Get Direction" and a conversation group that meets
+// every week are what this is for.
+//
+// **A calendar feed is left alone.** An .ics is already structured, its
+// repeated BEGIN:VEVENT lines are what holds it together, and pulling them out
+// would leave dates attached to the wrong things.
+export const MOST_REPEATS = 3
+
+export function dropRepeats(text, most = MOST_REPEATS) {
+    const body = String(text || '')
+    if (/^\s*BEGIN:VCALENDAR/i.test(body)) return body
+
+    const seen = new Map()
+    const kept = []
+
+    for (const line of body.split('\n')) {
+        const key = line.trim().toLowerCase()
+        if (!key) { kept.push(line); continue }
+        const count = (seen.get(key) || 0) + 1
+        seen.set(key, count)
+        if (count <= most) kept.push(line)
+    }
+
+    return kept.join('\n')
+}
+
+// One page is often not the page.
+//
+// Three of the five sources worth reading hand over a slice at a time and none
+// of them slices the same way:
+//
+//   the county council   six event cards per response, and it says so itself,
+//                        "Loaded 6 of 578". Reading one response is reading six
+//                        events and calling it a week.
+//   the cruise schedule  one calendar month. Asked on the 20th it reaches the
+//                        25th, which is five days of warning.
+//   a yacht club feed    one month, the same.
+//
+// So a page address may carry two words in braces and they are replaced before
+// it is fetched:
+//
+//   {month}  every month the window touches, so a five week window is two
+//            fetches and never misses the turn of a month.
+//   {page}   1 up to however many pages the place says are worth reading.
+//
+// Both are ordinary text substitution and neither needs anything to know what
+// site it is looking at, which is the whole point: a parser written against one
+// layout breaks silently when that layout changes, and this cannot, because
+// there is no layout in it.
+export function monthsBetween(from, to) {
+    const out = []
+    if (!from) return out
+    let at = String(from).slice(0, 7)
+    const end = String(to || from).slice(0, 7)
+    // A guard rather than a while true. A bad pair of dates should give a short
+    // wrong answer rather than fetch for ever.
+    for (let i = 0; i < 24 && at <= end; i += 1) {
+        out.push(at)
+        const year = Number(at.slice(0, 4))
+        const month = Number(at.slice(5, 7))
+        at = month === 12
+            ? `${year + 1}-01`
+            : `${year}-${String(month + 1).padStart(2, '0')}`
+    }
+    return out
+}
+
+export function urlsFor(url, { depth = 1, from, to } = {}) {
+    const one = String(url || '').trim()
+    if (!one) return []
+
+    const spread = one.includes('{month}')
+        ? monthsBetween(from, to).map(month => one.split('{month}').join(month))
+        : [one]
+
+    if (!one.includes('{page}')) return spread
+
+    const pages = Math.max(1, Math.min(12, Number(depth) || 1))
+    const out = []
+    for (const each of spread) {
+        for (let n = 1; n <= pages; n += 1) out.push(each.split('{page}').join(String(n)))
+    }
+    return out
+}
+
+// Several pages of one place, read as one page.
+//
+// Joined rather than asked about separately, because the answer wanted is one
+// list for that place and asking four times would be four times the quota for
+// the same question. The cap is higher than one page's and still a cap: a place
+// set to twelve pages of something enormous should cost a lot rather than
+// everything.
+export const MOST_ALL_TEXT = 120000
+
+export function joinPages(texts) {
+    return (texts || [])
+        .map(t => String(t || '').trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, MOST_ALL_TEXT)
 }
 
 // What to hand the model, and the one instruction that matters.
@@ -95,6 +216,9 @@ export function promptFor(text, { from, to, today, key = 'date' } = {}) {
         '',
         'Rules:',
         '- If a date is not stated on the page, leave the row out. Never guess a date.',
+        '- Leave out anything that is an opening time, a service, a facility or a',
+        '  standing arrangement rather than an event. A bar being open and catering',
+        '  being available are not events, however many days they are listed on.',
         '- Use the date the event happens, not the date it goes on sale.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM, and only if one is stated.',
         '- If several start times are listed for one day, use the earliest.',

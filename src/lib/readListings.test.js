@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
     endpoint, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
+    dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
     isServiceRole, roleOf,
 } from '../../supabase/functions/read-listings/reading'
 import { sourceKeyFor as browserSourceKeyFor } from '@/lib/nearby'
@@ -38,15 +39,122 @@ describe('textFrom', () => {
         expect(textFrom('<div>  a   </div>\n\n\n<div>  b </div>')).toBe('a\nb')
     })
 
-    // The backstop. One enormous page must not be able to spend an
-    // afternoon's quota in a single call.
-    it('never hands over more than the cap', () => {
-        expect(textFrom(`<p>${'x'.repeat(MOST_TEXT * 2)}</p>`)).toHaveLength(MOST_TEXT)
+    // The cap moved out of here and into readable, which is what the function
+    // actually calls. Capping before the repetition was cut meant the council's
+    // map block was what survived and the events were what got dropped.
+    it('strips without cutting, and leaves the cutting to readable', () => {
+        const long = `<p>${'x'.repeat(MOST_TEXT * 2)}</p>`
+        expect(textFrom(long).length).toBeGreaterThan(MOST_TEXT)
+        expect(readable(long)).toHaveLength(MOST_TEXT)
     })
 
     it('copes with nothing at all', () => {
         expect(textFrom('')).toBe('')
         expect(textFrom(null)).toBe('')
+    })
+})
+
+// The county council's page renders six event cards and then a map block naming
+// all 578 events in the county with no dates on any of them. So we were sending
+// forty thousand characters of which thirty seven thousand were a list of names,
+// and reading six events a week from a county that has hundreds.
+describe('dropRepeats', () => {
+    it('lets a line through a few times and then stops', () => {
+        const noise = Array(40).fill('Get Direction').join('\n')
+        expect(dropRepeats(noise).split('\n')).toHaveLength(MOST_REPEATS)
+    })
+
+    // A real listing turns up twice on these pages, once as a card and once on
+    // the map, and cutting to one would lose the half that carries the date.
+    it('keeps a listing that honestly appears twice', () => {
+        const page = 'RMS Leinster\nFriday 9 October 2026\nRMS Leinster\nGet Direction'
+        expect(dropRepeats(page)).toContain('Friday 9 October 2026')
+        expect(dropRepeats(page).match(/RMS Leinster/g)).toHaveLength(2)
+    })
+
+    it('leaves the blank lines alone', () => {
+        expect(dropRepeats('a\n\n\nb')).toBe('a\n\n\nb')
+    })
+
+    // An .ics is already structured and its repeated BEGIN:VEVENT lines are
+    // what holds it together. Pulling them out would leave dates attached to
+    // the wrong things.
+    it('never touches a calendar feed', () => {
+        const ics = 'BEGIN:VCALENDAR\n' + Array(20).fill('BEGIN:VEVENT').join('\n')
+        expect(dropRepeats(ics)).toBe(ics)
+    })
+
+    it('copes with nothing at all', () => {
+        expect(dropRepeats('')).toBe('')
+        expect(dropRepeats(null)).toBe('')
+    })
+})
+
+// The order is the whole point. Capping first meant the council's junk was what
+// survived and the words were what got cut.
+describe('readable', () => {
+    it('cuts the repetition before it cuts the length', () => {
+        const junk = Array(500).fill('Get Direction').join('\n')
+        const out = readable(`<p>Quiz night, Friday 9 October 2026</p><p>${junk}</p>`)
+        expect(out).toContain('Quiz night, Friday 9 October 2026')
+        expect(out.match(/Get Direction/g)).toHaveLength(MOST_REPEATS)
+    })
+
+    it('still never hands over more than the cap', () => {
+        const long = Array(9000).fill(0).map((_, i) => `Event number ${i}`).join('\n')
+        expect(readable(`<p>${long}</p>`).length).toBeLessThanOrEqual(MOST_TEXT)
+    })
+})
+
+// Three of the five sources worth reading hand over a slice at a time, and none
+// of them slices the same way.
+describe('one address, several pages', () => {
+    it('walks the months a window touches', () => {
+        expect(monthsBetween('2026-09-20', '2026-10-25')).toEqual(['2026-09', '2026-10'])
+        expect(monthsBetween('2026-12-20', '2027-01-24')).toEqual(['2026-12', '2027-01'])
+        expect(monthsBetween('2026-09-01', '2026-09-30')).toEqual(['2026-09'])
+    })
+
+    // Asked on the twentieth without this, the cruise schedule reaches the
+    // twenty fifth. That is five days of warning.
+    it('puts a month into an address that asks for one', () => {
+        expect(urlsFor('https://x.ie/p?month={month}', { from: '2026-09-20', to: '2026-10-25' }))
+            .toEqual(['https://x.ie/p?month=2026-09', 'https://x.ie/p?month=2026-10'])
+    })
+
+    it('walks pages as deep as the place says', () => {
+        expect(urlsFor('https://x.ie/e?page={page}', { depth: 3 }))
+            .toEqual(['https://x.ie/e?page=1', 'https://x.ie/e?page=2', 'https://x.ie/e?page=3'])
+    })
+
+    it('does both at once when an address asks for both', () => {
+        expect(urlsFor('https://x.ie/{month}/p{page}', { depth: 2, from: '2026-09-20', to: '2026-10-01' }))
+            .toEqual([
+                'https://x.ie/2026-09/p1', 'https://x.ie/2026-09/p2',
+                'https://x.ie/2026-10/p1', 'https://x.ie/2026-10/p2',
+            ])
+    })
+
+    it('leaves an ordinary address exactly as it is', () => {
+        expect(urlsFor('https://x.ie/events', { depth: 5 })).toEqual(['https://x.ie/events'])
+    })
+
+    // A place set to twelve pages of something enormous should cost a lot
+    // rather than everything.
+    it('will not be talked into an unreasonable number of pages', () => {
+        expect(urlsFor('https://x.ie/e?page={page}', { depth: 500 })).toHaveLength(12)
+        expect(urlsFor('https://x.ie/e?page={page}', { depth: 0 })).toHaveLength(1)
+    })
+
+    it('gives nothing back for no address', () => {
+        expect(urlsFor('')).toEqual([])
+        expect(urlsFor(null)).toEqual([])
+    })
+
+    it('reads several pages as one page', () => {
+        expect(joinPages(['a', '', '  ', 'b'])).toBe('a\nb')
+        expect(joinPages(['x'.repeat(MOST_ALL_TEXT * 2)])).toHaveLength(MOST_ALL_TEXT)
+        expect(joinPages(null)).toBe('')
     })
 })
 
@@ -59,6 +167,12 @@ describe('promptFor', () => {
     it('says plainly not to guess a date', () => {
         expect(prompt).toContain('If a date is not stated on the page, leave the row out')
         expect(prompt).toContain('Never guess a date')
+    })
+
+    // A yacht club's calendar lists its bar and its catering on every single
+    // day of the month: 35 entries, 2 of them events.
+    it('says an opening time is not an event', () => {
+        expect(prompt).toContain('opening time, a service, a facility')
     })
 
     // A cinema listing reads "Mon 21 Sep, 5pm & 8pm" and there is one column

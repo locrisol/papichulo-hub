@@ -56,8 +56,8 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    endpoint, textFrom, promptFor, SCHEMA, answerFrom, eventsFrom,
-    isServiceRole, roleOf,
+    endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom,
+    urlsFor, joinPages, isServiceRole, roleOf,
 } from './reading.js'
 
 const MANAGERS = ['owner', 'store_manager']
@@ -100,7 +100,13 @@ const json = (body: unknown, status = 200) =>
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 type Admin = ReturnType<typeof createClient>
-type Place = { id: string; name: string; page_url: string; reading_key: string }
+type Place = {
+    id: string
+    name: string
+    page_url: string
+    reading_key: string
+    page_depth: number
+}
 
 function windowOf(now: Date) {
     const to = new Date(now)
@@ -146,10 +152,32 @@ async function ask(key: string, prompt: string) {
 async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     const { from, to } = windowOf(now)
 
-    const page = await fetch(place.page_url, { headers: { 'User-Agent': AGENT } })
-    if (!page.ok) throw new Error(`${place.page_url} answered ${page.status}`)
+    // One address can be several pages: a month each, a pageful each, or both.
+    // See urlsFor, and the reasons it exists, in reading.js.
+    const addresses = urlsFor(place.page_url, { depth: place.page_depth, from, to })
+    if (addresses.length === 0) throw new Error('no address to read')
 
-    const text = textFrom(await page.text())
+    const parts: string[] = []
+    const missed: string[] = []
+
+    for (const address of addresses) {
+        try {
+            const page = await fetch(address, { headers: { 'User-Agent': AGENT } })
+            if (!page.ok) { missed.push(`${address} answered ${page.status}`); continue }
+            parts.push(readable(await page.text()))
+        } catch (err) {
+            missed.push(`${address}: ${err}`)
+        }
+    }
+
+    // One page of four refusing is not a failure. All of them refusing is, and
+    // it has to be, or a site that has gone away would look like a quiet week.
+    if (parts.length === 0) {
+        throw new Error(missed.join('; ') || `${place.page_url} had no words on it`)
+    }
+    if (missed.length) console.warn('read-listings', place.name, missed.join('; '))
+
+    const text = joinPages(parts)
     if (!text) throw new Error(`${place.page_url} had no words on it`)
 
     // How this place's readings are keyed decides both what to ask for and
@@ -188,7 +216,13 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
         .update({ last_read_at: now.toISOString(), last_read_count: rows.length })
         .eq('id', place.id)
 
-    return { place: place.name, found: rows.length, added }
+    return {
+        place: place.name,
+        pages: addresses.length,
+        found: rows.length,
+        added,
+        ...(missed.length ? { missed: missed.length } : {}),
+    }
 }
 
 async function pagesFor(admin: Admin, restaurantId?: string): Promise<Place[]> {
@@ -197,7 +231,7 @@ async function pagesFor(admin: Admin, restaurantId?: string): Promise<Place[]> {
     // fill a table nothing looks at is the sort of waste nobody notices.
     const query = admin
         .from('restaurant_places')
-        .select('restaurant_id, place:places(id, name, page_url, reading_key)')
+        .select('restaurant_id, place:places(id, name, page_url, reading_key, page_depth)')
         .eq('is_active', true)
 
     const { data } = restaurantId ? await query.eq('restaurant_id', restaurantId) : await query

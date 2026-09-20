@@ -1,6 +1,6 @@
 # Migrations
 
-Six in here, and the next one is `013`.
+Seven in here, and the next one is `014`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
@@ -14,6 +14,8 @@ Six in here, and the next one is `013`.
   that used to live on the restaurant across into the first of them.
 - **`012_a_cinema_is_not_a_list_of_events.sql`** lets a place say how its
   readings are keyed, and points the cinema at a page that can be read at all.
+- **`013_four_more_pages_worth_reading.sql`** gives four more places a page, and
+  fixes the council, which was being read six events at a time.
 
 None has a backup newer than it yet, so none can go.
 
