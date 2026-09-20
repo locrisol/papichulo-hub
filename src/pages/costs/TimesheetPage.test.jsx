@@ -20,6 +20,9 @@ const rows = {
 const inserted = []
 const updated = []
 const deleted = []
+// Set by one test, which is about what the screen does when the database
+// refuses a write.
+const broken = { update: false }
 
 function chain(table) {
     const result = Promise.resolve({ data: rows[table] || [], error: null })
@@ -42,6 +45,7 @@ function chain(table) {
         update: patch => ({
             eq: (_, id) => ({
                 select: () => {
+                    if (broken.update) return Promise.resolve({ data: null, error: { message: 'refused' } })
                     updated.push({ table, id, patch })
                     const was = (rows[table] || []).find(r => r.id === id) || {}
                     const now = { ...was, ...patch }
@@ -75,10 +79,16 @@ const { default: TimesheetPage } = await import('@/pages/costs/TimesheetPage')
 
 const boxes = () => Array.from(document.querySelectorAll('input[data-r]'))
 
+const off_the_till = {
+    id: 't1', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+    starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked', source: 'import',
+}
+
 beforeEach(() => {
     inserted.length = 0
     updated.length = 0
     deleted.length = 0
+    broken.update = false
     rows.timesheet_entries = []
     rows.roster_shifts = []
 })
@@ -192,11 +202,6 @@ describe('changing a time the till gave', () => {
     // week off the clock; a clock time somebody moved afterwards looks exactly
     // like a clock time, and only they know what happened. So it is marked,
     // and the week is blocked until it says why.
-    const off_the_till = {
-        id: 't1', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
-        starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked', source: 'import',
-    }
-
     it('marks it as corrected', async () => {
         rows.timesheet_entries = [off_the_till]
         render(<TimesheetPage />)
@@ -259,5 +264,42 @@ describe('changing a time the till gave', () => {
 
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].patch).toEqual({ starts_at: '09:20:00' })
+    })
+})
+
+describe('saying that it saved', () => {
+    // The same three words the report page uses, because it is the same
+    // promise: no Save button on either, both write when you leave a box, and
+    // this line is the only thing that says it happened.
+    it('says it saves as you type before anything has', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+        expect(screen.getByText('Saves as you type')).toBeInTheDocument()
+    })
+
+    it('says when it last saved', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+
+        await waitFor(() => expect(screen.getByText(/^Saved at /)).toBeInTheDocument())
+    })
+
+    // And what it must never say. A refused write used to leave the new figure
+    // in the box looking saved, with one line of red above the fold.
+    it('says nothing about saving when the write was refused, and puts the figure back', async () => {
+        rows.timesheet_entries = [off_the_till]
+        broken.update = true
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[0])
+        await userEvent.type(boxes()[0], '0920')
+        await userEvent.tab()
+
+        await waitFor(() => expect(boxes()[0]).toHaveValue('09:00:00'))
+        expect(screen.queryByText(/^Saved at /)).not.toBeInTheDocument()
     })
 })

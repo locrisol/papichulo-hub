@@ -92,6 +92,10 @@ export default function TimesheetPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
+    // When the last write landed. The report page says the same thing in the
+    // same words, and this screen saves the same way: there is no Save button
+    // on either of them, so this line is the only thing that says it happened.
+    const [savedAt, setSavedAt] = useState(null)
 
     const grid = useRef(null)
     // Which restaurant and week the state holds, so a context re-render does
@@ -183,6 +187,19 @@ export default function TimesheetPage() {
     })()
 
     // ---- writing -----------------------------------------------------------
+
+    // Every write on this page ends here, whether it worked or not.
+    //
+    // One place that clears the saving flag and stamps the time, so a handler
+    // written later cannot save something and leave the screen saying nothing
+    // happened. The report page has the same rule for the same reason, and
+    // this screen needs it more: it writes when you leave a box rather than
+    // when you press anything.
+    function finish(failed) {
+        setSaving(false)
+        if (!failed) setSavedAt(new Date())
+        return Boolean(failed)
+    }
 
     const keyFor = (person, cell) => `${person.id}|${cell.date}`
 
@@ -314,8 +331,7 @@ export default function TimesheetPage() {
         const { data, error: failed } = await supabase.from('timesheet_entries')
             .insert({ ...row, restaurant_id: restaurantId, created_by: user?.id })
             .select()
-        setSaving(false)
-        if (failed) { setError(friendlyError(failed)); return }
+        if (finish(failed)) { setError(friendlyError(failed)); return }
         // The same trap the nearby keep fell into: a write that changed nothing
         // reads as success unless the rows come back.
         if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
@@ -326,7 +342,6 @@ export default function TimesheetPage() {
         setSaving(true)
         const { data, error: failed } = await supabase.from('timesheet_entries')
             .update(patch).eq('id', id).select()
-        setSaving(false)
 
         // **A refused save must not leave its figure on the screen.** Typing
         // moves the cell before anything is written, so a database that says no
@@ -334,7 +349,7 @@ export default function TimesheetPage() {
         // of red above the fold that scrolls away. The week is read again, so
         // what is on the screen is what is in the database, which is the only
         // thing this page is allowed to show.
-        if (failed) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
+        if (finish(failed)) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
         if (!data?.length) {
             setError('That could not be saved, so nothing has changed.')
             setRefresh(n => n + 1)
@@ -346,8 +361,7 @@ export default function TimesheetPage() {
     async function remove(entry) {
         setSaving(true)
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
-        setSaving(false)
-        if (failed) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
+        if (finish(failed)) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
         setEntries(was => was.filter(e => e.id !== entry.id))
     }
 
@@ -379,8 +393,7 @@ export default function TimesheetPage() {
                 decided_by: user?.id,
                 decided_at: new Date().toISOString(),
             }).select()
-            setSaving(false)
-            if (failed) { setError(friendlyError(failed)); return }
+            if (finish(failed)) { setError(friendlyError(failed)); return }
             if (data?.length) setAbsences(was => [...was, data[0]])
             return
         }
@@ -421,8 +434,7 @@ export default function TimesheetPage() {
 
             setSaving(true)
             const { error: failed } = await supabase.from('absences').delete().eq('id', cell.absence.id)
-            setSaving(false)
-            if (failed) { setError(friendlyError(failed)); return }
+            if (finish(failed)) { setError(friendlyError(failed)); return }
             setAbsences(was => was.filter(a => a.id !== cell.absence.id))
             return
         }
@@ -456,9 +468,10 @@ export default function TimesheetPage() {
         if (value !== '' && !Number.isFinite(hours)) return
 
         setAbsences(was => was.map(a => (a.id === cell.absence.id ? { ...a, hours } : a)))
+        setSaving(true)
         const { data, error: failed } = await supabase.from('absences')
             .update({ hours }).eq('id', cell.absence.id).select()
-        if (failed) { setError(friendlyError(failed)); return }
+        if (finish(failed)) { setError(friendlyError(failed)); return }
         if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
     }
 
@@ -592,7 +605,17 @@ export default function TimesheetPage() {
                     <p className="text-sm font-bold text-gray-900 tabular-nums">
                         {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
                     </p>
-                    {saving && <p className="text-[0.66rem] text-muted">Saving...</p>}
+                    {/* The same three states the report shows, in the same
+                        words, because it is the same promise: no Save button,
+                        it writes when you leave a box, and this line is what
+                        says so. */}
+                    <span className="block text-xs text-muted" aria-live="polite">
+                        {saving
+                            ? 'Saving'
+                            : savedAt
+                                ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
+                                : 'Saves as you type'}
+                    </span>
                 </div>
             </div>
 
