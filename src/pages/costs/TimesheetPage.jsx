@@ -40,15 +40,27 @@ const VIEWS = [
     { id: 'day', label: 'Day' },
 ]
 
+// A list of people, read out the way somebody would say it.
+function names(waiting) {
+    const all = waiting.map(w => w.person.full_name)
+    if (all.length <= 1) return all.join('')
+    return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`
+}
+
 export default function TimesheetPage() {
     const { user } = useAuth()
     const confirm = useConfirm()
     const { activeRestaurant } = useRestaurant()
 
-    const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
+    // Last week, not this one. A timesheet is filled in once the week has
+    // finished and the till's report exists for it, so opening on the week that
+    // is still running means stepping back every single time. The roster is the
+    // other way round and opens on this week, because a roster is written
+    // forwards. Same button, opposite jobs.
+    const [weekStart, setWeekStart] = useState(addDays(weekStartOf(todayISO()), -7))
     const [pickerDate, setPickerDate] = useState(weekStart)
     const [view, setView] = useState('week')
-    const [openDay, setOpenDay] = useState(todayISO())
+    const [openDay, setOpenDay] = useState(weekStart)
     // Which person and day the phone has open to be typed. Held as ids rather
     // than as the row, so it survives the rows being worked out again after a
     // save and does not go stale halfway through.
@@ -206,11 +218,18 @@ export default function TimesheetPage() {
         setError('')
 
         // An entry that exists is updated, or deleted once both ends are empty.
+        // Unless it carries a note: then it is a day somebody said something
+        // about, the times were the part that was wrong, and throwing the
+        // sentence away because a time was rubbed out would lose the only
+        // thing on that row anybody wrote.
         if (entry.id) {
             const next = { ...entry, [field]: value }
-            if (!next.starts_at && !next.ends_at) return remove(entry)
+            if (!next.starts_at && !next.ends_at) {
+                if (!entry.note) return remove(entry)
+                return save(entry.id, { starts_at: null, ends_at: null, ...changedByHand(entry) })
+            }
             if (entry[field] === value) return
-            return save(entry.id, { [field]: value })
+            return save(entry.id, { [field]: value, ...changedByHand(entry) })
         }
 
         const draft = drafts[keyFor(person, cell)] || {}
@@ -235,6 +254,17 @@ export default function TimesheetPage() {
             ends_at: end || null,
             source: 'typed',
         })
+    }
+
+    // A time that came off the till and is being moved by hand stops being a
+    // till time. **His rule, and it is the right one**: a week typed from
+    // nothing is what it looks like, and so is a week off the clock, but a
+    // clock time somebody has edited looks exactly like a clock time and only
+    // they know what happened. So it is marked, it has to say why before the
+    // week can go anywhere, and a later import of the same file never quietly
+    // puts the old figure back.
+    function changedByHand(entry) {
+        return entry.source === 'import' ? { source: 'corrected' } : {}
     }
 
     async function create(row) {
@@ -303,13 +333,16 @@ export default function TimesheetPage() {
         }
 
         // Training and a trial are worked time, so they keep whatever times are
-        // there and only change what the day is called.
+        // there and only change what the day is called. With no times yet the
+        // row is the mark and nothing else: it used to be given midnight to get
+        // past the database, which put 00:00 in a box somebody then had to
+        // clear before they could type the real one.
         const first = cell.entries[0]
         if (first) return save(first.id, { kind: state.value })
         await create({
             employee_id: person.id,
             work_date: cell.date,
-            starts_at: '00:00:00',
+            starts_at: null,
             kind: state.value,
             source: 'typed',
         })
@@ -343,10 +376,15 @@ export default function TimesheetPage() {
 
         if (!cell.entries.length) { forget(person, cell); return }
 
+        // A day can hold a reason and no times at all, and being asked whether
+        // to delete "these times" when there are none is the kind of question
+        // somebody answers yes to without reading.
+        const typed = cell.entries.some(e => e.starts_at)
         const ok = await confirm({
-            title: 'Delete these times?',
+            title: typed ? 'Delete these times?' : 'Delete what is written here?',
             message: `${person.full_name}, ${fullDate(cell.date)}. `
-                + `${cell.entries.length === 1 ? 'The clock in and out go' : 'Both shifts go'} for good.`,
+                + `${!typed ? 'What was written about this day goes'
+                    : cell.entries.length === 1 ? 'The clock in and out go' : 'Both shifts go'} for good.`,
             confirmLabel: 'Delete',
             tone: 'danger',
         })
@@ -373,11 +411,36 @@ export default function TimesheetPage() {
 
     // Why a shift is what it is, in his words, going out with the week. Saved
     // when the box is left rather than on every key, the same as a time.
-    async function setNote(entry, text) {
-        if (!entry?.id) return
+    //
+    // **A note with no times is a row of its own.** That is the second way of
+    // answering a rostered shift, which the report block has always asked for
+    // and nothing could give: a shift swapped after the roster went up, or
+    // somebody who did not turn up, was not a holiday and not a sick day and
+    // had nowhere at all to be written down. The database took a start time
+    // away from it, and this is what fills it in.
+    async function setNote(person, cell, entry, text) {
         const note = String(text || '').trim() || null
-        if (note === (entry.note ?? null)) return
-        await save(entry.id, { note })
+
+        if (entry?.id) {
+            if (note === (entry.note ?? null)) return
+            return save(entry.id, { note })
+        }
+
+        // An empty box on a day with nothing on it is nothing to save.
+        if (!note) return
+
+        // Whatever was half typed into the boxes goes in with it rather than
+        // being thrown away.
+        const draft = drafts[keyFor(person, cell)] || {}
+        forget(person, cell)
+        await create({
+            employee_id: person.id,
+            work_date: cell.date,
+            starts_at: settleTime(draft.starts_at) || null,
+            ends_at: settleTime(draft.ends_at) || null,
+            note,
+            source: 'typed',
+        })
     }
 
     function addSpan(person, cell) {
@@ -481,13 +544,32 @@ export default function TimesheetPage() {
             </div>
 
             {waiting.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
-                    <strong className="font-bold">
-                        {waiting.length} {waiting.length === 1 ? 'person has' : 'people have'} a rostered
-                        shift with nothing said about it.
-                    </strong>{' '}
-                    {waiting.map(w => w.person.full_name).join(', ')}. A report cannot be drafted for
-                    this week until each one has times or a reason.
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 space-y-1">
+                    {/* Two different things to answer, said separately because
+                        they want different answers. One is a shift nobody has
+                        accounted for; the other is a till time somebody moved
+                        and has not explained. */}
+                    {waiting.some(w => w.days.length) && (
+                        <p>
+                            <strong className="font-bold">
+                                {names(waiting.filter(w => w.days.length))} {waiting.filter(w => w.days.length).length === 1
+                                    ? 'has a rostered shift' : 'have rostered shifts'} with nothing said about it.
+                            </strong>{' '}
+                            A report cannot be drafted for this week until each one has times, time
+                            off, or a comment saying why nothing was worked. Open the day, or
+                            press <strong className="font-bold">+ comment</strong> on the cell.
+                        </p>
+                    )}
+                    {waiting.some(w => w.changed.length) && (
+                        <p>
+                            <strong className="font-bold">
+                                {names(waiting.filter(w => w.changed.length))} {waiting.filter(w => w.changed.length).length === 1
+                                    ? 'has a till time' : 'have till times'} changed by hand with nothing said about it.
+                            </strong>{' '}
+                            A figure that came off the clock and was then moved needs a comment, or
+                            nobody reading the week can tell it was.
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -558,7 +640,7 @@ export default function TimesheetPage() {
                     onClear={() => { clear(open.row.person, open.cell); setEditing(null) }}
                     onAdd={() => addSpan(open.row.person, open.cell)}
                     onHours={value => setHolidayHours(open.cell, value)}
-                    onNote={setNote}
+                    onNote={(entry, text) => setNote(open.row.person, open.cell, entry, text)}
                 />
             )}
 

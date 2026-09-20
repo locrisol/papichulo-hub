@@ -201,17 +201,32 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const kind = cell.entries.find(e => e.kind !== 'worked')
     if (kind) bits.unshift(kindOf(kind.kind).label)
 
+    // A till time moved by hand with nothing said about it. It is asked for on
+    // the cell as well as in the banner, because the banner names a person and
+    // this says which day.
+    if (cell.unexplained) bits.push('changed, say why')
+
     // Nothing to say and nothing typed yet. A quiet way in rather than no way
-    // in at all, and only where there is something to attach a note to.
+    // in at all.
+    //
+    // Two different offers, because they answer two different questions. A day
+    // with times on it can carry a note saying why a figure is what it is. A
+    // day with a rostered shift and nothing on it is the one the report block
+    // is waiting for, and **the reason is the other way of answering it**: the
+    // block has always said "times or a reason" and there was no way to give
+    // the second one unless it was a holiday or a sick day.
     if (!bits.length) {
-        if (!canEdit || !first?.starts_at) return null
+        const wanted = first?.starts_at || cell.unanswered
+        if (!canEdit || !wanted) return null
         return (
             <button
                 type="button"
                 onClick={onOpen}
-                className="block text-[0.62rem] text-gray-300 hover:text-accent-ink mt-0.5"
+                className={`block text-[0.62rem] mt-0.5 hover:text-accent-ink ${
+                    first?.starts_at ? 'text-gray-300' : 'text-accent-ink font-semibold'
+                }`}
             >
-                + note
+                + comment
             </button>
         )
     }
@@ -219,7 +234,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const line = (
         <span
             className={`block text-[0.62rem] tabular-nums whitespace-nowrap mt-0.5 ${
-                unplanned ? 'text-accent-ink font-semibold' : 'text-gray-400'
+                unplanned || cell.unexplained ? 'text-accent-ink font-semibold' : 'text-gray-400'
             }`}
         >
             {bits.join(' · ')}

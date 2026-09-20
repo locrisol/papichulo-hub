@@ -103,18 +103,39 @@ export default function DayEditModal({
                                     ran long has nothing to do with the other.
                                     It goes out with the week, because this is
                                     how he tells the accountant why a figure is
-                                    what it is. */}
-                                {entry.id && (
+                                    what it is.
+                                    **Nothing about the roster goes in one.** The
+                                    accountant never sees the roster, so a note
+                                    is only ever his own words: something he
+                                    changed after the till's file went in, or a
+                                    day he typed himself and is the only one who
+                                    knows there is anything to say about.
+
+                                    On a day with no times it is the answer to
+                                    the rostered shift nobody has accounted for.
+                                    It used to appear only once a row existed,
+                                    which meant the one day that most needed a
+                                    reason was the one day with nowhere to put
+                                    it. */}
+                                {(i === 0 || entry.id) && (
                                     <div className="mt-2">
-                                        <label className={labelClass} htmlFor={`note-${entry.id}`}>
-                                            Why, for the accountant
+                                        <label className={labelClass} htmlFor={`note-${entry.id || 'new'}`}>
+                                            {entry.starts_at
+                                                ? 'Why, for the accountant'
+                                                : 'Why nothing was worked, for the accountant'}
                                         </label>
+                                        {/* Keyed, so the box reloads from the
+                                            row once a note with no times has
+                                            saved and stopped being a draft. */}
                                         <AutoTextarea
-                                            id={`note-${entry.id}`}
+                                            key={entry.id || 'new'}
+                                            id={`note-${entry.id || 'new'}`}
                                             rows={2}
                                             disabled={!canEdit}
                                             className={fieldClass}
-                                            placeholder="Stayed to close, came in early for a delivery..."
+                                            placeholder={entry.starts_at
+                                                ? 'Stayed to close, came in early for a delivery...'
+                                                : 'Swapped after the roster went up, did not turn up...'}
                                             defaultValue={entry.note || ''}
                                             onBlur={e => onNote(entry, e.target.value)}
                                         />

@@ -55,12 +55,30 @@ function missingWords(missing) {
 // Named, the same as the missing days are, because a block that will not say
 // what it wants is a block somebody works around.
 function unansweredWords(waiting) {
-    const names = waiting.map(w => w.person.full_name)
-    const who = names.length === 1
-        ? names[0]
-        : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-    const has = names.length === 1 ? 'has a rostered shift' : 'have rostered shifts'
-    return `${who} ${has} with nothing said on the timesheet.`
+    const who = some => {
+        const names = some.map(w => w.person.full_name)
+        return names.length === 1
+            ? names[0]
+            : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    }
+
+    const missing = waiting.filter(w => w.days?.length)
+    // A till time somebody moved by hand and has not explained. It blocks the
+    // same way a shift with nothing said does, and for the same reason: the
+    // report carries a wage bill, and a figure that was changed after the clock
+    // gave it is the one change nobody reading it can see.
+    const changed = waiting.filter(w => w.changed?.length)
+
+    const said = []
+    if (missing.length) {
+        said.push(`${who(missing)} ${missing.length === 1 ? 'has a rostered shift' : 'have rostered shifts'} `
+            + 'with nothing said on the timesheet.')
+    }
+    if (changed.length) {
+        said.push(`${who(changed)} ${changed.length === 1 ? 'has a till time' : 'have till times'} `
+            + 'changed by hand with nothing said about it.')
+    }
+    return said.join(' ')
 }
 
 // The days that were entered and do not add up. Said, never enforced.

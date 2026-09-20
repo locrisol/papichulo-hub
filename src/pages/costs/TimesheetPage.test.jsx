@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { todayISO, weekStartOf, addDays } from '@/lib/dates'
+
+// The page opens on last week, because a timesheet is filled in once the week
+// has finished and the till's report for it exists.
+const WEEK = addDays(weekStartOf(todayISO()), -7)
 
 // The page talks to four tables and a confirm dialog. Everything is stubbed so
 // what is under test is the one thing that was broken: whether a cell with
@@ -13,6 +18,7 @@ const rows = {
     roster_shifts: [],
 }
 const inserted = []
+const updated = []
 
 function chain(table) {
     const result = Promise.resolve({ data: rows[table] || [], error: null })
@@ -28,7 +34,17 @@ function chain(table) {
             rows[table] = [...(rows[table] || []), made]
             return { select: () => Promise.resolve({ data: [made], error: null }) }
         },
-        update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [{}], error: null }) }) }),
+        update: patch => ({
+            eq: (_, id) => ({
+                select: () => {
+                    updated.push({ table, id, patch })
+                    const was = (rows[table] || []).find(r => r.id === id) || {}
+                    const now = { ...was, ...patch }
+                    rows[table] = (rows[table] || []).map(r => (r.id === id ? now : r))
+                    return Promise.resolve({ data: [now], error: null })
+                },
+            }),
+        }),
         delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
         then: (...args) => result.then(...args),
     }
@@ -50,7 +66,9 @@ const boxes = () => Array.from(document.querySelectorAll('input[data-r]'))
 
 beforeEach(() => {
     inserted.length = 0
+    updated.length = 0
     rows.timesheet_entries = []
+    rows.roster_shifts = []
 })
 
 describe('typing into a cell with nothing in it', () => {
@@ -124,5 +142,72 @@ describe('typing into a cell with nothing in it', () => {
         await userEvent.tab()
 
         expect(inserted).toHaveLength(0)
+    })
+})
+
+describe('saying why, when there are no times to hang it on', () => {
+    // The block says "times or a reason" and could only ever take the first of
+    // them. A shift swapped after the roster went up was not a holiday and not
+    // a sick day, and the box to write that in only appeared once a row
+    // existed, which meant the day that most needed a reason had nowhere to
+    // put one.
+    it('writes a comment on a day with nothing on it', async () => {
+        rows.roster_shifts = [{
+            id: 's1', employee_id: 'e1', shift_date: WEEK, starts_at: '09:00:00', ends_at: '17:00:00',
+        }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        // The banner says the same words, so the button is asked for by role.
+        await userEvent.click(screen.getByRole('button', { name: '+ comment' }))
+        const box = await screen.findByLabelText('Why nothing was worked, for the accountant')
+        await userEvent.type(box, 'Swapped with somebody after the roster went up')
+        await userEvent.tab()
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(inserted[0].values).toMatchObject({
+            employee_id: 'e1',
+            work_date: WEEK,
+            starts_at: null,
+            ends_at: null,
+            note: 'Swapped with somebody after the roster went up',
+        })
+    })
+})
+
+describe('changing a time the till gave', () => {
+    // His rule. A week typed from nothing is what it looks like and so is a
+    // week off the clock; a clock time somebody moved afterwards looks exactly
+    // like a clock time, and only they know what happened. So it is marked,
+    // and the week is blocked until it says why.
+    const off_the_till = {
+        id: 't1', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+        starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked', source: 'import',
+    }
+
+    it('marks it as corrected', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[0])
+        await userEvent.type(boxes()[0], '0920')
+        await userEvent.tab()
+
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].patch).toMatchObject({ starts_at: '09:20:00', source: 'corrected' })
+    })
+
+    it('leaves a time somebody typed alone', async () => {
+        rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[0])
+        await userEvent.type(boxes()[0], '0920')
+        await userEvent.tab()
+
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].patch).toEqual({ starts_at: '09:20:00' })
     })
 })

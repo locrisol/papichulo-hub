@@ -641,7 +641,10 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     "employee_id" "uuid",
     "person_name" "text",
     "work_date" "date" NOT NULL,
-    "starts_at" time without time zone NOT NULL,
+    -- Both ends can be empty. A row with no times and a note is somebody
+    -- saying nothing was worked and why, which is the other half of what the
+    -- report block means by "times or a reason".
+    "starts_at" time without time zone,
     "ends_at" time without time zone,
     "hours" numeric(6,2) GENERATED ALWAYS AS (
         CASE WHEN "ends_at" IS NULL THEN NULL ELSE
@@ -657,9 +660,17 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "timesheet_entries_kind_known" CHECK (("kind" = ANY (ARRAY['worked'::"text", 'training'::"text", 'trial'::"text"]))),
-    CONSTRAINT "timesheet_entries_source_known" CHECK (("source" = ANY (ARRAY['typed'::"text", 'roster'::"text", 'import'::"text"]))),
+    CONSTRAINT "timesheet_entries_source_known" CHECK (("source" = ANY (ARRAY['typed'::"text", 'roster'::"text", 'import'::"text", 'corrected'::"text"]))),
     CONSTRAINT "timesheet_entries_has_a_person" CHECK (
         ("employee_id" IS NOT NULL) OR ("btrim"(COALESCE("person_name", ''::"text")) <> ''::"text")
+    ),
+    -- And something to say: a start time, a note saying why there is none, or
+    -- a kind that is a statement in itself, a training day or a trial marked
+    -- before the times are typed.
+    CONSTRAINT "timesheet_entries_says_something" CHECK (
+        ("starts_at" IS NOT NULL)
+        OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
+        OR ("kind" <> 'worked'::"text")
     )
 );
 
@@ -669,8 +680,9 @@ CREATE INDEX "idx_timesheet_entries_week" ON "public"."timesheet_entries" USING 
 CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" USING "btree" ("employee_id");
 
 COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
-COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, or read from the till. It decides what an import may quietly replace: a roster time is a placeholder waiting for the file, a typed one is defended.';
+COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
 COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
+COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
 
 -- What the till calls people.
 --
@@ -2500,6 +2512,7 @@ CREATE OR REPLACE VIEW "public"."labour_by_day" WITH ("security_invoker"='true')
      LEFT JOIN "public"."employees" "e" ON (("e"."id" = "t"."employee_id")))
      LEFT JOIN "public"."timesheet_weeks" "w" ON ((("w"."restaurant_id" = "t"."restaurant_id") AND ("w"."week_start" = ("t"."work_date" - (EXTRACT(dow FROM "t"."work_date"))::integer)))))
   GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate", "r"."sunday_premium", "w"."sunday_premium"
+ HAVING ("count"("t"."hours") > 0)
 UNION ALL
  SELECT "l"."restaurant_id",
     "l"."entry_date",
@@ -2510,7 +2523,7 @@ UNION ALL
    FROM "public"."labour_entries" "l"
   WHERE (NOT (EXISTS ( SELECT 1
            FROM "public"."timesheet_entries" "t"
-          WHERE (("t"."restaurant_id" = "l"."restaurant_id") AND ("t"."work_date" = "l"."entry_date")))));
+          WHERE (("t"."restaurant_id" = "l"."restaurant_id") AND ("t"."work_date" = "l"."entry_date") AND ("t"."hours" IS NOT NULL)))));
 
 COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for everything that asks: the cost dashboard, the report and the weekly report. The timesheet for every day it covers, and the frozen labour_entries archive for the months before it existed. Nothing writes to labour_entries any more.';
 

@@ -252,18 +252,50 @@ describe('what the cells say', () => {
     // to the roster already has a line, and that line is the way in.
     it('offers a quiet way in when the line is otherwise empty', () => {
         grid({ shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }], entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }] })
-        expect(screen.getByText('+ note')).toBeInTheDocument()
+        expect(screen.getByText('+ comment')).toBeInTheDocument()
     })
 
     it('uses the line itself when there is already something on it', () => {
         grid({ entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }] })
-        expect(screen.queryByText('+ note')).not.toBeInTheDocument()
+        expect(screen.queryByText('+ comment')).not.toBeInTheDocument()
         expect(screen.getByText('not rostered')).toBeInTheDocument()
     })
 
     it('offers none on a day with nothing on it', () => {
         grid()
-        expect(screen.queryByText('+ note')).not.toBeInTheDocument()
+        expect(screen.queryByText('+ comment')).not.toBeInTheDocument()
+    })
+
+    // Except where something was meant to happen and nothing did. That day is
+    // what the report block is waiting on, and a comment is the other way of
+    // answering it.
+    it('offers one on a rostered day with nothing on it', () => {
+        grid({ shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }] })
+        expect(screen.getByText('+ comment')).toBeInTheDocument()
+    })
+
+    it('shows a comment written on a day with no times', () => {
+        grid({
+            shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }],
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: null, ends_at: null, kind: 'worked', note: 'swapped with somebody' }],
+        })
+        expect(screen.getByText('“swapped with somebody”')).toBeInTheDocument()
+        expect(screen.queryByText('+ comment')).not.toBeInTheDocument()
+    })
+
+    // A till time somebody moved. The cell says which day, the banner says who.
+    it('asks why a till time was changed', () => {
+        grid({
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', kind: 'worked', source: 'corrected' }],
+        })
+        expect(screen.getByText(/changed, say why/)).toBeInTheDocument()
+    })
+
+    it('says nothing once the change has a comment on it', () => {
+        grid({
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', kind: 'worked', source: 'corrected', note: 'clocked in on the wrong till' }],
+        })
+        expect(screen.queryByText(/changed, say why/)).not.toBeInTheDocument()
     })
 
     it('opens the day when the line is pressed', async () => {
@@ -276,7 +308,7 @@ describe('what the cells say', () => {
             rows={rows} dates={DATES} sundayPremium={10} onOpen={onOpen}
             onType={vi.fn()} onSettle={vi.fn()} onState={vi.fn()} onClear={vi.fn()} onAdd={vi.fn()} onHours={vi.fn()}
         />)
-        await userEvent.click(screen.getByText('+ note'))
+        await userEvent.click(screen.getByText('+ comment'))
         expect(onOpen).toHaveBeenCalledWith(aoife, expect.objectContaining({ date: TUE }))
     })
 

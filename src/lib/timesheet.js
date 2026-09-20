@@ -138,6 +138,14 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         // A part day is not an answer. She could work until three, so whether
         // she did is still an open question.
         unanswered: mine.length === 0 && rostered.length > 0 && !absence,
+        // A time the till gave that somebody has moved and not said why.
+        //
+        // **This is the one change on a week an accountant cannot see coming.**
+        // Everything else is what it looks like: a figure off the clock, or a
+        // week typed by hand because no file came. A clock time that was then
+        // corrected looks exactly like a clock time, and only the person who
+        // changed it knows what happened.
+        unexplained: mine.some(e => e.source === 'corrected' && !String(e.note || '').trim()),
     }
 }
 
@@ -264,6 +272,11 @@ export function labourRollup(rows, sundayPremium = 0) {
 // up to September 2026 and no timesheet will ever be typed for them, so a block
 // that demanded one would stop every report ever being written about the first
 // eight months of the year. His point, and the right one.
+// The second half of it, added the day he asked for the first: **a till time
+// somebody changed by hand has to say why.** A week typed from nothing is what
+// it looks like and needs no comment; a week that came off the clock and was
+// then edited does not, and the edit is invisible to everybody except whoever
+// made it.
 export function unanswered(rows, covered) {
     const already = covered instanceof Set ? covered : new Set(covered || [])
     const out = []
@@ -271,7 +284,8 @@ export function unanswered(rows, covered) {
         const days = row.days
             .filter(d => d.unanswered && !already.has(d.date))
             .map(d => d.date)
-        if (days.length) out.push({ person: row.person, days })
+        const changed = row.days.filter(d => d.unexplained).map(d => d.date)
+        if (days.length || changed.length) out.push({ person: row.person, days, changed })
     }
     return out
 }
@@ -303,6 +317,16 @@ export function importVerdict({ existing, incoming, absence }) {
 
     if (!existing) return { action: 'fill', why: 'empty' }
 
+    // A row with no times on it. Either somebody wrote down why nothing was
+    // worked, in which case the file and the sentence disagree and that is
+    // worth stopping for, or it is a day marked as training or a trial before
+    // the times were typed, and the clock is exactly what it was waiting for.
+    if (!existing.starts_at) {
+        return existing.note
+            ? { action: 'ask', why: 'said' }
+            : { action: 'replace', why: 'roster' }
+    }
+
     if (existing.source === 'roster') return { action: 'replace', why: 'roster' }
     if (existing.source === 'import') return { action: 'replace', why: 'reimport' }
 
@@ -310,6 +334,15 @@ export function importVerdict({ existing, incoming, absence }) {
         gap(existing.starts_at, incoming.starts_at),
         gap(existing.ends_at, incoming.ends_at),
     )
+
+    // A time off this same report that somebody moved afterwards. Under an hour
+    // it would fall into the quiet path below, which would put the file's
+    // figure back and undo the correction without saying so: a correction is
+    // usually twenty minutes, which is exactly the range that path covers.
+    if (existing.source === 'corrected') {
+        return apart === 0 ? { action: 'same', why: 'same' } : { action: 'ask', why: 'corrected' }
+    }
+
     if (apart >= ASK_ABOVE_SECONDS) return { action: 'ask', why: 'far', apart }
     if (apart === 0) return { action: 'same', why: 'same' }
     return { action: 'replace', why: 'near', apart }

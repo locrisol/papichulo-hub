@@ -401,7 +401,46 @@ describe('whether the week can go anywhere', () => {
     it('names who has a rostered shift nobody answered', () => {
         const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
         expect(weekAnswered(rows)).toBe(false)
-        expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE] }])
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE], changed: [] }])
+    })
+
+    // The other half of "times or a reason", which is the half that had
+    // nowhere to be written until the day a row stopped needing a start time.
+    it('is happy with a comment and no times at all', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered,
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: null, ends_at: null, kind: 'worked', note: 'swapped with somebody' }],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // His rule: a figure that came off the clock and was then moved by hand is
+    // the one change on the week nobody reading it can see.
+    it('names who changed a till time and said nothing', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [TUE] }])
+    })
+
+    it('is happy once the change says why', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected', note: 'clocked in on the wrong till' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // A week typed by hand with no file behind it says nothing new by saying
+    // it was typed, so it is never asked for a comment.
+    it('asks nothing of a week that was typed rather than imported', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'typed' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
     })
 
     it('is happy once there are times against it', () => {
@@ -485,6 +524,33 @@ describe('bringing a file in', () => {
     it('always asks about a shift landing on a day marked off', () => {
         const absence = { kind: 'holiday' }
         expect(importVerdict({ existing: null, incoming, absence })).toMatchObject({ action: 'ask', why: 'absence' })
+    })
+
+    // A day somebody wrote a comment on instead of typing times. The file and
+    // the sentence disagree, which is the same shape as the absence above.
+    it('asks when the day already says nothing was worked', () => {
+        const existing = { starts_at: null, ends_at: null, source: 'typed', note: 'did not turn up' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'ask', why: 'said' })
+    })
+
+    // A day marked as training before the times were typed. The clock is
+    // exactly what that row was waiting for, so it fills without asking.
+    it('fills a day that was marked and never typed', () => {
+        const existing = { starts_at: null, ends_at: null, source: 'typed', kind: 'training' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'replace', why: 'roster' })
+    })
+
+    // The correction rule. A hand change is usually twenty minutes, which is
+    // the exact range the quiet path covers, so without this the file would put
+    // the old figure back and say nothing.
+    it('never quietly undoes a correction', () => {
+        const existing = { starts_at: '09:20:00', ends_at: '17:04:55', source: 'corrected' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'ask', why: 'corrected' })
+    })
+
+    it('says nothing changed when a correction matches the file anyway', () => {
+        const existing = { starts_at: '09:02:17', ends_at: '17:04:55', source: 'corrected' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'same' })
     })
 
     it('counts the quiet ones and lists only the questions', () => {
