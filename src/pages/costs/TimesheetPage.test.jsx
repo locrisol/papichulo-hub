@@ -301,5 +301,8 @@ describe('saying that it saved', () => {
 
         await waitFor(() => expect(boxes()[0]).toHaveValue('09:00:00'))
         expect(screen.queryByText(/^Saved at /)).not.toBeInTheDocument()
+        // And it says so where you are looking, beside the week's total,
+        // rather than only at the top of a table you have scrolled past.
+        expect(screen.getByText('Not saved')).toBeInTheDocument()
     })
 })

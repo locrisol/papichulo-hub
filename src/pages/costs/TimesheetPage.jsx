@@ -91,6 +91,14 @@ export default function TimesheetPage() {
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    // A write that was refused, kept apart from `error` on purpose.
+    //
+    // A refused write reloads the week, so the figure on screen goes back to
+    // what is stored. Reloading starts by clearing the error, which wiped the
+    // one line saying why a moment after it appeared: the time snapped back and
+    // the screen said nothing at all. This one survives the reload it causes
+    // and clears when something saves.
+    const [problem, setProblem] = useState('')
     const [saving, setSaving] = useState(false)
     // When the last write landed. The report page says the same thing in the
     // same words, and this screen saves the same way: there is no Save button
@@ -195,10 +203,15 @@ export default function TimesheetPage() {
     // happened. The report page has the same rule for the same reason, and
     // this screen needs it more: it writes when you leave a box rather than
     // when you press anything.
-    function finish(failed) {
+    function finish(failed, said) {
         setSaving(false)
-        if (!failed) setSavedAt(new Date())
-        return Boolean(failed)
+        if (failed || said) {
+            setProblem(said || friendlyError(failed))
+            return true
+        }
+        setProblem('')
+        setSavedAt(new Date())
+        return false
     }
 
     const keyFor = (person, cell) => `${person.id}|${cell.date}`
@@ -331,10 +344,10 @@ export default function TimesheetPage() {
         const { data, error: failed } = await supabase.from('timesheet_entries')
             .insert({ ...row, restaurant_id: restaurantId, created_by: user?.id })
             .select()
-        if (finish(failed)) { setError(friendlyError(failed)); return }
+        if (finish(failed)) return
         // The same trap the nearby keep fell into: a write that changed nothing
         // reads as success unless the rows come back.
-        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
+        if (!data?.length) { finish(null, 'That could not be saved, so nothing has changed.'); return }
         setEntries(was => [...was, data[0]])
     }
 
@@ -349,9 +362,9 @@ export default function TimesheetPage() {
         // of red above the fold that scrolls away. The week is read again, so
         // what is on the screen is what is in the database, which is the only
         // thing this page is allowed to show.
-        if (finish(failed)) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
+        if (finish(failed)) { setRefresh(n => n + 1); return }
         if (!data?.length) {
-            setError('That could not be saved, so nothing has changed.')
+            finish(null, 'That could not be saved, so nothing has changed.')
             setRefresh(n => n + 1)
             return
         }
@@ -361,7 +374,7 @@ export default function TimesheetPage() {
     async function remove(entry) {
         setSaving(true)
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
-        if (finish(failed)) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
+        if (finish(failed)) { setRefresh(n => n + 1); return }
         setEntries(was => was.filter(e => e.id !== entry.id))
     }
 
@@ -393,7 +406,7 @@ export default function TimesheetPage() {
                 decided_by: user?.id,
                 decided_at: new Date().toISOString(),
             }).select()
-            if (finish(failed)) { setError(friendlyError(failed)); return }
+            if (finish(failed)) return
             if (data?.length) setAbsences(was => [...was, data[0]])
             return
         }
@@ -434,7 +447,7 @@ export default function TimesheetPage() {
 
             setSaving(true)
             const { error: failed } = await supabase.from('absences').delete().eq('id', cell.absence.id)
-            if (finish(failed)) { setError(friendlyError(failed)); return }
+            if (finish(failed)) return
             setAbsences(was => was.filter(a => a.id !== cell.absence.id))
             return
         }
@@ -471,8 +484,8 @@ export default function TimesheetPage() {
         setSaving(true)
         const { data, error: failed } = await supabase.from('absences')
             .update({ hours }).eq('id', cell.absence.id).select()
-        if (finish(failed)) { setError(friendlyError(failed)); return }
-        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
+        if (finish(failed)) return
+        if (!data?.length) { finish(null, 'That could not be saved, so nothing has changed.'); return }
     }
 
     // Why a shift is what it is, in his words, going out with the week. Saved
@@ -565,7 +578,7 @@ export default function TimesheetPage() {
                 </div>
             </div>
 
-            {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+            {(error || problem) && <ErrorBanner className="mb-3">{error || problem}</ErrorBanner>}
 
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
                 <DateStepper
@@ -615,12 +628,22 @@ export default function TimesheetPage() {
                         words, because it is the same promise: no Save button,
                         it writes when you leave a box, and this line is what
                         says so. */}
-                    <span className="block text-xs text-muted" aria-live="polite">
-                        {saving
-                            ? 'Saving'
-                            : savedAt
-                                ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                : 'Saves as you type'}
+                    <span
+                        className={`block text-xs ${problem ? 'font-bold text-red-700' : 'text-muted'}`}
+                        aria-live="polite"
+                    >
+                        {/* **Not saved** is the state that matters and it was
+                            the one this line could not say. The words were up
+                            at the top of the page, above a table you have
+                            scrolled past by the time you are typing into it,
+                            so a refused write looked like nothing happening. */}
+                        {problem
+                            ? 'Not saved'
+                            : saving
+                                ? 'Saving'
+                                : savedAt
+                                    ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Saves as you type'}
                     </span>
                 </div>
             </div>
