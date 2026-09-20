@@ -366,6 +366,39 @@ export function samePlace(a, b) {
     return fewer.every(w => more.includes(w))
 }
 
+// Whether two names might be the same venue, which is a weaker question than
+// whether they are.
+//
+// samePlace has to be sure, because it merges two rows into one and being wrong
+// there loses a place. This only raises an eyebrow, so it can afford to be
+// wrong: **"Odeon Point Square" and "Odeon Point Village" are the same cinema
+// and no safe rule will ever say so**, since the last word is the only thing
+// that differs and it is also the only thing that differs between two real
+// venues in the same complex.
+//
+// So the search says "this looks like one you already have" and a person
+// decides, which is the same answer the walking times get and for the same
+// reason.
+export function couldBeSamePlace(a, b) {
+    if (samePlace(a, b)) return true
+
+    const words = v => new Set(String(v || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(' ')
+        .filter(w => w.length > 2 && w !== 'the'))
+
+    const mine = words(a)
+    const theirs = words(b)
+    if (mine.size < 2 || theirs.size < 2) return false
+
+    let shared = 0
+    for (const w of mine) if (theirs.has(w)) shared += 1
+    return shared >= 2
+}
+
 // What to call a listing.
 //
 // What it calls itself, unless somebody has shortened it. "Irish Funds

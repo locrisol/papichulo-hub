@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError, functionError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
@@ -12,7 +13,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
     walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, samePlace,
-    PAIRING_COLUMNS,
+    couldBeSamePlace, placeName, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
 const BLANK = {
@@ -37,6 +38,7 @@ const TAG_LOOK = {
 // worth watching stops being watched, and nothing is deleted, because a place
 // switched off in February is usually a place somebody wants back in June.
 export default function PlacesNearUsModal({ onClose, onChange }) {
+    const confirm = useConfirm()
     const { activeRestaurant, setActiveRestaurant } = useRestaurant()
     const today = todayISO()
 
@@ -169,6 +171,33 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         setForm(BLANK)
         setAdding(false)
         setEditingId(null)
+        done()
+    }
+
+    // Taking one off this restaurant's list.
+    //
+    // The pairing goes and the place stays. A place is shared between
+    // restaurants and carries the listings already read from it, and deleting
+    // one takes its events with it, which is a great deal of damage for a row
+    // somebody added by mistake. Switching it off is the softer answer and is
+    // right for "not this year"; this is for "that is not us at all".
+    async function stopWatching(row) {
+        if (!await confirm({
+            title: `Take ${row.place.name} off the list?`,
+            message: 'It stops appearing on the roster and the calendar. Anything already read '
+                + 'from it is kept, and you can add it again from the search.',
+            confirmLabel: 'Take it off',
+            tone: 'danger',
+        })) return
+
+        setBusy(true)
+        const { error: failed } = await supabase.from('restaurant_places')
+            .delete().eq('id', row.id)
+        setBusy(false)
+
+        if (failed) { setError(friendlyError(failed)); return }
+        setEditingId(null)
+        setAdding(false)
         done()
     }
 
@@ -542,7 +571,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                         </span>
                                     </span>
                                 </label>
-                                <div className="sm:col-span-2 flex gap-2">
+                                <div className="sm:col-span-2 flex flex-wrap gap-2">
                                     <button type="submit" disabled={busy} className={primaryButton()}>
                                         {editingId ? 'Save' : 'Add it'}
                                     </button>
@@ -553,6 +582,20 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     >
                                         Cancel
                                     </button>
+                                    {/* Only when editing one that exists, and
+                                        last, because it is the one control here
+                                        that cannot be undone by pressing it
+                                        again. */}
+                                    {editingId && (
+                                        <button
+                                            type="button"
+                                            disabled={busy}
+                                            onClick={() => stopWatching(rows.find(r => r.id === editingId))}
+                                            className="ml-auto text-sm font-medium text-red-700 hover:text-red-800 px-3 py-2"
+                                        >
+                                            Take it off the list
+                                        </button>
+                                    )}
                                 </div>
                             </form>
                         )}
@@ -635,6 +678,22 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     <span className="block text-sm font-semibold text-gray-900">
                                         {found.name}
                                     </span>
+                                    {/* No rule will ever safely match "Odeon
+                                        Point Square" to "Odeon Point Village",
+                                        since the last word is the only thing
+                                        that differs and it is also the only
+                                        thing that differs between two real
+                                        venues in one complex. So it is said
+                                        rather than decided. */}
+                                    {rows.some(r => couldBeSamePlace(r.place.name, found.name)) && (
+                                        <span className="block text-xs text-amber-800 font-medium">
+                                            Looks like{' '}
+                                            {placeName(rows.find(
+                                                r => couldBeSamePlace(r.place.name, found.name),
+                                            ).place)}
+                                            , which you already watch. Adding it makes a second one.
+                                        </span>
+                                    )}
                                     <span className="block text-xs text-muted">
                                         {found.relation === 'city'
                                             ? `${found.km} km away, big enough for the city rule`

@@ -37,6 +37,7 @@ import {
     pastWalking,
     sourceKeyFor,
     samePlace,
+    couldBeSamePlace,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -742,5 +743,32 @@ describe('two names for one building', () => {
     it('says no to nothing at all', () => {
         expect(samePlace('', 'Convention Centre')).toBe(false)
         expect(samePlace(null, null)).toBe(false)
+    })
+})
+
+// samePlace has to be sure, because it merges two rows into one. This only
+// raises an eyebrow, so it can afford to be wrong: "Odeon Point Square" and
+// "Odeon Point Village" are the same cinema and no safe rule will ever say so,
+// since the last word is the only thing that differs and it is also the only
+// thing that differs between two real venues in one complex.
+describe('two names that might be one building', () => {
+    it('catches the pair that beat the strict match', () => {
+        expect(samePlace('Odeon Point Square', 'Odeon Point Village')).toBe(false)
+        expect(couldBeSamePlace('Odeon Point Square', 'Odeon Point Village')).toBe(true)
+    })
+
+    it('still says yes to everything the strict one does', () => {
+        expect(couldBeSamePlace('The Convention Centre Dublin', 'Convention Centre Dublin')).toBe(true)
+    })
+
+    // Two real venues in the same complex share a word and are not one place.
+    it('needs more than one word in common', () => {
+        expect(couldBeSamePlace('Theatre of Light The Point Square', 'Point Village')).toBe(false)
+        expect(couldBeSamePlace('The Gibson Hotel', 'The Marker Hotel')).toBe(false)
+    })
+
+    it('says no to a name with nothing to go on', () => {
+        expect(couldBeSamePlace('Bloomfields', 'Bloomfield')).toBe(false)
+        expect(couldBeSamePlace('', 'Odeon Point Square')).toBe(false)
     })
 })
