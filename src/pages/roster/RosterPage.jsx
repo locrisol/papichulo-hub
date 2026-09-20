@@ -101,7 +101,13 @@ export default function RosterPage() {
     // what a request is about and which week to open to deal with it.
     const [otherShifts, setOtherShifts] = useState([])
     const [deskOpen, setDeskOpen] = useState(false)
-    const [view, setView] = useState('day')
+    // The week, not the day.
+    //
+    // The day was the default because the roster is built a day at a time: you
+    // think about Thursday, not about the whole week at once. That is true
+    // while you are building it and wrong every other time you open the page,
+    // which is to look something up. His call, 20 September.
+    const [view, setView] = useState('week')
     const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
     const [personForm, setPersonForm] = useState(NEW_PERSON)
