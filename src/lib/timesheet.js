@@ -19,7 +19,9 @@
 
 import { weekDates } from '@/lib/dates'
 import { spanHours, toSeconds } from '@/lib/clock'
-import { absenceOn, kindOf as absenceKind } from '@/lib/absences'
+import {
+    wholeDayOn, absenceDays, holidayHoursInWeek, kindOf as absenceKind,
+} from '@/lib/absences'
 import { bankHolidayOn } from '@/lib/bankHolidays'
 
 // What a timesheet entry can be. Holiday and off sick are deliberately absent:
@@ -90,15 +92,32 @@ function hoursOf(entry) {
 // once so no component has to.
 export function dayCell({ person, date, entries = [], absences = [], shifts = [] }) {
     const mine = entries.filter(e => e.work_date === date)
-    const absence = absenceOn(absences, person.id, date)
+    // **A whole day, not any time off at all.** Somebody who can work until
+    // three is in that morning, and the comment on isPartDay says exactly what
+    // happens if a screen forgets: a dentist at half three empties a Tuesday.
+    // This used to ask absenceOn, which answers with either, and a part day
+    // came out as a day gone with no boxes to type into.
+    // A part day never appears here. Somebody who can work until three has a
+    // day the timesheet still has to be typed into, and he does not want the
+    // restriction repeated on this screen: the roster already says it.
+    const absence = wholeDayOn(absences, person.id, date)
     const rostered = shifts.filter(s => s.shift_date === date)
     const holiday = bankHolidayOn(date)
 
     // An absence that carries hours is a holiday, and its hours are held apart
     // from worked hours the way his HOLIDAY HOURS column always has been.
-    const holidayHours = absence && absenceKind(absence.kind).hours
-        ? Number(absence.hours) || 0
+    //
+    // **The hours are for the whole absence, not for each of its days.** A
+    // holiday from the 25th to the 27th carrying fifteen hours is five a day,
+    // and putting fifteen on all three was worth catching: it tripled a
+    // holiday and the total still looked like a number. The roster has always
+    // split them evenly, and evenly is right for the reason written on
+    // holidayHoursInWeek: what they would have been rostered is a guess, and
+    // the even pieces always add back up to what is on the payslip.
+    const share = absence && absenceKind(absence.kind).hours && absence.hours != null
+        ? Number(absence.hours) / (absenceDays(absence) || 1)
         : 0
+    const holidayHours = Number.isFinite(share) ? Math.round(share * 100) / 100 : 0
 
     const hours = mine.reduce((total, entry) => total + hoursOf(entry), 0)
 
@@ -115,6 +134,9 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         unplanned: mine.length > 0 && rostered.length === 0,
         // Rostered and nothing said about it. This is what the report block
         // counts, and it is the thing that catches a shift nobody filled in.
+        //
+        // A part day is not an answer. She could work until three, so whether
+        // she did is still an open question.
         unanswered: mine.length === 0 && rostered.length > 0 && !absence,
     }
 }
@@ -148,7 +170,11 @@ export function personWeek({
     // not work the entitlement out, by his decision, and it does not need to.
     const bankHoliday = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
     const worked = days.reduce((t, d) => t + d.hours, 0)
-    const holiday = days.reduce((t, d) => t + d.holidayHours, 0)
+    // Asked of the roster's own function rather than added up from the cells,
+    // so the two screens cannot disagree and the rounding happens once. It also
+    // counts only the days inside this week, which is what makes a holiday
+    // running into next Sunday come out right on both sides.
+    const holiday = holidayHoursInWeek(absences, person.id, days.map(d => d.date))
 
     const rate = rateFor(person, restaurantRate)
     const premium = sundayPremiumFor(days, sundayPremium)

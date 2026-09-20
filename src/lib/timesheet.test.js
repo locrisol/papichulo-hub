@@ -156,6 +156,102 @@ describe('one day', () => {
     })
 })
 
+describe('time off that is only part of a day', () => {
+    // Found on the real week of 21 September: somebody down as a day off with
+    // can_work_to 15:00. It came out as a day gone with no boxes to type into.
+    // absences.js says what happens when a screen forgets the difference: a
+    // dentist at half three empties a Tuesday.
+    const partDay = {
+        id: 'a9', employee_id: 'e1', kind: 'day_off', status: 'approved',
+        starts_on: MON, ends_on: MON, can_work_to: '15:00:00',
+    }
+
+    it('does not take the day', () => {
+        const cell = dayCell({ person: aoife, date: MON, absences: [partDay] })
+        expect(cell.absence).toBeNull()
+    })
+
+    it('still takes times, because she can work the morning', () => {
+        const cell = dayCell({
+            person: aoife, date: MON, absences: [partDay],
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '15:00:00' })],
+        })
+        expect(cell.hours).toBe(6)
+    })
+
+    // A rostered shift with only a part day against it is still unanswered.
+    // Whether she worked the morning is an open question.
+    it('does not answer a rostered shift on its own', () => {
+        const cell = dayCell({
+            person: aoife, date: MON, absences: [partDay],
+            shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '15:00' }],
+        })
+        expect(cell.unanswered).toBe(true)
+    })
+
+    // A whole day off still does take the day.
+    it('leaves a whole day alone', () => {
+        const cell = dayCell({
+            person: aoife, date: MON,
+            absences: [{ ...partDay, can_work_to: null }],
+        })
+        expect(cell.absence).toMatchObject({ kind: 'day_off' })
+    })
+})
+
+describe('holiday hours are for the absence, not for each of its days', () => {
+    // The real one, from the week of 20 September. Fifteen hours from the 25th
+    // to the 27th is five a day, and the 27th is next week's. It was putting
+    // fifteen on all three, which tripled a holiday while still looking like a
+    // number somebody had worked out.
+    const run = {
+        id: 'a10', employee_id: 'e1', kind: 'holiday', status: 'approved',
+        starts_on: '2026-10-29', ends_on: '2026-10-31', hours: 15,
+    }
+    const single = {
+        id: 'a11', employee_id: 'e1', kind: 'holiday', status: 'approved',
+        starts_on: '2026-10-25', ends_on: '2026-10-25', hours: 5,
+    }
+
+    it('splits them evenly across the days it covers', () => {
+        for (const date of ['2026-10-29', '2026-10-30', '2026-10-31']) {
+            expect(dayCell({ person: aoife, date, absences: [run] }).holidayHours, date).toBe(5)
+        }
+    })
+
+    it('leaves a one day holiday as it is', () => {
+        expect(dayCell({ person: aoife, date: '2026-10-25', absences: [single] }).holidayHours).toBe(5)
+    })
+
+    it('adds the week up from two separate holidays', () => {
+        const row = personWeek({
+            person: aoife, weekStart: WEEK, absences: [single, run], restaurantRate: 15,
+        })
+        expect(row.holiday).toBe(20)
+        expect(row.worked).toBe(0)
+        expect(row.cost).toBe(0)
+    })
+
+    // A holiday running past Saturday belongs to two weeks, and each takes only
+    // its own days. Anything else and the two weeks disagree about a payslip.
+    it('gives a week only the days that are in it', () => {
+        const over = { ...run, starts_on: '2026-10-30', ends_on: '2026-11-02', hours: 16 }
+        const row = personWeek({ person: aoife, weekStart: WEEK, absences: [over], restaurantRate: 15 })
+        // Four days at four hours, and two of them are in this week.
+        expect(row.holiday).toBe(8)
+    })
+
+    it('says nothing for a kind that carries no hours', () => {
+        const sick = { id: 'a12', employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: MON, ends_on: MON }
+        expect(dayCell({ person: aoife, date: MON, absences: [sick] }).holidayHours).toBe(0)
+    })
+
+    it('copes with a holiday nobody put hours on', () => {
+        const none = { ...single, hours: null }
+        expect(dayCell({ person: aoife, date: '2026-10-25', absences: [none] }).holidayHours).toBe(0)
+    })
+})
+
 describe('the Sunday tenner', () => {
     const sunday = { date: SUN, hours: 8 }
     const monday = { date: MON, hours: 8 }
