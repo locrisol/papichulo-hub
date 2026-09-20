@@ -324,6 +324,48 @@ export function elsewhere(row) {
     return a.includes(b) || b.includes(a) ? '' : said
 }
 
+// Whether two names are the same venue said differently.
+//
+// Ticketmaster calls it "The Convention Centre Dublin" and our own row, typed
+// by hand, says "Convention Centre Dublin". Without this the search adds a
+// second place for a venue already on the list, and the same conference then
+// arrives twice under two names that are one building.
+//
+// A loose comparison on purpose: the leading The, the punctuation and the case
+// are exactly the ways one name is written two ways, and none of them
+// distinguishes a venue from any other venue.
+export function samePlace(a, b) {
+    const clean = v => String(v || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    const one = clean(a)
+    const two = clean(b)
+    if (!one || !two) return false
+
+    // The same name written two ways: a leading The, an apostrophe, a capital.
+    const flat = v => v.replace(/^the /, '').replace(/ /g, '')
+    if (flat(one) === flat(two)) return true
+
+    // One name being the other with more on it, which is how a listing writes
+    // a venue: "Odeon Cinema Point Square Dublin" is "Odeon Point Square" with
+    // two words dropped in. Containment on the whole string cannot see that,
+    // because the extra word is in the middle.
+    //
+    // Two words at least, or "Park" matches "People's Park" and every park in
+    // the county is one place.
+    const words = v => v.split(' ').filter(w => w.length > 2)
+    const mine = words(one)
+    const theirs = words(two)
+    const [fewer, more] = mine.length <= theirs.length ? [mine, theirs] : [theirs, mine]
+    if (fewer.length < 2) return false
+    return fewer.every(w => more.includes(w))
+}
+
 // What to call a listing.
 //
 // What it calls itself, unless somebody has shortened it. "Irish Funds

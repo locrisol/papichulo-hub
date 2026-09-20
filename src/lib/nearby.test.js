@@ -36,6 +36,7 @@ import {
     suggest,
     pastWalking,
     sourceKeyFor,
+    samePlace,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -713,5 +714,33 @@ describe('sourceKeyFor', () => {
     it('leaves the day out for a place keyed by title', () => {
         expect(sourceKeyFor('2026-11-19', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
         expect(sourceKeyFor('2026-11-26', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
+    })
+})
+
+// Ticketmaster calls it "The Convention Centre Dublin" and our own row, typed
+// by hand, says "Convention Centre Dublin". Without this the search adds a
+// second place for a venue already on the list, and the same conference then
+// arrives twice under two names that are one building.
+describe('two names for one building', () => {
+    it('sees through a leading The and the punctuation', () => {
+        expect(samePlace('The Convention Centre Dublin', 'Convention Centre Dublin')).toBe(true)
+        expect(samePlace('dlr LexIcon', 'DLR Lexicon')).toBe(true)
+        expect(samePlace("People's Park", 'Peoples Park')).toBe(true)
+    })
+
+    it('sees one name inside a longer one', () => {
+        expect(samePlace('Odeon Point Square', 'Odeon Cinema Point Square Dublin')).toBe(true)
+    })
+
+    // "Park" inside "People's Park" is not a match anybody wants, so a short
+    // fragment is not enough on its own.
+    it('is not fooled by a short word inside a long name', () => {
+        expect(samePlace('Park', "People's Park")).toBe(false)
+        expect(samePlace('The Gibson Hotel', 'The Marker Hotel')).toBe(false)
+    })
+
+    it('says no to nothing at all', () => {
+        expect(samePlace('', 'Convention Centre')).toBe(false)
+        expect(samePlace(null, null)).toBe(false)
     })
 })

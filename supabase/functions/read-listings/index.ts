@@ -56,7 +56,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom,
+    endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom, sourceKeyFor,
     urlsFor, joinPages, isServiceRole, roleOf,
 } from './reading.js'
 
@@ -197,15 +197,42 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
 
     if (refused) throw new Error(refused)
 
+    // **What the feed already knows, the reading does not repeat.**
+    //
+    // A place can have both, and the Convention Centre is why: Ticketmaster
+    // sells its ticketed nights down to the minute, and its own page carries
+    // the conferences nobody sells a ticket for. Read without this, "An Evening
+    // with Fran Lebowitz" arrives twice, once from each, and one of the two
+    // asks somebody to approve a night the other already called a fact.
+    //
+    // Matched on the same flattening the reading key uses, so a difference of
+    // case or punctuation is not a second event. A feed that names a night
+    // differently from the page will still slip through, and that is the honest
+    // limit of comparing two strings nobody wrote together.
+    const { data: already } = await admin
+        .from('events')
+        .select('name, event_date')
+        .eq('place_id', place.id)
+        .gte('event_date', from)
+        .lte('event_date', to)
+
+    const known = new Set(
+        (already || []).map(e => sourceKeyFor(e.event_date, e.name, reading)).filter(Boolean),
+    )
+
+    const fresh = rows.filter(r => !known.has(r.source_key))
+    const repeats = rows.length - fresh.length
+    if (repeats) console.log('read-listings', place.name, `${repeats} already known`)
+
     let added = 0
-    if (rows.length) {
+    if (fresh.length) {
         // Insert, never update. The row somebody kept or said no to last week
         // is the row this lands on, and leaving it alone is what makes a
         // dismissal stick. Without ignoreDuplicates every Monday would bring
         // back the twelve things somebody said no to last Monday.
         const { data, error } = await admin
             .from('events')
-            .upsert(rows, { onConflict: 'place_id,source_key', ignoreDuplicates: true })
+            .upsert(fresh, { onConflict: 'place_id,source_key', ignoreDuplicates: true })
             .select('id')
 
         if (error) throw new Error(error.message)
@@ -221,6 +248,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
         pages: addresses.length,
         found: rows.length,
         added,
+        ...(repeats ? { alreadyKnown: repeats } : {}),
         ...(missed.length ? { missed: missed.length } : {}),
     }
 }

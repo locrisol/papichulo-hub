@@ -11,7 +11,8 @@ import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, PAIRING_COLUMNS,
+    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, samePlace,
+    PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
 const BLANK = {
@@ -249,16 +250,39 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         setCandidates(data?.places || [])
     }
 
+    // Watching one the search turned up.
+    //
+    // **The place we already have, where we already have it.** The Convention
+    // Centre was on the list with a page and no venue id, and Ticketmaster
+    // calls it "The Convention Centre Dublin", so an upsert keyed on the venue
+    // id made a second row for one building. Filling the id into the row that
+    // exists is what gives a place a feed and a page at once, which is the
+    // combination worth having: the feed knows the ticketed nights down to the
+    // minute and the page knows the conferences nobody sells a ticket for.
     async function takeOn(found) {
         setBusy(true)
-        const { data: made, error: e1 } = await supabase.from('places')
-            .upsert({
-                name: found.name,
-                ticketmaster_venue_id: found.ticketmaster_venue_id || null,
-                latitude: found.latitude ?? null,
-                longitude: found.longitude ?? null,
-            }, { onConflict: 'ticketmaster_venue_id' })
-            .select().single()
+
+        const { data: all, error: e0 } = await supabase.from('places')
+            .select('id, name, ticketmaster_venue_id, latitude, longitude')
+        if (e0) { setBusy(false); setError(friendlyError(e0)); return }
+
+        const already = (all || []).find(p => (
+            (p.ticketmaster_venue_id && p.ticketmaster_venue_id === found.ticketmaster_venue_id)
+            || samePlace(p.name, found.name)
+        ))
+
+        const patch = {
+            ticketmaster_venue_id: found.ticketmaster_venue_id || null,
+            // Only when we do not have one. A point typed by hand beats a
+            // point off a venue's own listing, since the second is where the
+            // box office is and the first is where somebody stood.
+            ...(already?.latitude == null ? { latitude: found.latitude ?? null } : {}),
+            ...(already?.longitude == null ? { longitude: found.longitude ?? null } : {}),
+        }
+
+        const { data: made, error: e1 } = already
+            ? await supabase.from('places').update(patch).eq('id', already.id).select().single()
+            : await supabase.from('places').insert({ name: found.name, ...patch }).select().single()
 
         if (e1) { setBusy(false); setError(friendlyError(e1)); return }
 
