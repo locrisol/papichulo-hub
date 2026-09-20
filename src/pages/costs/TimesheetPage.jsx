@@ -382,7 +382,7 @@ export default function TimesheetPage() {
             {loading ? (
                 <p className="text-sm text-muted">Loading...</p>
             ) : view === 'day' ? (
-                <div className={card}>
+                <div className={`${card} overflow-hidden`}>
                     <div className="flex flex-wrap gap-1 p-2 border-b border-border">
                         {dates.map(date => (
                             <button
@@ -402,7 +402,7 @@ export default function TimesheetPage() {
                     <TimesheetDay rows={rows} date={openDay} sundayPremium={premium} />
                 </div>
             ) : (
-                <div className={card} ref={grid}>
+                <div className={`${card} overflow-hidden`} ref={grid}>
                     {/* The wide grid on anything that can hold it, the hours
                         view on a phone. Both are always rendered and one is
                         hidden, so a rotation does not reload anything. */}

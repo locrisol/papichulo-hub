@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS "public"."employees" (
     "permission_renewal_reference" "text",
     "availability_next" "jsonb",
     "availability_from" "date",
+    "on_trial" boolean DEFAULT false NOT NULL,
     CONSTRAINT "employees_availability_next_needs_a_date" CHECK ((("availability_next" IS NULL) = ("availability_from" IS NULL))),
     CONSTRAINT "employees_check" CHECK ((("ended_on" IS NULL) OR ("started_on" IS NULL) OR ("ended_on" >= "started_on")))
 );
@@ -193,6 +194,7 @@ COMMENT ON COLUMN "public"."employees"."food_safety_expires" IS 'When it runs ou
 COMMENT ON COLUMN "public"."employees"."food_safety_issued" IS 'When they sat it. Only used to work out the expiry, which is offered as two years later and can be changed.';
 COMMENT ON COLUMN "public"."employees"."food_safety_level" IS 'Which food safety training they hold. Empty means none recorded, which for anybody handling food is itself worth knowing.';
 COMMENT ON COLUMN "public"."employees"."full_name" IS 'Kept here rather than read from the account, so a person with no account still has a name, and so two people called Ana can be told apart on the roster without anybody having to rename an account.';
+COMMENT ON COLUMN "public"."employees"."on_trial" IS 'On the team, doing shifts and being paid for them, but not hired. The only thing it changes is that food safety training is not asked for or warned about while it is true, since that is part of being hired. A work permit is still asked for from the first day, because working without one is the same offence either way. Turn it off when they are hired and the record is held to the full standard from then on.';
 COMMENT ON COLUMN "public"."employees"."hourly_rate" IS 'What they cost per hour, used only to total up what a rostered week costs. Not payroll and never shown to staff: the whole table is closed to the employee role, so this column is unreachable by anyone below a manager. When staff need to see each other on a published roster, they get a narrow view of name and position rather than this table.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_applied" IS 'The day they applied to renew their permission to work. Only earns the grace period if it is on or before work_permission_expires.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_reference" IS 'The OREG number from the renewal application receipt. Kept because it is the proof an employer is asked for.';

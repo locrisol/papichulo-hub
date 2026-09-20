@@ -39,6 +39,7 @@ import ArrangeList from '@/components/ui/ArrangeList'
 // before it. A list with a delete button on it loses last March.
 const EMPTY = {
     fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+    onTrial: false,
     dateOfBirth: '', workPermission: '', workPermissionExpires: '',
     foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
 }
@@ -121,6 +122,7 @@ export default function EmployeesPage() {
             hourlyRate: employee.hourly_rate == null ? '' : String(employee.hourly_rate),
             startedOn: employee.started_on || '',
             endedOn: employee.ended_on || '',
+            onTrial: !!employee.on_trial,
             userId: employee.user_id || '',
             notes: employee.notes || '',
             dateOfBirth: employee.date_of_birth || '',
@@ -145,6 +147,7 @@ export default function EmployeesPage() {
             hourly_rate: form.hourlyRate === '' ? null : Number(form.hourlyRate),
             started_on: form.startedOn || null,
             ended_on: form.endedOn || null,
+            on_trial: !!form.onTrial,
             user_id: form.userId || null,
             notes: form.notes.trim() || null,
             date_of_birth: form.dateOfBirth || null,

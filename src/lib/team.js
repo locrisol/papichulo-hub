@@ -71,6 +71,12 @@ export function employeeStatus(employee, today) {
         // and also has to be thinking about replacing them.
         return { state: 'leaving', label: 'Last day', date: employee.ended_on }
     }
+    // On the team, doing shifts and being paid for them, but not hired. It is
+    // its own state rather than a note on the side because it changes what the
+    // record is held to: see gapsFor.
+    if (employee.on_trial) {
+        return { state: 'trial', label: 'On trial', date: employee.started_on || null }
+    }
     return { state: 'working', label: 'Working', date: null }
 }
 

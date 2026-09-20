@@ -3,7 +3,9 @@ import LockedField from '@/components/ui/LockedField'
 import { linkableUsers } from '@/lib/team'
 import { todayISO, fullDate } from '@/lib/dates'
 import { WORK_PERMISSIONS, permissionFor, FOOD_SAFETY_LEVELS, expiryFrom } from '@/lib/workRules'
-import { modalFooter, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import {
+    modalFooter, labelClass, fieldClass, hintClass, primaryButton, checkbox, checkRow,
+} from '@/lib/controlStyles'
 import ModalSection from '@/components/ui/ModalSection'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -114,6 +116,28 @@ export default function EmployeeForm({
                     </p>
                 </div>
             </div>
+
+            {/* On the team, doing shifts and being paid for them, but not
+                hired. It changes one thing and it is worth saying which, or it
+                reads as a label somebody might set and forget: food safety
+                training stops being asked for. A work permit is still asked for
+                from the first day, because working without one is the same
+                offence either way. */}
+            <label className={`${checkRow} mb-3`}>
+                <input
+                    type="checkbox"
+                    checked={!!formData.onTrial}
+                    onChange={e => onChange('onTrial', e.target.checked)}
+                    className={checkbox}
+                />
+                <span>
+                    <span className="block text-sm font-semibold text-gray-900">On trial</span>
+                    <span className="block text-xs text-muted">
+                        Food safety training is not asked for or warned about while this is on.
+                        Everything else is, including a work permit. Turn it off when they are hired.
+                    </span>
+                </span>
+            </label>
 
             <div className="mb-3">
                 <label className={labelClass}>Account</label>

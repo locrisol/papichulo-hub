@@ -98,6 +98,37 @@ describe('gapsFor', () => {
     })
 })
 
+describe('somebody on trial', () => {
+    // His rule. Food safety training is part of being hired: nobody books a
+    // course for somebody who might do one shift, and an amber line against
+    // every trial is how a list of real gaps stops being read.
+    const trial = {
+        full_name: 'Declan', started_on: '2026-10-01', position_id: 'p1',
+        hourly_rate: 15, date_of_birth: '2000-01-01',
+        work_permission: 'citizen', on_trial: true,
+    }
+
+    it('is not asked for food safety training', () => {
+        expect(gapsFor(trial, '2026-10-05').map(g => g.field)).toEqual([])
+    })
+
+    // Working without one is the same offence whether it is a trial or not.
+    it('is still asked for a permit to work', () => {
+        const no = gapsFor({ ...trial, work_permission: null }, '2026-10-05')
+        expect(no.map(g => g.field)).toContain('work_permission')
+    })
+
+    it('is asked for food safety the moment they are hired', () => {
+        const hired = gapsFor({ ...trial, on_trial: false }, '2026-10-05')
+        expect(hired.map(g => g.field)).toContain('food_safety_level')
+    })
+
+    it('is still asked for the rest of it', () => {
+        const thin = gapsFor({ ...trial, hourly_rate: null, date_of_birth: null }, '2026-10-05')
+        expect(thin.map(g => g.field)).toEqual(['hourly_rate', 'date_of_birth'])
+    })
+})
+
 describe('teamGaps', () => {
     const people = [
         whole({ id: 'a', full_name: 'Ana' }),

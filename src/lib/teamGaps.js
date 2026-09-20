@@ -50,10 +50,19 @@ export function gapsFor(employee, today) {
         add('work_permission_expires', 'Permission has no expiry date')
     }
 
-    if (!employee.food_safety_level) {
-        add('food_safety_level', 'No food safety training recorded')
-    } else if (!employee.food_safety_expires) {
-        add('food_safety_expires', 'Food safety has no expiry date')
+    // Not asked of somebody on trial. His rule, and the right one: food safety
+    // training is part of being hired, nobody books a course for somebody who
+    // might do one shift, and an amber line against every trial is how a list
+    // of real gaps stops being read.
+    //
+    // A work permit is asked for above whatever happens, trial or not, because
+    // working without one is the same offence either way.
+    if (!employee.on_trial) {
+        if (!employee.food_safety_level) {
+            add('food_safety_level', 'No food safety training recorded')
+        } else if (!employee.food_safety_expires) {
+            add('food_safety_expires', 'Food safety has no expiry date')
+        }
     }
 
     return gaps
