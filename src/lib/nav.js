@@ -30,7 +30,7 @@ export const navItems = [
     // the link would appear to do nothing.
     { path: '/sales', search: '?view=day', label: 'Daily Sales', icon: 'sales', section: 'Operations', roles: MANAGERS },
     { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations', roles: MANAGERS },
-    { path: '/costs/labour', label: 'Labour', icon: 'costs', section: 'Operations', roles: MANAGERS },
+    { path: '/costs/timesheet', label: 'Timesheet', icon: 'costs', section: 'Operations', roles: MANAGERS },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
     { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },

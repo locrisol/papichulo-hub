@@ -54,7 +54,7 @@ const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const WeeklySalesPage = lazy(() => import('@/pages/sales/WeeklySalesPage'))
 const InvoicesPage = lazy(() => import('@/pages/invoices/InvoicesPage'))
 const InvoiceHistoryPage = lazy(() => import('@/pages/invoices/InvoiceHistoryPage'))
-const LabourPage = lazy(() => import('@/pages/costs/LabourPage'))
+const TimesheetPage = lazy(() => import('@/pages/costs/TimesheetPage'))
 const WasteLogPage = lazy(() => import('@/pages/waste/WasteLogPage'))
 const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
 const CostDashboardPage = lazy(() => import('@/pages/costs/CostDashboardPage'))
@@ -89,7 +89,11 @@ export default function App() {
                 <Route path="/sales/weekly" element={<RequireRole allowed={MANAGERS}><WeeklySalesPage /></RequireRole>} />
                 <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
                 <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
-                <Route path="/costs/labour" element={<RequireRole allowed={MANAGERS}><LabourPage /></RequireRole>} />
+                <Route path="/costs/timesheet" element={<RequireRole allowed={MANAGERS}><TimesheetPage /></RequireRole>} />
+                {/* The Labour page is gone. Anyone with the old address
+                    bookmarked, which includes his phone, lands on the
+                    thing that replaced it rather than on nothing. */}
+                <Route path="/costs/labour" element={<Navigate to="/costs/timesheet" replace />} />
 
                 {/* The weekly report. Managers read it, store managers write it,
                     and which of those you are is settled in the database rather

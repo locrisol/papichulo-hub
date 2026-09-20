@@ -1,0 +1,406 @@
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/auth'
+import { useRestaurant } from '@/context/restaurant'
+import { friendlyError } from '@/lib/errors'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate } from '@/lib/dates'
+import { fmtMoney } from '@/lib/format'
+import { settleTime } from '@/lib/clock'
+import { personWeek, weekTotals, unanswered, STATE_KEYS } from '@/lib/timesheet'
+import { card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
+import DateStepper from '@/components/ui/DateStepper'
+import ErrorBanner from '@/components/ui/ErrorBanner'
+import TimesheetWeek from '@/components/timesheet/TimesheetWeek'
+import TimesheetPhone from '@/components/timesheet/TimesheetPhone'
+import TimesheetDay from '@/components/timesheet/TimesheetDay'
+import TouchBar from '@/components/timesheet/TouchBar'
+
+// What people actually worked.
+//
+// This replaces the Labour page, which held one total a day at one rate for
+// everybody and could not say who. The table it wrote to is still there and
+// still read, frozen, for the eight months before this existed: see the
+// labour_by_day view. Nothing writes to it any more.
+//
+// Three views of the same week, the way the roster has Day and Week. The wide
+// grid is his spreadsheet and it is what a computer and a big tablet get. The
+// phone gets hours with a day opening to be typed, because fourteen clock times
+// will not go across four hundred pixels. The day view is the reading, where a
+// shift that ran long is a bar sticking out rather than a subtraction.
+
+const VIEWS = [
+    { id: 'week', label: 'Week' },
+    { id: 'day', label: 'Day' },
+]
+
+export default function TimesheetPage() {
+    const { user } = useAuth()
+    const { activeRestaurant } = useRestaurant()
+
+    const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
+    const [pickerDate, setPickerDate] = useState(weekStart)
+    const [view, setView] = useState('week')
+    const [openDay, setOpenDay] = useState(todayISO())
+
+    const [people, setPeople] = useState([])
+    const [entries, setEntries] = useState([])
+    const [absences, setAbsences] = useState([])
+    const [shifts, setShifts] = useState([])
+
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
+
+    const grid = useRef(null)
+    // Which restaurant and week the state holds, so a context re-render does
+    // not reload and wipe what is being typed. Same guard the Labour page had.
+    const loadedKey = useRef(null)
+
+    const restaurantId = activeRestaurant?.id
+    const dates = weekDates(weekStart)
+    const weekEnd = addDays(weekStart, 6)
+    const premium = Number(activeRestaurant?.sunday_premium ?? 0)
+    const restaurantRate = Number(activeRestaurant?.hourly_rate ?? 0)
+
+    useEffect(() => {
+        if (!restaurantId) return
+        const key = `${restaurantId}:${weekStart}`
+        if (loadedKey.current === key) return
+
+        async function load() {
+            setLoading(true)
+            setError('')
+
+            const [team, worked, away, rostered] = await Promise.all([
+                supabase.from('employees')
+                    .select('id, full_name, hourly_rate, sort_order, started_on, ended_on')
+                    .eq('restaurant_id', restaurantId)
+                    .order('sort_order'),
+                supabase.from('timesheet_entries')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('work_date', weekStart).lte('work_date', weekEnd),
+                supabase.from('absences')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId)
+                    .lte('starts_on', weekEnd).gte('ends_on', weekStart),
+                supabase.from('roster_shifts')
+                    .select('id, employee_id, shift_date, starts_at, ends_at')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('shift_date', weekStart).lte('shift_date', weekEnd),
+            ])
+
+            const failed = team.error || worked.error || away.error || rostered.error
+            if (failed) { setError(friendlyError(failed)); setLoading(false); return }
+
+            // Somebody who left before this week, or starts after it, is not on
+            // it. A leaver still shows on the weeks they worked, which is the
+            // whole point of keeping the date rather than a flag.
+            setPeople((team.data || []).filter(p => (
+                (!p.ended_on || p.ended_on >= weekStart)
+                && (!p.started_on || p.started_on <= weekEnd)
+            )))
+            setEntries(worked.data || [])
+            setAbsences(away.data || [])
+            setShifts(rostered.data || [])
+            loadedKey.current = key
+            setLoading(false)
+        }
+
+        load()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [restaurantId, weekStart])
+
+    const rows = useMemo(() => people.map(person => personWeek({
+        person, weekStart, entries, absences, shifts,
+        restaurantRate, sundayPremium: premium,
+    })), [people, weekStart, entries, absences, shifts, restaurantRate, premium])
+
+    const totals = weekTotals(rows, premium)
+    const waiting = unanswered(rows)
+
+    // ---- writing -----------------------------------------------------------
+
+    // Typing only moves what is on screen. Nothing reaches the database until
+    // the box is left, so a half typed time is never saved and a week is not
+    // written thirty times while somebody thinks.
+    function type(person, cell, entry, field, value) {
+        setEntries(was => was.map(e => (e.id === entry.id ? { ...e, [field]: value } : e)))
+        if (!entry.id) setDraft({ person, cell, [field]: value })
+    }
+
+    const [draft, setDraft] = useState(null)
+
+    async function settle(person, cell, entry, field, raw) {
+        const value = settleTime(raw) || null
+        setError('')
+
+        // An entry that exists is updated, or deleted once both ends are empty.
+        if (entry.id) {
+            const next = { ...entry, [field]: value }
+            if (!next.starts_at && !next.ends_at) return remove(entry)
+            if (entry[field] === value) return
+            return save(entry.id, { [field]: value })
+        }
+
+        // A new one needs a start. Typing the out time first is legitimate and
+        // rare, so it waits for the in rather than inventing one.
+        const start = field === 'starts_at' ? value : draft?.starts_at
+        if (!start) { setDraft({ person, cell, [field]: value }); return }
+
+        await create({
+            employee_id: person.id,
+            work_date: cell.date,
+            starts_at: start,
+            ends_at: field === 'ends_at' ? value : null,
+            source: 'typed',
+        })
+        setDraft(null)
+    }
+
+    async function create(row) {
+        setSaving(true)
+        const { data, error: failed } = await supabase.from('timesheet_entries')
+            .insert({ ...row, restaurant_id: restaurantId, created_by: user?.id })
+            .select()
+        setSaving(false)
+        if (failed) { setError(friendlyError(failed)); return }
+        // The same trap the nearby keep fell into: a write that changed nothing
+        // reads as success unless the rows come back.
+        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
+        setEntries(was => [...was, data[0]])
+    }
+
+    async function save(id, patch) {
+        setSaving(true)
+        const { data, error: failed } = await supabase.from('timesheet_entries')
+            .update(patch).eq('id', id).select()
+        setSaving(false)
+        if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
+        setEntries(was => was.map(e => (e.id === id ? data[0] : e)))
+    }
+
+    async function remove(entry) {
+        setSaving(true)
+        const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
+        setSaving(false)
+        if (failed) { setError(friendlyError(failed)); return }
+        setEntries(was => was.filter(e => e.id !== entry.id))
+    }
+
+    // A letter sets the state of the whole day. Holiday and off sick are
+    // absences rather than timesheet rows, because that is where the app has
+    // always kept them: somebody filling in Friday afternoon is recording that
+    // she was off sick, not asking for leave.
+    async function setState(person, cell, key) {
+        const state = STATE_KEYS.find(s => s.key === key)
+        if (!state) return
+        setError('')
+
+        if (state.absence) {
+            for (const entry of cell.entries) await remove(entry)
+            setSaving(true)
+            const { data, error: failed } = await supabase.from('absences').insert({
+                restaurant_id: restaurantId,
+                employee_id: person.id,
+                kind: state.value,
+                starts_on: cell.date,
+                ends_on: cell.date,
+                hours: state.value === 'holiday' ? 8 : null,
+                status: 'approved',
+                created_by: user?.id,
+                decided_by: user?.id,
+                decided_at: new Date().toISOString(),
+            }).select()
+            setSaving(false)
+            if (failed) { setError(friendlyError(failed)); return }
+            if (data?.length) setAbsences(was => [...was, data[0]])
+            return
+        }
+
+        // Training and a trial are worked time, so they keep whatever times are
+        // there and only change what the day is called.
+        const first = cell.entries[0]
+        if (first) return save(first.id, { kind: state.value })
+        await create({
+            employee_id: person.id,
+            work_date: cell.date,
+            starts_at: '00:00:00',
+            kind: state.value,
+            source: 'typed',
+        })
+    }
+
+    async function clear(person, cell) {
+        setError('')
+        if (cell.absence) {
+            setSaving(true)
+            const { error: failed } = await supabase.from('absences').delete().eq('id', cell.absence.id)
+            setSaving(false)
+            if (failed) { setError(friendlyError(failed)); return }
+            setAbsences(was => was.filter(a => a.id !== cell.absence.id))
+            return
+        }
+        for (const entry of cell.entries) await remove(entry)
+    }
+
+    function addSpan(person, cell) {
+        // A second span appears as an empty pair. It only becomes a row once
+        // somebody types a start into it, which is the same path a first span
+        // takes and means an abandoned one leaves nothing behind.
+        setDraft({ person, cell })
+    }
+
+    // The touch bar acts on whatever box has the cursor, so it needs to turn a
+    // DOM element back into the entry it belongs to.
+    function takeRostered(box) {
+        if (!box) return
+        const at = {
+            r: Number(box.dataset.r), d: Number(box.dataset.d),
+            s: Number(box.dataset.s), i: Number(box.dataset.i),
+        }
+        const row = rows[at.r]
+        const cell = row?.days[at.d]
+        if (!cell) return
+        const entry = cell.entries[at.s] || { id: null, starts_at: '', ends_at: '' }
+        settle(row.person, cell, entry, at.i === 0 ? 'starts_at' : 'ends_at', `${box.placeholder}:00`)
+    }
+
+    function stateFromBar(box, key) {
+        if (!box) return
+        const row = rows[Number(box.dataset.r)]
+        const cell = row?.days[Number(box.dataset.d)]
+        if (cell) setState(row.person, cell, key)
+    }
+
+    function goToWeek(date) {
+        const start = weekStartOf(date)
+        setWeekStart(start)
+        setPickerDate(start)
+        if (openDay < start || openDay > addDays(start, 6)) setOpenDay(start)
+    }
+
+    if (!restaurantId) {
+        return <p className="p-4 text-sm text-muted">Pick a restaurant first.</p>
+    }
+
+    return (
+        <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h1 className={pageTitle}>Timesheet</h1>
+                <div className={segmentTrack}>
+                    {VIEWS.map(v => (
+                        <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setView(v.id)}
+                            className={segmentButton(view === v.id)}
+                        >
+                            {v.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+            <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
+                <DateStepper
+                    onBack={() => goToWeek(addDays(weekStart, -7))}
+                    onNext={() => goToWeek(addDays(weekStart, 7))}
+                    backLabel="Previous week"
+                    nextLabel="Next week"
+                    jump={(
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(todayISO())}
+                            onClick={() => goToWeek(todayISO())}
+                        />
+                    )}
+                >
+                    <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                        {shortDate(weekStart)} to {shortDate(weekEnd)}
+                    </span>
+                </DateStepper>
+
+                <input
+                    type="date"
+                    aria-label="Week"
+                    className={`${dateField} w-full sm:w-auto`}
+                    value={pickerDate}
+                    onChange={e => e.target.value && goToWeek(e.target.value)}
+                />
+
+                <div className="ml-auto text-right">
+                    <p className="text-sm font-bold text-gray-900 tabular-nums">
+                        {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
+                    </p>
+                    {saving && <p className="text-[0.66rem] text-muted">Saving...</p>}
+                </div>
+            </div>
+
+            {waiting.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
+                    <strong className="font-bold">
+                        {waiting.length} {waiting.length === 1 ? 'person has' : 'people have'} a rostered
+                        shift with nothing said about it.
+                    </strong>{' '}
+                    {waiting.map(w => w.person.full_name).join(', ')}. A report cannot be drafted for
+                    this week until each one has times or a reason.
+                </div>
+            )}
+
+            {loading ? (
+                <p className="text-sm text-muted">Loading...</p>
+            ) : view === 'day' ? (
+                <div className={card}>
+                    <div className="flex flex-wrap gap-1 p-2 border-b border-border">
+                        {dates.map(date => (
+                            <button
+                                key={date}
+                                type="button"
+                                onClick={() => setOpenDay(date)}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                    openDay === date
+                                        ? 'bg-accent-light border-accent text-accent-ink'
+                                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                            >
+                                {shortDate(date)}
+                            </button>
+                        ))}
+                    </div>
+                    <TimesheetDay rows={rows} date={openDay} sundayPremium={premium} />
+                </div>
+            ) : (
+                <div className={card} ref={grid}>
+                    {/* The wide grid on anything that can hold it, the hours
+                        view on a phone. Both are always rendered and one is
+                        hidden, so a rotation does not reload anything. */}
+                    <div className="hidden md:block">
+                        <TimesheetWeek
+                            rows={rows}
+                            dates={dates}
+                            sundayPremium={premium}
+                            onType={type}
+                            onSettle={settle}
+                            onState={setState}
+                            onClear={clear}
+                            onAdd={addSpan}
+                        />
+                    </div>
+                    <div className="md:hidden">
+                        <TimesheetPhone
+                            rows={rows}
+                            dates={dates}
+                            sundayPremium={premium}
+                            onOpenDay={(person, cell) => { setOpenDay(cell.date); setView('day') }}
+                        />
+                    </div>
+                    <TouchBar gridRef={grid} onTake={takeRostered} onState={stateFromBar} />
+                </div>
+            )}
+        </div>
+    )
+}
