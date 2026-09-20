@@ -62,7 +62,7 @@ describe('the two blocks, which is what this view is for', () => {
 describe('somebody who worked a day nobody planned', () => {
     // His. There is no hollow block to compare against, so the row says so
     // rather than leaving a solid block sitting on its own looking normal.
-    const only = day => ({ entries: [worked] })
+    const only = () => ({ entries: [worked] })
 
     it('still draws the block', () => {
         day(only())
