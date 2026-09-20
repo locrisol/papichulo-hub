@@ -1,6 +1,6 @@
 # Migrations
 
-Four in here, and the next one is `011`.
+Five in here, and the next one is `012`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
@@ -9,6 +9,9 @@ Four in here, and the next one is `011`.
   without the answer living inside its own name.
 - **`010_landing_page.sql`** lets an account choose which page the Hub opens on,
   and adds the one narrow function that can save it.
+- **`011_places_near_us.sql`** adds `places` and `restaurant_places`, gives
+  `events` a place and a say in where it came from, and carries the one venue
+  that used to live on the restaurant across into the first of them.
 
 None has a backup newer than it yet, so none can go.
 

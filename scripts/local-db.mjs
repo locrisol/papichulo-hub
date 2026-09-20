@@ -32,7 +32,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
-const EXPECTED_TABLES = 37
+const EXPECTED_TABLES = 39
 
 for (const f of ['supabase/schema.sql', 'supabase/seed.sql']) {
     if (!existsSync(f)) {
