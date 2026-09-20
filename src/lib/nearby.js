@@ -182,14 +182,30 @@ export function nearbyRows(events, pairings, restaurant) {
         const pairing = near.get(event?.place_id)
         if (!pairing) continue
         if (dismissed(event)) continue
-        rows.push({
+
+        const row = {
             event,
             place: pairing.place,
             pairing,
             kind: kindOf(event, pairing),
             checked: !notChecked(event),
             time: event.event_time ? shortTime(event.event_time) : '',
-        })
+        }
+
+        // **Where it is, carried on the row itself.** The roster said it and
+        // the calendar did not, so the same listing read as "Avengers:
+        // Endgame, Odeon" on one screen and "Avengers: Endgame" on the other,
+        // and the second one reads like the name of a company to anybody who
+        // does not follow films. **His point, and it holds for every one of
+        // these**: a listing from somewhere else is only useful if it says
+        // where, or the roster is full of names nobody can place.
+        //
+        // The short name, because a month cell is a couple of centimetres and
+        // "Dun Laoghaire Rathdown County Council" would leave no room for what
+        // is actually on.
+        row.title = chipWords(row, { short: true })
+
+        rows.push(row)
     }
 
     return rows

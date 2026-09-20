@@ -214,6 +214,59 @@ describe('nearbyRows', () => {
     })
 })
 
+// **His point, and it holds for every one of these.** The roster said where a
+// listing was and the calendar did not, so the same film read as "Avengers:
+// Endgame, Odeon" on one screen and "Avengers: Endgame" on the other, which to
+// anybody who does not follow films looks like the name of a company that has
+// booked something.
+describe('every listing says where it is', () => {
+    const rows = nearbyRows([gig, film, match], pairs, {})
+
+    it('carries where it is on the row, for whatever draws it', () => {
+        expect(rows.map(r => r.title)).toEqual([
+            'Kings of Leon, 3Arena',
+            'Wicked: For Good opens, Odeon',
+            'Ireland v France, Aviva Stadium',
+        ])
+    })
+
+    // A month cell is a couple of centimetres, and "Dun Laoghaire Rathdown
+    // County Council" would leave no room for what is actually on.
+    it('uses the short name, because a month cell has no room', () => {
+        const council = {
+            id: 'p9', name: 'Dun Laoghaire Rathdown County Council', short_name: 'dlr Council',
+        }
+        const [row] = nearbyRows(
+            [{ id: 'z', place_id: 'p9', name: 'Harp recital', event_date: '2026-11-19' }],
+            [{ place: council, relation: 'walk', walk_minutes: 5, is_active: true }],
+            {},
+        )
+        expect(row.title).toBe('Harp recital, dlr Council')
+    })
+
+    it('says the venue rather than the page when they differ', () => {
+        const council = { id: 'p9', name: 'Dun Laoghaire Rathdown County Council', short_name: 'dlr Council' }
+        const [row] = nearbyRows(
+            [{
+                id: 'z', place_id: 'p9', name: 'Arts & Crafts Evening',
+                event_date: '2026-11-19', venue: 'Dundrum Library',
+            }],
+            [{ place: council, relation: 'walk', walk_minutes: 5, is_active: true }],
+            {},
+        )
+        expect(row.title).toBe('Arts & Crafts Evening, Dundrum Library')
+    })
+
+    it('says it once when the name already carries the place', () => {
+        const [row] = nearbyRows(
+            [{ id: 'z', place_id: 'p1', name: '3Arena open day', event_date: '2026-11-19' }],
+            pairs,
+            {},
+        )
+        expect(row.title).toBe('3Arena open day')
+    })
+})
+
 describe('dates', () => {
     const market = { event_date: '2026-11-29', ends_on: '2026-12-14', name: 'Christmas market' }
 
