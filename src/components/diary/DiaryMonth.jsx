@@ -1,5 +1,6 @@
-import { addDays, fullDate } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { addDays, fullDate, dayMonth } from '@/lib/dates'
+import { DAY_NAMES, dayName } from '@/lib/events'
+import { card, closeButton } from '@/lib/controlStyles'
 import { bandsForWeek, kindChip, kindDot, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
 
@@ -54,32 +55,75 @@ function BandRow({ bands, onOpen, canEdit }) {
 // It hides itself on a computer when the day is empty, because a permanent
 // "Nothing on" sitting inside every month is noise. On a phone it stays, since
 // there it is the answer to a tap and an empty answer is still an answer.
-function DayPanel({ date, items, restaurants, onOpen, canEdit }) {
+//
+// **It is a card with a point on it, not a grey band across the month**, and
+// the difference is what he objected to. Drawn as a band it read as a gap in
+// the grid: nothing tied it to the square that was pressed, the bands of the
+// week below appeared to belong to it, and there was no way out of it except
+// pressing the same day again, which nobody would guess.
+//
+// So it wears the heading every other card in this app wears, a filled dark
+// row with the day on it and a way to shut it, and a notch above it sits under
+// the column it belongs to. The notch is the whole point: it is the only thing
+// that says which of the seven squares this is about.
+//
+// Still under its own row rather than in a dialog. A dialog would cover the
+// month you are reading and move the square out from under the press, and this
+// was already moved once, from the foot of the month, for being too far from
+// what you pressed.
+function DayPanel({ date, column, items, restaurants, onOpen, onClose, canEdit }) {
     return (
-        <div className={`border-y border-border bg-app-bg px-3 py-2.5 ${items.length ? 'block' : 'block sm:hidden'}`}>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">
-                {fullDate(date)}
-            </p>
-            {items.length === 0 ? (
-                <p className="text-sm text-muted italic">Nothing on.</p>
-            ) : (
-                <div className="flex flex-col gap-1.5">
-                    {items.map(item => (
-                        <div key={item.key} className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="flex-1 min-w-0">
-                                <DiaryChip item={item} onOpen={onOpen} canEdit={canEdit} />
-                            </span>
-                            {item.source === 'diary' && (
-                                <span className="text-[0.65rem] text-muted whitespace-nowrap">
-                                    {timeLabel(item.entry)}
-                                    {' \u00b7 '}
-                                    {scopeLabel(item.entry, restaurants)}
-                                </span>
-                            )}
+        <div className={`border-b border-border bg-app-bg px-2 sm:px-3 pt-2 pb-3 ${items.length ? 'block' : 'block sm:hidden'}`}>
+            <div className="relative">
+                {/* Under the middle of its own column, so seven identical
+                    squares stop being interchangeable. Hidden on a phone,
+                    where a column is too narrow to point at anything. */}
+                <span
+                    aria-hidden="true"
+                    className="hidden sm:block absolute -top-1.5 w-3 h-3 rotate-45 bg-sidebar"
+                    style={{ left: `calc(${(column + 0.5) * (100 / 7)}% - 0.375rem)` }}
+                />
+                <div className={`${card} overflow-hidden`}>
+                    <div className="flex items-center justify-between gap-3 bg-sidebar px-3 py-2">
+                        <p className="text-sm font-bold text-white">
+                            {dayName(date)} {dayMonth(date)}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            aria-label={`Close ${fullDate(date)}`}
+                            className={closeButton}
+                        >
+                            &#215;
+                        </button>
+                    </div>
+
+                    {items.length === 0 ? (
+                        <p className="text-sm text-muted italic px-3 py-2.5">Nothing on.</p>
+                    ) : (
+                        <div className="flex flex-col gap-1.5 px-3 py-2.5">
+                            {items.map(item => (
+                                <div key={item.key} className="flex flex-wrap items-baseline gap-x-2">
+                                    {/* Sized to something a person reads rather
+                                        than to the width of the month. A chip
+                                        stretched across a wide screen reads as
+                                        an empty row with a word at one end. */}
+                                    <span className="min-w-0 w-full sm:w-auto sm:min-w-[16rem] sm:max-w-md">
+                                        <DiaryChip item={item} onOpen={onOpen} canEdit={canEdit} />
+                                    </span>
+                                    {item.source === 'diary' && (
+                                        <span className="text-[0.65rem] text-muted whitespace-nowrap">
+                                            {timeLabel(item.entry)}
+                                            {' \u00b7 '}
+                                            {scopeLabel(item.entry, restaurants)}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
                         </div>
-                    ))}
+                    )}
                 </div>
-            )}
+            </div>
         </div>
     )
 }
@@ -211,9 +255,11 @@ export default function DiaryMonth({
                         {holdsSelected && (
                             <DayPanel
                                 date={selected}
+                                column={week.indexOf(selected)}
                                 items={onSelectedDay}
                                 restaurants={restaurants}
                                 onOpen={onOpen}
+                                onClose={() => onSelect(selected)}
                                 canEdit={canEdit}
                             />
                         )}
