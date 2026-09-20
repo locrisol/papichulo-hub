@@ -396,7 +396,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                 onClose={back}
                 width="max-w-2xl"
             >
-                <div className="px-4 sm:px-6 py-4">
+                <div className="px-6 py-4">
                     {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
                     <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
@@ -591,14 +591,14 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
 
     return (
         <Modal title="Places near us" onClose={onClose} width="max-w-2xl">
-            <div className="px-4 sm:px-6 py-4">
+            <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
                 {loading ? (
                     <p className="text-sm text-muted">Loading...</p>
                 ) : (
                     <>
-                        <ModalSectionBar>Within walking distance</ModalSectionBar>
+                        <ModalSectionBar title="Within walking distance" />
                         {walkers.length === 0 && (
                             <p className="text-sm text-muted py-3">
                                 Nothing yet. Add one below, or type the address and let the Hub
@@ -616,7 +616,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             />
                         ))}
 
-                        <ModalSectionBar>Big things in the city</ModalSectionBar>
+                        <ModalSectionBar title="Big things in the city" />
                         <label className="flex items-start gap-3 py-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -652,7 +652,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             />
                         ))}
 
-                        <ModalSectionBar>Add one by hand</ModalSectionBar>
+                        <ModalSectionBar title="Add one by hand" />
                         <button
                             type="button"
                             onClick={() => { setAdding(true); setEditingId(null); setForm(BLANK) }}
@@ -661,7 +661,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             Add a place
                         </button>
 
-                        <ModalSectionBar>What their pages say</ModalSectionBar>
+                        <ModalSectionBar title="What their pages say" />
                         <div className="py-3 flex flex-wrap items-center gap-3">
                             <button
                                 type="button"
@@ -678,7 +678,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         </div>
                         {read && <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">{read}</p>}
 
-                        <ModalSectionBar>Look for what is near us</ModalSectionBar>
+                        <ModalSectionBar title="Look for what is near us" />
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
                             <div className="flex-1 min-w-[12rem]">
                                 <label className={labelClass} htmlFor="place-address">

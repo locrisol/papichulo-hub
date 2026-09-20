@@ -118,3 +118,41 @@ describe('every file in lib has a test', () => {
         expect(stale, 'these have a test now, or are gone: take them off').toEqual([])
     })
 })
+
+describe('a section bar says what the section is', () => {
+    // Places near us had five of these and every one of them was blank.
+    //
+    // The bar takes a title. All five were written the way a heading reads,
+    // with the words between the tags, and React drops children a component
+    // does not ask for. So the dialog opened with five grey bars on it and
+    // nothing to say what any part of it was, including one at the very top
+    // that looked like it was there for no reason.
+    //
+    // Nothing caught it because nothing was broken: a bar with no title is a
+    // bar with no title, and it renders perfectly well.
+    const uses = sourcePaths.filter(p => sources[p].includes('<ModalSectionBar'))
+
+    it('is used somewhere, or this check is watching nothing', () => {
+        expect(uses.length).toBeGreaterThan(0)
+    })
+
+    it.each(uses)('%s puts the words in the title', path => {
+        const source = sources[path]
+
+        expect(
+            source.includes('</ModalSectionBar>'),
+            'the words go in title=, not between the tags, or they are dropped',
+        ).toBe(false)
+
+        // Two hundred characters is past the longest of these, which runs to
+        // about sixty: collapsible, a tone and then the title. It is a bound
+        // rather than a parse because finding where a JSX tag ends means
+        // counting braces, and the answer would not be any truer for it.
+        const missing = source
+            .split('<ModalSectionBar')
+            .slice(1)
+            .filter(after => !after.slice(0, 200).includes('title'))
+
+        expect(missing.length, 'a bar with no title is a grey stripe').toBe(0)
+    })
+})
