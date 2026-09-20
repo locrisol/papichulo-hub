@@ -80,12 +80,15 @@ export const navItems = [
 // somebody a page their role refuses is offering to send them to the refused
 // screen every morning with no way to tell why.
 //
-// Anything gated on a restaurant setting is left out. Whether it is on is a
-// property of the restaurant and this is a property of the account, and a
-// person who works at both would have chosen at one of them.
+// Nothing is gated on a restaurant setting any more. There used to be a second
+// test here, for a screen that predicted takings at one venue, and it had
+// outlived the flag it read: no item has carried that flag since the Events
+// screen became the Calendar. A rule that guards against a state nothing can
+// reach is a rule nobody maintains, so it is gone rather than left looking
+// live. The day an item is genuinely gated, the condition gets written then.
 export function landingChoices(user) {
     if (!can(user, MANAGERS)) return []
-    return navItems.filter(n => can(user, n.roles) && !n.needsForecasting)
+    return navItems.filter(n => can(user, n.roles))
 }
 
 // Where to send somebody who has just signed in.

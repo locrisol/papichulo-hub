@@ -53,10 +53,6 @@ describe('what somebody can be offered as a landing page', () => {
             expect(offered.filter(n => !n.roles.includes(role))).toEqual([])
         }
     })
-
-    it('leaves out anything gated on a restaurant setting', () => {
-        expect(landingChoices(person('super_admin')).filter(n => n.needsForecasting)).toEqual([])
-    })
 })
 
 describe('where somebody lands', () => {

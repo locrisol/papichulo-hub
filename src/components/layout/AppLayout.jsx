@@ -86,12 +86,13 @@ export default function AppLayout({ children }) {
         navigate('/login')
     }
 
-    // Only what this role can use, and only where the feature is turned on for
-    // this restaurant.
-    const visibleItems = navItems.filter(n =>
-        can(user, n.roles) &&
-        (!n.needsForecasting || activeRestaurant?.forecasting_enabled)
-    )
+    // Only what this role can use.
+    //
+    // There used to be a second test here, on a forecasting switch, for a
+    // screen that predicted takings at one venue. Nothing is gated on it now:
+    // the calendar is the same everywhere and what is on near a restaurant is
+    // decided by which places it is near rather than by a flag.
+    const visibleItems = navItems.filter(n => can(user, n.roles))
     const sections = [...new Set(visibleItems.map(n => n.section))]
 
     // Page title: exact nav match first, then a prefix fallback for detail pages.

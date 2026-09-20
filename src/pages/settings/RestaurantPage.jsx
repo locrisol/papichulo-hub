@@ -6,6 +6,7 @@ import SalesPlatformsModal from '@/components/settings/SalesPlatformsModal'
 import SalesTendersModal from '@/components/settings/SalesTendersModal'
 import CostTargetModal from '@/components/costs/CostTargetModal'
 import OpeningHoursModal from '@/components/settings/OpeningHoursModal'
+import PlacesNearUsModal from '@/components/settings/PlacesNearUsModal'
 import BreakRulesModal from '@/components/settings/BreakRulesModal'
 import RosterRulesModal from '@/components/settings/RosterRulesModal'
 import { todayISO, weekStartOf, shortDate, stampDateTime } from '@/lib/dates'
@@ -14,7 +15,7 @@ import { friendlyError } from '@/lib/errors'
 import { DEFAULT_BREAK_RULES } from '@/lib/roster'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import { numberField } from '@/lib/numberInput'
-import { card, rowButton, checkbox, labelClass, pageTitle } from '@/lib/controlStyles'
+import { card, rowButton, labelClass, pageTitle } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Restaurant settings.
@@ -24,9 +25,9 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 //
 // A target is never edited in place. Each change is a new row with a start week,
 // so a change made today does not rewrite how June was judged. That is why the
-// hourly rate and the forecasting flag are the only things saved straight onto
-// the restaurant here: the rate is copied onto every labour entry when it is
-// saved, so past weeks already keep what was really paid.
+// hourly rate is one of the few things saved straight onto the restaurant here:
+// it is copied onto every labour entry when it is saved, so past weeks already
+// keep what was really paid.
 
 const TARGET_TYPES = [
     { key: 'food', label: 'Food cost', column: 'food_cost_target' },
@@ -40,7 +41,6 @@ export default function RestaurantPage() {
 
     const [formData, setFormData] = useState({
         hourly_rate: '',
-        forecasting_enabled: false,
         mail_from: '',
         google_calendar_id: '',
     })
@@ -58,6 +58,7 @@ export default function RestaurantPage() {
     const [showPlatformsModal, setShowPlatformsModal] = useState(false)
     const [showTendersModal, setShowTendersModal] = useState(false)
     const [showHoursModal, setShowHoursModal] = useState(false)
+    const [showPlacesModal, setShowPlacesModal] = useState(false)
     const [showBreaksModal, setShowBreaksModal] = useState(false)
     const [showRulesModal, setShowRulesModal] = useState(false)
     const [editingTarget, setEditingTarget] = useState(null)
@@ -77,7 +78,6 @@ export default function RestaurantPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
-            forecasting_enabled: activeRestaurant.forecasting_enabled || false,
             mail_from: activeRestaurant.mail_from || '',
             google_calendar_id: activeRestaurant.google_calendar_id || '',
         })
@@ -112,7 +112,6 @@ export default function RestaurantPage() {
             .from('restaurants')
             .update({
                 hourly_rate: parseFloat(formData.hourly_rate),
-                forecasting_enabled: formData.forecasting_enabled,
                 // Empty is null, not an empty string. Null means "no
                 // address of its own", which is what the mail falls back
                 // on; an empty string would read as an address that is
@@ -412,24 +411,6 @@ export default function RestaurantPage() {
                             </p>
                         </div>
 
-                        {user?.role === 'super_admin' && (
-                            <div className={`${card} p-6 mb-4`}>
-                                <h3 className="text-sm font-semibold text-gray-900 mb-4">Forecasting</h3>
-                                <label className="flex items-center gap-3 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.forecasting_enabled}
-                                        onChange={e => setFormData({ ...formData, forecasting_enabled: e.target.checked })}
-                                        className={checkbox}
-                                    />
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-900">Enable demand forecasting</p>
-                                        <p className="text-xs text-gray-500">Only for restaurants near a large event venue</p>
-                                    </div>
-                                </label>
-                            </div>
-                        )}
-
                         {/* Above the button row rather than inside it. As a sibling of the
                             button it sat beside it on one line, which squeezes both on a
                             phone and is not where the eye goes after a press. */}
@@ -448,6 +429,31 @@ export default function RestaurantPage() {
                 </div>
 
                 <div>
+                    {/* Which places this restaurant is near, and how near.
+                        This replaced a single switch called Forecasting, which
+                        turned on a screen that predicted takings from one
+                        venue. Nothing predicts anything now: it says what is
+                        on and when, and the manager decides what that is
+                        worth. */}
+                    <div className={`${card} p-6 mb-4`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Places near us</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    What is on around this restaurant, as a badge on the roster and
+                                    the calendar. Nothing here predicts anything.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPlacesModal(true)}
+                                className="px-4 py-2 border border-border text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                Manage places
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Sales platforms management */}
                     <div className={`${card} p-6 mb-4`}>
                         {/* Same shape as Opening hours below, which already had
@@ -580,6 +586,13 @@ export default function RestaurantPage() {
             {showTendersModal && (
                 <SalesTendersModal
                     onClose={() => setShowTendersModal(false)}
+                />
+            )}
+
+            {showPlacesModal && (
+                <PlacesNearUsModal
+                    onClose={() => setShowPlacesModal(false)}
+                    onChange={() => setRefresh(n => n + 1)}
                 />
             )}
 
