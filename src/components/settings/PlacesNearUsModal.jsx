@@ -573,7 +573,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
                             <div className="flex-1 min-w-[12rem]">
                                 <label className={labelClass} htmlFor="place-address">
-                                    The restaurant&apos;s address
+                                    The restaurant&apos;s address, or where it is
                                 </label>
                                 <input
                                     id="place-address"
@@ -586,6 +586,15 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             <button type="submit" disabled={searching} className={secondaryButton}>
                                 {searching ? 'Looking...' : 'Look'}
                             </button>
+                            {/* The address lookup is the one part of this that
+                                can refuse us and say nothing useful, so the box
+                                takes a pair of numbers too. Right click the spot
+                                in Google Maps and it hands you them. */}
+                            <p className="text-xs text-muted w-full">
+                                An address, or a pair of coordinates like{' '}
+                                <code className="font-mono">53.348071, -6.229920</code>. Whatever
+                                you give it is remembered, so this is asked once.
+                            </p>
                         </form>
 
                         {candidates && candidates.length === 0 && (

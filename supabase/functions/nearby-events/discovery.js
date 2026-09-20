@@ -278,6 +278,28 @@ export function geocodeUrl(address) {
     return `${NOMINATIM}?${params}`
 }
 
+// A point typed rather than looked up.
+//
+// **The geocoder is the one part of this that can refuse us and say nothing
+// useful.** Nominatim turns away a lot of datacentre traffic, and an edge
+// function is datacentre traffic: both restaurants still had no latitude after
+// a search, with nothing written and nothing to show for it. Asking somebody to
+// wait for somebody else's rate limiter to relent is not an answer.
+//
+// So the box takes "53.348071, -6.229920" as readily as an address, and a pair
+// of numbers needs nobody's permission. Anybody can get them by right clicking
+// a spot in Google Maps.
+export function pointTyped(text) {
+    const pair = /^\s*(-?\d{1,3}(?:\.\d+)?)[ ,]+(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(String(text || ''))
+    if (!pair) return null
+
+    const latitude = Number(pair[1])
+    const longitude = Number(pair[2])
+    if (!Number.isFinite(latitude) || Math.abs(latitude) > 90) return null
+    if (!Number.isFinite(longitude) || Math.abs(longitude) > 180) return null
+    return { latitude, longitude }
+}
+
 export function pointFrom(payload) {
     const first = Array.isArray(payload) ? payload[0] : null
     const lat = Number(first?.lat)

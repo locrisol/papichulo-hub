@@ -53,7 +53,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
-    geocodeUrl, pointFrom, venuesUrl, venuesFrom, suggestions,
+    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions,
 } from './discovery.js'
 
 const MANAGERS = ['owner', 'store_manager']
@@ -296,22 +296,46 @@ Deno.serve(async (request) => {
             .from('restaurants').select('latitude, longitude, location')
             .eq('id', restaurantId).maybeSingle()
 
-        let point = (shop?.latitude != null && shop?.longitude != null)
-            ? { latitude: Number(shop.latitude), longitude: Number(shop.longitude) }
-            : null
+        // A pair of numbers wins over everything, because it is somebody
+        // saying exactly where rather than something guessing. It also beats a
+        // point already on the row, which is how a wrong one gets corrected.
+        let point = pointTyped(payload.find.address)
+        let learned = Boolean(point)
+
+        if (!point && shop?.latitude != null && shop?.longitude != null) {
+            point = { latitude: Number(shop.latitude), longitude: Number(shop.longitude) }
+        }
 
         const address = String(payload.find.address || shop?.location || '').trim()
 
         // Asked only when we do not already know where the shop is, and the
         // answer is kept, so the second restaurant costs one call and the third
         // visit costs none.
+        //
+        // The refusal says what to do instead. Nominatim turns away a lot of
+        // datacentre traffic and there is nothing to be done about that from
+        // here, but there is something the person reading the message can do
+        // in ten seconds.
         if (!point) {
             if (!address) return json({ error: 'No address to look up' }, 400)
             const res = await fetch(geocodeUrl(address), { headers: { 'User-Agent': AGENT } })
-            if (!res.ok) return json({ error: 'Could not look that address up' }, 502)
+            if (!res.ok) {
+                return json({
+                    error: 'The address lookup would not answer. Paste the coordinates instead, '
+                        + 'for example 53.348071, -6.229920.',
+                }, 502)
+            }
             point = pointFrom(await res.json())
-            if (!point) return json({ error: `Nothing found for "${address}"` }, 404)
+            if (!point) {
+                return json({
+                    error: `Nothing found for "${address}". Paste the coordinates instead, `
+                        + 'for example 53.348071, -6.229920.',
+                }, 404)
+            }
+            learned = true
+        }
 
+        if (learned) {
             await admin.from('restaurants')
                 .update({ latitude: point.latitude, longitude: point.longitude })
                 .eq('id', restaurantId)

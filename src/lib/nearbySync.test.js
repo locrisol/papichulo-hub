@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
-    distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor,
+    distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -401,4 +401,34 @@ describe('the feed and the reading agree what a listing is called', () => {
             expect(sourceKeyFor(date, name)).toBe(browserSourceKeyFor(date, name))
         })
     }
+})
+
+// The geocoder is the one part of this that can refuse us and say nothing
+// useful. Nominatim turns away a lot of datacentre traffic and an edge function
+// is datacentre traffic: both restaurants still had no latitude after a search,
+// with nothing written and nothing to show for it.
+describe('a point typed rather than looked up', () => {
+    it('takes a pair of numbers', () => {
+        expect(pointTyped('53.348071, -6.229920'))
+            .toEqual({ latitude: 53.348071, longitude: -6.229920 })
+    })
+
+    it('does not mind the spacing', () => {
+        expect(pointTyped('  53.2935 -6.1348 ')).toEqual({ latitude: 53.2935, longitude: -6.1348 })
+        expect(pointTyped('53,-6')).toEqual({ latitude: 53, longitude: -6 })
+    })
+
+    it('knows an address when it sees one', () => {
+        expect(pointTyped('North Wall Quay, Dublin 1')).toBe(null)
+        expect(pointTyped('Dublin Docklands')).toBe(null)
+        expect(pointTyped('')).toBe(null)
+        expect(pointTyped(null)).toBe(null)
+    })
+
+    // A pair of numbers off the wrong end of the world is a typo rather than a
+    // place, and taking it would put a restaurant in the sea.
+    it('refuses a pair that is not on the map', () => {
+        expect(pointTyped('153.3, -6.2')).toBe(null)
+        expect(pointTyped('53.3, -186.2')).toBe(null)
+    })
 })
