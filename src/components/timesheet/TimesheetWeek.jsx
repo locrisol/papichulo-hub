@@ -24,10 +24,10 @@ import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 // change person. Left and right are left alone so a typo can still be fixed.
 
 export default function TimesheetWeek({
-    rows, dates, sundayPremium, canEdit = true,
+    rows, dates, canEdit = true,
     onType, onSettle, onState, onClear, onAdd, onOpen,
 }) {
-    const totals = weekTotals(rows, sundayPremium)
+    const totals = weekTotals(rows)
 
     function onKeyDown(e) {
         const el = e.target
@@ -129,14 +129,7 @@ export default function TimesheetWeek({
 
                             <Figure>{row.holiday ? row.holiday.toFixed(2) : '—'}</Figure>
                             <Figure bold>{row.worked.toFixed(2)}</Figure>
-                            <Figure>
-                                {fmtMoney(row.cost)}
-                                {row.premium > 0 && (
-                                    <span className="block text-[0.6rem] text-gray-400 font-normal">
-                                        incl. {fmtMoney(row.premium)} Sun
-                                    </span>
-                                )}
-                            </Figure>
+                            <Figure>{fmtMoney(row.cost)}</Figure>
                         </tr>
                     ))}
 
@@ -162,21 +155,6 @@ export default function TimesheetWeek({
                         <Foot right>{fmtMoney(totals.cost)}</Foot>
                     </tr>
 
-                    {/* The tenner gets its own line so the sum can be followed.
-                        It is the first money in the Hub that is not hours times
-                        a rate, and a figure that appears from nowhere inside a
-                        cost total is a figure somebody has to go looking for. */}
-                    {totals.premium > 0 && (
-                        <tr className="bg-gray-50">
-                            <Foot>Sunday</Foot>
-                            {totals.perDay.map(day => (
-                                <Foot key={day.date} right>
-                                    {day.premium > 0 ? fmtMoney(day.premium) : '—'}
-                                </Foot>
-                            ))}
-                            <Foot colSpan={3} />
-                        </tr>
-                    )}
 
                     <tr className="bg-gray-50">
                         <Foot>Cost</Foot>

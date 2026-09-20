@@ -56,7 +56,7 @@ vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
-        activeRestaurant: { id: 'r1', hourly_rate: 15, sunday_premium: 10 },
+        activeRestaurant: { id: 'r1', hourly_rate: 15 },
     }),
 }))
 

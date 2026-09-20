@@ -12,8 +12,8 @@ import { kindLabel as absenceLabel } from '@/lib/absences'
 //
 // A tablet in landscape gets the wide grid, not this. An iPad 10.2 inch is
 // 1,080 points across and the grid is about 1,050.
-export default function TimesheetPhone({ rows, dates, sundayPremium, onOpenDay }) {
-    const totals = weekTotals(rows, sundayPremium)
+export default function TimesheetPhone({ rows, dates, onOpenDay }) {
+    const totals = weekTotals(rows)
 
     return (
         <div>

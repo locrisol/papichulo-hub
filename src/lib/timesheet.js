@@ -149,22 +149,15 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
     }
 }
 
-// Ten euro to each person who works a Sunday. Per person per Sunday, never per
-// shift: somebody doing a split Sunday gets the tenner once.
-//
-// It is cost and it is never hours, so it never touches an hours total and it
-// never touches the rate.
-export function sundayPremiumFor(days, premium) {
-    const rate = Number(premium)
-    if (!Number.isFinite(rate) || rate <= 0) return 0
-    const sundays = days.filter(day => day.hours > 0 && new Date(`${day.date}T00:00:00`).getDay() === 0)
-    return Math.round(sundays.length * rate * 100) / 100
-}
-
 // One row of the week grid.
+//
+// There is no Sunday money in here. It was designed in, built, tested and then
+// taken out again on his word: the tenner for a Sunday is not something this
+// app should be working out, the same call as the one that keeps payroll out
+// of it altogether.
 export function personWeek({
     person, weekStart, entries = [], absences = [], shifts = [],
-    restaurantRate = 0, sundayPremium = 0,
+    restaurantRate = 0,
 }) {
     const mine = entries.filter(e => e.employee_id === person.id)
     const theirs = shifts.filter(s => s.employee_id === person.id)
@@ -185,7 +178,6 @@ export function personWeek({
     const holiday = holidayHoursInWeek(absences, person.id, days.map(d => d.date))
 
     const rate = rateFor(person, restaurantRate)
-    const premium = sundayPremiumFor(days, sundayPremium)
     const round = n => Math.round(n * 100) / 100
 
     return {
@@ -200,8 +192,7 @@ export function personWeek({
         holiday: round(holiday),
         worked: round(worked),
         total: round(worked + holiday),
-        premium,
-        cost: round(worked * rate + premium),
+        cost: round(worked * rate),
     }
 }
 
@@ -209,22 +200,17 @@ export function personWeek({
 // What the week comes to
 // ---------------------------------------------------------------------------
 
-export function weekTotals(rows, sundayPremium = 0) {
+export function weekTotals(rows) {
     const dates = rows[0]?.days.map(d => d.date) || []
     const round = n => Math.round(n * 100) / 100
 
     const perDay = dates.map((date, i) => {
         const hours = rows.reduce((t, row) => t + row.days[i].hours, 0)
         const cost = rows.reduce((t, row) => t + row.days[i].hours * row.rate, 0)
-        const heads = rows.filter(row => row.days[i].hours > 0).length
-        const sunday = new Date(`${date}T00:00:00`).getDay() === 0
-            ? round(heads * (Number(sundayPremium) || 0))
-            : 0
         return {
             date,
             hours: round(hours),
-            cost: round(cost + sunday),
-            premium: sunday,
+            cost: round(cost),
             bankHoliday: bankHolidayOn(date),
         }
     })
@@ -233,7 +219,6 @@ export function weekTotals(rows, sundayPremium = 0) {
         perDay,
         hours: round(perDay.reduce((t, d) => t + d.hours, 0)),
         cost: round(perDay.reduce((t, d) => t + d.cost, 0)),
-        premium: round(perDay.reduce((t, d) => t + d.premium, 0)),
         holiday: round(rows.reduce((t, r) => t + r.holiday, 0)),
         bankHoliday: round(rows.reduce((t, r) => t + r.bankHoliday, 0)),
         normal: round(rows.reduce((t, r) => t + r.normal, 0)),
@@ -245,9 +230,9 @@ export function weekTotals(rows, sundayPremium = 0) {
 //
 // `labour_entries` stays. It is what three screens already read for the cost
 // percentage, and replacing it would break all three for no gain. The figure
-// in it just becomes true: each person's own rate, plus the Sunday tenner.
-export function labourRollup(rows, sundayPremium = 0) {
-    return weekTotals(rows, sundayPremium).perDay.map(day => ({
+// in it just becomes true: each person at their own rate.
+export function labourRollup(rows) {
+    return weekTotals(rows).perDay.map(day => ({
         entry_date: day.date,
         total_hours: day.hours,
         labour_cost: day.cost,

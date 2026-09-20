@@ -1,5 +1,14 @@
 -- What people actually worked, rather than what they were rostered.
 --
+-- **Two lines in here were taken out after this had already run on live**, and
+-- that is the only edit of its kind in the folder. 004 drops the Sunday
+-- premium, and a file that goes on mentioning a column nothing has any more
+-- cannot be replayed: `npm run db:local` builds from schema.sql and then runs
+-- every migration in order, which is the check that the two agree. Neither
+-- edit changes anything for a database that has already run this, and a replay
+-- from the backup lands in the same place, because 004 is what decides the
+-- shape either way.
+--
 -- The roster says what was meant to happen. `labour_entries` said one total a
 -- day at one rate for everybody, and it has 245 days in it from January to
 -- September 2026, all at EUR 17.00, because that is all the old Labour page
@@ -135,7 +144,6 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
     CONSTRAINT "timesheet_weeks_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE
 );
 
-COMMENT ON COLUMN "public"."timesheet_weeks"."sunday_premium" IS 'The figure in force when this week was filed, kept rather than read live. A rate that changes must never quietly rewrite what last March cost.';
 
 -- ---------------------------------------------------------------------------
 -- Where labour comes from, for everything that asks
@@ -154,24 +162,14 @@ WITH ("security_invoker" = 'true') AS
         "t"."restaurant_id",
         "t"."work_date" AS "entry_date",
         "round"("sum"("t"."hours"), 2) AS "total_hours",
-        "round"(
-            "sum"("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", 0))
-            + CASE WHEN EXTRACT(dow FROM "t"."work_date") = 0
-                THEN "count"(DISTINCT COALESCE("t"."employee_id"::"text", "t"."person_name"))
-                     FILTER (WHERE "t"."hours" > 0)
-                     * COALESCE("w"."sunday_premium", "r"."sunday_premium", 0)
-                ELSE 0 END,
-        2) AS "labour_cost",
+        "round"("sum"("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", 0)), 2) AS "labour_cost",
         "count"(DISTINCT COALESCE("t"."employee_id"::"text", "t"."person_name"))
             FILTER (WHERE "t"."hours" > 0) AS "staff_count",
         'timesheet'::"text" AS "came_from"
     FROM "public"."timesheet_entries" "t"
     JOIN "public"."restaurants" "r" ON "r"."id" = "t"."restaurant_id"
     LEFT JOIN "public"."employees" "e" ON "e"."id" = "t"."employee_id"
-    LEFT JOIN "public"."timesheet_weeks" "w"
-        ON "w"."restaurant_id" = "t"."restaurant_id"
-        AND "w"."week_start" = ("t"."work_date" - (EXTRACT(dow FROM "t"."work_date"))::integer)
-    GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate", "r"."sunday_premium", "w"."sunday_premium"
+    GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate"
 
     UNION ALL
 

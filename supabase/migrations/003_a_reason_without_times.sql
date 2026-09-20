@@ -59,60 +59,7 @@ COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, t
 
 COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
 
--- ---------------------------------------------------------------------------
--- The rollup, which now has to ignore a day that is only a note
--- ---------------------------------------------------------------------------
-
--- Same view, one condition on each half. It reads the timesheet for the days
--- the timesheet covers and the frozen archive for the rest, and "covers" has
--- to mean **has hours on it** rather than has a row on it. Otherwise a note
--- written on a day in the archive's eight months would take that day's cost
--- off the dashboard and the report, and put nothing in its place.
---
--- The two conditions are exact opposites on purpose, so a day is read from one
--- side or the other and never from both.
-CREATE OR REPLACE VIEW "public"."labour_by_day"
-WITH ("security_invoker" = 'true') AS
-    SELECT
-        "t"."restaurant_id",
-        "t"."work_date" AS "entry_date",
-        "round"("sum"("t"."hours"), 2) AS "total_hours",
-        "round"(
-            "sum"("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", 0))
-            + CASE WHEN EXTRACT(dow FROM "t"."work_date") = 0
-                THEN "count"(DISTINCT COALESCE("t"."employee_id"::"text", "t"."person_name"))
-                     FILTER (WHERE "t"."hours" > 0)
-                     * COALESCE("w"."sunday_premium", "r"."sunday_premium", 0)
-                ELSE 0 END,
-        2) AS "labour_cost",
-        "count"(DISTINCT COALESCE("t"."employee_id"::"text", "t"."person_name"))
-            FILTER (WHERE "t"."hours" > 0) AS "staff_count",
-        'timesheet'::"text" AS "came_from"
-    FROM "public"."timesheet_entries" "t"
-    JOIN "public"."restaurants" "r" ON "r"."id" = "t"."restaurant_id"
-    LEFT JOIN "public"."employees" "e" ON "e"."id" = "t"."employee_id"
-    LEFT JOIN "public"."timesheet_weeks" "w"
-        ON "w"."restaurant_id" = "t"."restaurant_id"
-        AND "w"."week_start" = ("t"."work_date" - (EXTRACT(dow FROM "t"."work_date"))::integer)
-    GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate", "r"."sunday_premium", "w"."sunday_premium"
-    HAVING "count"("t"."hours") > 0
-
-    UNION ALL
-
-    -- The archive. Only for days the timesheet has no hours on, so a day that
-    -- has been done properly is never counted twice and a day carrying nothing
-    -- but a note is still read from here.
-    SELECT
-        "l"."restaurant_id",
-        "l"."entry_date",
-        "l"."total_hours",
-        "l"."labour_cost",
-        "l"."staff_count",
-        'archive'::"text" AS "came_from"
-    FROM "public"."labour_entries" "l"
-    WHERE NOT EXISTS (
-        SELECT 1 FROM "public"."timesheet_entries" "t"
-        WHERE "t"."restaurant_id" = "l"."restaurant_id"
-          AND "t"."work_date" = "l"."entry_date"
-          AND "t"."hours" IS NOT NULL
-    );
+-- The rollup has to ignore a day that is only a comment, or a comment written
+-- on a day in the frozen archive's eight months would take that day's cost off
+-- the dashboard and put nothing in its place. That change is in 004, which
+-- rewrites the same view for its own reasons, so the two do not fight over it.

@@ -89,14 +89,12 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "watch_city_events" boolean DEFAULT true NOT NULL,
     "latitude" numeric(9,6),
     "longitude" numeric(9,6),
-    "sunday_premium" numeric(6,2) DEFAULT 10.00 NOT NULL,
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
 COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded by restaurant_places. Migration 011 copied it into a place row and nothing reads it any more. Kept until a backup is newer than that migration.';
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
-COMMENT ON COLUMN "public"."restaurants"."sunday_premium" IS 'Paid to each person who works a Sunday, once per person per Sunday and never per shift. It is cost and never hours, so it never touches an hours total or a rate. Ten euro today and he said it may change, which is why timesheet_weeks keeps the figure that was in force when a week was filed.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -713,17 +711,16 @@ ALTER TABLE ONLY "public"."timesheet_names"
 
 COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose.';
 
--- One row per restaurant per week, and it exists for one reason: it keeps the
--- Sunday premium that was in force when the week was filed.
+-- One row per restaurant per week: when it was filed and by whom.
 --
--- Read live instead, the day the tenner becomes twelve every Sunday ever filed
--- gets two euro a head more expensive and no report agrees with the one that
--- was sent.
+-- It was built to keep the Sunday premium in force at the time as well, so that
+-- changing the figure could not quietly rewrite what last March cost. That
+-- premium is gone, on his word, and what the table is for now is the mark the
+-- weekly email leaves on a week it has sent.
 CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
     "week_start" "date" NOT NULL,
-    "sunday_premium" numeric(6,2) NOT NULL,
     "filed_at" timestamp with time zone,
     "filed_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -736,7 +733,7 @@ ALTER TABLE ONLY "public"."timesheet_weeks"
 ALTER TABLE ONLY "public"."timesheet_weeks"
     ADD CONSTRAINT "timesheet_weeks_once" UNIQUE ("restaurant_id", "week_start");
 
-COMMENT ON COLUMN "public"."timesheet_weeks"."sunday_premium" IS 'The figure in force when this week was filed, kept rather than read live. A rate that changes must never quietly rewrite what last March cost.';
+COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week, for when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
 
 CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -2500,18 +2497,13 @@ CREATE OR REPLACE VIEW "public"."labour_by_day" WITH ("security_invoker"='true')
  SELECT "t"."restaurant_id",
     "t"."work_date" AS "entry_date",
     "round"("sum"("t"."hours"), 2) AS "total_hours",
-    "round"(("sum"(("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", (0)::numeric)))
-        + CASE WHEN (EXTRACT(dow FROM "t"."work_date") = (0)::numeric)
-            THEN ((("count"(DISTINCT COALESCE(("t"."employee_id")::"text", "t"."person_name")) FILTER (WHERE ("t"."hours" > (0)::numeric))))::numeric
-                  * COALESCE("w"."sunday_premium", "r"."sunday_premium", (0)::numeric))
-            ELSE (0)::numeric END), 2) AS "labour_cost",
+    "round"("sum"(("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", (0)::numeric))), 2) AS "labour_cost",
     "count"(DISTINCT COALESCE(("t"."employee_id")::"text", "t"."person_name")) FILTER (WHERE ("t"."hours" > (0)::numeric)) AS "staff_count",
     'timesheet'::"text" AS "came_from"
-   FROM ((("public"."timesheet_entries" "t"
+   FROM (("public"."timesheet_entries" "t"
      JOIN "public"."restaurants" "r" ON (("r"."id" = "t"."restaurant_id")))
      LEFT JOIN "public"."employees" "e" ON (("e"."id" = "t"."employee_id")))
-     LEFT JOIN "public"."timesheet_weeks" "w" ON ((("w"."restaurant_id" = "t"."restaurant_id") AND ("w"."week_start" = ("t"."work_date" - (EXTRACT(dow FROM "t"."work_date"))::integer)))))
-  GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate", "r"."sunday_premium", "w"."sunday_premium"
+  GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate"
  HAVING ("count"("t"."hours") > 0)
 UNION ALL
  SELECT "l"."restaurant_id",

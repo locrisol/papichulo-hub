@@ -28,7 +28,7 @@ import { kindOf as absenceKind } from '@/lib/absences'
 // rostered and never clocked in is the other way round: a hollow block with
 // nothing in it.
 
-export default function TimesheetDay({ rows, date, sundayPremium }) {
+export default function TimesheetDay({ rows, date }) {
     const mine = rows.map(row => ({ row, cell: row.days.find(d => d.date === date) }))
         .filter(({ cell }) => cell)
 
@@ -49,10 +49,6 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
 
     const worked = mine.reduce((t, { cell }) => t + cell.hours, 0)
     const cost = mine.reduce((t, { row, cell }) => t + cell.hours * row.rate, 0)
-    const heads = mine.filter(({ cell }) => cell.hours > 0).length
-    const sunday = new Date(`${date}T00:00:00`).getDay() === 0
-        ? heads * (Number(sundayPremium) || 0)
-        : 0
     const bankHoliday = mine[0]?.cell?.bankHoliday
 
     return (
@@ -65,7 +61,7 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
                     )}
                 </span>
                 <span className="text-sm font-bold text-gray-900 tabular-nums">
-                    {fmtHours(worked)} h &middot; {fmtMoney(cost + sunday)}
+                    {fmtHours(worked)} h &middot; {fmtMoney(cost)}
                 </span>
             </div>
 
@@ -220,11 +216,6 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
                 <Chip dashed>what they were rostered for</Chip>
                 <Chip colour="#182F24">what the clock registered</Chip>
                 <Chip colour="#BC552B">ran longer than it was meant to</Chip>
-                {sunday > 0 && (
-                    <span className="ml-auto font-semibold text-gray-900">
-                        Sunday premium {fmtMoney(sunday)}
-                    </span>
-                )}
             </div>
         </div>
     )

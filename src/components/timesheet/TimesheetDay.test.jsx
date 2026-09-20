@@ -14,9 +14,9 @@ function day(over = {}) {
     const { entries = [], shifts = [], absences = [], people = [aoife, cathal] } = over
     const rows = people.map(person => personWeek({
         person, weekStart: WEEK, entries, absences, shifts,
-        restaurantRate: 15, sundayPremium: 10,
+        restaurantRate: 15,
     }))
-    return render(<TimesheetDay rows={rows} date={DAY} sundayPremium={10} />)
+    return render(<TimesheetDay rows={rows} date={DAY} />)
 }
 
 const rostered = { id: 's1', employee_id: 'e1', shift_date: DAY, starts_at: '09:00:00', ends_at: '17:00:00' }

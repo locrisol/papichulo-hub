@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
-    sundayPremiumFor, personWeek, weekTotals, labourRollup,
+    personWeek, weekTotals, labourRollup,
     unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
 } from '@/lib/timesheet'
 
@@ -252,34 +252,6 @@ describe('holiday hours are for the absence, not for each of its days', () => {
     })
 })
 
-describe('the Sunday tenner', () => {
-    const sunday = { date: SUN, hours: 8 }
-    const monday = { date: MON, hours: 8 }
-
-    it('is paid once to somebody who worked the Sunday', () => {
-        expect(sundayPremiumFor([sunday, monday], 10)).toBe(10)
-    })
-
-    // Per person per Sunday, never per shift. A split Sunday is one tenner,
-    // and the day cell has already added the two spans together.
-    it('is paid once for a split Sunday', () => {
-        expect(sundayPremiumFor([{ date: SUN, hours: 9 }], 10)).toBe(10)
-    })
-
-    it('is not paid to somebody who did not work it', () => {
-        expect(sundayPremiumFor([{ date: SUN, hours: 0 }, monday], 10)).toBe(0)
-    })
-
-    it('is nothing when the restaurant has not set one', () => {
-        expect(sundayPremiumFor([sunday], 0)).toBe(0)
-        expect(sundayPremiumFor([sunday], null)).toBe(0)
-    })
-
-    it('follows the figure, since he said it may change', () => {
-        expect(sundayPremiumFor([sunday], 12.5)).toBe(12.5)
-    })
-})
-
 describe("one person's week", () => {
     const entries = [
         shift({ employee_id: 'e1', work_date: SUN, starts_at: '11:58:04', ends_at: '20:03:12' }),
@@ -287,7 +259,7 @@ describe("one person's week", () => {
         shift({ employee_id: 'e1', work_date: TUE, starts_at: '16:02:55', ends_at: '23:14:38' }),
     ]
     const row = personWeek({
-        person: aoife, weekStart: WEEK, entries, restaurantRate: 15, sundayPremium: 10,
+        person: aoife, weekStart: WEEK, entries, restaurantRate: 15,
     })
 
     it('holds bank holiday hours apart from normal ones', () => {
@@ -296,10 +268,9 @@ describe("one person's week", () => {
         expect(row.worked).toBe(23.88)
     })
 
-    it('charges their own rate and adds the Sunday tenner', () => {
+    it('charges their own rate', () => {
         expect(row.rate).toBe(16.5)
-        expect(row.premium).toBe(10)
-        expect(row.cost).toBe(Math.round((23.88 * 16.5 + 10) * 100) / 100)
+        expect(row.cost).toBe(Math.round(23.88 * 16.5 * 100) / 100)
     })
 
     it('says whether the rate is theirs or the restaurant’s', () => {
@@ -314,7 +285,7 @@ describe("one person's week", () => {
 
     it('leaves holiday out of worked and keeps it in the total', () => {
         const withHoliday = personWeek({
-            person: aoife, weekStart: WEEK, entries, restaurantRate: 15, sundayPremium: 10,
+            person: aoife, weekStart: WEEK, entries, restaurantRate: 15,
             absences: [{ employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: '2026-10-28', ends_on: '2026-10-28', hours: 8 }],
         })
         expect(withHoliday.worked).toBe(23.88)
@@ -336,21 +307,20 @@ describe("one person's week", () => {
 describe('the week', () => {
     const rows = [
         personWeek({
-            person: aoife, weekStart: WEEK, restaurantRate: 15, sundayPremium: 10,
+            person: aoife, weekStart: WEEK, restaurantRate: 15,
             entries: [shift({ employee_id: 'e1', work_date: SUN, starts_at: '12:00:00', ends_at: '20:00:00' })],
         }),
         personWeek({
-            person: cathal, weekStart: WEEK, restaurantRate: 15, sundayPremium: 10,
+            person: cathal, weekStart: WEEK, restaurantRate: 15,
             entries: [shift({ employee_id: 'e2', work_date: SUN, starts_at: '09:00:00', ends_at: '17:00:00' })],
         }),
     ]
-    const totals = weekTotals(rows, 10)
+    const totals = weekTotals(rows)
 
     it('totals the day in hours and in money', () => {
         expect(totals.perDay[0].hours).toBe(16)
-        // 8 at 16.50 and 8 at 15.00, plus a tenner each.
-        expect(totals.perDay[0].cost).toBe(272)
-        expect(totals.perDay[0].premium).toBe(20)
+        // 8 at 16.50 and 8 at 15.00.
+        expect(totals.perDay[0].cost).toBe(252)
     })
 
     it('marks the bank holiday on the day it falls', () => {
@@ -360,12 +330,11 @@ describe('the week', () => {
 
     it('adds the week up from the days', () => {
         expect(totals.hours).toBe(16)
-        expect(totals.cost).toBe(272)
-        expect(totals.premium).toBe(20)
+        expect(totals.cost).toBe(252)
     })
 
     it('copes with nobody at all', () => {
-        expect(weekTotals([], 10)).toMatchObject({ hours: 0, cost: 0, perDay: [] })
+        expect(weekTotals([])).toMatchObject({ hours: 0, cost: 0, perDay: [] })
     })
 })
 
@@ -374,10 +343,10 @@ describe('what the daily rollup gets', () => {
     // weeklyReport.js all read it for the percentage. The figure in it just
     // becomes true.
     const rows = [personWeek({
-        person: aoife, weekStart: WEEK, restaurantRate: 15, sundayPremium: 10,
+        person: aoife, weekStart: WEEK, restaurantRate: 15,
         entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
     })]
-    const rollup = labourRollup(rows, 10)
+    const rollup = labourRollup(rows)
 
     it('gives one row a day, in the shape that table holds', () => {
         expect(rollup).toHaveLength(7)

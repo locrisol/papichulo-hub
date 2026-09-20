@@ -97,7 +97,6 @@ export default function TimesheetPage() {
     const restaurantId = activeRestaurant?.id
     const dates = weekDates(weekStart)
     const weekEnd = addDays(weekStart, 6)
-    const premium = Number(activeRestaurant?.sunday_premium ?? 0)
     const restaurantRate = Number(activeRestaurant?.hourly_rate ?? 0)
 
     useEffect(() => {
@@ -159,10 +158,10 @@ export default function TimesheetPage() {
 
     const rows = useMemo(() => people.map(person => personWeek({
         person, weekStart, entries: shown, absences, shifts,
-        restaurantRate, sundayPremium: premium,
-    })), [people, weekStart, shown, absences, shifts, restaurantRate, premium])
+        restaurantRate,
+    })), [people, weekStart, shown, absences, shifts, restaurantRate])
 
-    const totals = weekTotals(rows, premium)
+    const totals = weekTotals(rows)
     const waiting = unanswered(rows)
 
     // Looked up fresh each render, so the dialog is always showing what the
@@ -593,7 +592,7 @@ export default function TimesheetPage() {
                             </button>
                         ))}
                     </div>
-                    <TimesheetDay rows={rows} date={openDay} sundayPremium={premium} />
+                    <TimesheetDay rows={rows} date={openDay} />
                 </div>
             ) : (
                 <div className={`${card} overflow-hidden`} ref={grid}>
@@ -604,7 +603,6 @@ export default function TimesheetPage() {
                         <TimesheetWeek
                             rows={rows}
                             dates={dates}
-                            sundayPremium={premium}
                             onType={type}
                             onSettle={settle}
                             onState={setState}
@@ -621,7 +619,6 @@ export default function TimesheetPage() {
                         <TimesheetPhone
                             rows={rows}
                             dates={dates}
-                            sundayPremium={premium}
                             onOpenDay={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
                         />
                     </div>

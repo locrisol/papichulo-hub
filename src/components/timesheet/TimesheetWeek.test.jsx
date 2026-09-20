@@ -18,13 +18,13 @@ function grid(over = {}) {
     const { entries = [], shifts = [], absences = [], people = [aoife, cathal] } = over
     const rows = people.map(person => personWeek({
         person, weekStart: WEEK, entries, absences, shifts,
-        restaurantRate: 15, sundayPremium: 10,
+        restaurantRate: 15,
     }))
     const calls = {
         onType: vi.fn(), onSettle: vi.fn(), onState: vi.fn(),
         onClear: vi.fn(), onAdd: vi.fn(), onHours: vi.fn(), onOpen: vi.fn(),
     }
-    render(<TimesheetWeek rows={rows} dates={DATES} sundayPremium={10} {...calls} />)
+    render(<TimesheetWeek rows={rows} dates={DATES} {...calls} />)
     return calls
 }
 
@@ -301,11 +301,11 @@ describe('what the cells say', () => {
     it('opens the day when the line is pressed', async () => {
         const onOpen = vi.fn()
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, restaurantRate: 15, sundayPremium: 10,
+            person: aoife, weekStart: WEEK, restaurantRate: 15,
             shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }], entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }],
         })]
         render(<TimesheetWeek
-            rows={rows} dates={DATES} sundayPremium={10} onOpen={onOpen}
+            rows={rows} dates={DATES} onOpen={onOpen}
             onType={vi.fn()} onSettle={vi.fn()} onState={vi.fn()} onClear={vi.fn()} onAdd={vi.fn()} onHours={vi.fn()}
         />)
         await userEvent.click(screen.getByText('+ comment'))
@@ -337,24 +337,14 @@ describe('the totals along the bottom', () => {
         grid({ entries })
         const foot = document.querySelector('tfoot')
         expect(within(foot).getAllByText('16.00')).toHaveLength(2)
-        // 8 at 16.50 and 8 at 15.00, plus a tenner each.
-        expect(within(foot).getAllByText('€272.00').length).toBeGreaterThan(0)
+        // 8 at 16.50 and 8 at 15.00.
+        expect(within(foot).getAllByText('€252.00').length).toBeGreaterThan(0)
     })
 
-    // The tenner gets its own line, because it is the first money in the Hub
-    // that is not hours times a rate and a figure appearing from nowhere inside
-    // a total is a figure somebody has to go looking for.
-    it('gives the Sunday premium a line of its own', () => {
+    // The Sunday tenner was designed in, built and then taken out again on his
+    // word. Nothing on the week is money that is not hours times a rate.
+    it('has no Sunday line on it', () => {
         grid({ entries })
-        const foot = document.querySelector('tfoot')
-        expect(within(foot).getByText('Sunday')).toBeInTheDocument()
-        expect(within(foot).getByText('€20.00')).toBeInTheDocument()
-    })
-
-    it('leaves that line out when nobody worked a Sunday', () => {
-        grid({
-            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }],
-        })
         expect(within(document.querySelector('tfoot')).queryByText('Sunday')).not.toBeInTheDocument()
     })
 })
