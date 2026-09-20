@@ -156,3 +156,29 @@ describe('a section bar says what the section is', () => {
         expect(missing.length, 'a bar with no title is a grey stripe').toBe(0)
     })
 })
+
+describe('a page does not decide how wide it is', () => {
+    // AppLayout decides, for every page, and says so in its own comment: it
+    // used to be a PageContainer a page wrapped itself in and thirteen of the
+    // twenty six never did, so the app had three widths depending where you
+    // were. The Timesheet then went and set its own 1400 and its own padding,
+    // which is how it came back.
+    //
+    // A pixel width is the tell. max-w-sm on a paragraph is centring a line of
+    // text and is nobody's business but that paragraph's.
+    const pages = sourcePaths.filter(p => p.startsWith('../pages/'))
+
+    // The public allergen page is outside the layout on purpose: it is what a
+    // customer gets from the QR code, with no sidebar and no header.
+    const OUTSIDE_THE_LAYOUT = ['../pages/public/PublicAllergensPage.jsx']
+
+    it('is watching the pages', () => {
+        expect(pages.length).toBeGreaterThan(20)
+    })
+
+    it.each(pages)('%s sets no width of its own', path => {
+        if (OUTSIDE_THE_LAYOUT.includes(path)) return
+        const found = sources[path].match(/max-w-\[\d+px\]/g) || []
+        expect(found, 'AppLayout decides how wide a page is').toEqual([])
+    })
+})

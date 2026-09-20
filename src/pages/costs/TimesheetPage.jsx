@@ -311,13 +311,13 @@ export default function TimesheetPage() {
     }
 
     if (!restaurantId) {
-        return <p className="p-4 text-sm text-muted">Pick a restaurant first.</p>
+        return <p className="text-sm text-muted">Pick a restaurant first.</p>
     }
 
     return (
-        <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
+        <>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <h1 className={pageTitle}>Timesheet</h1>
+                <h2 className={pageTitle}>Timesheet</h2>
                 <div className={segmentTrack}>
                     {VIEWS.map(v => (
                         <button
@@ -449,6 +449,6 @@ export default function TimesheetPage() {
                     onNote={setNote}
                 />
             )}
-        </div>
+        </>
     )
 }
