@@ -75,6 +75,16 @@ export default function CalendarPage() {
 
     const [entries, setEntries] = useState([])
     const [events, setEvents] = useState([])
+    // Everything still waiting on somebody, whatever month is on screen.
+    //
+    // **Kept apart from the events above and that is the whole point.** Those
+    // are fetched for the window the view is showing, about six weeks for a
+    // month, so a conference on 25 October was simply not loaded while
+    // September was open and could not appear in the list. On a phone, which
+    // opens on the list view and its 120 days, the same five were waiting.
+    // A decision waiting on somebody must not appear and disappear depending
+    // on which month they happen to be looking at.
+    const [pending, setPending] = useState([])
     const [pairings, setPairings] = useState([])
     const [deciding, setDeciding] = useState(false)
     // How many dates carry the open listing's name at the same place. Counted
@@ -152,7 +162,7 @@ export default function CalendarPage() {
                 }
             }
 
-            const [diary, eventRes, notes, places, nearRes] = await Promise.all([
+            const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
                 supabase.from('diary_entries').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
@@ -177,11 +187,17 @@ export default function CalendarPage() {
                     .select(PAIRING_COLUMNS)
                     .eq('restaurant_id', activeRestaurant.id)
                     .order('sort_order'),
+                // Not bounded by the view. Anything unchecked that has not
+                // happened yet, however far out it is.
+                supabase.from('events').select('*')
+                    .eq('review', 'found')
+                    .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
+                    .order('event_date'),
             ])
 
             if (!alive) return
 
-            const failed = [diary, eventRes, notes, places, nearRes].find(r => r.error)
+            const failed = [diary, eventRes, notes, places, nearRes, pendRes].find(r => r.error)
             if (failed) setError(friendlyError(failed.error))
 
             // Only this restaurant's. The policy answers whether you may
@@ -191,6 +207,7 @@ export default function CalendarPage() {
             setEntries((diary.data || []).filter(e => atRestaurant(e, activeRestaurant.id)))
             setEvents(eventRes.data || [])
             setPairings(nearRes.data || [])
+            setPending(pendRes.data || [])
             setDayNotes(notes.data || [])
             setRestaurants(places.data || [])
             setLoading(false)
@@ -198,7 +215,7 @@ export default function CalendarPage() {
 
         load()
         return () => { alive = false }
-    }, [activeRestaurant, canWrite, from, to, refresh])
+    }, [activeRestaurant, canWrite, from, to, today, refresh])
 
     // One pass, so this screen and the roster cannot disagree about which
     // listing belongs to which shop. See lib/nearby.
@@ -210,7 +227,13 @@ export default function CalendarPage() {
     // The ones nobody has settled, and only what is still to come. A reading of
     // something that has already happened is not a decision anybody needs to
     // make, and offering it is how a list stops being opened.
-    const found = useMemo(() => waiting(nearby, today), [nearby, today])
+    //
+    // Off its own list rather than off what the calendar is drawing, so what is
+    // waiting does not change when somebody steps to another month.
+    const found = useMemo(
+        () => waiting(nearbyRows(pending, pairings, activeRestaurant), today),
+        [pending, pairings, activeRestaurant, today],
+    )
 
     const items = useMemo(
         () => calendarItems({ entries, nearby, dayNotes }),
@@ -338,6 +361,7 @@ export default function CalendarPage() {
             : e.id === event.id)
 
         setEvents(was => was.map(e => (hits(e) ? { ...e, display_name } : e)))
+        setPending(was => was.map(e => (hits(e) ? { ...e, display_name } : e)))
         setOpenEvent(was => (was?.event && hits(was.event)
             ? { ...was, event: { ...was.event, display_name } }
             : was))
@@ -389,6 +413,9 @@ export default function CalendarPage() {
             return
         }
         setEvents(was => was.map(e => (e.id === event.id ? { ...e, ...change } : e)))
+        // Settled, so it leaves the waiting list whether or not the calendar
+        // happens to be drawing it.
+        setPending(was => was.filter(e => e.id !== event.id))
     }
 
     // The jump says what pressing it does, and only says where you are when
