@@ -5,7 +5,7 @@ import { friendlyError } from '@/lib/errors'
 import { fullDate, shortDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
-import { readTimesheet, fileFits } from '@/lib/timesheetImport'
+import { readTimesheet, fileFits, insideWeek } from '@/lib/timesheetImport'
 import { planImport } from '@/lib/timesheet'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -63,10 +63,13 @@ export default function ImportDialog({
         setBusy(false)
         if (failed) { setError(friendlyError(failed)); return }
 
-        setRead(held)
+        // Only the days of the week that is open. A range picked by hand
+        // often takes in a day either side.
+        const mine = insideWeek(held, weekStart, weekEnd)
+        setRead(mine)
         setMappings(data || [])
 
-        const plan = planImport({ shifts: held.shifts, mappings: data || [], entries, absences })
+        const plan = planImport({ shifts: mine.shifts, mappings: data || [], entries, absences })
         setStage(plan.unknown.length ? 'names' : 'ready')
     }
 
@@ -175,14 +178,22 @@ export default function ImportDialog({
                     <div>
                         <p className="text-sm text-muted mb-3">
                             The week of {shortDate(weekStart)} to {shortDate(weekEnd)}. The file says
-                            which week and which restaurant it is for, so a wrong one is refused
-                            before anything is written.
+                            which days and which restaurant it is for, so a wrong one is refused
+                            before anything is written. It can cover more than the week; anything
+                            outside is left for the week it belongs to.
                         </p>
-                        <label className={labelClass} htmlFor="till-file">The report, as a CSV</label>
+                        {/* XML for preference. Crystal will export this ten
+                            ways and XML is the only one with named fields and
+                            ISO timestamps in it: the CSV works and is proven,
+                            but it is read by counting along from a marker, so a
+                            column moving would make it quietly wrong. */}
+                        <label className={labelClass} htmlFor="till-file">
+                            The report. Export it as XML if you can, or CSV.
+                        </label>
                         <input
                             id="till-file"
                             type="file"
-                            accept=".csv,text/csv"
+                            accept=".xml,.csv,text/xml,application/xml,text/csv"
                             disabled={busy}
                             className={fieldClass}
                             onChange={e => take(e.target.files?.[0])}
@@ -244,9 +255,9 @@ export default function ImportDialog({
 // wrong week, and a file that will not parse is a third thing.
 function refusal(fits, weekStart, weekEnd) {
     if (fits.why === 'week') {
-        return `That file is for ${fullDate(fits.from)} to ${fullDate(fits.to)}. `
-            + `This week is ${fullDate(weekStart)} to ${fullDate(weekEnd)}. `
-            + 'Open the week the file is for, or export the right one.'
+        return `That file covers ${fullDate(fits.from)} to ${fullDate(fits.to)}, `
+            + `which does not take in the whole of ${fullDate(weekStart)} to ${fullDate(weekEnd)}. `
+            + 'Open the week the file is for, or export one that covers this one.'
     }
     if (fits.why === 'restaurant') {
         return `That file says it is for ${fits.found}, which is not the restaurant you are in.`
@@ -326,6 +337,9 @@ function Ready({ plan, read }) {
                         {read.breaks.length} break lines dropped, worth {fmtHours(read.breakHours)} hours.
                         Breaks are paid here.
                     </Line>
+                )}
+                {read.outside > 0 && (
+                    <Line>{read.outside} outside this week, left for the week they belong to</Line>
                 )}
             </ul>
             {plan.asks.length > 0 && (

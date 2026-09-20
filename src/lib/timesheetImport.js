@@ -116,7 +116,18 @@ export const BREAK_KIND = 'Unpaid Meal break'
 const AT = { kind: 2, start: 3, end: 4, hours: 7, wage: 8 }
 
 // Everything the file holds, before anybody decides what to do with it.
+// The one thing the rest of the app calls. It picks the reader by what the file
+// actually is rather than by what it is named, because a browser will hand you
+// an .xml with a text/plain type as happily as not.
 export function readTimesheet(text) {
+    const body = String(text ?? '').trimStart()
+    if (body.startsWith('<?xml') || body.startsWith('<CrystalReport')) {
+        return readTimesheetXml(text)
+    }
+    return readTimesheetCsv(text)
+}
+
+export function readTimesheetCsv(text) {
     const rows = csvRows(text)
     const header = fileHeader(rows)
 
@@ -170,7 +181,12 @@ export function fileFits({ header, restaurantName, weekStart, weekEnd }) {
     if (!header?.from || !header?.to) {
         return { ok: false, why: 'unreadable' }
     }
-    if (header.from !== weekStart || header.to !== weekEnd) {
+    // **Covers the week, rather than matches it.** Pixel Point lets you pick
+    // the range by hand and a real export came back as the 13th to the 20th
+    // for a week that runs the 13th to the 19th. Demanding the exact days would
+    // have refused a perfectly good file over a date somebody dragged one too
+    // far. Anything outside the week is dropped rather than imported.
+    if (header.from > weekStart || header.to < weekEnd) {
         return { ok: false, why: 'week', from: header.from, to: header.to }
     }
     // Only checked when the file says. An older export might not carry it, and
@@ -189,4 +205,134 @@ function sameShop(a, b) {
     const one = tidy(a)
     const two = tidy(b)
     return one.includes(two) || two.includes(one)
+}
+
+// ---------------------------------------------------------------------------
+// The same report as XML, which is the one to use
+// ---------------------------------------------------------------------------
+
+// Crystal will export this report ten ways and XML is the best of them, by a
+// distance. The CSV below it works and is proven against a real week, but it is
+// held together by counting: **every line repeats the whole report header and
+// the fields sit at fixed offsets after the literal "Reference #:"**, so the day
+// Pixel Point moves a column the reader is quietly wrong rather than broken.
+//
+// The XML has none of that:
+//
+//   - fields are **named** (`punchedIn`, `shiftType`, `shiftHoursTotal`)
+//   - a timestamp carries an **ISO** value beside the printed one, so there is
+//     no reading 06/09 as the sixth of September and hoping
+//   - an employee is a **group**, so a name is structural rather than "the
+//     field before Reference #:"
+//   - the header appears once
+//
+// Both are kept and the reader picks by what the file starts with, because a
+// week already exported as CSV should still go in.
+
+function textOf(node) {
+    return node ? String(node.textContent || '').trim() : ''
+}
+
+// The printed value is what a person would read, the Value is what a machine
+// should. For a time the Value is ISO and unambiguous, so it wins.
+function fieldValue(section, name) {
+    const field = section.querySelector(`Field[Name="${name}"] Value`)
+        || section.querySelector(`Field[Name="${name}"] FormattedValue`)
+    return textOf(field)
+}
+
+export function readTimesheetXml(text) {
+    const doc = new DOMParser().parseFromString(String(text ?? ''), 'application/xml')
+    if (doc.querySelector('parsererror')) return empty()
+
+    // The restaurant, off the store field rather than off a position in a row.
+    const restaurant = textOf(doc.querySelector('Field[Name="DESCRIPTION1"] Value'))
+        || textOf(doc.querySelector('Field[Name="DESCRIPTION1"] FormattedValue'))
+        || null
+
+    // "    From\t: 13 September 2026\n    To\t: 20 September 2026"
+    let from = null
+    let to = null
+    for (const t of doc.querySelectorAll('Text TextValue')) {
+        const said = textOf(t).replace(/\s+/g, ' ')
+        const range = /From\s*:?\s*(.+?)\s+To\s*:?\s*(.+)$/.exec(said)
+        if (range && !from) {
+            from = longDate(range[1])
+            to = longDate(range[2])
+        }
+    }
+
+    const shifts = []
+    const breaks = []
+
+    // One group per person, with the shifts inside it. The name belongs to the
+    // group, so a row does not have to carry it and cannot lose it.
+    for (const group of doc.querySelectorAll('Group[Level="2"]')) {
+        const name = (textOf(group.querySelector('Field[Name="GroupNameempName1"] Value'))
+            || textOf(group.querySelector('Field[Name="GroupNameempName1"] FormattedValue'))).trim()
+        if (!name) continue
+
+        for (const section of group.querySelectorAll('Details Section')) {
+            const kind = fieldValue(section, 'shiftType1')
+            const started = isoStamp(fieldValue(section, 'punchedIn1'))
+            const ended = isoStamp(fieldValue(section, 'punchedOut1'))
+            if (!started || !ended) continue
+
+            const line = {
+                name,
+                kind,
+                work_date: started.date,
+                starts_at: started.time,
+                ends_at: ended.time,
+                hours: Number(fieldValue(section, 'shiftHoursTotal1')),
+                ends_next_day: ended.date !== started.date,
+            }
+
+            if (kind === BREAK_KIND || line.hours < 0) breaks.push(line)
+            else shifts.push(line)
+        }
+    }
+
+    return {
+        restaurant,
+        from,
+        to,
+        shifts,
+        breaks,
+        breakHours: Math.round(breaks.reduce((t, b) => t + Math.abs(b.hours || 0), 0) * 100) / 100,
+        names: [...new Set(shifts.map(s => s.name))].sort(),
+    }
+}
+
+// "2026-09-14T08:30:03", which is the whole reason to prefer this format.
+export function isoStamp(text) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(String(text ?? '').trim())
+    if (!m) return null
+    return { date: `${m[1]}-${m[2]}-${m[3]}`, time: `${m[4]}:${m[5]}:${m[6]}` }
+}
+
+function empty() {
+    return { restaurant: null, from: null, to: null, shifts: [], breaks: [], breakHours: 0, names: [] }
+}
+
+// Only the days of the week that is open.
+//
+// A file may cover more than a week, because the range is picked by hand. What
+// is outside is not an error and not something to import: it belongs to another
+// week's timesheet and will be read there.
+export function insideWeek(read, weekStart, weekEnd) {
+    const mine = line => line.work_date >= weekStart && line.work_date <= weekEnd
+    const shifts = (read?.shifts || []).filter(mine)
+    const breaks = (read?.breaks || []).filter(mine)
+
+    return {
+        ...read,
+        shifts,
+        breaks,
+        breakHours: Math.round(breaks.reduce((t, b) => t + Math.abs(b.hours || 0), 0) * 100) / 100,
+        names: [...new Set(shifts.map(s => s.name))].sort(),
+        // Said out loud so the screen can mention it rather than quietly
+        // dropping rows somebody exported on purpose.
+        outside: (read?.shifts || []).length - shifts.length,
+    }
 }

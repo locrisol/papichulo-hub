@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-    csvRows, longDate, stamp, fileHeader, readTimesheet, fileFits, BREAK_KIND,
+    csvRows, longDate, stamp, fileHeader, readTimesheet, fileFits, insideWeek,
+    isoStamp, BREAK_KIND,
 } from '@/lib/timesheetImport'
 
 // The real export's shape, with invented people.
@@ -177,5 +179,111 @@ describe('the pieces', () => {
         expect(fileHeader(csvRows(FILE))).toMatchObject({
             restaurant: 'Papi Chulo Point Campus', from: '2026-09-06', to: '2026-09-12',
         })
+    })
+})
+
+// The same report as XML, which is what Crystal should be asked for. It is the
+// one export with named fields and ISO timestamps, so nothing is read by
+// counting along from a marker and no date has to be guessed at.
+const XML = `<?xml version="1.0" encoding="UTF-8" ?>
+<CrystalReport xmlns="urn:crystal-reports:schemas:report-detail">
+<Group Level="1"><GroupHeader><Section SectionNumber="0">
+<Text Name="Text7"><TextValue>    From	: 13 September 2026
+    To	: 20 September 2026</TextValue></Text>
+<Field Name="DESCRIPTION1" FieldName="{StoreInfo.DESCRIPTION}"><FormattedValue>Papi Chulo Point Campus</FormattedValue><Value>Papi Chulo Point Campus</Value></Field>
+</Section></GroupHeader>
+<Group Level="2"><GroupHeader><Section SectionNumber="0">
+<Field Name="GroupNameempName1" FieldName="GroupName ({@empName})"><FormattedValue> Rosa</FormattedValue><Value> Rosa</Value></Field>
+</Section></GroupHeader>
+<Details Level="3"><Section SectionNumber="0">
+<Field Name="shiftType1"><FormattedValue>Shift</FormattedValue><Value>Shift</Value></Field>
+<Field Name="punchedIn1"><FormattedValue>14/09/2026  08:30:03</FormattedValue><Value>2026-09-14T08:30:03</Value></Field>
+<Field Name="punchedOut1"><FormattedValue>14/09/2026  17:16:16</FormattedValue><Value>2026-09-14T17:16:16</Value></Field>
+<Field Name="shiftHoursTotal1"><FormattedValue>8.77</FormattedValue><Value>8.77</Value></Field>
+</Section></Details>
+<Details Level="3"><Section SectionNumber="0">
+<Field Name="shiftType1"><FormattedValue>Unpaid Meal break</FormattedValue><Value>Unpaid Meal break</Value></Field>
+<Field Name="punchedIn1"><FormattedValue>14/09/2026  14:09:20</FormattedValue><Value>2026-09-14T14:09:20</Value></Field>
+<Field Name="punchedOut1"><FormattedValue>14/09/2026  15:09:06</FormattedValue><Value>2026-09-14T15:09:06</Value></Field>
+<Field Name="shiftHoursTotal1"><FormattedValue>-1.00</FormattedValue><Value>-1.00</Value></Field>
+</Section></Details>
+<Details Level="3"><Section SectionNumber="0">
+<Field Name="shiftType1"><FormattedValue>Shift</FormattedValue><Value>Shift</Value></Field>
+<Field Name="punchedIn1"><FormattedValue>20/09/2026  09:00:00</FormattedValue><Value>2026-09-20T09:00:00</Value></Field>
+<Field Name="punchedOut1"><FormattedValue>20/09/2026  17:00:00</FormattedValue><Value>2026-09-20T17:00:00</Value></Field>
+<Field Name="shiftHoursTotal1"><FormattedValue>8.00</FormattedValue><Value>8.00</Value></Field>
+</Section></Details>
+</Group>
+</Group>
+</CrystalReport>`
+
+describe('the XML export, which is the better one', () => {
+    const read = readTimesheet(XML)
+
+    it('is picked by what the file holds, not by its name', () => {
+        expect(read.shifts.length).toBeGreaterThan(0)
+    })
+
+    it('takes the restaurant off a named field', () => {
+        expect(read.restaurant).toBe('Papi Chulo Point Campus')
+    })
+
+    it('takes the range off the header', () => {
+        expect(read.from).toBe('2026-09-13')
+        expect(read.to).toBe('2026-09-20')
+    })
+
+    // The whole reason to prefer it. No reading 06/09 as the sixth and hoping.
+    it('takes the ISO value rather than the printed one', () => {
+        expect(read.shifts[0]).toMatchObject({
+            work_date: '2026-09-14', starts_at: '08:30:03', ends_at: '17:16:16',
+        })
+    })
+
+    it('takes the name off the group it belongs to', () => {
+        expect(read.names).toEqual(['Rosa'])
+    })
+
+    it('still drops the break lines', () => {
+        expect(read.breaks).toHaveLength(1)
+        expect(read.breakHours).toBe(1)
+    })
+
+    it('gives nothing back for something that is not a report', () => {
+        expect(readTimesheet('<?xml version="1.0"?><nonsense/>').shifts).toEqual([])
+    })
+
+    it.each([
+        ['2026-09-14T08:30:03', { date: '2026-09-14', time: '08:30:03' }],
+        ['', null],
+        ['14/09/2026 08:30:03', null],
+    ])('reads the ISO stamp %s', (text, want) => {
+        expect(isoStamp(text)).toEqual(want)
+    })
+})
+
+describe('a file that covers more than the week', () => {
+    // Real: Pixel Point lets you pick the range and one came back as the 13th
+    // to the 20th for a week that runs the 13th to the 19th. Refusing that
+    // would turn a good file away over a date dragged one day too far.
+    const header = { restaurant: 'Papi Chulo Point Campus', from: '2026-09-13', to: '2026-09-20' }
+    const week = { weekStart: '2026-09-13', weekEnd: '2026-09-19' }
+
+    it('is accepted', () => {
+        expect(fileFits({ header, restaurantName: 'Point Campus', ...week })).toEqual({ ok: true })
+    })
+
+    it('is refused when it does not take the whole week in', () => {
+        const short = { ...header, from: '2026-09-15' }
+        expect(fileFits({ header: short, restaurantName: 'Point Campus', ...week }))
+            .toMatchObject({ ok: false, why: 'week' })
+    })
+
+    it('leaves the days outside it for the week they belong to', () => {
+        const read = readTimesheet(XML)
+        const mine = insideWeek(read, '2026-09-13', '2026-09-19')
+        expect(mine.shifts).toHaveLength(1)
+        expect(mine.outside).toBe(1)
+        expect(mine.breaks).toHaveLength(1)
     })
 })
