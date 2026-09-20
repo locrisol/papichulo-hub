@@ -48,10 +48,6 @@ export const STATE_KEYS = [
     { key: 'r', value: 'trial', label: 'Trial', absence: false },
 ]
 
-// A bank holiday is not a state somebody types. It is a fact about the date,
-// so it is never in KINDS and never in STATE_KEYS.
-export const BANK_HOLIDAY_COLOUR = '#B08A2E'
-
 // Where a row's times came from. The two that came off the clock are defended
 // differently from the two that did not: they are never quietly replaced by a
 // second import, changing one asks for a comment, and rubbing both times out

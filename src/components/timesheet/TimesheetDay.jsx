@@ -5,7 +5,7 @@ import {
     toMinutes, toTime, shiftMinutes, shortTime, fmtHours, timelineRange, tint, hourLabelStep,
 } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
-import { BANK_HOLIDAY_COLOUR } from '@/lib/timesheet'
+import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { kindOf as absenceKind } from '@/lib/absences'
 
@@ -153,7 +153,7 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                 <span className="text-sm font-bold text-gray-900">
                     {fullDate(date)}
                     {bankHoliday && (
-                        <span className="ml-2" style={{ color: BANK_HOLIDAY_COLOUR }}>{bankHoliday.name}</span>
+                        <span className="ml-2" style={{ color: BANK_HOLIDAY_INK }}>{bankHoliday.name}</span>
                     )}
                 </span>
                 <span className="text-sm font-bold text-gray-900 tabular-nums">

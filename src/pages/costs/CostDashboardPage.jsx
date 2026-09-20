@@ -13,6 +13,7 @@ import { friendlyError } from '@/lib/errors'
 import { tendersToShow } from '@/lib/salesTenders'
 import WeekTakenChart from '@/components/costs/WeekTakenChart'
 import { DAY_NAMES } from '@/lib/events'
+import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -516,7 +517,21 @@ export default function CostDashboardPage() {
                         const row = salesByDate[d]
                         return (
                             <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
-                                <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
+                                <span className="text-muted whitespace-nowrap">
+                                    {DAY_NAMES[i]} {shortDate(d)}
+                                    {/* Labour and sales both move on one, so a
+                                        percentage out of line on a Monday in
+                                        October has an answer written beside
+                                        it. */}
+                                    {bankHolidayOn(d) && (
+                                        <span
+                                            className="ml-1.5 text-xs font-bold"
+                                            style={{ color: BANK_HOLIDAY_INK }}
+                                        >
+                                            {bankHolidayOn(d).short}
+                                        </span>
+                                    )}
+                                </span>
                                 {!row ? (
                                     <span className="text-muted italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (

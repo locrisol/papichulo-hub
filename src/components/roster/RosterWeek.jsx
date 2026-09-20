@@ -19,6 +19,9 @@ import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
     shiftEdges,
 } from '@/lib/roster'
+import {
+    bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH,
+} from '@/lib/bankHolidays'
 
 // The whole week at once, laid out the way the one that goes out to the staff
 // has always been laid out.
@@ -182,12 +185,29 @@ export default function RosterWeek({
                         <th className="px-3 py-2 text-left text-xs w-36 sticky left-0 z-10 bg-sidebar z-10">
                             Staff
                         </th>
-                        {dates.map((d, i) => (
-                            <th key={d} className={headCell}>
-                                <span className="block">{DAY_NAMES[i]}</span>
-                                <span className="block font-normal opacity-75">{fullDate(d)}</span>
-                            </th>
-                        ))}
+                        {dates.map((d, i) => {
+                            // The ten Irish public holidays are worked out, not
+                            // typed, so the week says which one it is without
+                            // anybody having ticked anything. The tick is still
+                            // honoured: it is how a manager says this
+                            // restaurant is treating a day as one, and that is
+                            // what picks the bank holiday opening hours.
+                            const holiday = bankHolidayFor(d, noteFor(d))
+                            return (
+                                <th key={d} className={headCell}>
+                                    <span className="block">{DAY_NAMES[i]}</span>
+                                    <span className="block font-normal opacity-75">{fullDate(d)}</span>
+                                    {holiday && (
+                                        <span
+                                            className="block font-bold text-[0.625rem]"
+                                            style={{ color: BANK_HOLIDAY_ON_DARK }}
+                                        >
+                                            {holiday.short}
+                                        </span>
+                                    )}
+                                </th>
+                            )
+                        })}
                         {anyHoliday && (
                             <th className="px-2 py-2 text-center text-xs w-20 border-r border-white/20">
                                 Holiday
@@ -212,18 +232,38 @@ export default function RosterWeek({
                         {dates.map(d => {
                             const note = noteFor(d)
                             const hours = hoursForDate(openingHours, note, d)
+                            const holiday = bankHolidayFor(d, note)
                             return (
-                                <td key={d} className={`${cell} text-center text-xs border-slate-200 ${
-                                    note?.is_closed ? 'bg-red-100 text-red-800 font-semibold'
-                                        : note?.is_bank_holiday ? 'bg-blue-100 text-blue-800' : 'text-slate-700'
-                                }`}>
+                                <td
+                                    key={d}
+                                    className={`${cell} text-center text-xs border-slate-200 ${
+                                        note?.is_closed ? 'bg-red-100 text-red-800 font-semibold' : 'text-slate-700'
+                                    }`}
+                                    style={holiday && !note?.is_closed
+                                        ? { backgroundColor: BANK_HOLIDAY_WASH }
+                                        : undefined}
+                                >
                                     {note?.is_closed
                                         ? 'Closed'
                                         : hours
                                             ? `${hours.open} to ${hours.close}`
                                             : '—'}
-                                    {note?.is_bank_holiday && !note?.is_closed && (
-                                        <span className="block text-[0.625rem]">Bank holiday</span>
+                                    {/* What the store is actually doing, which
+                                        is the thing a roster needs. A day the
+                                        calendar calls a bank holiday and nobody
+                                        has ticked opens on its usual hours, and
+                                        a week rostered against hours the store
+                                        will not keep is the mistake worth
+                                        stopping here. */}
+                                    {holiday && !note?.is_closed && (
+                                        <span
+                                            className="block text-[0.625rem] font-semibold"
+                                            style={{ color: BANK_HOLIDAY_INK }}
+                                        >
+                                            {note?.is_bank_holiday
+                                                ? 'bank holiday hours'
+                                                : 'usual hours, not bank holiday ones'}
+                                        </span>
                                     )}
                                 </td>
                             )

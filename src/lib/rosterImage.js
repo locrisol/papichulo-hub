@@ -10,6 +10,7 @@
 
 import { sheetLayout, wrapLines, AWAY } from '@/lib/rosterShare'
 import { kindColours } from '@/lib/diary'
+import { BANK_HOLIDAY_ON_DARK } from '@/lib/bankHolidays'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -314,6 +315,11 @@ export function drawWeek(canvas, table) {
         text(h.day.toUpperCase(), x, y + 15, { align: 'center', colour: '#ffffff' })
         font(11)
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
+        // Gold on the green, the same as every screen shows it.
+        if (h.holiday) {
+            font(11, '700')
+            text(h.holiday.toUpperCase(), x, y + 47, { align: 'center', colour: BANK_HOLIDAY_ON_DARK })
+        }
     })
     font(13, '700')
     if (l.holidayCol) {

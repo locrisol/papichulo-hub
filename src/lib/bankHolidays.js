@@ -92,11 +92,37 @@ function holidaysFor(year) {
     return byYear.get(year)
 }
 
+// The three colours a bank holiday is drawn in, in one place because every
+// screen is about to use them and a fourth gold would be a fourth thing to
+// learn. Gold rather than any colour already spoken for: red is closed, blue is
+// a holiday somebody booked, orange is the app's accent.
+export const BANK_HOLIDAY_INK = '#B08A2E'      // on white
+export const BANK_HOLIDAY_ON_DARK = '#E8C878'  // on the sidebar green
+export const BANK_HOLIDAY_WASH = '#FBF4E2'     // behind a cell or a column
+
 // The one every screen calls. Null when it is an ordinary day.
 export function bankHolidayOn(dateStr) {
     const date = String(dateStr || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
     return holidaysFor(Number(date.slice(0, 4))).get(date) || null
+}
+
+// What a day should be called, given what the calendar says and what somebody
+// ticked on the roster.
+//
+// **Two sources, and they answer different questions.** The computed list says
+// whether the date is one of the ten Irish public holidays, which is a fact and
+// needs nobody to type it. `day_notes.is_bank_holiday` is a manager saying this
+// restaurant is treating a day as one, which is what picks the bank holiday
+// opening hours, and there are days that deserve that and are not on any list.
+//
+// So the fact wins where there is one, the tick is honoured where there is not,
+// and no screen has to know both exist.
+export function bankHolidayFor(dateStr, dayNote) {
+    const real = bankHolidayOn(dateStr)
+    if (real) return real
+    if (dayNote?.is_bank_holiday) return { date: dateStr, name: 'Bank holiday', short: 'Bank hol' }
+    return null
 }
 
 export function isBankHoliday(dateStr) {

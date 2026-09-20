@@ -13,6 +13,7 @@ import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, pr
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
+import { bankHolidayOn, BANK_HOLIDAY_ON_DARK } from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -759,12 +760,28 @@ export default function WeeklySalesPage() {
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
                     &nbsp;
                 </th>
-                {dates.map((d, i) => (
-                    <th key={d} className="px-1.5 py-2 text-center w-24">
-                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
-                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
-                    </th>
-                ))}
+                {dates.map((d, i) => {
+                    const holiday = bankHolidayOn(d)
+                    return (
+                        <th key={d} className="px-1.5 py-2 text-center w-24">
+                            <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                            <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
+                            {/* A bank holiday takes a different week and a
+                                different wage bill, so a week being read
+                                against last year's should say which days were
+                                one. Worked out from the date, so it is on every
+                                week ever typed without anybody going back. */}
+                            {holiday && (
+                                <div
+                                    className="text-[0.65rem] font-bold"
+                                    style={{ color: BANK_HOLIDAY_ON_DARK }}
+                                >
+                                    {holiday.short}
+                                </div>
+                            )}
+                        </th>
+                    )
+                })}
                 <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
             </tr>
         )

@@ -4,6 +4,7 @@ import { shortClock, maskTime, settleTime } from '@/lib/clock'
 import { STATE_KEYS, kindOf, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours, kindOf as absenceKind } from '@/lib/absences'
 import { numberField } from '@/lib/numberInput'
+import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import Modal from '@/components/ui/Modal'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import { modalFooter, secondaryButton, labelClass, fieldClass, rowButton } from '@/lib/controlStyles'
@@ -30,7 +31,7 @@ export default function DayEditModal({
                 <p className="text-sm font-semibold text-gray-900 mb-1">{fullDate(cell.date)}</p>
 
                 {cell.bankHoliday && (
-                    <p className="text-xs font-bold mb-3" style={{ color: '#B08A2E' }}>
+                    <p className="text-xs font-bold mb-3" style={{ color: BANK_HOLIDAY_INK }}>
                         {cell.bankHoliday.name}
                     </p>
                 )}

@@ -245,10 +245,15 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     const headTop = y
     box(l.pad, y, pageWidth - l.pad * 2, h(l.headH), GREEN)
     at('STAFF', l.pad + 8, y + h(l.headH) / 2 + 3, { size: 8, style: 'bold', rgb: [255, 255, 255] })
+    const GOLD = [232, 200, 120]
     table.head.forEach((head, i) => {
         const x = l.columnX(i) + l.dayCol / 2
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
         at(head.label, x, y + h(30), { align: 'center', size: 7, rgb: [225, 230, 226] })
+        // Gold on the green, the same as every screen shows it.
+        if (head.holiday) {
+            at(head.holiday.toUpperCase(), x, y + h(44), { align: 'center', size: 7, style: 'bold', rgb: GOLD })
+        }
     })
     if (l.holidayCol) {
         at('HOLIDAY', l.holidayCentreX, y + h(l.headH) / 2 + 3, {

@@ -8,6 +8,7 @@ import { fmtMoney, num } from '@/lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
+import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
@@ -451,6 +452,18 @@ export default function SalesPage() {
                             reading like a stray label. */}
                         {recordId && (
                             <p className="text-xs text-amber-600 font-medium mt-2">Existing record</p>
+                        )}
+                        {/* Which one it is, not just that it is one. A day
+                            taking bank holiday money is a day to compare with
+                            the last bank holiday rather than with last Monday,
+                            and that only works if the screen says so. */}
+                        {bankHolidayOn(saleDate) && (
+                            <p
+                                className="text-xs font-bold mt-2"
+                                style={{ color: BANK_HOLIDAY_INK }}
+                            >
+                                {bankHolidayOn(saleDate).name}
+                            </p>
                         )}
                     </div>
 

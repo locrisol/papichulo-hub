@@ -3,6 +3,7 @@ import { shortDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { weekTotals } from '@/lib/timesheet'
 import { tableHeadRow } from '@/lib/controlStyles'
+import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import TimeCell from '@/components/timesheet/TimeCell'
 import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 
@@ -94,7 +95,7 @@ export default function TimesheetWeek({
                                     {day?.bankHoliday && (
                                         <span
                                             className="block normal-case tracking-normal text-[0.65rem] font-bold"
-                                            style={{ color: '#E8C878' }}
+                                            style={{ color: BANK_HOLIDAY_ON_DARK }}
                                         >
                                             {day.bankHoliday.short}
                                         </span>
@@ -124,7 +125,7 @@ export default function TimesheetWeek({
                                 <td
                                     key={cell.date}
                                     className="px-3 py-2 align-top"
-                                    style={cell.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}
+                                    style={cell.bankHoliday ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
                                 >
                                     <TimeCell
                                         cell={cell}
@@ -163,7 +164,7 @@ export default function TimesheetWeek({
                     <tr className="border-t-2 border-gray-300 bg-gray-200">
                         <Foot>Hours</Foot>
                         {totals.perDay.map(day => (
-                            <Foot key={day.date} right style={day.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}>
+                            <Foot key={day.date} right style={day.bankHoliday ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}>
                                 {day.hours.toFixed(2)}
                             </Foot>
                         ))}
