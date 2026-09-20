@@ -41,6 +41,7 @@
 
 CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
 CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
@@ -83,8 +84,8 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "usual_extras" "jsonb",
     "roster_note" "text",
     "mail_from" "text",
-    "google_calendar_id" "text",
     "sort_order" integer DEFAULT 0 NOT NULL,
+    "google_calendar_id" "text",
     "watch_city_events" boolean DEFAULT true NOT NULL,
     "latitude" numeric(9,6),
     "longitude" numeric(9,6),
@@ -114,9 +115,9 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "role" character varying(20) NOT NULL,
     "restaurant_id" "uuid",
     "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
     "is_test" boolean DEFAULT false NOT NULL,
     "landing_page" "text",
-    "created_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee'))),
     CONSTRAINT "users_landing_page_is_a_path" CHECK ((("landing_page" IS NULL) OR ("landing_page" ~ '^/[a-z0-9/-]{0,60}$')))
 );
@@ -940,8 +941,6 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
     "name" "text" NOT NULL,
     "short_name" "text",
     "ticketmaster_venue_id" "text",
-    "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
-    "page_depth" integer DEFAULT 1 NOT NULL,
     "page_url" "text",
     "capacity" integer,
     "latitude" numeric(9,6),
@@ -950,6 +949,8 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
     "last_read_count" integer,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
+    "page_depth" integer DEFAULT 1 NOT NULL,
     CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
     CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
@@ -994,9 +995,9 @@ CREATE TABLE IF NOT EXISTS "public"."restaurant_places" (
     "walk_minutes" integer,
     "distance_km" numeric(5,2),
     "is_active" boolean DEFAULT true NOT NULL,
-    "own_row" boolean DEFAULT false NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "own_row" boolean DEFAULT false NOT NULL,
     CONSTRAINT "restaurant_places_relation_known" CHECK (("relation" = ANY (ARRAY['walk'::"text", 'city'::"text"]))),
     CONSTRAINT "restaurant_places_walk_has_minutes" CHECK ((("relation" <> 'walk'::"text") OR ("walk_minutes" IS NOT NULL))),
     CONSTRAINT "restaurant_places_walk_minutes_sane" CHECK ((("walk_minutes" IS NULL) OR (("walk_minutes" > 0) AND ("walk_minutes" <= 120))))
@@ -1040,7 +1041,6 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "max_price" numeric,
     "last_seen_at" timestamp with time zone,
     "place_id" "uuid",
-    "display_name" "text",
     "ends_on" "date",
     "source" "text" DEFAULT 'ticketmaster'::"text" NOT NULL,
     "source_url" "text",
@@ -1049,6 +1049,7 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "found_at" timestamp with time zone,
     "reviewed_at" timestamp with time zone,
     "reviewed_by" "uuid",
+    "display_name" "text",
     CONSTRAINT "events_source_known" CHECK (("source" = ANY (ARRAY['ticketmaster'::"text", 'page'::"text", 'manual'::"text"]))),
     CONSTRAINT "events_review_known" CHECK (("review" = ANY (ARRAY['trusted'::"text", 'found'::"text", 'kept'::"text", 'dismissed'::"text"]))),
     CONSTRAINT "events_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "event_date")))
@@ -1117,13 +1118,13 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
     "contact_name" "text",
     "contact_detail" "text",
     "note" "text",
-    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
     "google_event_ids" "jsonb",
     "google_synced_at" timestamp with time zone,
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
     CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
     CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
