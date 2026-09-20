@@ -12,8 +12,8 @@ import {
 } from '@/lib/dayExtras'
 import {
     modalFooter, secondaryButton, primaryButton, fieldClass, labelClass, hintClass,
-    jumpButton, jumpLabel,
 } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 
 // The Feedr schedule, in one go.
 //
@@ -346,10 +346,10 @@ export default function WeekExtrasModal({
                                 "This week" says nothing about what pressing it
                                 does, and the colour alone is something you have
                                 to already know the meaning of. */}
-                            <button type="button" onClick={() => setWeek(weekStartOf(todayISO()))}
-                                className={jumpButton(week === weekStartOf(todayISO()))}>
-                                {jumpLabel(week === weekStartOf(todayISO()))}
-                            </button>
+                            <JumpButton
+                                isCurrent={week === weekStartOf(todayISO())}
+                                onClick={() => setWeek(weekStartOf(todayISO()))}
+                            />
                             <button type="button" onClick={() => setWeek(w => addDays(w, 7))}
                                 className={secondaryButton} aria-label="The week after">&#8250;</button>
                         </div>

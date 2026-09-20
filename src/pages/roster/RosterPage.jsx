@@ -8,7 +8,8 @@ import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } 
 import { DAY_NAMES, dayName } from '@/lib/events'
 import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '@/lib/team'
 import { fullDayRun, fullDayWords } from '@/lib/workRun'
@@ -767,9 +768,10 @@ export default function RosterPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
-                            {jumpLabel(weekStart === weekStartOf(today))}
-                        </button>
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(today)}
+                            onClick={() => setWeekStart(weekStartOf(today))}
+                        />
                     )}
                 >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">

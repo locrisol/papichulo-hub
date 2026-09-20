@@ -4,7 +4,8 @@ import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '@/lib/roster'
@@ -475,13 +476,10 @@ export default function MyShiftsPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button
-                            type="button"
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
-                            className={jumpButton(weekStart === weekStartOf(today))}
-                        >
-                            {jumpLabel(weekStart === weekStartOf(today))}
-                        </button>
+                        />
                     )}
                 >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">

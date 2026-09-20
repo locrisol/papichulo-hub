@@ -9,7 +9,8 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -876,13 +877,10 @@ export default function WeeklySalesPage() {
                         backLabel="Previous week"
                         nextLabel="Next week"
                         jump={(
-                            <button
-                                type="button"
+                            <JumpButton
+                                isCurrent={weekStart === weekStartOf(todayISO())}
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
-                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
-                            >
-                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
-                            </button>
+                            />
                         )}
                     >
                         {/* A set width on a wide screen, so the arrows do not

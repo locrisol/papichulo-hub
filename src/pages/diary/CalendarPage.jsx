@@ -14,8 +14,9 @@ import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
 } from '@/lib/diary'
 import {
-    card, pageTitle, secondaryButton, segmentTrack, segmentButton, jumpButton, jumpLabel,
+    card, pageTitle, secondaryButton, segmentTrack, segmentButton,
 } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
@@ -505,16 +506,15 @@ export default function CalendarPage() {
                             </button>
                             {/* The one that says something takes the room the
                                 two arrows do not need. */}
-                            <button
-                                type="button"
-                                className={`${jumpButton(atNow)} flex-1 sm:flex-none`}
+                            <JumpButton
+                                isCurrent={atNow}
+                                unit={unit}
+                                className="flex-1 sm:flex-none"
                                 onClick={() => {
                                     setViewMonth(monthStart(today))
                                     setWeekStart(weekStartOf(today))
                                 }}
-                            >
-                                {jumpLabel(atNow, unit)}
-                            </button>
+                            />
                             <button
                                 type="button"
                                 onClick={() => step(1)}

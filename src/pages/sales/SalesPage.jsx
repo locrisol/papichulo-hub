@@ -9,7 +9,8 @@ import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { useConfirm } from '@/context/confirm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -430,13 +431,11 @@ export default function SalesPage() {
                             backLabel="Previous day"
                             nextLabel="Next day"
                             jump={(
-                                <button
-                                    type="button"
+                                <JumpButton
+                                    isCurrent={saleDate === todayISO()}
+                                    unit="day"
                                     onClick={() => setSaleDate(todayISO())}
-                                    className={jumpButton(saleDate === todayISO())}
-                                >
-                                    {jumpLabel(saleDate === todayISO(), 'day')}
-                                </button>
+                                />
                             )}
                         >
                             <input

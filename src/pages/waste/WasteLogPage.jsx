@@ -7,7 +7,8 @@ import { fmtMoney, fmtQty } from '@/lib/format'
 import { todayISO, shortDate, addDays } from '@/lib/dates'
 import { calculateWasteValue } from '@/lib/wasteValue'
 import { REASONS, reasonLabel } from '@/lib/wasteReasons'
-import { card, dateField, jumpButton, removeButton, secondaryButton, jumpLabel, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { card, dateField, removeButton, secondaryButton, labelClass, fieldClass, hintClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
@@ -288,13 +289,11 @@ export default function WasteLogPage() {
                                 backLabel="Previous day"
                                 nextLabel="Next day"
                                 jump={(
-                                    <button
-                                        type="button"
+                                    <JumpButton
+                                        isCurrent={logDate === todayISO()}
+                                        unit="day"
                                         onClick={() => setLogDate(todayISO())}
-                                        className={jumpButton(logDate === todayISO())}
-                                    >
-                                        {jumpLabel(logDate === todayISO(), 'day')}
-                                    </button>
+                                    />
                                 )}
                             >
                                 <input
