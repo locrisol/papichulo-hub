@@ -24,7 +24,7 @@ import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 
 export default function TimesheetWeek({
     rows, dates, sundayPremium, canEdit = true,
-    onType, onSettle, onState, onClear, onAdd,
+    onType, onSettle, onState, onClear, onAdd, onHours,
 }) {
     const totals = weekTotals(rows, sundayPremium)
 
@@ -116,6 +116,7 @@ export default function TimesheetWeek({
                                         onState={key => onState(row.person, cell, key)}
                                         onClear={() => onClear(row.person, cell)}
                                         onAdd={() => onAdd(row.person, cell)}
+                                        onHours={value => onHours(cell, value)}
                                     />
                                 </td>
                             ))}

@@ -208,7 +208,11 @@ export default function TimesheetPage() {
                 kind: state.value,
                 starts_on: cell.date,
                 ends_on: cell.date,
-                hours: state.value === 'holiday' ? 8 : null,
+                // Left empty on purpose. A holiday carries the hours it
+                // comes to off the payslip and the Hub has no way of knowing
+                // them: eight would be a made up figure going to an
+                // accountant. The roster's own dialog leaves it empty too.
+                hours: null,
                 status: 'approved',
                 created_by: user?.id,
                 decided_by: user?.id,
@@ -244,6 +248,21 @@ export default function TimesheetPage() {
             return
         }
         for (const entry of cell.entries) await remove(entry)
+    }
+
+    // The hours a holiday came to, typed in the cell rather than guessed. One
+    // figure for the whole run, which is how absences has always held it, so
+    // typing it on any day of a holiday sets it for all of them.
+    async function setHolidayHours(cell, value) {
+        if (!cell.absence) return
+        const hours = value === '' ? null : Number(value)
+        if (value !== '' && !Number.isFinite(hours)) return
+
+        setAbsences(was => was.map(a => (a.id === cell.absence.id ? { ...a, hours } : a)))
+        const { data, error: failed } = await supabase.from('absences')
+            .update({ hours }).eq('id', cell.absence.id).select()
+        if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
     }
 
     function addSpan(person, cell) {
@@ -375,6 +394,7 @@ export default function TimesheetPage() {
                             onState={setState}
                             onClear={clear}
                             onAdd={addSpan}
+                            onHours={setHolidayHours}
                         />
                     </div>
                     <div className="md:hidden">

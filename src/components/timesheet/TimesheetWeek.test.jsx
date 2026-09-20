@@ -165,6 +165,43 @@ describe('what the cells say', () => {
         expect(figures).toEqual(['8.00', '0.00', '€0.00'])
     })
 
+    // A holiday's hours come off the payslip and nothing here can know them.
+    // The roster's own dialog leaves the figure empty for somebody to type, so
+    // this does too: it is a box, not a default. Eight would be a made up
+    // number going to an accountant.
+    it('gives a holiday a box for its hours rather than a guess', () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: null }],
+        })
+        const box = screen.getByLabelText('Holiday hours')
+        expect(box).toHaveValue('')
+        // Marked, so a holiday worth nothing does not sit there looking done.
+        expect(box.className).toContain('border-accent')
+    })
+
+    it('shows the figure once it has one', () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: 8 }],
+        })
+        expect(screen.getByLabelText('Holiday hours')).toHaveValue('8')
+    })
+
+    it('tells you this day’s share of a holiday that runs several days', () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: '2026-10-29', ends_on: '2026-10-31', hours: 15 }],
+        })
+        // Fifteen over three days. His real one, and the thing that was showing
+        // fifteen on every day of it.
+        expect(screen.getAllByText('5.00 this day')).toHaveLength(3)
+    })
+
+    it('has no hours box for a day off sick, which carries none', () => {
+        grid({
+            absences: [{ id: 'a2', employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: TUE, ends_on: TUE }],
+        })
+        expect(screen.queryByLabelText('Holiday hours')).not.toBeInTheDocument()
+    })
+
     it('says when somebody worked a day nobody planned', () => {
         grid({
             entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }],
