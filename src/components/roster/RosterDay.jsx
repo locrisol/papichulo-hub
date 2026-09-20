@@ -369,7 +369,10 @@ export default function RosterDay({
                                             >
                                                 {row.time && `${row.time} `}
                                                 {row.kind === 'city' && 'CITY '}
-                                                {chipWords(row)}
+                                                {/* The short name, the same as
+                                                    the week and the sheet. One
+                                                    week, one name for a place. */}
+                                                {chipWords(row, { short: true })}
                                             </span>
                                         </span>
                                     )

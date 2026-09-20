@@ -169,6 +169,22 @@ describe('weekTable', () => {
         expect(t.headlines[0].perDay[4][0].name).toBe('Westlife')
     })
 
+    // The sheet said "[Odeon Point Square]" where the grid said "[Odeon]".
+    // His answer, and the right one: we know it is in Point Square, we are
+    // there. A sheet and a screen of the same week must not disagree about
+    // what a place is called.
+    it('calls a place what the screen calls it', () => {
+        const t = build({
+            nearby: [{
+                kind: 'nearby',
+                time: '11:00',
+                place: { id: 'p2', name: 'Odeon Point Square', short_name: 'Odeon' },
+                event: { id: 'v2', event_date: DATES[4], name: 'Avengers: Endgame Encore' },
+            }],
+        })
+        expect(t.extras[4][0].name).toBe('Avengers: Endgame Encore [Odeon]')
+    })
+
     it('keeps it out of Also on, so it is not in both', () => {
         const t = build({ nearby: headline })
         expect(t.extras.flat()).toEqual([])

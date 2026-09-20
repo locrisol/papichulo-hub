@@ -214,7 +214,12 @@ export function weekTable({
         }
         if (near) {
             return {
-                name: chipWords(near),
+                // The short name, the same as the screen. The sheet said
+                // "[Odeon Point Square]" where the grid said "[Odeon]", and
+                // his answer to that is the right one: we know it is in Point
+                // Square, we are there. A sheet and a screen of the same week
+                // disagreeing about a name is two versions of Thursday.
+                name: chipWords(near, { short: true }),
                 time: near.time,
                 kind: near.kind,
                 checked: near.checked !== false,
