@@ -11,6 +11,7 @@ import {
     usualProblem,
     extraLanes,
     weekGrid,
+    whatIsOn,
 } from '@/lib/dayExtras'
 
 describe('cleanExtras', () => {
@@ -255,5 +256,67 @@ describe('the whole week at once', () => {
     it('copes with nothing at all', () => {
         expect(weekGrid(null, null, DATES)).toEqual([])
         expect(weekGrid(USUAL, null, [])).toHaveLength(2)
+    })
+})
+
+// Two tables, one question: what else is happening today.
+//
+// The week view drew these as two groups with the diary first, so a catering
+// job at 13:00 sat above a Lunch Team drop at 11:30. That does not read as a
+// ranking, it reads as the times being wrong.
+describe('everything a day has on it', () => {
+    const day = {
+        extras: [
+            { name: 'Lunch Team', time: '11:30' },
+            { name: 'Feedr', time: '12:10' },
+            { name: 'Extraction clean', time: '' },
+        ],
+    }
+    const diary = [
+        { id: 'c1', title: 'MUFG', starts_at: '13:00:00' },
+        { id: 'm1', title: 'Area manager', starts_at: '09:00:00' },
+    ]
+    const names = list => list.map(i => (i.entry ? i.entry.title : i.extra.name))
+
+    it('reads down the day whichever table a thing came out of', () => {
+        expect(names(whatIsOn(diary, day)))
+            .toEqual(['Area manager', 'Lunch Team', 'Feedr', 'MUFG', 'Extraction clean'])
+    })
+
+    // The one he reported.
+    it('puts a delivery at half eleven above a catering job at one', () => {
+        const order = names(whatIsOn(diary, day))
+        expect(order.indexOf('Lunch Team')).toBeLessThan(order.indexOf('MUFG'))
+    })
+
+    // The same rule sortExtras follows: it is the one thing that cannot be
+    // placed in the day's order.
+    it('leaves anything with no time at the end', () => {
+        const order = names(whatIsOn([{ id: 'x', title: 'Some day this week', starts_at: null }], day))
+        // Both of the untimed ones are behind everything that has a time, and
+        // between the two of them the same tiebreak applies as anywhere else.
+        expect(order.slice(-2)).toEqual(['Some day this week', 'Extraction clean'])
+        expect(order.slice(0, 2)).toEqual(['Lunch Team', 'Feedr'])
+    })
+
+    // A commitment and a delivery at the same moment: the commitment first,
+    // because somebody agreed to it and the other one merely arrives.
+    it('keeps a commitment above a delivery at the same time', () => {
+        const both = whatIsOn(
+            [{ id: 'c1', title: 'MUFG', starts_at: '12:10' }],
+            { extras: [{ name: 'Feedr', time: '12:10' }] },
+        )
+        expect(names(both)).toEqual(['MUFG', 'Feedr'])
+    })
+
+    it('hands back each thing as it arrived, so the caller can draw it', () => {
+        const [first] = whatIsOn(diary, day)
+        expect(first.entry).toMatchObject({ id: 'm1', title: 'Area manager' })
+        expect(first.extra).toBe(undefined)
+    })
+
+    it('copes with a day that has neither', () => {
+        expect(whatIsOn([], null)).toEqual([])
+        expect(whatIsOn(null, null)).toEqual([])
     })
 })

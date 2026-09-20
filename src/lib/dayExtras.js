@@ -114,6 +114,45 @@ export function extraLanes(list, minGapMinutes = 120) {
     return lanes
 }
 
+// Everything a day has on it, in the order it happens.
+//
+// Two tables and one question. A catering job is a diary entry, Feedr is a tick
+// on the day, and a row that reads down the day cannot care which of the two a
+// thing came out of.
+//
+// They used to be drawn as two groups on the week view, the diary first, on the
+// argument that something somebody committed to outranks something that merely
+// turns up. That reads as a ranking on paper and it does not on a screen: a
+// catering job at 13:00 sitting above a Lunch Team drop at 11:30 just looks
+// like the times are wrong, which is worse than a standing order being a line
+// higher than it deserves. **His call, 20 September.**
+//
+// The day view already did it this way, through the lane packer, which is why
+// only the week was wrong and why this is the second place needing it.
+//
+// Each one keeps whatever it arrived as, under `entry` or `extra`, because the
+// two are drawn differently and only the caller knows how.
+export function whatIsOn(entries, dayNote) {
+    const items = [
+        ...(entries || []).map(entry => ({
+            time: entry?.starts_at ? shortTime(entry.starts_at) : '',
+            entry,
+        })),
+        ...extrasFor(dayNote).map(extra => ({ time: extra.time, extra })),
+    ]
+
+    // Anything with no time last, the same rule sortExtras follows and for the
+    // same reason: it is the one thing that cannot be placed in the day's
+    // order. Two at the same time keep the order they came in, so a commitment
+    // still edges out a delivery when there is nothing else to separate them.
+    return items.sort((a, b) => {
+        if (!a.time && !b.time) return 0
+        if (!a.time) return 1
+        if (!b.time) return -1
+        return toMinutes(a.time) - toMinutes(b.time)
+    })
+}
+
 // What is wrong with the usual list before it is saved.
 export function usualProblem(list) {
     const seen = new Set()
