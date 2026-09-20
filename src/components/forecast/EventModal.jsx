@@ -6,7 +6,7 @@ import {
 } from '@/lib/nearby'
 import { fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
-import { badge, fieldClass, labelClass, secondaryButton } from '@/lib/controlStyles'
+import { badge, fieldClass, labelClass, secondaryButton, checkbox, checkRow } from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
 //
@@ -21,11 +21,15 @@ import { badge, fieldClass, labelClass, secondaryButton } from '@/lib/controlSty
 // a name, a date and the address it was read from. Attendance and ticket
 // numbers are not in the free tier at all, so those are not missing by accident
 // and there is no point leaving a blank line for them.
-export default function EventModal({ row, canEdit = false, onRename, onClose }) {
+export default function EventModal({ row, canEdit = false, sameName = 0, onRename, onClose }) {
     const event = row?.event
     // Before the early return, because a hook cannot sit behind one. The empty
     // string is never used: there is no modal to type into without an event.
     const [name, setName] = useState(() => eventName(row?.event) || '')
+    // Ticked by default when there is more than one, because a tour is one
+    // decision rather than six and renaming one night of six is the answer
+    // almost nobody wants.
+    const [all, setAll] = useState(true)
     if (!event) return null
 
     const note = statusNote(event.status)
@@ -152,12 +156,31 @@ export default function EventModal({ row, canEdit = false, onRename, onClose }) 
                             <button
                                 type="button"
                                 disabled={name.trim() === eventName(event)}
-                                onClick={() => onRename(event, name)}
+                                onClick={() => onRename(event, name, sameName > 1 && all)}
                                 className={`${secondaryButton} disabled:opacity-50`}
                             >
                                 Save
                             </button>
                         </div>
+
+                        {/* A residency is one name on six nights, and renaming
+                            one of them is the answer almost nobody wants. The
+                            count is asked of the database rather than read off
+                            what is on screen, because a tour runs past the end
+                            of whatever month is open. */}
+                        {sameName > 1 && (
+                            <label className={`${checkRow} mt-2 cursor-pointer`}>
+                                <input
+                                    type="checkbox"
+                                    checked={all}
+                                    onChange={e => setAll(e.target.checked)}
+                                    className={checkbox}
+                                />
+                                <span className="text-sm text-gray-700">
+                                    Do the same for all {sameName} dates of this
+                                </span>
+                            </label>
+                        )}
                         <p className="text-xs text-muted mt-1">
                             {event.display_name
                                 ? `It arrived as "${event.name}". Empty the box to put that back.`

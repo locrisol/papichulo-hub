@@ -77,6 +77,11 @@ export default function CalendarPage() {
     const [events, setEvents] = useState([])
     const [pairings, setPairings] = useState([])
     const [deciding, setDeciding] = useState(false)
+    // How many dates carry the open listing's name at the same place. Counted
+    // rather than taken from what is loaded, because a residency runs past the
+    // end of whatever window is on screen and offering to rename five when
+    // there are eleven would be a lie in the label.
+    const [sameName, setSameName] = useState(0)
     const [dayNotes, setDayNotes] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [loading, setLoading] = useState(true)
@@ -247,9 +252,24 @@ export default function CalendarPage() {
             // it is, how far, and whether anybody has checked it. The chip
             // hands over what it was given, which is the event itself.
             setOpenEvent(nearby.find(r => r.event.id === thing.id) || { event: thing })
+            countSameName(thing)
             return
         }
         setViewing(thing)
+    }
+
+    // A tour is one name on six nights. Asked once when the listing opens, so
+    // the offer to rename the lot can say how many the lot is.
+    async function countSameName(event) {
+        setSameName(0)
+        if (!event?.place_id || !event?.name) return
+
+        const { count } = await supabase.from('events')
+            .select('id', { count: 'exact', head: true })
+            .eq('place_id', event.place_id)
+            .eq('name', event.name)
+
+        setSameName(count || 0)
     }
 
     // Press the same day again and it shuts. The same gesture My Shifts uses
@@ -284,17 +304,36 @@ export default function CalendarPage() {
     //
     // Emptying the field puts the original back rather than leaving a blank
     // name, which is the only sensible reading of clearing it.
-    async function rename(event, to) {
+    // all renames every date carrying the same name at the same place, which
+    // is what a residency is: "Westlife 25 - The Anniversary World Tour" on six
+    // nights is one decision, not six.
+    //
+    // Matched on the name that arrived rather than on the one we chose, so it
+    // still finds them after the first rename, and on the place as well as the
+    // name, because two venues can have a night called the same thing and only
+    // one of them is being talked about.
+    //
+    // Past dates are renamed too. A week that has been and gone reading
+    // differently from the same thing next month is a worse answer than
+    // consistency nobody will look at.
+    async function rename(event, to, all = false) {
         const name = String(to ?? '').trim()
         const display_name = name && name !== event.name ? name : null
-        if (display_name === (event.display_name ?? null)) return
+        if (display_name === (event.display_name ?? null) && !all) return
 
-        const { error: failed } = await supabase.from('events')
-            .update({ display_name }).eq('id', event.id)
+        const where = supabase.from('events').update({ display_name })
+        const { error: failed } = all
+            ? await where.eq('place_id', event.place_id).eq('name', event.name)
+            : await where.eq('id', event.id)
 
         if (failed) { setError(friendlyError(failed)); return }
-        setEvents(was => was.map(e => (e.id === event.id ? { ...e, display_name } : e)))
-        setOpenEvent(was => (was?.event?.id === event.id
+
+        const hits = e => (all
+            ? e.place_id === event.place_id && e.name === event.name
+            : e.id === event.id)
+
+        setEvents(was => was.map(e => (hits(e) ? { ...e, display_name } : e)))
+        setOpenEvent(was => (was?.event && hits(was.event)
             ? { ...was, event: { ...was.event, display_name } }
             : was))
     }
@@ -530,6 +569,7 @@ export default function CalendarPage() {
                 <EventModal
                     row={openEvent}
                     canEdit={canWrite}
+                    sameName={sameName}
                     onRename={rename}
                     onClose={() => setOpenEvent(null)}
                 />
