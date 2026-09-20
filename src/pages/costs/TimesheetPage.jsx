@@ -266,6 +266,24 @@ export default function TimesheetPage() {
         return entry.source === 'import' ? { source: 'corrected' } : {}
     }
 
+    // An end dragged in the day view. It is the same act as typing over a time,
+    // so it goes through the same door: a till time moved this way is corrected
+    // like any other, and the week then wants a comment saying why.
+    //
+    // Dragging lands on a five minute mark, which means the seconds go to
+    // nought. That is right for a correction: the second the clock recorded is
+    // the thing being corrected away from, and the exact figure is typed in the
+    // grid or in the day's own dialog.
+    async function correct(person, cell, entry, startsAt, endsAt) {
+        if (!entry?.id) return
+        setError('')
+        await save(entry.id, {
+            starts_at: settleTime(startsAt),
+            ends_at: settleTime(endsAt),
+            ...changedByHand(entry),
+        })
+    }
+
     async function create(row) {
         setSaving(true)
         const { data, error: failed } = await supabase.from('timesheet_entries')
@@ -592,7 +610,16 @@ export default function TimesheetPage() {
                             </button>
                         ))}
                     </div>
-                    <TimesheetDay rows={rows} date={openDay} />
+                    {/* Pressing a block opens the same dialog the grid opens,
+                        where a time can be typed to the second. Dragging an end
+                        is the quick way to fix a clock-in that is plainly
+                        wrong, and both end up in the same place. */}
+                    <TimesheetDay
+                        rows={rows}
+                        date={openDay}
+                        onOpenDay={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
+                        onCorrect={correct}
+                    />
                 </div>
             ) : (
                 <div className={`${card} overflow-hidden`} ref={grid}>

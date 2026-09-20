@@ -142,8 +142,12 @@ export default function TimesheetWeek({
                     )}
                 </tbody>
 
+                {/* The band at the bottom is the one Weekly Sales uses for its
+                    tracked totals: a heavier rule and a darker grey than a
+                    striped row, so the week's own figures are not read as one
+                    more person's. Same situation, same answer. */}
                 <tfoot>
-                    <tr className="border-t-2 border-border bg-gray-50">
+                    <tr className="border-t-2 border-gray-300 bg-gray-200">
                         <Foot>Hours</Foot>
                         {totals.perDay.map(day => (
                             <Foot key={day.date} right style={day.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}>
@@ -155,8 +159,7 @@ export default function TimesheetWeek({
                         <Foot right>{fmtMoney(totals.cost)}</Foot>
                     </tr>
 
-
-                    <tr className="bg-gray-50">
+                    <tr className="border-t border-gray-300 bg-gray-200">
                         <Foot>Cost</Foot>
                         {totals.perDay.map(day => (
                             <Foot key={day.date} right>{fmtMoney(day.cost)}</Foot>

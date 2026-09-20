@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import {
@@ -18,17 +19,47 @@ import { kindOf as absenceKind } from '@/lib/absences'
 //
 // **What is different is the one thing this view is for.** The roster has one
 // block per shift, because a plan is all there is. Here there are two: what
-// they were rostered for, drawn hollow and behind, and what the clock
-// registered, drawn solid in front with the real times on it. A shift that ran
+// they were rostered for, drawn hollow and above, and what the clock
+// registered, drawn solid below with the real times on it. A shift that ran
 // forty minutes long is a solid block sticking out past a hollow one, which is
 // the fastest way there is to see it.
 //
 // Somebody who worked a day nobody planned has a solid block and no hollow one,
 // and says so, because there is nothing to compare it against. Somebody who was
 // rostered and never clocked in is the other way round: a hollow block with
-// nothing in it.
+// nothing under it.
 
-export default function TimesheetDay({ rows, date }) {
+// The colour rule, in one place, because he asked what it was and the honest
+// answer at the time was "longer than the plan by five minutes", which is not
+// a rule anybody could have guessed from looking.
+//
+// **Green means the clock and the plan agree. Orange means they do not.** By
+// how much is written on the block, signed, so the colour says there is
+// something to look at and the figure says what. Five minutes was too fine:
+// almost every real shift is a few minutes either way, and a screen where
+// nearly everything is orange is a screen where orange means nothing.
+const NOTICEABLE_MINUTES = 15
+const AS_PLANNED = '#182F24'
+const NOT_AS_PLANNED = '#BC552B'
+
+// Dragging an end corrects a clock time to the nearest five minutes. Finer than
+// the roster's half hour, because this is a correction rather than a plan, and
+// no finer, because a pixel is about a minute and a half on a full day: the
+// exact second is typed in the week or in the day's own dialog, which is what
+// pressing the block opens.
+const SNAP = 5
+
+export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, onCorrect }) {
+    // The ends being dragged, and the guard that stops letting go of one from
+    // reading as a press on the block underneath. Both of these are the
+    // roster's day view exactly: a click lands on the nearest ancestor of where
+    // the pointer went down and came up, so a drag that finishes over the block
+    // opens the dialog unless something says otherwise. The handles are
+    // siblings of the block for the same reason.
+    const [live, setLive] = useState(null)
+    const liveRef = useRef(null)
+    const justDragged = useRef(false)
+
     const mine = rows.map(row => ({ row, cell: row.days.find(d => d.date === date) }))
         .filter(({ cell }) => cell)
 
@@ -37,7 +68,7 @@ export default function TimesheetDay({ rows, date }) {
     // closing still fits on the grid.
     const spans = mine.flatMap(({ cell }) => [
         ...cell.rostered.map(s => ({ starts_at: s.starts_at, ends_at: s.ends_at })),
-        ...cell.entries.filter(e => e.ends_at).map(e => ({ starts_at: e.starts_at, ends_at: e.ends_at })),
+        ...cell.entries.filter(e => e.starts_at && e.ends_at).map(e => ({ starts_at: e.starts_at, ends_at: e.ends_at })),
     ])
     const { from, to } = timelineRange(null, spans, { before: 1, after: 1 })
     const span = Math.max(to - from, 60)
@@ -50,6 +81,71 @@ export default function TimesheetDay({ rows, date }) {
     const worked = mine.reduce((t, { cell }) => t + cell.hours, 0)
     const cost = mine.reduce((t, { row, cell }) => t + cell.hours * row.rate, 0)
     const bankHoliday = mine[0]?.cell?.bankHoliday
+
+    function beginDrag(person, cell, entry, edge, e) {
+        // Only a mouse drags. A finger presses and releases, and that is a tap
+        // that opens the day, which is the one that works on a phone anyway.
+        if (!canEdit || e.pointerType !== 'mouse') return
+        e.preventDefault()
+        e.stopPropagation()
+
+        const track = e.currentTarget.closest('[data-track]')
+        if (!track) return
+
+        const start = toMinutes(entry.starts_at)
+        const state = {
+            id: entry.id,
+            rect: track.getBoundingClientRect(),
+            edge,
+            from: start,
+            to: start + shiftMinutes(entry.starts_at, entry.ends_at),
+        }
+        liveRef.current = state
+        setLive(state)
+
+        const onMove = move => {
+            const held = liveRef.current
+            if (!held) return
+            const ratio = (move.clientX - held.rect.left) / held.rect.width
+            const snapped = Math.round((from + ratio * span) / SNAP) * SNAP
+
+            const next = held.edge === 'start'
+                ? { ...held, from: Math.max(from, Math.min(snapped, held.to - SNAP)) }
+                : { ...held, to: Math.min(to, Math.max(snapped, held.from + SNAP)) }
+
+            liveRef.current = next
+            setLive(next)
+        }
+
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+
+            const held = liveRef.current
+            liveRef.current = null
+            setLive(null)
+            if (!held) return
+
+            const startsAt = toTime(held.from)
+            const endsAt = toTime(held.to)
+            const moved = startsAt !== shortTime(entry.starts_at) || endsAt !== shortTime(entry.ends_at)
+            if (!moved) return
+
+            // Only when something actually changed. Pressing an end and letting
+            // go without moving is a press, and should still open the day.
+            justDragged.current = true
+            setTimeout(() => { justDragged.current = false }, 0)
+            onCorrect?.(person, cell, entry, startsAt, endsAt)
+        }
+
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+    }
+
+    function open(person, cell) {
+        if (justDragged.current) return
+        onOpenDay?.(person, cell)
+    }
 
     return (
         <div>
@@ -99,7 +195,9 @@ export default function TimesheetDay({ rows, date }) {
                         <p className="p-8 text-center text-sm text-muted italic">Nobody on the team list yet.</p>
                     ) : mine.map(({ row, cell }) => {
                         const off = cell.absence ? absenceKind(cell.absence.kind) : null
-                        const registered = cell.entries.filter(e => e.ends_at)
+                        const registered = cell.entries.filter(e => e.starts_at && e.ends_at)
+                        // A day somebody wrote a comment on instead of times.
+                        const said = cell.entries.find(e => !e.starts_at && e.note)
 
                         return (
                             <div key={row.person.id} className="flex border-b border-border last:border-b-0">
@@ -119,7 +217,7 @@ export default function TimesheetDay({ rows, date }) {
                                     )}
                                 </div>
 
-                                <div className="flex-1 relative h-16">
+                                <div className="flex-1 relative h-24" data-track>
                                     {hourMarks.map(m => (
                                         <span
                                             key={m}
@@ -146,52 +244,112 @@ export default function TimesheetDay({ rows, date }) {
                                         </span>
                                     )}
 
+                                    {said && !off && (
+                                        <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <span className="text-[0.6875rem] italic text-muted px-3 text-center">
+                                                “{said.note}”
+                                            </span>
+                                        </span>
+                                    )}
+
                                     {/* What they were rostered for: hollow, and
-                                        behind. It is the thing being compared
-                                        against, not the answer. */}
+                                        along the top. It is the thing being
+                                        compared against, not the answer. */}
                                     {cell.rostered.map(shift => (
-                                        <span
+                                        <button
+                                            type="button"
                                             key={shift.id || shift.starts_at}
+                                            onClick={() => open(row.person, cell)}
                                             title={`Rostered ${shortTime(shift.starts_at)} to ${shortTime(shift.ends_at)}`}
-                                            className="absolute top-1.5 h-6 rounded-lg border-2 border-dashed border-gray-400 bg-gray-50/70 px-1.5 overflow-hidden"
+                                            className="absolute top-2 h-7 rounded-lg border-2 border-dashed border-gray-400 bg-gray-50/70 px-1.5 overflow-hidden text-left hover:border-gray-500"
                                             style={{
                                                 left: `${pct(toMinutes(shift.starts_at))}%`,
                                                 width: `${(shiftMinutes(shift.starts_at, shift.ends_at) / span) * 100}%`,
                                             }}
                                         >
-                                            <span className="block text-[0.625rem] text-gray-500 whitespace-nowrap leading-5">
+                                            <span className="block text-[0.625rem] text-gray-500 whitespace-nowrap leading-6">
                                                 {shortTime(shift.starts_at)} - {shortTime(shift.ends_at)}
                                             </span>
-                                        </span>
+                                        </button>
                                     ))}
 
-                                    {/* What the clock registered: solid, in
-                                        front, with the real times on it to the
-                                        second. Orange when it ran longer than
-                                        it was meant to. */}
-                                    {registered.map(entry => {
-                                        const ran = shiftMinutes(entry.starts_at, entry.ends_at)
-                                        const long = over(entry, cell.rostered)
-                                        const colour = long ? '#BC552B' : '#182F24'
+                                    {/* What the clock registered: solid, along
+                                        the bottom with a gap between the two, so
+                                        a block that ran long reads as one bar
+                                        past another rather than as one shape. */}
+                                    {registered.map((entry, i) => {
+                                        const held = live?.id === entry.id ? live : null
+                                        const start = held ? held.from : toMinutes(entry.starts_at)
+                                        const ran = held
+                                            ? held.to - held.from
+                                            : shiftMinutes(entry.starts_at, entry.ends_at)
+
+                                        const plan = cell.rostered[i]
+                                        const apart = plan
+                                            ? ran - shiftMinutes(plan.starts_at, plan.ends_at)
+                                            : 0
+                                        const adrift = plan && Math.abs(apart) > NOTICEABLE_MINUTES
+                                        const colour = adrift || !plan ? NOT_AS_PLANNED : AS_PLANNED
+
                                         return (
-                                            <span
-                                                key={entry.id}
-                                                title={`${entry.starts_at} to ${entry.ends_at}`}
-                                                className="absolute bottom-1.5 h-7 rounded-lg border-2 px-1.5 overflow-hidden"
-                                                style={{
-                                                    left: `${pct(toMinutes(entry.starts_at))}%`,
-                                                    width: `${(ran / span) * 100}%`,
-                                                    backgroundColor: tint(colour),
-                                                    borderColor: colour,
-                                                }}
-                                            >
-                                                <span className="block text-[0.6875rem] font-bold text-gray-900 whitespace-nowrap">
-                                                    {shortClock(entry.starts_at)} - {shortClock(entry.ends_at)}
-                                                </span>
-                                                <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap">
-                                                    {fmtHours(ran / 60)}h
-                                                    {cell.rostered.length === 0 && ' · not rostered'}
-                                                </span>
+                                            <span key={entry.id}>
+                                                {canEdit && (
+                                                    <>
+                                                        <span
+                                                            onPointerDown={e => beginDrag(row.person, cell, entry, 'start', e)}
+                                                            style={{ left: `${pct(start)}%` }}
+                                                            className="absolute bottom-2 h-10 w-2 z-10 cursor-ew-resize rounded-l-md hover:bg-black/10"
+                                                            aria-hidden="true"
+                                                        />
+                                                        <span
+                                                            onPointerDown={e => beginDrag(row.person, cell, entry, 'end', e)}
+                                                            style={{ left: `calc(${pct(start + ran)}% - 0.5rem)` }}
+                                                            className="absolute bottom-2 h-10 w-2 z-10 cursor-ew-resize rounded-r-md hover:bg-black/10"
+                                                            aria-hidden="true"
+                                                        />
+                                                    </>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => open(row.person, cell)}
+                                                    title={held
+                                                        ? `${toTime(held.from)} to ${toTime(held.to)}`
+                                                        : `${entry.starts_at} to ${entry.ends_at}. Press to type it exactly.`}
+                                                    className="absolute bottom-2 h-10 rounded-lg border-2 px-1.5 overflow-hidden text-left"
+                                                    style={{
+                                                        left: `${pct(start)}%`,
+                                                        width: `${(ran / span) * 100}%`,
+                                                        backgroundColor: tint(colour),
+                                                        borderColor: colour,
+                                                    }}
+                                                >
+                                                    <span className="block text-[0.6875rem] font-bold text-gray-900 whitespace-nowrap leading-tight">
+                                                        {held
+                                                            ? `${toTime(held.from)} - ${toTime(held.to)}`
+                                                            : `${shortClock(entry.starts_at)} - ${shortClock(entry.ends_at)}`}
+                                                    </span>
+                                                    {/* The hours and, beside
+                                                        them, how far off the
+                                                        plan it is: signed, so
+                                                        the colour says there is
+                                                        something to look at and
+                                                        the figure says what.
+                                                        One line rather than two,
+                                                        because the second one
+                                                        was being cut off. */}
+                                                    <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap leading-tight">
+                                                        {fmtHours(ran / 60)}h
+                                                        {!plan && <span className="font-semibold text-accent-ink"> · not rostered</span>}
+                                                        {plan && apart !== 0 && (
+                                                            <span
+                                                                className="font-semibold"
+                                                                style={{ color: adrift ? NOT_AS_PLANNED : '#4B5563' }}
+                                                            >
+                                                                {' '}· {apart > 0 ? '+' : '−'}{Math.abs(apart)} min
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </button>
                                             </span>
                                         )
                                     })}
@@ -214,8 +372,13 @@ export default function TimesheetDay({ rows, date }) {
 
             <div className="flex flex-wrap gap-4 px-4 py-2.5 text-xs text-muted border-t border-border">
                 <Chip dashed>what they were rostered for</Chip>
-                <Chip colour="#182F24">what the clock registered</Chip>
-                <Chip colour="#BC552B">ran longer than it was meant to</Chip>
+                <Chip colour={AS_PLANNED}>the clock agreed with it</Chip>
+                <Chip colour={NOT_AS_PLANNED}>
+                    out by more than {NOTICEABLE_MINUTES} minutes, or not rostered
+                </Chip>
+                {canEdit && (
+                    <span className="ml-auto">Drag an end to correct it, or press it to type it exactly.</span>
+                )}
             </div>
         </div>
     )
@@ -230,12 +393,3 @@ const Chip = ({ colour, dashed, children }) => (
         {children}
     </span>
 )
-
-// Ran longer than it was meant to, by more than five minutes. Below that it is
-// a clock rather than a fact, and colouring every shift orange would say
-// nothing at all.
-function over(entry, rostered) {
-    const plan = rostered[0]
-    if (!plan) return false
-    return shiftMinutes(entry.starts_at, entry.ends_at) - shiftMinutes(plan.starts_at, plan.ends_at) > 5
-}
