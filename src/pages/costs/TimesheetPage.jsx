@@ -9,7 +9,9 @@ import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
 import { personWeek, weekTotals, unanswered, STATE_KEYS } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'
-import { card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField } from '@/lib/controlStyles'
+import {
+    card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField, secondaryButton,
+} from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -18,6 +20,7 @@ import TimesheetPhone from '@/components/timesheet/TimesheetPhone'
 import TimesheetDay from '@/components/timesheet/TimesheetDay'
 import TouchBar from '@/components/timesheet/TouchBar'
 import DayEditModal from '@/components/timesheet/DayEditModal'
+import ImportDialog from '@/components/timesheet/ImportDialog'
 
 // What people actually worked.
 //
@@ -50,6 +53,11 @@ export default function TimesheetPage() {
     // than as the row, so it survives the rows being worked out again after a
     // save and does not go stale halfway through.
     const [editing, setEditing] = useState(null)
+    const [importing, setImporting] = useState(false)
+    // Bumped to ask for the week again. Setting weekStart to the value it
+    // already holds is a no-op, so it cannot be used to reload: the same trap
+    // the Labour page carried a note about.
+    const [refresh, setRefresh] = useState(0)
 
     const [people, setPeople] = useState([])
     const [entries, setEntries] = useState([])
@@ -82,7 +90,7 @@ export default function TimesheetPage() {
 
     useEffect(() => {
         if (!restaurantId) return
-        const key = `${restaurantId}:${weekStart}`
+        const key = `${restaurantId}:${weekStart}:${refresh}`
         if (loadedKey.current === key) return
 
         async function load() {
@@ -128,7 +136,7 @@ export default function TimesheetPage() {
 
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [restaurantId, weekStart])
+    }, [restaurantId, weekStart, refresh])
 
     // What is saved, plus what is being typed. The grid cannot tell them apart
     // and does not need to: a draft is an entry with no id yet.
@@ -456,7 +464,15 @@ export default function TimesheetPage() {
                     onChange={e => e.target.value && goToWeek(e.target.value)}
                 />
 
-                <div className="ml-auto text-right">
+                <button
+                    type="button"
+                    onClick={() => setImporting(true)}
+                    className={`${secondaryButton} ml-auto`}
+                >
+                    Read the till&apos;s report
+                </button>
+
+                <div className="text-right">
                     <p className="text-sm font-bold text-gray-900 tabular-nums">
                         {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
                     </p>
@@ -543,6 +559,20 @@ export default function TimesheetPage() {
                     onAdd={() => addSpan(open.row.person, open.cell)}
                     onHours={value => setHolidayHours(open.cell, value)}
                     onNote={setNote}
+                />
+            )}
+
+            {importing && (
+                <ImportDialog
+                    restaurantId={restaurantId}
+                    restaurantName={activeRestaurant?.name}
+                    weekStart={weekStart}
+                    weekEnd={weekEnd}
+                    people={people}
+                    entries={entries}
+                    absences={absences}
+                    onClose={() => setImporting(false)}
+                    onDone={() => setRefresh(n => n + 1)}
                 />
             )}
         </>

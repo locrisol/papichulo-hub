@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
     sundayPremiumFor, personWeek, weekTotals, labourRollup,
-    unanswered, weekAnswered, importVerdict, summarise, ASK_ABOVE_SECONDS,
+    unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
 } from '@/lib/timesheet'
 
 // The week of Sunday 25 to Saturday 31 October 2026, which holds the October
@@ -497,5 +497,116 @@ describe('bringing a file in', () => {
         ])
         expect(out).toMatchObject({ filled: 2, rosterReplaced: 1, nudged: 1, unchanged: 1 })
         expect(out.asks).toHaveLength(1)
+    })
+})
+
+describe('what an upload would do, before anything is written', () => {
+    const mappings = [
+        { name: 'QUINN Aoife', employee_id: 'e1', ignored: false },
+        { name: 'MANAGER Manager', employee_id: null, ignored: true },
+    ]
+    const came = (over = {}) => ({
+        name: 'QUINN Aoife', work_date: TUE, starts_at: '09:01:22', ends_at: '17:33:16', ...over,
+    })
+
+    it('fills a day with nothing on it', () => {
+        const plan = planImport({ shifts: [came()], mappings })
+        expect(plan.filled).toBe(1)
+        expect(plan.asks).toEqual([])
+    })
+
+    it('names anybody it has never seen, once each', () => {
+        const plan = planImport({
+            shifts: [came({ name: 'Rosa' }), came({ name: 'Rosa', work_date: MON }), came()],
+            mappings,
+        })
+        expect(plan.unknown).toEqual(['Rosa'])
+        expect(plan.filled).toBe(1)
+    })
+
+    // MANAGER, CBE, end of day. Dropped without a word, because somebody has
+    // already said once that they are not a person.
+    it('drops a name that was marked as not a person', () => {
+        const plan = planImport({ shifts: [came({ name: 'MANAGER Manager' })], mappings })
+        expect(plan.ignored).toHaveLength(1)
+        expect(plan.steps).toEqual([])
+        expect(plan.unknown).toEqual([])
+    })
+
+    it('replaces a time somebody took off the roster without asking', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:00:00', ends_at: '17:00:00', source: 'roster',
+        })]
+        const plan = planImport({ shifts: [came()], mappings, entries })
+        expect(plan.rosterReplaced).toBe(1)
+        expect(plan.asks).toEqual([])
+    })
+
+    it('asks about a typed time that is an hour or more out', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '14:00:00', ends_at: '22:00:00', source: 'typed',
+        })]
+        const plan = planImport({ shifts: [came()], mappings, entries })
+        expect(plan.asks).toHaveLength(1)
+        expect(plan.asks[0]).toMatchObject({ why: 'far', employee_id: 'e1', date: TUE })
+    })
+
+    // The one worth having: either the holiday is wrong or somebody worked one.
+    it('always asks about a shift landing on a day marked off', () => {
+        const absences = [{
+            id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved',
+            starts_on: TUE, ends_on: TUE, hours: 8,
+        }]
+        const plan = planImport({ shifts: [came()], mappings, absences })
+        expect(plan.asks).toHaveLength(1)
+        expect(plan.asks[0].why).toBe('absence')
+    })
+
+    // A split shift lines up with a split shift, in clock order, which is the
+    // only pairing that does not need the till and the Hub to have ever shared
+    // an id.
+    it('pairs two spans in a day with the two already there', () => {
+        const entries = [
+            shift({ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '17:00:00', ends_at: '21:00:00', source: 'roster' }),
+            shift({ id: 't2', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '13:00:00', source: 'roster' }),
+        ]
+        const plan = planImport({
+            shifts: [
+                came({ starts_at: '17:02:10', ends_at: '21:04:55' }),
+                came({ starts_at: '09:01:22', ends_at: '13:03:41' }),
+            ],
+            mappings,
+            entries,
+        })
+        expect(plan.rosterReplaced).toBe(2)
+        expect(plan.steps.map(s => s.existing.id)).toEqual(['t2', 't1'])
+    })
+
+    it('fills a second span the day did not have', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:00:00', ends_at: '13:00:00', source: 'roster',
+        })]
+        const plan = planImport({
+            shifts: [came({ starts_at: '09:01:22', ends_at: '13:03:41' }), came({ starts_at: '17:00:00', ends_at: '21:00:00' })],
+            mappings,
+            entries,
+        })
+        expect(plan.rosterReplaced).toBe(1)
+        expect(plan.filled).toBe(1)
+    })
+
+    it('says nothing changed when the file matches what is there', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:01:22', ends_at: '17:33:16', source: 'typed',
+        })]
+        expect(planImport({ shifts: [came()], mappings, entries }).unchanged).toBe(1)
+    })
+
+    it('copes with an empty file', () => {
+        expect(planImport({})).toMatchObject({ unknown: [], steps: [], filled: 0 })
     })
 })

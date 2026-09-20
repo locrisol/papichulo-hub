@@ -339,3 +339,66 @@ export function summarise(verdicts) {
         asks: verdicts.filter(v => v.action === 'ask'),
     }
 }
+
+// What an upload would do, worked out before anything is written.
+//
+// Nothing here touches the database. It takes what the file holds, what the
+// Hub already knows a name means, and what is already on the week, and comes
+// back with the whole plan: who it could not place, what it would fill in
+// quietly, and the handful worth asking about.
+//
+// Doing it this way round is the point. The message afterwards is the only
+// safety there is on an import that does not stop at every row, so it has to
+// be able to say exactly what happened, and a plan that exists before the
+// writing starts can.
+export function planImport({ shifts = [], mappings = [], entries = [], absences = [] }) {
+    const known = new Map((mappings || []).map(m => [m.name, m]))
+
+    const unknown = []
+    const ignored = []
+    const steps = []
+
+    // Grouped so a split shift lines up with a split shift. Within a day the
+    // two lists are paired in clock order, which is the only pairing that does
+    // not need the till and the Hub to agree about ids they have never shared.
+    const byDay = new Map()
+
+    for (const shift of shifts) {
+        const mapping = known.get(shift.name)
+        if (!mapping) {
+            if (!unknown.includes(shift.name)) unknown.push(shift.name)
+            continue
+        }
+        if (mapping.ignored || !mapping.employee_id) {
+            ignored.push(shift)
+            continue
+        }
+        const key = `${mapping.employee_id}|${shift.work_date}`
+        if (!byDay.has(key)) byDay.set(key, { employee_id: mapping.employee_id, date: shift.work_date, coming: [] })
+        byDay.get(key).coming.push(shift)
+    }
+
+    for (const day of byDay.values()) {
+        const here = entries
+            .filter(e => e.employee_id === day.employee_id && e.work_date === day.date)
+            .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
+        const coming = day.coming
+            .slice()
+            .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
+
+        const absence = wholeDayOn(absences, day.employee_id, day.date)
+
+        coming.forEach((shift, i) => {
+            const existing = here[i] || null
+            const verdict = importVerdict({ existing, incoming: shift, absence })
+            steps.push({ ...verdict, employee_id: day.employee_id, date: day.date, existing, incoming: shift })
+        })
+    }
+
+    return {
+        unknown,
+        ignored,
+        steps,
+        ...summarise(steps),
+    }
+}
