@@ -6,7 +6,9 @@ import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
-import { nearbyRows, waiting, eventName, PAIRING_COLUMNS } from '@/lib/nearby'
+import {
+    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS,
+} from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
@@ -233,6 +235,17 @@ export default function CalendarPage() {
     const found = useMemo(
         () => waiting(nearbyRows(pending, pairings, activeRestaurant), today),
         [pending, pairings, activeRestaurant, today],
+    )
+
+    // The switch for the one place on its own scale says its name.
+    //
+    // Every other layer is a kind of thing and names itself, and this one is a
+    // particular building: at Point Campus it is the 3Arena and saying "Next
+    // door" would be a word nobody would look for. Only this screen knows which
+    // place it is, so only this screen can say.
+    const headline = useMemo(
+        () => placeName(headlinePlaces(pairings, activeRestaurant)[0], { short: true }),
+        [pairings, activeRestaurant],
     )
 
     const items = useMemo(
@@ -555,7 +568,9 @@ export default function CalendarPage() {
                             }`}
                         >
                             <span className={`w-2 h-2 rounded-sm ${off ? 'bg-gray-300' : kindDot(layer)}`} />
-                            {layer === 'private' ? 'Just me' : kindLabel(layer)}
+                            {layer === 'private'
+                                ? 'Just me'
+                                : (layer === 'arena' && headline) || kindLabel(layer)}
                         </button>
                     )
                 })}

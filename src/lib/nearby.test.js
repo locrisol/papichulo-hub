@@ -147,21 +147,41 @@ describe('the city rule is a rule', () => {
 })
 
 describe('what one listing is to us', () => {
-    // Somebody sold a ticket for it, somebody read it off a page, or it is
-    // across town. That is the whole rule.
-    it('calls a ticketed one within walking distance an arena listing', () => {
+    // It is across town, it is the one place on its own scale, or it is one of
+    // the rest. That is the whole rule.
+    it('gives the place with a row of its own a colour of its own', () => {
         expect(kindOf(gig, pairs[0])).toBe('arena')
     })
 
-    it('calls a reading off a page a nearby one', () => {
+    it('calls everything else nearby', () => {
         expect(kindOf(film, pairs[1])).toBe('nearby')
+    })
+
+    // **This used to ask whether a ticket had been sold for it**, which was a
+    // good enough proxy while the Arena was the only ticketed place on the
+    // list. It stopped being one the day the Convention Centre, the Gibson and
+    // the Odeon got feeds of their own: a conference twelve minutes away came
+    // out in the Arena's purple and said the same thing as nine thousand people
+    // across the road.
+    it('does not make a place purple just because it sells tickets', () => {
+        const ccd = { id: 'p8', name: 'Convention Centre Dublin', ticketmaster_venue_id: 'KovZ1' }
+        const pairing = { place: ccd, relation: 'walk', walk_minutes: 12, is_active: true }
+        const conference = { id: 'e8', place_id: 'p8', name: 'SREcon', event_date: '2026-10-13', source: 'ticketmaster' }
+        expect(kindOf(conference, pairing)).toBe('nearby')
+    })
+
+    // And the other way round: a reading off the Arena's own page is still the
+    // Arena. The colour is about the place, not about where the row came from.
+    it('keeps the colour when the listing came off a page', () => {
+        expect(kindOf({ ...film, place_id: 'p1' }, pairs[0])).toBe('arena')
     })
 
     // A match at the Aviva is sold through Ticketmaster exactly like a concert
     // at the Arena, and drawing them the same way would say the same thing
     // about both when one of them is two minutes away.
-    it('lets across town beat the feed', () => {
+    it('lets across town beat everything', () => {
         expect(kindOf(match, pairs[2])).toBe('city')
+        expect(kindOf(match, { ...pairs[2], own_row: true })).toBe('city')
     })
 
     it('says nothing at all about a place we are not near', () => {

@@ -144,22 +144,30 @@ export function byPlace(pairings) {
 
 // -- What one listing is to us ------------------------------------------
 
-// Three answers, and the whole rule is one sentence: somebody sold a ticket
-// for it, somebody read it off a page, or it is across town.
+// Three answers, and the whole rule is one sentence: it is across town, it is
+// the one place on its own scale, or it is one of the rest.
 //
-// City wins over the feed on purpose. A match at the Aviva is sold through
-// Ticketmaster like a concert at the Arena, and drawing the two the same way
-// would be saying the same thing about both, which is exactly wrong: one of
-// them is two minutes away and the other one nobody is walking from.
+// City first. A match at the Aviva is sold through Ticketmaster like a concert
+// at the Arena, and drawing the two the same way would be saying the same thing
+// about both, which is exactly wrong: one of them is two minutes away and the
+// other one nobody is walking from.
 //
-// The remaining two split on where the row came from, and that split is worth
-// having because it is the difference between a fixture and a reading. It also
-// leaves the Arena the colour it has been since May, which is the rule he set:
-// nothing that existed before this work shares a colour with anything new.
+// **Then the place that has a row of its own, and that is the whole test.**
+// This used to ask whether a ticket had been sold for it, which was a good
+// enough proxy while the Arena was the only ticketed place on the list. It
+// stopped being one the day the Convention Centre, the Gibson and the Odeon got
+// feeds of their own: a conference twelve minutes away came out in the Arena's
+// purple and said the same thing as nine thousand people across the road.
+//
+// **His call, and it is tidier than what it replaced**: the place worth a row
+// of its own is the place worth a colour of its own, so there is one flag
+// rather than two ideas. Everything else next door is blue whether somebody
+// sold a ticket for it or a model read it off a page, because that difference
+// is already carried by the dashed edge and does not need a second colour.
 export function kindOf(event, pairing) {
     if (!pairing) return ''
     if (pairing.relation === 'city') return 'city'
-    return event?.source === 'ticketmaster' ? 'arena' : 'nearby'
+    return pairing.own_row === true ? 'arena' : 'nearby'
 }
 
 export function lastDay(event) {

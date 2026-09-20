@@ -96,11 +96,14 @@ const KIND = {
     arena: {
         dash: 'border-purple-300',
         ring: 'border-purple-700',
-        // Not 3Arena any more. It was the only ticketed venue the Hub could
-        // hold when this was written, and the Pavilion and the Convention
-        // Centre sell the same way. What these have in common is that somebody
-        // bought a seat, which is the strongest signal any of this carries.
-        label: 'Ticketed',
+        // The one place near a restaurant that is on its own scale, which is
+        // whichever one has been given a row of its own. For Point Campus that
+        // is the 3Arena and it has been purple since May.
+        //
+        // The label is a fallback. The calendar says the place's actual name,
+        // because "3Arena" is what somebody there would look for and only that
+        // screen knows which place it is.
+        label: 'Next door',
         chip: 'bg-purple-50 text-purple-900 border-l-purple-700',
         tag: 'bg-purple-50 text-purple-900',
         dot: 'bg-purple-700',
