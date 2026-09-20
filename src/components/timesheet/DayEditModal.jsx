@@ -6,7 +6,7 @@ import { kindLabel as absenceLabel, takesHours, kindOf as absenceKind } from '@/
 import { numberField } from '@/lib/numberInput'
 import Modal from '@/components/ui/Modal'
 import AutoTextarea from '@/components/ui/AutoTextarea'
-import { modalFooter, secondaryButton, labelClass, fieldClass, removeButton } from '@/lib/controlStyles'
+import { modalFooter, secondaryButton, labelClass, fieldClass, rowButton } from '@/lib/controlStyles'
 
 // One person, one day, on a phone.
 //
@@ -53,7 +53,7 @@ export default function DayEditModal({
                                 {absenceLabel(cell.absence.kind)}
                             </span>
                             {canEdit && (
-                                <button type="button" onClick={onClear} className={removeButton}>
+                                <button type="button" onClick={onClear} className={rowButton('danger')}>
                                     Delete
                                 </button>
                             )}

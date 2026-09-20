@@ -45,7 +45,7 @@ export default function TouchBar({ gridRef, onState }) {
         <div
             onMouseDown={hold}
             onTouchStart={hold}
-            className={`flex flex-wrap items-center gap-1.5 px-3 py-2 border-t border-border bg-gray-100 ${
+            className={`flex flex-wrap items-center gap-1.5 px-3 py-2 border-t border-border bg-gray-50 ${
                 box ? '' : 'opacity-60'
             }`}
         >

@@ -1,6 +1,7 @@
 import { maskTime, settleTime, shortClock } from '@/lib/clock'
 import { kindOf, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours } from '@/lib/absences'
+import { removeButton } from '@/lib/controlStyles'
 
 // One person, one day.
 //
@@ -82,8 +83,8 @@ export default function TimeCell({
                     <button
                         type="button"
                         onClick={onClear}
-                        aria-label="Clear the day"
-                        className="ml-auto text-gray-400 hover:text-gray-900 leading-none px-1 rounded"
+                        aria-label="Delete this time off"
+                        className={`${removeButton} ml-auto`}
                     >
                         &times;
                     </button>

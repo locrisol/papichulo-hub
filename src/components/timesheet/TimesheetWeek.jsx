@@ -1,7 +1,8 @@
 import { DAY_NAMES } from '@/lib/events'
 import { shortDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
-import { weekTotals, BANK_HOLIDAY_COLOUR } from '@/lib/timesheet'
+import { weekTotals } from '@/lib/timesheet'
+import { tableHeadRow } from '@/lib/controlStyles'
 import TimeCell from '@/components/timesheet/TimeCell'
 import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 
@@ -59,8 +60,8 @@ export default function TimesheetWeek({
         <div className="overflow-x-auto" onKeyDown={onKeyDown}>
             <table className="w-full min-w-[64rem] text-xs border-collapse">
                 <thead>
-                    <tr className="bg-gray-100 border-b border-gray-400">
-                        <th className="text-left px-2 py-1.5 font-bold text-[0.62rem] uppercase tracking-wider text-muted whitespace-nowrap">
+                    <tr className={tableHeadRow}>
+                        <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
                             Who
                         </th>
                         {dates.map((date, i) => {
@@ -68,14 +69,19 @@ export default function TimesheetWeek({
                             return (
                                 <th
                                     key={date}
-                                    className="text-left px-2 py-1.5 font-bold text-[0.62rem] uppercase tracking-wider text-muted whitespace-nowrap"
-                                    style={day?.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}
+                                    className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                                 >
                                     {DAY_NAMES[new Date(`${date}T00:00:00`).getDay()]} {shortDate(date)}
+                                    {/* A bank holiday is named on the heading
+                                        rather than tinting the whole column.
+                                        The column carries the tint further down
+                                        where the cells are, and doing both on a
+                                        dark green heading only made the heading
+                                        look broken. */}
                                     {day?.bankHoliday && (
                                         <span
-                                            className="block normal-case tracking-normal font-bold text-[0.58rem]"
-                                            style={{ color: BANK_HOLIDAY_COLOUR }}
+                                            className="block normal-case tracking-normal text-[0.65rem] font-bold"
+                                            style={{ color: '#E8C878' }}
                                         >
                                             {day.bankHoliday.short}
                                         </span>
@@ -91,11 +97,11 @@ export default function TimesheetWeek({
 
                 <tbody>
                     {rows.map((row, r) => (
-                        <tr key={row.person.id} className="border-b border-gray-200 align-top">
-                            <th className="text-left px-2 py-1.5 font-semibold text-gray-900 whitespace-nowrap">
+                        <tr key={row.person.id} className="border-b border-border align-top">
+                            <th className="text-left px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">
                                 {row.person.full_name}
                                 {row.ownRate && (
-                                    <span className="block text-[0.58rem] font-bold text-accent-ink tracking-wide">
+                                    <span className="block text-xs text-muted tracking-wide">
                                         {fmtMoney(row.rate)}
                                     </span>
                                 )}
@@ -104,7 +110,7 @@ export default function TimesheetWeek({
                             {row.days.map((cell, d) => (
                                 <td
                                     key={cell.date}
-                                    className="px-2 py-1.5 min-w-[5.5rem]"
+                                    className="px-3 py-2 min-w-[5.5rem]"
                                     style={cell.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}
                                 >
                                     <TimeCell
@@ -136,15 +142,15 @@ export default function TimesheetWeek({
 
                     {rows.length === 0 && (
                         <tr>
-                            <td colSpan={11} className="px-2 py-6 text-center text-sm text-muted">
+                            <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted italic">
                                 Nobody on the team yet. Add people on the Team page and they appear here.
                             </td>
                         </tr>
                     )}
                 </tbody>
 
-                <tfoot className="bg-gray-100 border-t border-gray-400">
-                    <tr>
+                <tfoot>
+                    <tr className="border-t-2 border-border bg-gray-50">
                         <Foot>Hours</Foot>
                         {totals.perDay.map(day => (
                             <Foot key={day.date} right style={day.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}>
@@ -161,7 +167,7 @@ export default function TimesheetWeek({
                         a rate, and a figure that appears from nowhere inside a
                         cost total is a figure somebody has to go looking for. */}
                     {totals.premium > 0 && (
-                        <tr>
+                        <tr className="bg-gray-50">
                             <Foot>Sunday</Foot>
                             {totals.perDay.map(day => (
                                 <Foot key={day.date} right>
@@ -172,7 +178,7 @@ export default function TimesheetWeek({
                         </tr>
                     )}
 
-                    <tr>
+                    <tr className="bg-gray-50">
                         <Foot>Cost</Foot>
                         {totals.perDay.map(day => (
                             <Foot key={day.date} right>{fmtMoney(day.cost)}</Foot>
@@ -186,13 +192,13 @@ export default function TimesheetWeek({
 }
 
 const Head = ({ children }) => (
-    <th className="text-right px-2 py-1.5 font-bold text-[0.62rem] uppercase tracking-wider text-muted whitespace-nowrap">
+    <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
         {children}
     </th>
 )
 
 const Figure = ({ children, bold }) => (
-    <td className={`px-2 py-1.5 text-right tabular-nums whitespace-nowrap ${bold ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
+    <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${bold ? 'font-medium text-gray-900' : 'text-gray-900'}`}>
         {children}
     </td>
 )
@@ -201,7 +207,7 @@ const Foot = ({ children, right, colSpan, style }) => (
     <td
         colSpan={colSpan}
         style={style}
-        className={`px-2 py-1.5 font-bold text-gray-900 tabular-nums whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
+        className={`px-3 py-2.5 font-semibold text-gray-900 tabular-nums whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
     >
         {children}
     </td>

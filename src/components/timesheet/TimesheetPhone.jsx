@@ -17,7 +17,7 @@ export default function TimesheetPhone({ rows, dates, sundayPremium, onOpenDay }
 
     return (
         <div>
-            <div className="flex items-baseline justify-between gap-2 px-3 py-2 bg-gray-100 border-b border-gray-300">
+            <div className="flex items-baseline justify-between gap-2 px-3 py-2 bg-gray-50 border-b border-border">
                 <span className="text-[0.62rem] font-bold uppercase tracking-wider text-muted">
                     {rows.length} {rows.length === 1 ? 'person' : 'people'}
                 </span>

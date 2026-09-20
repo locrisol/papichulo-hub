@@ -5,6 +5,7 @@ import {
 } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
 import { BANK_HOLIDAY_COLOUR } from '@/lib/timesheet'
+import { tableHeadRow } from '@/lib/controlStyles'
 import { kindOf as absenceKind } from '@/lib/absences'
 
 // One day, drawn the way the roster draws one.
@@ -71,15 +72,15 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
             <div className="overflow-x-auto">
                 <div className="min-w-[46rem]">
                     {/* The hours across the top, the same as the roster's. */}
-                    <div className="flex border-b border-border bg-gray-50">
-                        <div className="w-40 flex-shrink-0 px-3 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider">
+                    <div className={`flex border-b border-border ${tableHeadRow}`}>
+                        <div className="w-40 flex-shrink-0 px-3 py-2 text-xs font-semibold uppercase tracking-wider">
                             Staff
                         </div>
                         <div className="flex-1 relative h-11">
                             {hourMarks.map((m, i) => (
                                 <span key={m}>
                                     <span
-                                        className={`absolute top-1 text-[0.625rem] text-gray-500 -translate-x-1/2 whitespace-nowrap ${
+                                        className={`absolute top-1 text-[0.625rem] text-white/70 -translate-x-1/2 whitespace-nowrap ${
                                             i % labelEvery === 0 ? '' : 'hidden xl:block'
                                         }`}
                                         style={{ left: `${pct(m)}%` }}
@@ -87,13 +88,13 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
                                         {toTime(m)}
                                     </span>
                                     <span
-                                        className="absolute bottom-0 w-px h-2 bg-gray-300"
+                                        className="absolute bottom-0 w-px h-2 bg-white/40"
                                         style={{ left: `${pct(m)}%` }}
                                     />
                                 </span>
                             ))}
                         </div>
-                        <div className="w-20 flex-shrink-0 px-2 py-2 text-[0.625rem] font-bold text-muted uppercase tracking-wider text-center">
+                        <div className="w-20 flex-shrink-0 px-2 py-2 text-xs font-semibold uppercase tracking-wider text-center">
                             Hours
                         </div>
                     </div>
