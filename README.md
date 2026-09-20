@@ -22,7 +22,7 @@ It is built for Papi Chulo, a Mexican Street Food business with currently two lo
 
 **Cost dashboard.** Food, labour, packaging and cleaning, and waste as a percentage of net sales against their targets, with gross profit and the week day by day. Targets can be changed permanently or just for some specific weeks, so temporary changes won't affect past weeks or the rest of the year if it's not a permanent change.
 
-**Events.** A calendar that displays events on the 3Arena, which is in front of Papi Chulo Point Campus. If the event is popular it will be a busy evening/night for us, so knowing there is a concert on Thursday changes everything from orders, product preparation and staff available. Everyone can see it, because the people working that night are the ones who need to know.
+**What is on near us.** Each restaurant has a list of places around it: an arena, a theatre, a cinema, a harbour, a council that runs festivals. What is on at any of them shows as a badge on the roster and on the calendar, with the walking time behind it. Anything over about 20,000 people within a few kilometres counts too, not because anybody walks from it but because it fills the hotels beside us. Ticketed places come from Ticketmaster; the rest are read off their own listings pages once a week, and anything read that way waits for somebody to keep it before it is taken as fact. **Nothing predicts anything.** It says what is on and when, and the manager decides what that is worth. Everyone can see it, because the people working that night are the ones who need to know.
 
 ## Built with
 
@@ -32,7 +32,9 @@ It is built for Papi Chulo, a Mexican Street Food business with currently two lo
 - **jsPDF** for the stock take export and **qrcode** for the allergen QR codes
 - **Vitest** for the tests
 - Hosted on **Vercel**
-- **Ticketmaster Discovery API** for the 3Arena events
+- **Ticketmaster Discovery API** for what is on at ticketed places nearby
+- **Google Gemini**, free tier, for reading listings pages that have no feed
+- **OpenStreetMap Nominatim** for turning a new restaurant's address into a point
 
 ## Running it locally
 
@@ -68,7 +70,9 @@ If you have Docker, `npm run db:local` does all of this against a local database
 cp .env.example .env
 ```
 
-Then fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, both from Project Settings then API in Supabase. Leave `VITE_PUBLIC_URL` empty locally. `VITE_TICKETMASTER_KEY` is only needed for the events calendar. Get a Consumer Key at developer.ticketmaster.com. Without it the rest of the app works fine and the calendar stays empty.
+Then fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, both from Project Settings then API in Supabase. Leave `VITE_PUBLIC_URL` empty locally.
+
+The Ticketmaster and Gemini keys are **not** in `.env` and must never be. Anything prefixed `VITE_` is written into the built site, so a key in one is a key anybody can read out of the bundle. Both are secrets on the functions that use them: `npx supabase secrets set TICKETMASTER_KEY=...` and `GEMINI_KEY=...`. Without them the rest of the app works fine and the calendar simply shows nothing from outside.
 
 The anon key is safe in the browser, because row level security is what actually protects the data. The service role key is not, and it must never appear anywhere in this project: it goes past every policy.
 
@@ -105,7 +109,7 @@ npm run dev -- --host
 npm run test:run
 ```
 
-1,617 tests across 57 files. Forty seven of them are in `src/lib` and cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
+2,122 tests across 71 files. Most of them are in `src/lib` and cover all the parts where any mistake or error would just show up as a wrong number on the screen that nobody might notice: recipes costs including recipes that references themselves, allergen derivation, currency and quantities formatting, date formatting, working out which targets for costs are applied to a given week, waste value, and the event mapping functionality to the calendar.
 
 The date tests are there because of a real bug that appeared during production. Turning a date into a string using `toISOString` converts it to UTC, so as the project is being used in Ireland, an evening date was being treated as the next day and the week selectors were moving in blocks of six days instead of seven. Everything related to dates now is in `src/lib/dates.js` with tests in place to verify everything works as intended.
 
@@ -123,13 +127,13 @@ They never create anything. Reads are harmless, and a write that is meant to be 
         auth/            the two route guards
         layout/          the sidebar and page shell
         roster/ team/ inventory/ settings/ reports/
-        costs/ forecast/ invoices/ allergens/
+        costs/ forecast/ invoices/ allergens/ diary/ nearby/
       context/           the signed-in user and the active restaurant
       lib/               logic with no interface: costing, allergens, dates, formatting
       pages/
         auth/            login
         inventory/       catalogue, menu, stock takes, allergens
-        forecast/        the 3Arena event calendar
+        diary/           the calendar: the diary and what is on nearby
         sales/           daily entry and the weekly grid
         invoices/        entry and history
         costs/           labour and the cost dashboard
@@ -166,7 +170,7 @@ There are four roles. The rules are stored directly in the database as row level
 | Prices, recipes, allergen tagging | No | Everything | Everything | Everything |
 | Stock takes | Count, and edit their own counts | Everything, including review, close and the summary | Everything | Everything |
 | Waste | Log it, and see today's | Everything, including the weekly summary | Everything | Everything |
-| Events at 3Arena | See the calendar | Everything, including refreshing it | Everything | Everything |
+| What is on nearby | See it on the calendar and the roster | Everything, including which places we watch and keeping what was found | Everything | Everything |
 | Sales, invoices, labour, costs | No access | Everything | Everything | Everything |
 | Restaurant settings | No | Yes | No | Yes |
 | Users | No | Employees at their restaurant | Managers and employees at their restaurants | Everyone, and restaurants |
@@ -199,7 +203,7 @@ Three commands, and all three have to pass before anything is committed:
 
 ```bash
 npm run lint       # 0 problems, and it stays 0
-npm run test:run   # 1,617 tests
+npm run test:run   # 2,122 tests
 npm run build
 ```
 
@@ -225,9 +229,11 @@ It used to be generated by a script that concatenated every migration, which is 
 
 **Realtime stock take sync** and **exporting a stock take to Google Sheets.** The PDF already covers sharing one. Will be implemented in future.
 
-**Predicting how busy an event night will be.** The calendar of what events are upcoming in the 3Arena is built, but not the prediction. Before building the model I checked if Ticketmaster free API allow to retrieve past events, because without them there is nothing to train on. It cannot: a query for the first six months of this year at 3Arena returns nothing, but the same venue shows 92 events coming up. The API does not show information about an event after it has happened.
+**Predicting how busy an event night will be.** Dropped on purpose rather than left undone. What is on near a restaurant is now a badge and nothing more, and the manager decides what it is worth, which removes the entire half of this that could be confidently wrong about a number.
 
-Every event we retrieve is saved and never deleted, so we will be able to build a history from now on. The idea is to have enough information to train a possible model before the concert season starts in September. Ticket numbers and expected attendance are not in the free API at all, so the model will have to work without them.
+Two things settled it. Expected attendance and ticket numbers are not in the free Ticketmaster tier at all, checked across every event the Arena listed in August, so one of the two real inputs to a model does not exist. And past events cannot be retrieved: a query for the first six months of this year returns nothing while the same venue shows 92 coming up, so there is nothing to train on either.
+
+Every event we retrieve is still saved and never deleted, so a history is building from now on if it is ever wanted.
 
 ## Screenshots
 
