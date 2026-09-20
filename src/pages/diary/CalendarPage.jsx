@@ -322,11 +322,16 @@ export default function CalendarPage() {
         if (display_name === (event.display_name ?? null) && !all) return
 
         const where = supabase.from('events').update({ display_name })
-        const { error: failed } = all
-            ? await where.eq('place_id', event.place_id).eq('name', event.name)
-            : await where.eq('id', event.id)
+        const { data, error: failed } = all
+            ? await where.eq('place_id', event.place_id).eq('name', event.name).select('id')
+            : await where.eq('id', event.id).select('id')
 
         if (failed) { setError(friendlyError(failed)); return }
+        // The same trap the keep fell into: no rows changed reads as success.
+        if (!data?.length) {
+            setError('That could not be saved, so the name is unchanged.')
+            return
+        }
 
         const hits = e => (all
             ? e.place_id === event.place_id && e.name === event.name
@@ -366,10 +371,23 @@ export default function CalendarPage() {
         }
 
         setDeciding(true)
-        const { error: failed } = await supabase.from('events').update(change).eq('id', event.id)
+        // **select, so the answer says what it actually did.** An update that
+        // matches no rows comes back 204 with no error, which is
+        // indistinguishable from one that worked, and the screen then empties
+        // the row out of its own list and looks right. He kept five things on
+        // the computer, opened the calendar on his phone, and all five were
+        // still waiting: the list had emptied locally and nothing had been
+        // written. A write nobody can tell failed is worse than one that fails
+        // loudly.
+        const { data, error: failed } = await supabase.from('events')
+            .update(change).eq('id', event.id).select('id')
         setDeciding(false)
 
         if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) {
+            setError('That could not be saved. Nothing was changed, so it is still waiting.')
+            return
+        }
         setEvents(was => was.map(e => (e.id === event.id ? { ...e, ...change } : e)))
     }
 
