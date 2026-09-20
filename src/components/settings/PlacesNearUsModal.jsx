@@ -378,6 +378,217 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const walkers = rows.filter(r => r.relation !== 'city')
     const city = rows.filter(r => r.relation === 'city')
 
+
+    // **Changing one is its own dialog rather than a form further down this
+    // one.** Pressing a place opened the form at the foot of a long scrolling
+    // list, so it looked like nothing had happened: the thing you asked for was
+    // three screens below the thing you pressed.
+    //
+    // Swapped rather than stacked, which is the pattern the diary already
+    // follows when an entry goes from being read to being changed: one dialog
+    // at a time, and closing this one puts the list back rather than closing
+    // the lot.
+    if (adding) {
+        const back = () => { setAdding(false); setEditingId(null); setForm(BLANK) }
+        return (
+            <Modal
+                title={editingId ? (form.name || 'Change a place') : 'Add a place'}
+                onClose={back}
+                width="max-w-2xl"
+            >
+                <div className="px-4 sm:px-6 py-4">
+                    {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+                    <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
+                        <div className="sm:col-span-2">
+                            <label className={labelClass} htmlFor="place-relation">
+                                Would somebody at this walk to us?
+                            </label>
+                            <select
+                                id="place-relation"
+                                className={fieldClass}
+                                value={form.relation}
+                                onChange={e => setForm({ ...form, relation: e.target.value })}
+                            >
+                                <option value="walk">Yes, it is a walk away</option>
+                                <option value="city">No, but it fills the hotels near us</option>
+                            </select>
+                            {/* The one judgement in the whole feature,
+                                and no API can make it. */}
+                            <p className="text-xs text-muted mt-1">
+                                The second one shows nothing until you type how many it
+                                holds, and only counts over{' '}
+                                {CITY_CAPACITY.toLocaleString('en-IE')}.
+                            </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className={labelClass} htmlFor="place-name">Name</label>
+                            <input
+                                id="place-name"
+                                className={fieldClass}
+                                value={form.name}
+                                required
+                                onChange={e => setForm({ ...form, name: e.target.value })}
+                                placeholder="Pavilion Theatre"
+                            />
+                        </div>
+                        <div>
+                            <label className={labelClass} htmlFor="place-walk">Walk, in minutes</label>
+                            <input
+                                id="place-walk"
+                                className={fieldClass}
+                                inputMode="numeric"
+                                value={form.walk_minutes}
+                                onChange={e => setForm({ ...form, walk_minutes: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className={labelClass} htmlFor="place-capacity">
+                                How many it holds
+                            </label>
+                            <input
+                                id="place-capacity"
+                                className={fieldClass}
+                                inputMode="numeric"
+                                value={form.capacity}
+                                onChange={e => setForm({ ...form, capacity: e.target.value })}
+                                placeholder="Only for the city rule"
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className={labelClass} htmlFor="place-page">
+                                Its listings page
+                            </label>
+                            <input
+                                id="place-page"
+                                className={fieldClass}
+                                value={form.page_url}
+                                onChange={e => setForm({ ...form, page_url: e.target.value })}
+                                placeholder="https://paviliontheatre.ie/events"
+                            />
+                            <p className="text-xs text-muted mt-1">
+                                Read once a week. Anything found waits on the calendar for
+                                somebody to keep it.
+                            </p>
+                            {/* Two words rather than a second field,
+                                because where the month or the page
+                                number goes is part of the address and
+                                only the address knows where. */}
+                            <p className="text-xs text-muted mt-1">
+                                Some sites hand over one month or a few events at a time.
+                                Put <code className="font-mono">{'{month}'}</code> or{' '}
+                                <code className="font-mono">{'{page}'}</code> in the address
+                                where the site puts them and it will be read right through.
+                            </p>
+                        </div>
+                        <div>
+                            <label className={labelClass} htmlFor="place-depth">
+                                How many pages to read
+                            </label>
+                            <input
+                                id="place-depth"
+                                className={fieldClass}
+                                inputMode="numeric"
+                                value={form.page_depth}
+                                onChange={e => setForm({ ...form, page_depth: e.target.value })}
+                            />
+                            <p className="text-xs text-muted mt-1">
+                                Only does anything when the address has{' '}
+                                <code className="font-mono">{'{page}'}</code> in it. One
+                                unless the site is stingy.
+                            </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className={labelClass} htmlFor="place-reading">
+                                What that page lists
+                            </label>
+                            <select
+                                id="place-reading"
+                                className={fieldClass}
+                                value={form.reading_key}
+                                onChange={e => setForm({ ...form, reading_key: e.target.value })}
+                            >
+                                <option value="date">Things happening on a day</option>
+                                <option value="title">A running programme, like a cinema</option>
+                            </select>
+                            {/* A cinema lists the same film every day
+                                for a month. Read as days that is a
+                                hundred and thirty eight rows and the
+                                roster is unreadable; read as a
+                                programme it is one row per film, kept
+                                the first time it appears. */}
+                            <p className="text-xs text-muted mt-1">
+                                A programme keeps each thing once, the first time it turns
+                                up, so a film showing all month is one line rather than
+                                thirty.
+                            </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className={labelClass} htmlFor="place-venue">
+                                Ticketmaster venue id
+                            </label>
+                            <input
+                                id="place-venue"
+                                className={fieldClass}
+                                value={form.ticketmaster_venue_id}
+                                onChange={e => setForm({ ...form, ticketmaster_venue_id: e.target.value })}
+                                placeholder="Leave empty unless it sells tickets"
+                            />
+                        </div>
+                        <label className={`${checkRow} sm:col-span-2 cursor-pointer`}>
+                            <input
+                                type="checkbox"
+                                checked={form.own_row}
+                                onChange={e => setForm({ ...form, own_row: e.target.checked })}
+                                className={checkbox}
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Give it a row of its own on the roster
+                                </span>
+                                {/* For the one place on its own scale.
+                                    Nine thousand people two minutes
+                                    away is not the same kind of fact as
+                                    a sandwich delivery, and a week grid
+                                    that lists them together buries it. */}
+                                <span className="block text-xs text-muted mt-0.5">
+                                    For the one place big enough that it should not sit
+                                    under a delivery. Everything else shares Also on.
+                                </span>
+                            </span>
+                        </label>
+                        <div className="sm:col-span-2 flex flex-wrap gap-2">
+                            <button type="submit" disabled={busy} className={primaryButton()}>
+                                {editingId ? 'Save' : 'Add it'}
+                            </button>
+                            <button
+                                type="button"
+                                className={secondaryButton}
+                                onClick={back}
+                            >
+                                Back to the list
+                            </button>
+                            {/* Only when editing one that exists, and
+                                last, because it is the one control here
+                                that cannot be undone by pressing it
+                                again. */}
+                            {editingId && (
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => stopWatching(rows.find(r => r.id === editingId))}
+                                    className="ml-auto text-sm font-medium text-red-700 hover:text-red-800 px-3 py-2"
+                                >
+                                    Take it off the list
+                                </button>
+                            )}
+                        </div>
+                    </form>
+                </div>
+            </Modal>
+        )
+    }
+
     return (
         <Modal title="Places near us" onClose={onClose} width="max-w-2xl">
             <div className="px-4 sm:px-6 py-4">
@@ -441,204 +652,14 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                             />
                         ))}
 
-                        <ModalSectionBar>
-                            {editingId ? 'Change a place' : 'Add one by hand'}
-                        </ModalSectionBar>
-                        {!adding ? (
-                            <button
-                                type="button"
-                                onClick={() => { setAdding(true); setEditingId(null); setForm(BLANK) }}
-                                className={`${secondaryButton} my-3`}
-                            >
-                                Add a place
-                            </button>
-                        ) : (
-                            <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 py-3">
-                                <div className="sm:col-span-2">
-                                    <label className={labelClass} htmlFor="place-relation">
-                                        Would somebody at this walk to us?
-                                    </label>
-                                    <select
-                                        id="place-relation"
-                                        className={fieldClass}
-                                        value={form.relation}
-                                        onChange={e => setForm({ ...form, relation: e.target.value })}
-                                    >
-                                        <option value="walk">Yes, it is a walk away</option>
-                                        <option value="city">No, but it fills the hotels near us</option>
-                                    </select>
-                                    {/* The one judgement in the whole feature,
-                                        and no API can make it. */}
-                                    <p className="text-xs text-muted mt-1">
-                                        The second one shows nothing until you type how many it
-                                        holds, and only counts over{' '}
-                                        {CITY_CAPACITY.toLocaleString('en-IE')}.
-                                    </p>
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelClass} htmlFor="place-name">Name</label>
-                                    <input
-                                        id="place-name"
-                                        className={fieldClass}
-                                        value={form.name}
-                                        required
-                                        onChange={e => setForm({ ...form, name: e.target.value })}
-                                        placeholder="Pavilion Theatre"
-                                    />
-                                </div>
-                                <div>
-                                    <label className={labelClass} htmlFor="place-walk">Walk, in minutes</label>
-                                    <input
-                                        id="place-walk"
-                                        className={fieldClass}
-                                        inputMode="numeric"
-                                        value={form.walk_minutes}
-                                        onChange={e => setForm({ ...form, walk_minutes: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className={labelClass} htmlFor="place-capacity">
-                                        How many it holds
-                                    </label>
-                                    <input
-                                        id="place-capacity"
-                                        className={fieldClass}
-                                        inputMode="numeric"
-                                        value={form.capacity}
-                                        onChange={e => setForm({ ...form, capacity: e.target.value })}
-                                        placeholder="Only for the city rule"
-                                    />
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelClass} htmlFor="place-page">
-                                        Its listings page
-                                    </label>
-                                    <input
-                                        id="place-page"
-                                        className={fieldClass}
-                                        value={form.page_url}
-                                        onChange={e => setForm({ ...form, page_url: e.target.value })}
-                                        placeholder="https://paviliontheatre.ie/events"
-                                    />
-                                    <p className="text-xs text-muted mt-1">
-                                        Read once a week. Anything found waits on the calendar for
-                                        somebody to keep it.
-                                    </p>
-                                    {/* Two words rather than a second field,
-                                        because where the month or the page
-                                        number goes is part of the address and
-                                        only the address knows where. */}
-                                    <p className="text-xs text-muted mt-1">
-                                        Some sites hand over one month or a few events at a time.
-                                        Put <code className="font-mono">{'{month}'}</code> or{' '}
-                                        <code className="font-mono">{'{page}'}</code> in the address
-                                        where the site puts them and it will be read right through.
-                                    </p>
-                                </div>
-                                <div>
-                                    <label className={labelClass} htmlFor="place-depth">
-                                        How many pages to read
-                                    </label>
-                                    <input
-                                        id="place-depth"
-                                        className={fieldClass}
-                                        inputMode="numeric"
-                                        value={form.page_depth}
-                                        onChange={e => setForm({ ...form, page_depth: e.target.value })}
-                                    />
-                                    <p className="text-xs text-muted mt-1">
-                                        Only does anything when the address has{' '}
-                                        <code className="font-mono">{'{page}'}</code> in it. One
-                                        unless the site is stingy.
-                                    </p>
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelClass} htmlFor="place-reading">
-                                        What that page lists
-                                    </label>
-                                    <select
-                                        id="place-reading"
-                                        className={fieldClass}
-                                        value={form.reading_key}
-                                        onChange={e => setForm({ ...form, reading_key: e.target.value })}
-                                    >
-                                        <option value="date">Things happening on a day</option>
-                                        <option value="title">A running programme, like a cinema</option>
-                                    </select>
-                                    {/* A cinema lists the same film every day
-                                        for a month. Read as days that is a
-                                        hundred and thirty eight rows and the
-                                        roster is unreadable; read as a
-                                        programme it is one row per film, kept
-                                        the first time it appears. */}
-                                    <p className="text-xs text-muted mt-1">
-                                        A programme keeps each thing once, the first time it turns
-                                        up, so a film showing all month is one line rather than
-                                        thirty.
-                                    </p>
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelClass} htmlFor="place-venue">
-                                        Ticketmaster venue id
-                                    </label>
-                                    <input
-                                        id="place-venue"
-                                        className={fieldClass}
-                                        value={form.ticketmaster_venue_id}
-                                        onChange={e => setForm({ ...form, ticketmaster_venue_id: e.target.value })}
-                                        placeholder="Leave empty unless it sells tickets"
-                                    />
-                                </div>
-                                <label className={`${checkRow} sm:col-span-2 cursor-pointer`}>
-                                    <input
-                                        type="checkbox"
-                                        checked={form.own_row}
-                                        onChange={e => setForm({ ...form, own_row: e.target.checked })}
-                                        className={checkbox}
-                                    />
-                                    <span>
-                                        <span className="block text-sm font-medium text-gray-900">
-                                            Give it a row of its own on the roster
-                                        </span>
-                                        {/* For the one place on its own scale.
-                                            Nine thousand people two minutes
-                                            away is not the same kind of fact as
-                                            a sandwich delivery, and a week grid
-                                            that lists them together buries it. */}
-                                        <span className="block text-xs text-muted mt-0.5">
-                                            For the one place big enough that it should not sit
-                                            under a delivery. Everything else shares Also on.
-                                        </span>
-                                    </span>
-                                </label>
-                                <div className="sm:col-span-2 flex flex-wrap gap-2">
-                                    <button type="submit" disabled={busy} className={primaryButton()}>
-                                        {editingId ? 'Save' : 'Add it'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={secondaryButton}
-                                        onClick={() => { setAdding(false); setEditingId(null); setForm(BLANK) }}
-                                    >
-                                        Cancel
-                                    </button>
-                                    {/* Only when editing one that exists, and
-                                        last, because it is the one control here
-                                        that cannot be undone by pressing it
-                                        again. */}
-                                    {editingId && (
-                                        <button
-                                            type="button"
-                                            disabled={busy}
-                                            onClick={() => stopWatching(rows.find(r => r.id === editingId))}
-                                            className="ml-auto text-sm font-medium text-red-700 hover:text-red-800 px-3 py-2"
-                                        >
-                                            Take it off the list
-                                        </button>
-                                    )}
-                                </div>
-                            </form>
-                        )}
+                        <ModalSectionBar>Add one by hand</ModalSectionBar>
+                        <button
+                            type="button"
+                            onClick={() => { setAdding(true); setEditingId(null); setForm(BLANK) }}
+                            className={`${secondaryButton} my-3`}
+                        >
+                            Add a place
+                        </button>
 
                         <ModalSectionBar>What their pages say</ModalSectionBar>
                         <div className="py-3 flex flex-wrap items-center gap-3">
