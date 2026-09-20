@@ -81,15 +81,29 @@ const KIND = {
         google: '7', // Peacock
     },
 
-    // These two are not kinds anybody can choose. They are the other two
-    // sources the calendar draws, and they are in here so one function answers
-    // "what colour is this item" whatever it came from.
+    // These four are not kinds anybody can choose. They are the other sources
+    // the calendar draws, and they are in here so one function answers "what
+    // colour is this item" whatever it came from.
     //
-    // Neither carries a Google colour, because neither is ever written there. An
-    // Arena listing is context rather than a commitment, and a quarter of them
+    // None carries a Google colour, because none is ever written there. What is
+    // on next door is context rather than a commitment, and a quarter of them
     // would bury everything that is actually ours.
+    //
+    // **Nothing that existed before this work shares a colour with anything
+    // new**, which is his rule and it is wider than the one case that caused
+    // it. Purple, grey, orange, green, amber, slate and stone were all taken
+    // before nearby events existed, so the two new ones are blue and indigo.
     arena: {
-        label: '3Arena',
+        dash: 'border-purple-300',
+        ring: 'border-purple-700',
+        // The one place near a restaurant that is on its own scale, which is
+        // whichever one has been given a row of its own. For Point Campus that
+        // is the 3Arena and it has been purple since May.
+        //
+        // The label is a fallback. The calendar says the place's actual name,
+        // because "3Arena" is what somebody there would look for and only that
+        // screen knows which place it is.
+        label: 'Next door',
         chip: 'bg-purple-50 text-purple-900 border-l-purple-700',
         tag: 'bg-purple-50 text-purple-900',
         dot: 'bg-purple-700',
@@ -110,6 +124,40 @@ const KIND = {
         edge: '#CBD5E1',
         google: null,
     },
+
+    // Read off a page somebody publishes for people rather than for us. The
+    // same badge whether it is a film opening, a regatta or a market.
+    nearby: {
+        label: 'Nearby',
+        dash: 'border-blue-300',
+        ring: 'border-blue-600',
+        chip: 'bg-blue-50 text-blue-900 border-l-blue-600',
+        tag: 'bg-blue-50 text-blue-900',
+        dot: 'bg-blue-600',
+        bar: '#2563EB',
+        fill: '#EFF6FF',
+        ink: '#1E3A8A',
+        edge: '#A8C5F0',
+        google: null,
+    },
+
+    // Nobody walks from these. They are here because they fill the hotels
+    // beside us, which is a different claim from the one every other badge
+    // makes, so the chip says CITY out loud rather than resting on somebody
+    // telling two blues apart at eleven pixels.
+    city: {
+        label: 'City',
+        dash: 'border-indigo-300',
+        ring: 'border-indigo-700',
+        chip: 'bg-indigo-50 text-indigo-900 border-l-indigo-700',
+        tag: 'bg-indigo-50 text-indigo-900',
+        dot: 'bg-indigo-700',
+        bar: '#4338CA',
+        fill: '#EEF2FF',
+        ink: '#312E81',
+        edge: '#B0B4EE',
+        google: null,
+    },
 }
 
 const FALLBACK = KIND.other
@@ -128,6 +176,39 @@ export function kindTag(kind) {
 
 export function kindDot(kind) {
     return (KIND[kind] || FALLBACK).dot
+}
+
+// The edge a chip wears when nobody has checked it yet.
+//
+// Dashed used to mean "nobody here typed this and nobody here can change it",
+// which was the Arena and only the Arena. The colour already says that, on all
+// three of the nearby kinds, so the dash was doing a job that was already done.
+//
+// It means one thing now: **a model read this off a page and no person has
+// looked at it.** That is a real difference worth a mark of its own, because
+// it is the difference between a fixture somebody sold tickets for and a
+// sentence a machine understood, and it sits beside a Keep button on the
+// calendar until somebody settles it.
+export function kindDash(kind) {
+    const edge = (KIND[kind] || FALLBACK).dash
+    return edge ? `border-y border-r border-dashed ${edge}` : ''
+}
+
+// The same dot, hollow, for something nobody has checked yet.
+//
+// A month cell on a phone is fifty pixels and holds coloured dots and nothing
+// else: no chip, no dashed edge, no words. So the one thing that separates a
+// listing somebody kept from one still waiting on them was invisible on the
+// screen most of this gets read on. **He kept seven things on a computer,
+// opened the calendar on a phone, saw five more sitting there and reasonably
+// took them for the same seven.** They were five conferences he had not got to,
+// and nothing on that screen could have told him.
+//
+// Hollow rather than a different colour, because the colour is already saying
+// which kind of thing it is and cannot say two things at once.
+export function kindRing(kind) {
+    const edge = (KIND[kind] || FALLBACK).ring
+    return edge ? `border bg-white ${edge}` : 'border border-gray-500 bg-white'
 }
 
 // The same colours as real values, for the two things that cannot read a class
@@ -450,7 +531,7 @@ export function entryProblem(form) {
 
 export const LAYERS = [
     'catering', 'meeting', 'promotion', 'maintenance', 'other',
-    'arena', 'delivery', 'private',
+    'arena', 'nearby', 'city', 'delivery', 'private',
 ]
 
 // Which switch turns this item off.
@@ -458,12 +539,15 @@ export const LAYERS = [
 // A private entry answers to its own layer rather than to its kind, so hiding
 // what is only yours is one press and does not also hide the catering.
 export function layerOf(item) {
-    if (item?.source === 'arena') return 'arena'
+    // A nearby listing answers to its own three, because what you want to
+    // switch off is a kind of noise rather than a source: somebody watching the
+    // Arena may well not want the city ones, and they arrive the same way.
+    if (item?.source === 'nearby') return item.kind || 'nearby'
     if (item?.source === 'delivery') return 'delivery'
     return item?.scope === 'private' ? 'private' : (item?.kind || 'other')
 }
 
-export function calendarItems({ entries, arena, dayNotes, from, to }) {
+export function calendarItems({ entries, nearby, dayNotes, from, to }) {
     const items = []
 
     for (const entry of entries || []) {
@@ -484,17 +568,32 @@ export function calendarItems({ entries, arena, dayNotes, from, to }) {
         }
     }
 
-    for (const event of arena || []) {
-        items.push({
-            key: `arena-${event.id}`,
-            source: 'arena',
-            kind: 'arena',
-            title: event.name,
-            date: event.event_date,
-            time: event.event_time ? shortTime(event.event_time) : '',
-            allDay: !event.event_time,
-            entry: event,
-        })
+    // Already decided by lib/nearby: which place it is at, whether this
+    // restaurant is near it, and whether anybody has checked it. This only
+    // spreads it over the days it covers, the same way a diary entry is spread.
+    //
+    // A run of days matters here as much as it does in the diary. A Christmas
+    // market over three weekends is one row and drawing it on the first day
+    // only would be a lie about it.
+    for (const row of nearby || []) {
+        const event = row?.event
+        if (!event) continue
+        for (const date of datesBetween(event.event_date, event.ends_on)) {
+            if (from && date < from) continue
+            if (to && date > to) continue
+            items.push({
+                key: `nearby-${event.id}-${date}`,
+                source: 'nearby',
+                kind: row.kind || 'nearby',
+                title: row.title || event.name,
+                date,
+                time: event.event_time ? shortTime(event.event_time) : '',
+                allDay: !event.event_time,
+                checked: row.checked !== false,
+                place: row.place,
+                entry: event,
+            })
+        }
     }
 
     for (const note of dayNotes || []) {

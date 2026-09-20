@@ -1,7 +1,8 @@
 import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
-import { categoryDot } from '@/lib/events'
+import { kindColours } from '@/lib/diary'
+import { chipWords } from '@/lib/nearby'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
 import { hasWarnings } from '@/lib/workRules'
@@ -61,7 +62,7 @@ export default function RosterDay({
     absences,
     dayHours,
     dayNote,
-    events,
+    nearby,
     diary,
     gridHours,
     breakRules,
@@ -331,30 +332,47 @@ export default function RosterDay({
                         and two concerts on one night were drawn over each
                         other, since every one of them runs from its own time to
                         the end of the day. Here each gets a line. */}
-                    {(events || []).length > 0 && (
-                        <div className="flex border-b border-border bg-accent-light/40">
-                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent-ink uppercase tracking-wider">
-                                Events
+                    {(nearby || []).length > 0 && (
+                        <div className="flex border-b border-border bg-slate-50/60">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
+                                Near us
                             </div>
                             <div className="flex-1 relative py-1">
-                                {(events || []).map(event => {
-                                    const at = toMinutes(event.event_time)
+                                {(nearby || []).map(row => {
+                                    // Its own colour rather than the app's
+                                    // orange. Every one of these used to be
+                                    // drawn in the accent, which is catering's
+                                    // colour, so a concert and a booked job
+                                    // were the same shade on a screen whose
+                                    // whole job is telling them apart.
+                                    const colours = kindColours(row.kind)
+                                    const at = toMinutes(row.event.event_time)
                                     const start = at < 0 ? from : Math.max(from, at)
                                     return (
                                         <span
-                                            key={event.id}
-                                            title={`${event.name} · doors ${shortTime(event.event_time)}`}
+                                            key={row.event.id}
+                                            title={chipWords(row) + (row.checked === false ? ' (found, nobody has checked it)' : '')}
                                             className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
                                                 width: `${Math.max(0, 100 - pct(start))}%`,
-                                                backgroundColor: 'rgba(188,85,43,0.18)',
-                                                borderLeft: '2px solid var(--color-accent)',
+                                                backgroundColor: colours.fill,
+                                                border: row.checked === false
+                                                    ? `1px dashed ${colours.edge}`
+                                                    : `1px solid ${colours.edge}`,
+                                                borderLeft: `3px solid ${colours.bar}`,
                                             }}
                                         >
-                                            <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
-                                            <span className="text-[0.5625rem] font-semibold text-gray-700 truncate">
-                                                {shortTime(event.event_time)} {event.name}
+                                            <span
+                                                className="text-[0.5625rem] font-semibold truncate"
+                                                style={{ color: colours.ink }}
+                                            >
+                                                {row.time && `${row.time} `}
+                                                {row.kind === 'city' && 'CITY '}
+                                                {/* The short name, the same as
+                                                    the week and the sheet. One
+                                                    week, one name for a place. */}
+                                                {chipWords(row, { short: true })}
                                             </span>
                                         </span>
                                     )
@@ -365,10 +383,14 @@ export default function RosterDay({
                     )}
 
                     {/* Everything else the day has on, at the time it lands.
-                        Its own strip rather than crowded in with the Arena
-                        events above, because a concert is a run of hours and a
+                        Its own strip rather than crowded in with what is
+                        on next door, because a concert is a run of hours and a
                         delivery is a moment, and drawing them the same way
-                        would say they are the same kind of thing. */}
+                        would say they are the same kind of thing. That is the
+                        opposite of the week view, which merges them, and it is
+                        the right answer in both places: a week cell has no room
+                        to say how long anything lasts and this one is built to
+                        say exactly that. */}
                     {extras.length > 0 && (
                         <div className="flex border-b border-border bg-slate-50">
                             <div className="w-40 flex-shrink-0 px-3 py-1.5">

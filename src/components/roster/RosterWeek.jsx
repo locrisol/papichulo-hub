@@ -10,8 +10,10 @@ import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absence
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { extrasFor, whatIsOn } from '@/lib/dayExtras'
+import { rowsOn, ownRows, sharedRows, placeName } from '@/lib/nearby'
+import NearbyChip from '@/components/nearby/NearbyChip'
 import {
-    bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel, labelsOf,
+    bandsForWeek, kindChip, kindLabel, kindTag, showsOnRoster, onDate, timeLabel, labelsOf,
 } from '@/lib/diary'
 import {
     weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, tint,
@@ -47,7 +49,7 @@ import {
 // The hours stay. Everybody sees everybody's, which is a decision rather than an
 // oversight: the picture already goes out to the whole group.
 export default function RosterWeek({
-    dates, employees, shifts, positions, dayNotes, events, diary, openingHours, standingNote, today,
+    dates, employees, shifts, positions, dayNotes, nearby, nearbyPlaces, diary, openingHours, standingNote, today,
     alerts, absences, onOpenShift, onNewShift, onOpenDay, onOpenDiary, onOpenWeekExtras,
     shiftMark, staff = false,
 }) {
@@ -80,11 +82,6 @@ export default function RosterWeek({
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const positionOf = id => (positions || []).find(p => p.id === id)
 
-    // Two rows that exist for a manager because they are also the way things
-    // get typed in. Staff cannot type anything, so for them an empty one is a
-    // line of dashes taking up space on a week they are trying to read.
-    const showEvents = !staff || (events || []).length > 0
-
     // What reaches the roster at all. Private never does, because the form
     // promises nobody else sees it and this is where the staff read the week.
     // Cancelled never does either: the entry is worth keeping, it just does not
@@ -100,9 +97,29 @@ export default function RosterWeek({
     // Everything else joins the deliveries on the day it is on.
     const diaryOn = d => onDate(onNow, d).filter(e => !banded.has(e.id))
 
+    // What is on next door, on the day it is on. A run of days lands on every
+    // day it covers, the same as a diary entry, because a market over three
+    // weekends is one row and drawing it on the first day only is a lie.
+    //
+    // Split first: a place with a row of its own is drawn above rather than in
+    // amongst the deliveries. For a manager that is one place and for staff it
+    // is the row they scan for.
+    //
+    // **Always drawn, empty or not.** A week with no concert at the Arena has
+    // to say there is no concert at the Arena, because a missing row and a
+    // quiet week look the same and only one of them has been checked.
+    const headlines = ownRows(nearby, nearbyPlaces)
+    const shared = sharedRows(nearby)
+    const nearOn = d => rowsOn(shared, d)
+
+    // The row exists for a manager whether or not it has anything in it,
+    // because it is also the way in: a row that only appears once something is
+    // in it is a row you cannot use to put the first thing in. Staff cannot
+    // type anything, so for them an empty one is a line taking up space on a
+    // week they are trying to read.
     const showExtras = !staff
         || (dayNotes || []).some(n => extrasFor(n).length > 0)
-        || dates.some(d => diaryOn(d).length > 0)
+        || dates.some(d => diaryOn(d).length > 0 || nearOn(d).length > 0)
 
     // Down the middle, not up at the top.
     //
@@ -222,7 +239,12 @@ export default function RosterWeek({
                     {bands.map(({ entry, start, span, runsIn, runsOn }, i) => (
                         <tr key={entry.id} className="border-b border-border bg-white">
                             <td className="px-3 py-1 text-xs font-semibold text-slate-700 border-r border-border sticky left-0 z-10 bg-white">
-                                {i === 0 ? 'What is on' : ''}
+                                {/* Not "What is on", which said nothing and
+                                    sat two rows above "Also on" saying almost
+                                    the same thing. These are the entries that
+                                    run across more than one day: a promotion
+                                    over a week, a two day catering job. */}
+                                {i === 0 ? 'Ongoing' : ''}
                             </td>
                             {start > 0 && <td className={cell} colSpan={start} />}
                             <td className={`${cell} p-1`} colSpan={span}>
@@ -258,43 +280,45 @@ export default function RosterWeek({
                         </tr>
                     ))}
 
-                    {showEvents && <tr className="bg-accent-light/60 border-b border-border">
-                        <td className="px-3 py-1.5 text-xs font-semibold text-accent-ink border-r border-border sticky left-0 z-10 bg-accent-light">
-                            Events
-                        </td>
-                        {dates.map(d => {
-                            const on = (events || []).filter(e => e.event_date === d)
-                            return (
-                                <td key={d} className={`${cell} text-center`}>
-                                    {on.length === 0 ? (
-                                        <span className="text-muted text-xs">—</span>
-                                    ) : on.map(e => (
-                                        // The same card as Also on, and for the
-                                        // same reason: a week with two concerts
-                                        // in it read as one run of words. The
-                                        // name leads here rather than the time,
-                                        // because with a concert the thing you
-                                        // are looking for is which one it is.
-                                        <span
-                                            key={e.id}
-                                            className="block rounded-md border border-accent/30 bg-white px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words mb-1 last:mb-0"
-                                        >
-                                            <span className="font-bold text-accent-ink">{e.name}</span>
-                                            {e.event_time && (
-                                                <span className="text-gray-500"> (doors {shortTime(e.event_time)})</span>
-                                            )}
-                                        </span>
-                                    ))}
+                    {/* The one place that is on its own scale gets a row
+                        with its name on it. See ownRows: a concert two
+                        minutes away is not the same kind of fact as a
+                        sandwich delivery, and sitting fourth in a cell
+                        under one is the wrong way round. */}
+                    {headlines.map(group => {
+                        const look = kindTag(group.kind)
+                        return (
+                            <tr key={group.place.id} className="border-b border-border bg-white">
+                                <td className={`px-3 py-1.5 text-xs font-semibold border-r border-border sticky left-0 z-10 ${look}`}>
+                                    {placeName(group.place, { short: true })}
                                 </td>
-                            )
-                        })}
-                        {tail}
-                    </tr>}
+                                {dates.map(d => {
+                                    const on = rowsOn(group.rows, d)
+                                    return (
+                                        <td key={d} className={`${cell} text-center p-0`}>
+                                            {on.length === 0 ? (
+                                                <span className="block py-1.5 text-muted text-xs">—</span>
+                                            ) : (
+                                                <span className="flex flex-col gap-1 px-2 py-1.5">
+                                                    {on.map(row => (
+                                                        <NearbyChip key={row.event.id} row={row} short bare />
+                                                    ))}
+                                                </span>
+                                            )}
+                                        </td>
+                                    )
+                                })}
+                                {tail}
+                            </tr>
+                        )
+                    })}
 
-                    {/* Always here for a manager, empty or not, because it is
-                        also the way in. A row that only appears once something
-                        is in it is a row you cannot use to put the first thing
-                        in. */}
+                    {/* Everything else next door is in this row rather
+                        than one of its own. It used to have one, in the app's
+                        orange, which put it in the same colour as catering and
+                        left the week reading as two lists of the same thing.
+                        In the order the day happens, because this row is about
+                        the day and not about which table a thing came out of. */}
                     {showExtras && <tr className="bg-slate-50 border-b border-border">
                             <td className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-r border-border align-middle sticky left-0 z-10 bg-slate-50">
                                 {/* The label is the way into the whole week at
@@ -334,10 +358,10 @@ export default function RosterWeek({
                                 // band above is pressable because it has a cell
                                 // to itself; these are read here and changed on
                                 // the calendar.
-                                const onToday = whatIsOn(diaryOn(d), noteFor(d))
+                                const onToday = whatIsOn(diaryOn(d), noteFor(d), nearOn(d))
                                 const inside = onToday.length === 0 ? (
                                     <span className="text-muted text-xs">{staff ? '' : '+'}</span>
-                                ) : onToday.map(({ entry, extra }) => (entry ? (
+                                ) : onToday.map(({ entry, extra, near }) => (entry ? (
                                     <span
                                         key={entry.id}
                                         className={`block rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words text-left ${kindChip(entry.kind)}`}
@@ -360,6 +384,20 @@ export default function RosterWeek({
                                         </span>
                                         {` (${entry.title})`}
                                     </span>
+                                ) : near ? (
+                                    // Same chip, different edge. A concert next
+                                    // door and a catering job are two kinds of
+                                    // thing on one day, and a row that reads
+                                    // down the day cannot care which table
+                                    // either came out of.
+                                    //
+                                    // The short name of the place, because this
+                                    // cell is about fifty pixels wide and
+                                    // "Convention Centre Dublin" would cost a
+                                    // line of height on every chip.
+                                    <div key={near.event.id} className="last:mb-0">
+                                        <NearbyChip row={near} short />
+                                    </div>
                                 ) : (
                                     // One chip each, because two of them as
                                     // plain lines read as one paragraph, and

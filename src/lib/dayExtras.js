@@ -116,9 +116,9 @@ export function extraLanes(list, minGapMinutes = 120) {
 
 // Everything a day has on it, in the order it happens.
 //
-// Two tables and one question. A catering job is a diary entry, Feedr is a tick
-// on the day, and a row that reads down the day cannot care which of the two a
-// thing came out of.
+// Three tables and one question. A catering job is a diary entry, Feedr is a
+// tick on the day, a concert next door is a listing at a place, and a row that
+// reads down the day cannot care which of the three a thing came out of.
 //
 // They used to be drawn as two groups on the week view, the diary first, on the
 // argument that something somebody committed to outranks something that merely
@@ -130,21 +130,31 @@ export function extraLanes(list, minGapMinutes = 120) {
 // The day view already did it this way, through the lane packer, which is why
 // only the week was wrong and why this is the second place needing it.
 //
-// Each one keeps whatever it arrived as, under `entry` or `extra`, because the
-// two are drawn differently and only the caller knows how.
-export function whatIsOn(entries, dayNote) {
+// **Nothing is capped here and nothing should be.** The calendar month caps a
+// day at three because a month is six rows and one busy Friday must not make
+// all six taller. The roster is seven columns, the height cost lands once, and
+// a row that hides the fourth thing on the one day that has four things hides
+// exactly the day you opened it for. His call, and the consequence is that a
+// chip has to be cheap in height rather than rare.
+//
+// Each one keeps whatever it arrived as, under `entry`, `extra` or `near`,
+// because the three are drawn differently and only the caller knows how.
+export function whatIsOn(entries, dayNote, near) {
     const items = [
         ...(entries || []).map(entry => ({
             time: entry?.starts_at ? shortTime(entry.starts_at) : '',
             entry,
         })),
+        ...(near || []).map(row => ({ time: row?.time || '', near: row })),
         ...extrasFor(dayNote).map(extra => ({ time: extra.time, extra })),
     ]
 
     // Anything with no time last, the same rule sortExtras follows and for the
     // same reason: it is the one thing that cannot be placed in the day's
-    // order. Two at the same time keep the order they came in, so a commitment
-    // still edges out a delivery when there is nothing else to separate them.
+    // order. Two at the same time keep the order they came in, which is why the
+    // three are listed above in the order they are: at half six exactly, a job
+    // somebody booked comes before a concert, and a concert before the standing
+    // delivery that arrives every week anyway.
     return items.sort((a, b) => {
         if (!a.time && !b.time) return 0
         if (!a.time) return 1

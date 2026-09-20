@@ -6,24 +6,6 @@ import { weekStartOf, dayMonth, monthLabel, addDays } from '@/lib/dates'
 
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-// Whether a restaurant watches a venue at all.
-//
-// The events table is one list with no restaurant on it, because it is what is
-// on at a venue and a venue does not belong to a shop. What ties the two
-// together is the venue written on the restaurant, and a restaurant with none
-// is not near anything: the Arena is forty minutes from Dun Laoghaire and a
-// concert there changes nothing about that week.
-//
-// The venue rather than the forecasting switch, which is the near miss worth
-// naming. Forecasting is a feature somebody turns on to get predicted sales.
-// Knowing there are nine thousand people next door at half six is a rostering
-// fact, and it should not disappear because somebody turned a forecast off. The
-// roster asked for the events with no test at all and the calendar tested the
-// switch, so the two screens disagreed as well as being wrong.
-export function watchesVenue(restaurant) {
-    return Boolean(restaurant?.forecasting_venue_id)
-}
-
 // Colour by the broad type, so a glance tells you what kind of night it is.
 //
 // These are soft on purpose. A calendar cell can hold three of them at once and

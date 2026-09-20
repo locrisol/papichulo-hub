@@ -26,7 +26,6 @@ const ACCENT = '#c2410c'
 const FAINT = '#ece8e2'
 const GREEN = '#182F24'
 const CREAM = '#f7f5f0'
-const WARM = '#f0e8e0'
 const SLATE = '#e8ecef'
 const RED = '#b91c1c'
 // The same yellow the spreadsheet uses on an opening or a closing time.
@@ -94,12 +93,22 @@ export function drawWeek(canvas, table) {
     })
 
     const CARD_PAD_LINES = 1
-    const eventCards = (table.eventsOn || []).map(list => list.map(
-        e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
-    ))
-    const chipsPerDay = (table.extras || []).map(list => list.map(
-        extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
-    ))
+    // A band each for the places with a row of their own, measured the same way
+    // the deliveries below are.
+    const headlineCards = (table.headlines || []).map(one => one.perDay.map(list => list.map(e => ({
+        ...cardFor(e.time || e.name, e.time ? ` ${e.name}` : ''),
+        colours: kindColours(e.kind),
+        checked: e.checked !== false,
+    }))))
+
+    const chipsPerDay = (table.extras || []).map(list => list.map(extra => ({
+        ...cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
+        // The colour it has on screen. Every card on this band used to be
+        // slate, so a catering job and a Feedr drop looked identical on the one
+        // copy of the week that gets printed and pinned up.
+        colours: kindColours(extra.kind),
+        checked: extra.checked !== false,
+    })))
     const cardLines = cards => cards.reduce((t, x) => t + x.lines.length + CARD_PAD_LINES, 0)
 
     const noteLines = table.notes.map(
@@ -125,7 +134,7 @@ export function drawWeek(canvas, table) {
     const l = sheetLayout(table, {
         ...cols,
         bandLines: bandLines.map(lines => lines.length),
-        eventLines: Math.max(1, ...eventCards.map(cardLines)),
+        headlineLines: headlineCards.map(days => Math.max(1, ...days.map(cardLines))),
         deliveryLines: Math.max(1, ...chipsPerDay.map(cardLines)),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
@@ -187,12 +196,21 @@ export function drawWeek(canvas, table) {
         const centre = x + width / 2
 
         cards.forEach((card, n) => {
+            const own = card.colours
             roundedPath(x, top, width, heights[n], 5)
-            c.fillStyle = '#ffffff'
+            c.fillStyle = own?.fill || '#ffffff'
             c.fill()
-            c.strokeStyle = edge
+            c.strokeStyle = own?.edge || edge
             c.lineWidth = 1
+            // Dashed means nobody has checked it: a model read it off a page
+            // and no person has looked at it yet. The same mark the screen
+            // uses, because this is the same week.
+            if (card.checked === false) c.setLineDash([4, 3])
             c.stroke()
+            c.setLineDash([])
+            // The solid tick down the left, the same as a band wears, so the
+            // colour survives being looked at from across a kitchen.
+            if (own) box(x, top + 1, 3, heights[n] - 2, own.bar)
 
             let ty = top + padY + lineH / 2
             // How much of the picked out half is already behind us, so a name
@@ -335,7 +353,7 @@ export function drawWeek(canvas, table) {
         // Named like every other row. A blank left column read as a strip of
         // colour nobody had labelled, on a sheet where STORE HOURS, EVENTS and
         // ALSO ON all say what they are.
-        text('WHAT IS ON', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
+        text('ONGOING', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
 
         bandsTop = y
         let bandY = y + 3
@@ -364,15 +382,26 @@ export function drawWeek(canvas, table) {
         y += l.bandsH
     }
 
-    // ---- what is on, written out in full rather than cut short
-    box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
-    font(11, '700')
-    text('EVENTS', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
-    eventCards.forEach((cards, i) => drawCards(cards, i, y, l.eventsH, '#9a4a26', '#deb8a0'))
-    rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH, RULE_ROW, 2)
-    y += l.eventsH
+    // ---- the one place big enough for a row of its own
+    //
+    // Named after the place rather than "Events", and in its own colour rather
+    // than the app's orange, which is catering's and was the reason this was
+    // folded away in the first place.
+    ;(table.headlines || []).forEach((one, i) => {
+        const bandH = l.headlineHeights[i]
+        if (!bandH) return
+        const colours = kindColours(one.kind)
+        box(l.pad, y, l.width - l.pad * 2, bandH, colours.fill)
+        font(11, '700')
+        text(one.name.toUpperCase(), l.pad + 12, y + bandH / 2, { colour: colours.ink })
+        headlineCards[i].forEach((cards, d) => drawCards(cards, d, y, bandH, colours.ink, colours.edge))
+        rule(l.pad, y + bandH, l.width - l.pad, y + bandH, RULE_ROW, 2)
+        y += bandH
+    })
 
-    // ---- everything else the day has on, when any of it does
+    // ---- everything else the day has on, written out in full rather than cut
+    // short. One band, because what is on next door used to have a second one
+    // in the app's own orange, which put it in the same colour as catering.
     if (l.deliveriesH) {
         box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
         font(11, '700')

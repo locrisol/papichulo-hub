@@ -5,8 +5,16 @@
  * is plain functions and runs faster without one.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf } from '../../supabase/functions/arena-events/discovery'
-import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
+import {
+    mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
+    geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
+    distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
+} from '../../supabase/functions/nearby-events/discovery'
+import {
+    distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
+    sourceKeyFor as browserSourceKeyFor,
+} from '@/lib/nearby'
+import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 
 // syncEvents is handed a client rather than reaching for one, so there is
 // nothing to mock: a fake with the one method it calls is the whole of it.
@@ -108,7 +116,7 @@ describe('syncIsDue', () => {
 //
 // The key used to be read out of import.meta.env a few lines above mapEvent,
 // which put it in the bundle served to everybody. It is a secret on the
-// arena-events function now, and these are the pieces that had to move with it.
+// nearby-events function now, and these are the pieces that had to move with it.
 describe('the request the function sends', () => {
     const AT = new Date('2026-09-20T11:00:00.000Z')
 
@@ -159,7 +167,7 @@ describe('asking for a sync', () => {
         invoke.mockResolvedValue({ data: { added: 2, total: 9 }, error: null })
         await syncEvents(client, 'pc')
 
-        expect(invoke).toHaveBeenCalledWith('arena-events', { body: { restaurantId: 'pc' } })
+        expect(invoke).toHaveBeenCalledWith('nearby-events', { body: { restaurantId: 'pc' } })
     })
 
     it('hands back what was added', async () => {
@@ -252,5 +260,199 @@ describe('whether a caller is the schedule', () => {
         expect(isServiceRole('')).toBe(false)
         expect(isServiceRole(null)).toBe(false)
         expect(isServiceRole('Bearer ', [''])).toBe(false)
+    })
+})
+
+// ------------------------------------------------ finding a venue by where it is
+
+describe('geohash', () => {
+    // The Discovery API wants a geohash rather than a pair of numbers: latlong
+    // is deprecated and geoPoint is what replaced it. These two are the
+    // published examples every geohash implementation is checked against.
+    it('matches the known answers', () => {
+        expect(geohash(57.64911, 10.40744, 11)).toBe('u4pruydqqvj')
+        expect(geohash(42.6, -5.6, 5)).toBe('ezs42')
+    })
+
+    it('is shorter when less precision is asked for', () => {
+        expect(geohash(53.3478, -6.2285, 5)).toHaveLength(5)
+        expect(geohash(53.3478, -6.2285)).toHaveLength(9)
+    })
+
+    it('gives nothing back for a point that is not one', () => {
+        expect(geohash(null, -6.2285)).toBe('')
+        expect(geohash(53.3478, undefined)).toBe('')
+    })
+})
+
+describe('venuesUrl', () => {
+    it('asks by point and radius, in kilometres', () => {
+        const url = new URL(venuesUrl(53.3478, -6.2285, 'KEY', 5))
+        expect(url.pathname).toContain('/venues.json')
+        expect(url.searchParams.get('geoPoint')).toBe(geohash(53.3478, -6.2285))
+        expect(url.searchParams.get('radius')).toBe('5')
+        expect(url.searchParams.get('unit')).toBe('km')
+        expect(url.searchParams.get('apikey')).toBe('KEY')
+    })
+})
+
+describe('venuesFrom', () => {
+    const payload = {
+        _embedded: {
+            venues: [
+                { id: 'v1', name: '3Arena', location: { latitude: '53.3478', longitude: '-6.2285' } },
+                { id: 'v2', name: 'No point here' },
+                { id: 'v1', name: '3Arena again', location: { latitude: '53.3478', longitude: '-6.2285' } },
+                { name: 'No id', location: { latitude: '53.3', longitude: '-6.2' } },
+            ],
+        },
+    }
+
+    // Distance is the entire question this list exists to answer, so a venue
+    // that cannot answer it would have to be ticked on faith.
+    it('drops a venue with no point and a venue with no id', () => {
+        expect(venuesFrom(payload).map(v => v.ticketmaster_venue_id)).toEqual(['v1'])
+    })
+
+    it('turns the strings into numbers', () => {
+        expect(venuesFrom(payload)[0]).toMatchObject({ latitude: 53.3478, longitude: -6.2285 })
+    })
+
+    it('copes with nothing at all', () => {
+        expect(venuesFrom({})).toEqual([])
+        expect(venuesFrom(null)).toEqual([])
+    })
+})
+
+describe('suggestions', () => {
+    const from = { latitude: 53.3478, longitude: -6.2285 }
+    const venues = [
+        { ticketmaster_venue_id: 'far', name: 'Croke Park', latitude: 53.3607, longitude: -6.2512 },
+        { ticketmaster_venue_id: 'near', name: 'Odeon', latitude: 53.3480, longitude: -6.2290 },
+        { ticketmaster_venue_id: 'gone', name: 'Cork', latitude: 51.8985, longitude: -8.4756 },
+    ]
+
+    it('puts the nearest first', () => {
+        expect(suggestions(from, venues).map(v => v.ticketmaster_venue_id)).toEqual(['near', 'far'])
+    })
+
+    it('leaves out anything past the radius', () => {
+        expect(suggestions(from, venues).map(v => v.name)).not.toContain('Cork')
+    })
+
+    // Past twenty minutes nobody is walking, and the thing becomes a different
+    // question: is it big enough to fill the hotels beside us. That one needs a
+    // capacity typed by a person, which is why this only suggests.
+    it('calls a short one a walk and a long one a city question', () => {
+        const [near, far] = suggestions(from, venues)
+        expect(near.relation).toBe('walk')
+        expect(near.walkMinutes).toBeLessThanOrEqual(WALKABLE_MINUTES)
+        expect(far.relation).toBe('city')
+    })
+
+    it('copes with nothing at all', () => {
+        expect(suggestions(from, [])).toEqual([])
+        expect(suggestions(null, venues)).toEqual([])
+    })
+})
+
+describe('geocoding an address', () => {
+    it('asks OpenStreetMap for one answer', () => {
+        const url = new URL(geocodeUrl('12 Marine Road, Dun Laoghaire'))
+        expect(url.host).toBe('nominatim.openstreetmap.org')
+        expect(url.searchParams.get('q')).toBe('12 Marine Road, Dun Laoghaire')
+        expect(url.searchParams.get('limit')).toBe('1')
+    })
+
+    it('reads the point out of the answer', () => {
+        expect(pointFrom([{ lat: '53.2946', lon: '-6.1345' }]))
+            .toEqual({ latitude: 53.2946, longitude: -6.1345 })
+    })
+
+    it('says nothing when the address matched nothing', () => {
+        expect(pointFrom([])).toBe(null)
+        expect(pointFrom(null)).toBe(null)
+        expect(pointFrom([{ lat: 'nowhere' }])).toBe(null)
+    })
+})
+
+// The same arithmetic exists in lib/nearby, written out twice because a
+// function deploys on its own and cannot import from src. Checked against each
+// other here rather than trusted to stay in step.
+describe('the two copies of the distance agree', () => {
+    it('gives the same answer either side', () => {
+        const a = { latitude: 53.3478, longitude: -6.2285 }
+        const b = { latitude: 53.2946, longitude: -6.1345 }
+        expect(distanceKm(a, b)).toBe(browserDistanceKm(a, b))
+        expect(walkMinutesFor(3.4)).toBe(browserWalkMinutesFor(3.4))
+    })
+})
+
+// Three copies of this now: here, in read-listings, and in lib/nearby. A
+// function deploys on its own and cannot import from the folder next door, so
+// the only thing keeping them honest is this.
+describe('the feed and the reading agree what a listing is called', () => {
+    for (const [date, name] of [
+        ['2026-10-25', 'An Evening with Fran Lebowitz'],
+        ['2026-07-04', 'Dún Laoghaire Coastival'],
+        ['2026-11-19', '  '],
+    ]) {
+        it(`agrees about ${name.trim() || 'a nameless row'}`, () => {
+            expect(sourceKeyFor(date, name)).toBe(browserSourceKeyFor(date, name))
+        })
+    }
+})
+
+// The geocoder is the one part of this that can refuse us and say nothing
+// useful. Nominatim turns away a lot of datacentre traffic and an edge function
+// is datacentre traffic: both restaurants still had no latitude after a search,
+// with nothing written and nothing to show for it.
+// The geocoder is the one part of this that can refuse us and say nothing
+// useful, so the box takes a point as readily as an address. What a person
+// actually pastes is whatever Google handed them, which is rarely two plain
+// numbers.
+describe('a point typed rather than looked up', () => {
+    it('takes two plain numbers', () => {
+        expect(pointTyped('53.348071, -6.229920'))
+            .toEqual({ latitude: 53.348071, longitude: -6.229920 })
+        expect(pointTyped('  53.2935 -6.1348 ')).toEqual({ latitude: 53.2935, longitude: -6.1348 })
+    })
+
+    // What he pasted, and what Google's own panel shows.
+    it('takes degrees with the hemisphere on them', () => {
+        expect(pointTyped('53.3486° N, 6.2285° W'))
+            .toEqual({ latitude: 53.3486, longitude: -6.2285 })
+        expect(pointTyped('53.3486 N 6.2285 W'))
+            .toEqual({ latitude: 53.3486, longitude: -6.2285 })
+    })
+
+    it('takes degrees, minutes and seconds', () => {
+        const point = pointTyped('53°20\'54.9"N 6°13\'42.6"W')
+        expect(point.latitude).toBeCloseTo(53.3486, 4)
+        expect(point.longitude).toBeCloseTo(-6.2285, 4)
+    })
+
+    // **Ireland is west of Greenwich.** A paste that drops the W lands in
+    // Kazakhstan without complaining, so the letter decides the sign.
+    it('reads west as a minus', () => {
+        expect(pointTyped('53.3486 N, 6.2285 E').longitude).toBe(6.2285)
+        expect(pointTyped('53.3486 S, 6.2285 W')).toEqual({ latitude: -53.3486, longitude: -6.2285 })
+    })
+
+    // An address with numbers in it is still an address. "12 Marine Road,
+    // Dublin 1" is two numbers and is not a point, and an Eircode has letters
+    // in it too, so both go to the geocoder where they belong.
+    it('knows an address when it sees one', () => {
+        expect(pointTyped('12 Marine Road, Dublin 1')).toBe(null)
+        expect(pointTyped('D01 V2K7')).toBe(null)
+        expect(pointTyped('North Wall Quay, Dublin 1')).toBe(null)
+        expect(pointTyped('')).toBe(null)
+        expect(pointTyped(null)).toBe(null)
+    })
+
+    it('refuses a pair that is not on the map', () => {
+        expect(pointTyped('153.3, -6.2')).toBe(null)
+        expect(pointTyped('53.3, -186.2')).toBe(null)
+        expect(pointTyped('53.3486')).toBe(null)
     })
 })

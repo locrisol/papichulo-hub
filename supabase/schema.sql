@@ -41,6 +41,7 @@
 
 CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
 CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
@@ -83,12 +84,18 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "usual_extras" "jsonb",
     "roster_note" "text",
     "mail_from" "text",
-    "google_calendar_id" "text",
     "sort_order" integer DEFAULT 0 NOT NULL,
+    "google_calendar_id" "text",
+    "watch_city_events" boolean DEFAULT true NOT NULL,
+    "latitude" numeric(9,6),
+    "longitude" numeric(9,6),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
+COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded by restaurant_places. Migration 011 copied it into a place row and nothing reads it any more. Kept until a backup is newer than that migration.';
+COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
+COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
 COMMENT ON COLUMN "public"."restaurants"."opening_hours" IS 'The usual week, as {"0":{"open":"10:00","close":"21:00"}, ...} keyed by weekday with Sunday as 0. A day that is missing or null means the store does not normally open that day. Null overall means nobody has set them yet, and the roster then simply marks nothing as opening or closing rather than guessing.';
@@ -108,9 +115,9 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "role" character varying(20) NOT NULL,
     "restaurant_id" "uuid",
     "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
     "is_test" boolean DEFAULT false NOT NULL,
     "landing_page" "text",
-    "created_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee'))),
     CONSTRAINT "users_landing_page_is_a_path" CHECK ((("landing_page" IS NULL) OR ("landing_page" ~ '^/[a-z0-9/-]{0,60}$')))
 );
@@ -910,10 +917,113 @@ CREATE INDEX "idx_report_items_section" ON "public"."report_items" USING "btree"
 CREATE UNIQUE INDEX "report_items_one_per_key" ON "public"."report_items" USING "btree" ("section_id", "kind", "key") WHERE ("kind" = ANY (ARRAY['overhead'::"text", 'delivery'::"text", 'rating'::"text"]));
 
 
--- -- What is on at the 3Arena ------------------------------------------
+-- -- What is on near us ------------------------------------------------
 --
--- Pulled from the Ticketmaster Discovery API, for the one restaurant that
--- is across the road from it.
+-- Three tables and one idea: something is happening close enough to change
+-- how busy we are, and somebody rostering should be told.
+--
+-- places is the thing itself, an arena or a theatre or a council that runs
+-- festivals. restaurant_places is one restaurant being near one of them and
+-- how far the walk is, which belongs to the pair rather than to the place:
+-- the same theatre is five minutes from one shop and an hour from the next.
+-- events is what is on at a place, from a feed or from reading a page.
+--
+-- This replaced one varchar on the restaurant, forecasting_venue_id, which
+-- could hold exactly one venue, so a restaurant near three places could
+-- watch only one of them and a second restaurant with a venue of its own
+-- would have shared one flat list with the first.
+--
+-- **Nothing here predicts anything.** It says what is on and when, the way
+-- the diary says a catering job is on. What that is worth is the manager's.
+
+CREATE TABLE IF NOT EXISTS "public"."places" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "short_name" "text",
+    "ticketmaster_venue_id" "text",
+    "page_url" "text",
+    "capacity" integer,
+    "latitude" numeric(9,6),
+    "longitude" numeric(9,6),
+    "last_read_at" timestamp with time zone,
+    "last_read_count" integer,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
+    "page_depth" integer DEFAULT 1 NOT NULL,
+    CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
+    CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
+    CONSTRAINT "places_reading_key_known" CHECK (("reading_key" = ANY (ARRAY['date'::"text", 'title'::"text"]))),
+    CONSTRAINT "places_page_depth_sane" CHECK ((("page_depth" >= 1) AND ("page_depth" <= 12)))
+);
+
+COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds things: an arena, a theatre, a cinema, a harbour, a council that runs festivals. The place itself and nothing about who is near it, because the same place can be near more than one restaurant and would otherwise be typed twice.';
+COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
+COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
+COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
+COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
+COMMENT ON COLUMN "public"."places"."reading_key" IS 'What makes a reading off this page the same reading twice. date is the ordinary case, where a thing is itself on a given day. title is for a page that lists the same thing over and over, a cinema being the one that forced it: the same film showing for a month is one thing that happened once, so the first sighting is kept and every later one is ignored.';
+COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
+COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';
+
+ALTER TABLE ONLY "public"."places"
+    ADD CONSTRAINT "places_pkey" PRIMARY KEY ("id");
+
+-- One row per venue, so the geo search that adds a restaurant finds the place
+-- we already have rather than making a second one.
+--
+-- **No WHERE clause on it, and that is not an oversight.** It was written as a
+-- partial index, on the grounds that only rows with a venue id need to be
+-- unique, and that quietly broke the thing the index exists for: ON CONFLICT
+-- can only infer a partial index when the statement repeats its predicate, and
+-- PostgREST has no way to send one. Every upsert would have come back with
+-- "there is no unique or exclusion constraint matching the ON CONFLICT
+-- specification", which is a runtime error and not a migration one.
+--
+-- The predicate was never needed anyway. Postgres treats nulls as distinct in a
+-- unique index, so every place with no venue id is already free to exist
+-- alongside every other one.
+CREATE UNIQUE INDEX "places_one_per_venue" ON "public"."places" USING "btree" ("ticketmaster_venue_id");
+
+
+CREATE TABLE IF NOT EXISTS "public"."restaurant_places" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "place_id" "uuid" NOT NULL,
+    "relation" "text" DEFAULT 'walk'::"text" NOT NULL,
+    "walk_minutes" integer,
+    "distance_km" numeric(5,2),
+    "is_active" boolean DEFAULT true NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "own_row" boolean DEFAULT false NOT NULL,
+    CONSTRAINT "restaurant_places_relation_known" CHECK (("relation" = ANY (ARRAY['walk'::"text", 'city'::"text"]))),
+    CONSTRAINT "restaurant_places_walk_has_minutes" CHECK ((("relation" <> 'walk'::"text") OR ("walk_minutes" IS NOT NULL))),
+    CONSTRAINT "restaurant_places_walk_minutes_sane" CHECK ((("walk_minutes" IS NULL) OR (("walk_minutes" > 0) AND ("walk_minutes" <= 120))))
+);
+
+COMMENT ON TABLE "public"."restaurant_places" IS 'One restaurant being near one place, and how near. The distance lives here rather than on the place because it is a fact about the pair: the same theatre is five minutes from one shop and an hour from the next.';
+COMMENT ON COLUMN "public"."restaurant_places"."distance_km" IS 'Straight line, for the city rule, which asks whether something big is within a few kilometres. Only filled when a place arrived with a point on it, so it is null for everything typed by hand and the rule simply passes over those.';
+COMMENT ON COLUMN "public"."restaurant_places"."own_row" IS 'Whether this place gets a row of its own on the roster week, named after it, rather than sharing the Also on row with the catering and the deliveries. For the one place near a restaurant that is on its own scale: nine thousand people two minutes away is not the same kind of fact as a sandwich delivery, and a week grid that lists them together buries it. Off for almost everything.';
+COMMENT ON COLUMN "public"."restaurant_places"."relation" IS 'Why this counts. walk means somebody at it would come here rather than eat where they already are, and that is almost all of them. city means nobody walks from it and it is here because it fills the hotels beside us, which is a different fact and reads as a different badge.';
+COMMENT ON COLUMN "public"."restaurant_places"."walk_minutes" IS 'How long somebody would take to walk it. The one judgement a person has to make, because no API can answer whether a customer would rather come here than eat where they are. Worked out from the distance when a place is found by searching, and editable after.';
+
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_one_per_pair" UNIQUE ("restaurant_id", "place_id");
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_place_id_fkey" FOREIGN KEY ("place_id") REFERENCES "public"."places"("id") ON DELETE CASCADE;
+
+-- Read every time a roster week or the calendar opens, always by restaurant.
+CREATE INDEX "idx_restaurant_places_restaurant" ON "public"."restaurant_places" USING "btree" ("restaurant_id");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_restaurant_places_place" ON "public"."restaurant_places" USING "btree" ("place_id");
+
 
 CREATE TABLE IF NOT EXISTS "public"."events" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -929,16 +1039,54 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "status" character varying,
     "min_price" numeric,
     "max_price" numeric,
-    "last_seen_at" timestamp with time zone
+    "last_seen_at" timestamp with time zone,
+    "place_id" "uuid",
+    "ends_on" "date",
+    "source" "text" DEFAULT 'ticketmaster'::"text" NOT NULL,
+    "source_url" "text",
+    "source_key" "text",
+    "review" "text" DEFAULT 'trusted'::"text" NOT NULL,
+    "found_at" timestamp with time zone,
+    "reviewed_at" timestamp with time zone,
+    "reviewed_by" "uuid",
+    "display_name" "text",
+    CONSTRAINT "events_source_known" CHECK (("source" = ANY (ARRAY['ticketmaster'::"text", 'page'::"text", 'manual'::"text"]))),
+    CONSTRAINT "events_review_known" CHECK (("review" = ANY (ARRAY['trusted'::"text", 'found'::"text", 'kept'::"text", 'dismissed'::"text"]))),
+    CONSTRAINT "events_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "event_date")))
 );
 
+COMMENT ON TABLE "public"."events" IS 'What is on near a restaurant. It started as the 3Arena and nothing else, which is why the table is called this and why one column still says venue in words. A row belongs to a place now, and which restaurants see it follows from which of them are near that place.';
+COMMENT ON COLUMN "public"."events"."display_name" IS 'What we call this listing, when what it calls itself is too long for a roster cell. Null means we have not renamed it and the feed or the reading stands. A separate column rather than an edit in place, because name is what arrived: a page read a second time lands on the row it made the first time, and a Ticketmaster name is overwritten by every sync, so a rename typed into it would vanish twice a day with nothing said.';
+COMMENT ON COLUMN "public"."events"."ends_on" IS 'Null means the same day, the rule diary_entries already follows. A Christmas market over three weekends is one row rather than seventeen, so a roster week can draw it once.';
+COMMENT ON COLUMN "public"."events"."found_at" IS 'When a read first turned this up. Shown beside it while it is waiting to be kept, because how old a reading is changes how much it is worth.';
 COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still found this event in the API. Once an event has happened it disappears from Ticketmaster, so this is when we last saw it.';
+COMMENT ON COLUMN "public"."events"."review" IS 'trusted came from a feed and goes everywhere with nobody asked. found came off a page somebody read and shows on the calendar marked not checked, and stays off the roster until it is kept. kept is one somebody kept. dismissed is one somebody said no to, and it stays in the table precisely so the next read of the same page does not offer it again.';
+COMMENT ON COLUMN "public"."events"."source" IS 'Where the row came from. A feed is trusted because it is the venue itself saying so. A page is a reading of something written for people, which is a different kind of fact and is marked as one.';
+COMMENT ON COLUMN "public"."events"."source_key" IS 'What makes a page read the same event twice, since only a feed hands out an id. Built from the place, the date and a flattened title, so a second read lands on the row that is already there and a dismissal is remembered.';
 COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, cancelled, postponed, rescheduled. Off sale well before the date usually means sold out.';
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_ticketmaster_id_key" UNIQUE ("ticketmaster_id");
+ALTER TABLE ONLY "public"."events"
+    ADD CONSTRAINT "events_place_id_fkey" FOREIGN KEY ("place_id") REFERENCES "public"."places"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."events"
+    ADD CONSTRAINT "events_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_events_date" ON "public"."events" USING "btree" ("event_date");
+CREATE INDEX "idx_events_place" ON "public"."events" USING "btree" ("place_id", "event_date");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_events_reviewed_by" ON "public"."events" USING "btree" ("reviewed_by");
+
+-- A second read of the same page lands on the row it made last time. Without
+-- this a dismissal is forgotten every week, which is the one detail that
+-- decides whether the whole feature is useful or is noise.
+--
+-- No WHERE clause, for the reason places_one_per_venue gives: a partial index
+-- cannot be inferred by ON CONFLICT, and nulls are distinct in a unique index
+-- anyway, so every Ticketmaster row with no reading key of its own already sits
+-- happily beside every other one.
+CREATE UNIQUE INDEX "events_one_per_reading" ON "public"."events" USING "btree" ("place_id", "source_key");
 
 
 -- -- The diary --------------------------------------------------------
@@ -970,13 +1118,13 @@ CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
     "contact_name" "text",
     "contact_detail" "text",
     "note" "text",
-    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
     "google_event_ids" "jsonb",
     "google_synced_at" timestamp with time zone,
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
     CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
     CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
@@ -2094,7 +2242,23 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
   WHERE (("s"."id" = "report_items"."section_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
 
--- -- What is on at the 3Arena ------------------------------------------
+-- -- What is on near us ------------------------------------------------
+--
+-- Everybody working a concert night needs to know it is happening, so all
+-- three read to any signed in account. Only a manager decides which places
+-- we watch, and only for their own restaurant.
+
+ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+
+CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+
+CREATE POLICY "restaurant_places_write" ON "public"."restaurant_places" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
@@ -2354,6 +2518,7 @@ CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "publi
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 

@@ -6,7 +6,8 @@ import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { fmtMoney, fmtQty, num, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { dateField, jumpButton, tableHeadRow, card, jumpLabel, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { dateField, tableHeadRow, card, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { numberField } from '@/lib/numberInput'
 import { DAY_NAMES } from '@/lib/events'
@@ -293,13 +294,10 @@ export default function LabourPage() {
                         backLabel="Previous week"
                         nextLabel="Next week"
                         jump={(
-                            <button
-                                type="button"
+                            <JumpButton
+                                isCurrent={weekStart === weekStartOf(todayISO())}
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
-                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
-                            >
-                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
-                            </button>
+                            />
                         )}
                     >
                         {/* A set width on a wide screen, so the arrows do not

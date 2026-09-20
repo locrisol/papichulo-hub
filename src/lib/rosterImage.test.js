@@ -79,9 +79,28 @@ describe('drawing a week', () => {
     it('names every row, so no band is a strip of colour nobody labelled', () => {
         const { canvas, calls } = fakeCanvas()
         drawWeek(canvas, table)
-        for (const label of ['STORE HOURS', 'WHAT IS ON', 'EVENTS', 'ALSO ON']) {
+        for (const label of ['STORE HOURS', 'ONGOING', 'ALSO ON']) {
             expect(calls.fillText, label).toContain(label)
         }
+    })
+
+    // The sheet has to say what the screen says, or a manager reading the grid
+    // and somebody reading the picture are reading two different Thursdays.
+    it('names a place that has a band of its own', () => {
+        const { canvas, calls } = fakeCanvas()
+        drawWeek(canvas, {
+            ...table,
+            headlines: [{
+                name: '3Arena',
+                kind: 'arena',
+                perDay: DATES.map((_, i) => (
+                    i === 0 ? [{ name: 'Westlife', time: '18:00', kind: 'arena', checked: true }] : []
+                )),
+            }],
+            headlineHeights: undefined,
+        })
+        expect(calls.fillText).toContain('3ARENA')
+        expect(calls.fillText.join(' ')).toContain('Westlife')
     })
 
     it('writes the band out rather than cutting it short', () => {

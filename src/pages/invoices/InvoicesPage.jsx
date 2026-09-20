@@ -6,7 +6,8 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, cardEdge, cardHeader, rowButton, jumpButton, jumpLabel, pageTitle } from '@/lib/controlStyles'
+import { secondaryButton, card, cardEdge, cardHeader, rowButton, pageTitle } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import InvoiceForm from '@/components/invoices/InvoiceForm'
 import { useConfirm } from '@/context/confirm'
@@ -391,13 +392,10 @@ export default function InvoicesPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button
-                            type="button"
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(todayISO())}
                             onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className={jumpButton(weekStart === weekStartOf(todayISO()))}
-                        >
-                            {jumpLabel(weekStart === weekStartOf(todayISO()))}
-                        </button>
+                        />
                     )}
                 >
                     <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">

@@ -4,7 +4,8 @@ import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { card, cardEdge, badge, jumpButton, rowButton, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '@/lib/roster'
@@ -23,6 +24,7 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
+import { nearbyRows, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -53,8 +55,8 @@ import TimeOffCard from '@/components/roster/TimeOffCard'
 // nothing under five of them is longer and says less. Nothing here is
 // pressable: an employee cannot change any of it, and a chip that looks like a
 // button and does nothing is worse than a plain label.
-function WhatIsOn({ diary, dates }) {
-    const items = calendarItems({ entries: (diary || []).filter(showsOnRoster) })
+function WhatIsOn({ diary, nearby, dates }) {
+    const items = calendarItems({ entries: (diary || []).filter(showsOnRoster), nearby })
     const byDate = itemsByDate(items)
     const days = dates.filter(d => (byDate[d] || []).length > 0)
 
@@ -87,6 +89,8 @@ export default function MyShiftsPage() {
     const [colleagues, setColleagues] = useState([])
     const [dayNotes, setDayNotes] = useState([])
     const [diary, setDiary] = useState([])
+    const [nearbyOn, setNearbyOn] = useState([])
+    const [nearbyPlaces, setNearbyPlaces] = useState([])
     // Read only. Nobody here can change one, and until now nobody here
     // could read one either: the band was a bar with nothing listening to
     // it, which is the same dead control in a different place.
@@ -186,7 +190,9 @@ export default function MyShiftsPage() {
             const from = dates[0]
             const to = dates[6]
 
-            const [shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, offRes] = await Promise.all([
+            const [
+                shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, eventRes, nearRes, offRes,
+            ] = await Promise.all([
                 // Straight off the table. A policy lets staff read published
                 // rows at their own restaurant, so there is nothing between
                 // this and the same shifts a manager sees.
@@ -216,8 +222,19 @@ export default function MyShiftsPage() {
                 // Spain.
                 supabase.from('roster_away').select('*')
                     .lte('starts_on', to).gte('ends_on', from),
-                supabase.from('restaurants').select('opening_hours, break_rules, roster_rules')
+                supabase.from('restaurants')
+                    .select('opening_hours, break_rules, roster_rules, watch_city_events')
                     .eq('id', mine.restaurant_id).maybeSingle(),
+                // What is on near us. Everybody working a concert night needs
+                // to know it is happening, and this is the screen they open.
+                supabase.from('events').select('*')
+                    .lte('event_date', to)
+                    .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
+                    .order('event_time'),
+                supabase.from('restaurant_places')
+                    .select(PAIRING_COLUMNS)
+                    .eq('restaurant_id', mine.restaurant_id)
+                    .order('sort_order'),
                 // My own requests, not week bound. What I asked for in March is
                 // still the answer to "did I already ask about this".
                 supabase.from('absences').select('*')
@@ -241,6 +258,8 @@ export default function MyShiftsPage() {
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
+            setNearbyOn(nearbyRows(eventRes.data, nearRes.data, restRes.data))
+            setNearbyPlaces(headlinePlaces(nearRes.data, restRes.data))
             setMyTimeOff(offRes.data || [])
             setReady(true)
 
@@ -457,13 +476,10 @@ export default function MyShiftsPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button
-                            type="button"
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(today)}
                             onClick={() => setWeekStart(weekStartOf(today))}
-                            className={jumpButton(weekStart === weekStartOf(today))}
-                        >
-                            {jumpLabel(weekStart === weekStartOf(today))}
-                        </button>
+                        />
                     )}
                 >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
@@ -552,7 +568,8 @@ export default function MyShiftsPage() {
                             shifts={shifts}
                             positions={positions}
                             dayNotes={dayNotes}
-                            events={[]}
+                            nearby={nearbyOn}
+                            nearbyPlaces={nearbyPlaces}
                             diary={diary}
                             onOpenDiary={entry => setViewingDiary(entry)}
                             openingHours={openingHours}
@@ -572,7 +589,7 @@ export default function MyShiftsPage() {
                         it out here would mean the one person who has to make
                         the catering is the one person never told about it, and
                         a phone is what they are holding. */}
-                    <WhatIsOn diary={diary} dates={dates} />
+                    <WhatIsOn diary={diary} nearby={nearbyOn} dates={dates} />
 
                     <div className="lg:hidden">
                         <div className={`${cardEdge} bg-white p-3`}>

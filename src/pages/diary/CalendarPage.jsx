@@ -5,14 +5,18 @@ import { useRestaurant } from '@/context/restaurant'
 import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
-import { watchesVenue } from '@/lib/events'
+import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
+import {
+    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS,
+} from '@/lib/nearby'
+import FoundNearby from '@/components/nearby/FoundNearby'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
 } from '@/lib/diary'
 import {
-    card, pageTitle, secondaryButton, segmentTrack, segmentButton, jumpButton, jumpLabel,
+    card, pageTitle, secondaryButton, segmentTrack, segmentButton,
 } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DiaryMonth from '@/components/diary/DiaryMonth'
 import DiaryWeek from '@/components/diary/DiaryWeek'
@@ -73,7 +77,24 @@ export default function CalendarPage() {
     const [selected, setSelected] = useState(null)
 
     const [entries, setEntries] = useState([])
-    const [arena, setArena] = useState([])
+    const [events, setEvents] = useState([])
+    // Everything still waiting on somebody, whatever month is on screen.
+    //
+    // **Kept apart from the events above and that is the whole point.** Those
+    // are fetched for the window the view is showing, about six weeks for a
+    // month, so a conference on 25 October was simply not loaded while
+    // September was open and could not appear in the list. On a phone, which
+    // opens on the list view and its 120 days, the same five were waiting.
+    // A decision waiting on somebody must not appear and disappear depending
+    // on which month they happen to be looking at.
+    const [pending, setPending] = useState([])
+    const [pairings, setPairings] = useState([])
+    const [deciding, setDeciding] = useState(false)
+    // How many dates carry the open listing's name at the same place. Counted
+    // rather than taken from what is loaded, because a residency runs past the
+    // end of whatever window is on screen and offering to rename five when
+    // there are eleven would be a lie in the label.
+    const [sameName, setSameName] = useState(0)
     const [dayNotes, setDayNotes] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [loading, setLoading] = useState(true)
@@ -107,12 +128,6 @@ export default function CalendarPage() {
         ? addDays(today, 120)
         : (view === 'week' ? addDays(weekStart, 6) : addDays(weekStartOf(viewMonth), 41))
 
-    // Whether this restaurant watches a venue, not whether it forecasts.
-    // Knowing there are nine thousand people next door at half six is a
-    // rostering fact and should not go away because somebody turned a
-    // forecast off. It is the same test the roster uses now, which it was
-    // not: that screen asked for the events with no test at all.
-    const arenaOn = watchesVenue(activeRestaurant)
 
     useEffect(() => {
         if (!activeRestaurant) return undefined
@@ -133,13 +148,13 @@ export default function CalendarPage() {
             // The restaurant, never the venue. The function reads the venue
             // off that restaurant's own row, so nothing the browser says can
             // point the quota at a venue of somebody else's choosing.
-            if (canWrite && arenaOn && syncIsDue()) {
+            if (canWrite && syncIsDue()) {
                 try {
                     setSyncing(true)
                     const r = await syncEvents(supabase, activeRestaurant.id)
                     markSynced()
                     if (r.added > 0) {
-                        setNote(`Found ${r.added} new ${r.added === 1 ? 'event' : 'events'} at the Arena.`)
+                        setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
                     }
                 } catch (e) {
                     // A failed sync is not a failed page. What is already in the
@@ -150,25 +165,42 @@ export default function CalendarPage() {
                 }
             }
 
-            const [diary, events, notes, places] = await Promise.all([
+            const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
                 supabase.from('diary_entries').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),
-                arenaOn
-                    ? supabase.from('events').select('*')
-                        .gte('event_date', from).lte('event_date', to).order('event_date')
-                    : Promise.resolve({ data: [], error: null }),
+                // Everything in the window. Which of it belongs to this
+                // restaurant is decided by which places it is near, once, in
+                // lib/nearby, rather than by a clause repeated on four screens.
+                //
+                // Overlapping rather than starting in the window, the same as
+                // the diary above: a market that began last week still covers
+                // Monday.
+                supabase.from('events').select('*')
+                    .lte('event_date', to)
+                    .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
+                    .order('event_date'),
                 supabase.from('day_notes').select('note_date, extras')
                     .eq('restaurant_id', activeRestaurant.id)
                     .gte('note_date', from).lte('note_date', to),
                 supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
                     .eq('is_active', true).order('sort_order'),
+                supabase.from('restaurant_places')
+                    .select(PAIRING_COLUMNS)
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .order('sort_order'),
+                // Not bounded by the view. Anything unchecked that has not
+                // happened yet, however far out it is.
+                supabase.from('events').select('*')
+                    .eq('review', 'found')
+                    .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
+                    .order('event_date'),
             ])
 
             if (!alive) return
 
-            const failed = [diary, events, notes, places].find(r => r.error)
+            const failed = [diary, eventRes, notes, places, nearRes, pendRes].find(r => r.error)
             if (failed) setError(friendlyError(failed.error))
 
             // Only this restaurant's. The policy answers whether you may
@@ -176,7 +208,9 @@ export default function CalendarPage() {
             // is not the same as them belonging on the restaurant you have
             // switched to. See atRestaurant.
             setEntries((diary.data || []).filter(e => atRestaurant(e, activeRestaurant.id)))
-            setArena(events.data || [])
+            setEvents(eventRes.data || [])
+            setPairings(nearRes.data || [])
+            setPending(pendRes.data || [])
             setDayNotes(notes.data || [])
             setRestaurants(places.data || [])
             setLoading(false)
@@ -184,17 +218,46 @@ export default function CalendarPage() {
 
         load()
         return () => { alive = false }
-    }, [activeRestaurant, arenaOn, canWrite, from, to, refresh])
+    }, [activeRestaurant, canWrite, from, to, today, refresh])
+
+    // One pass, so this screen and the roster cannot disagree about which
+    // listing belongs to which shop. See lib/nearby.
+    const nearby = useMemo(
+        () => nearbyRows(events, pairings, activeRestaurant),
+        [events, pairings, activeRestaurant],
+    )
+
+    // The ones nobody has settled, and only what is still to come. A reading of
+    // something that has already happened is not a decision anybody needs to
+    // make, and offering it is how a list stops being opened.
+    //
+    // Off its own list rather than off what the calendar is drawing, so what is
+    // waiting does not change when somebody steps to another month.
+    const found = useMemo(
+        () => waiting(nearbyRows(pending, pairings, activeRestaurant), today),
+        [pending, pairings, activeRestaurant, today],
+    )
+
+    // The switch for the one place on its own scale says its name.
+    //
+    // Every other layer is a kind of thing and names itself, and this one is a
+    // particular building: at Point Campus it is the 3Arena and saying "Next
+    // door" would be a word nobody would look for. Only this screen knows which
+    // place it is, so only this screen can say.
+    const headline = useMemo(
+        () => placeName(headlinePlaces(pairings, activeRestaurant)[0], { short: true }),
+        [pairings, activeRestaurant],
+    )
 
     const items = useMemo(
-        () => calendarItems({ entries, arena, dayNotes }),
-        [entries, arena, dayNotes],
+        () => calendarItems({ entries, nearby, dayNotes }),
+        [entries, nearby, dayNotes],
     )
     const byDate = useMemo(() => itemsByDate(items, layers), [items, layers])
 
     // A layer with nothing in it anywhere is not worth a switch to turn off.
-    // The Arena one is simply absent where forecasting is off, which is why it
-    // is not a special case here.
+    // The nearby ones are simply absent where a restaurant is near nothing,
+    // which is why they are not a special case here.
     const present = useMemo(() => {
         const seen = new Set(items.map(layerOf))
         return LAYERS.filter(l => seen.has(l))
@@ -221,8 +284,29 @@ export default function CalendarPage() {
     // to find out what it was. An Arena listing opened and told you about
     // itself. Two answers to the same gesture, and only one of them was right.
     function open(thing) {
-        if (thing?.ticketmaster_id || thing?.event_date) setOpenEvent(thing)
-        else setViewing(thing)
+        if (thing?.ticketmaster_id || thing?.event_date) {
+            // The row rather than the bare event, so the modal can say where
+            // it is, how far, and whether anybody has checked it. The chip
+            // hands over what it was given, which is the event itself.
+            setOpenEvent(nearby.find(r => r.event.id === thing.id) || { event: thing })
+            countSameName(thing)
+            return
+        }
+        setViewing(thing)
+    }
+
+    // A tour is one name on six nights. Asked once when the listing opens, so
+    // the offer to rename the lot can say how many the lot is.
+    async function countSameName(event) {
+        setSameName(0)
+        if (!event?.place_id || !event?.name) return
+
+        const { count } = await supabase.from('events')
+            .select('id', { count: 'exact', head: true })
+            .eq('place_id', event.place_id)
+            .eq('name', event.name)
+
+        setSameName(count || 0)
     }
 
     // Press the same day again and it shuts. The same gesture My Shifts uses
@@ -246,6 +330,123 @@ export default function CalendarPage() {
     function saved() {
         setEditing(null)
         setRefresh(n => n + 1)
+    }
+
+    // Renaming one that has already been kept.
+    //
+    // He asked for this having kept three conferences and then wanted the month
+    // and the year off them, which the review list could no longer offer because
+    // they were settled. So the listing itself carries it, which is also where
+    // somebody looking at a name they do not like already is.
+    //
+    // Emptying the field puts the original back rather than leaving a blank
+    // name, which is the only sensible reading of clearing it.
+    // all renames every date carrying the same name at the same place, which
+    // is what a residency is: "Westlife 25 - The Anniversary World Tour" on six
+    // nights is one decision, not six.
+    //
+    // Matched on the name that arrived rather than on the one we chose, so it
+    // still finds them after the first rename, and on the place as well as the
+    // name, because two venues can have a night called the same thing and only
+    // one of them is being talked about.
+    //
+    // Past dates are renamed too. A week that has been and gone reading
+    // differently from the same thing next month is a worse answer than
+    // consistency nobody will look at.
+    async function rename(event, to, all = false, until) {
+        const name = String(to ?? '').trim()
+        const display_name = name && name !== event.name ? name : null
+        const ends_on = String(until ?? '').trim() || null
+
+        // The name can go to every date of a residency. **An end date never
+        // does**: six nights of a tour are six one night things, and giving
+        // them all the same last day would draw one band over the lot.
+        const change = { display_name }
+        const mine = { display_name, ends_on }
+
+        const where = supabase.from('events')
+        const { data, error: failed } = all
+            ? await where.update(change).eq('place_id', event.place_id).eq('name', event.name).select('id')
+            : await where.update(mine).eq('id', event.id).select('id')
+
+        if (failed) { setError(friendlyError(failed)); return }
+        // The same trap the keep fell into: no rows changed reads as success.
+        if (!data?.length) {
+            setError('That could not be saved, so nothing has changed.')
+            return
+        }
+
+        // The end date only ever lands on the one that was open, so it is
+        // written on its own when the name went to the others.
+        if (all && ends_on !== (event.ends_on ?? null)) {
+            await where.update({ ends_on }).eq('id', event.id)
+        }
+
+        const hits = e => (all
+            ? e.place_id === event.place_id && e.name === event.name
+            : e.id === event.id)
+        const patch = e => ({
+            ...e,
+            display_name,
+            ...(e.id === event.id ? { ends_on } : {}),
+        })
+
+        setEvents(was => was.map(e => (hits(e) ? patch(e) : e)))
+        setPending(was => was.map(e => (hits(e) ? patch(e) : e)))
+        setOpenEvent(was => (was?.event && hits(was.event)
+            ? { ...was, event: patch(was.event) }
+            : was))
+    }
+
+    // Keeping one or saying no to it.
+    //
+    // The row is already there either way. What this writes is whether it is
+    // ours, and a dismissal stays in the table on purpose: the next read of the
+    // same page lands on that row and does not offer it again.
+    //
+    // A corrected name rides along with a keep, into display_name rather than
+    // over the name that arrived. It is only written when it has actually
+    // changed and is not blank, so keeping forty rows does not rewrite forty
+    // names with what they already said. See migration 015 for why the two are
+    // kept apart.
+    //
+    // Written straight into the list as well as to the database, rather than
+    // waiting for a reload. Pressing Keep on four things in a row and watching
+    // the whole calendar blink four times is the sort of thing that makes
+    // somebody stop pressing it.
+    async function decide(event, review, renamed) {
+        const name = String(renamed ?? '').trim()
+        const change = {
+            review,
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: user?.id || null,
+            ...(review === 'kept' && name && name !== eventName(event)
+                ? { display_name: name }
+                : {}),
+        }
+
+        setDeciding(true)
+        // **select, so the answer says what it actually did.** An update that
+        // matches no rows comes back 204 with no error, which is
+        // indistinguishable from one that worked, and the screen then empties
+        // the row out of its own list and looks right. He kept five things on
+        // the computer, opened the calendar on his phone, and all five were
+        // still waiting: the list had emptied locally and nothing had been
+        // written. A write nobody can tell failed is worse than one that fails
+        // loudly.
+        const { data, error: failed } = await supabase.from('events')
+            .update(change).eq('id', event.id).select('id')
+        setDeciding(false)
+
+        if (failed) { setError(friendlyError(failed)); return }
+        if (!data?.length) {
+            setError('That could not be saved. Nothing was changed, so it is still waiting.')
+            return
+        }
+        setEvents(was => was.map(e => (e.id === event.id ? { ...e, ...change } : e)))
+        // Settled, so it leaves the waiting list whether or not the calendar
+        // happens to be drawing it.
+        setPending(was => was.filter(e => e.id !== event.id))
     }
 
     // The jump says what pressing it does, and only says where you are when
@@ -305,16 +506,15 @@ export default function CalendarPage() {
                             </button>
                             {/* The one that says something takes the room the
                                 two arrows do not need. */}
-                            <button
-                                type="button"
-                                className={`${jumpButton(atNow)} flex-1 sm:flex-none`}
+                            <JumpButton
+                                isCurrent={atNow}
+                                unit={unit}
+                                className="flex-1 sm:flex-none"
                                 onClick={() => {
                                     setViewMonth(monthStart(today))
                                     setWeekStart(weekStartOf(today))
                                 }}
-                            >
-                                {jumpLabel(atNow, unit)}
-                            </button>
+                            />
                             <button
                                 type="button"
                                 onClick={() => step(1)}
@@ -352,6 +552,18 @@ export default function CalendarPage() {
             </div>
 
             {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+            {/* Everything behind this is already saved. What a person decides
+                here is not whether a thing exists, it is whether it is ours. */}
+            {canWrite && (
+                <FoundNearby
+                    rows={found}
+                    today={today}
+                    restaurantName={activeRestaurant?.name}
+                    onDecide={decide}
+                    busy={deciding}
+                />
+            )}
             {note && <p className="mb-3 text-sm text-green-700 bg-green-50 rounded-lg p-3">{note}</p>}
             {syncing && <p className="mb-3 text-sm text-muted">Checking Ticketmaster...</p>}
 
@@ -373,7 +585,9 @@ export default function CalendarPage() {
                             }`}
                         >
                             <span className={`w-2 h-2 rounded-sm ${off ? 'bg-gray-300' : kindDot(layer)}`} />
-                            {layer === 'private' ? 'Just me' : kindLabel(layer)}
+                            {layer === 'private'
+                                ? 'Just me'
+                                : (layer === 'arena' && headline) || kindLabel(layer)}
                         </button>
                     )
                 })}
@@ -428,7 +642,15 @@ export default function CalendarPage() {
                 </button>
             )}
 
-            {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
+            {openEvent && (
+                <EventModal
+                    row={openEvent}
+                    canEdit={canWrite}
+                    sameName={sameName}
+                    onRename={rename}
+                    onClose={() => setOpenEvent(null)}
+                />
+            )}
 
             {viewing && (
                 <DiaryEntryModal

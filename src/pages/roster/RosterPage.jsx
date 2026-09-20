@@ -5,9 +5,11 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
-import { DAY_NAMES, dayName, watchesVenue } from '@/lib/events'
+import { DAY_NAMES, dayName } from '@/lib/events'
+import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '@/lib/team'
 import { fullDayRun, fullDayWords } from '@/lib/workRun'
@@ -82,7 +84,10 @@ export default function RosterPage() {
     const [dayIndex, setDayIndex] = useState(() => new Date(todayISO() + 'T00:00:00').getDay())
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
-    const [events, setEvents] = useState([])
+    const [nearbyOn, setNearbyOn] = useState([])
+    // Kept apart from the listings so a place with nothing on this week still
+    // draws its row. See ownRows.
+    const [nearbyPlaces, setNearbyPlaces] = useState([])
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
@@ -186,7 +191,9 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes, diaryRes, placeRes, offRes, askRes] = await Promise.all([
+        const [
+            empRes, posRes, shiftRes, noteRes, eventRes, nearRes, diaryRes, placeRes, offRes, askRes,
+        ] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -195,19 +202,28 @@ export default function RosterPage() {
             supabase.from('day_notes').select('*')
                 .eq('restaurant_id', restaurantId)
                 .gte('note_date', weekStart).lte('note_date', addDays(weekStart, 6)),
-            // What is on at the Arena. A concert at half six is the reason half
-            // the week is rostered the way it is, so it belongs on the grid
-            // rather than in somebody's head.
+            // What is on near us. A concert at half six is the reason half the
+            // week is rostered the way it is, so it belongs on the grid rather
+            // than in somebody's head.
             //
-            // Only where the restaurant watches a venue. This asked for them
-            // with no test at all, so Dun Laoghaire got the Arena listings that
-            // Point Campus had synced, forty minutes away and nothing to do
-            // with its week. See watchesVenue.
-            watchesVenue(activeRestaurant)
-                ? supabase.from('events').select('*')
-                    .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
-                    .order('event_time')
-                : Promise.resolve({ data: [], error: null }),
+            // Everything in the window, sorted out below rather than in the
+            // query. This used to ask with no restaurant test at all, so Dun
+            // Laoghaire got the Arena listings Point Campus had synced, forty
+            // minutes away and nothing to do with its week. What decides now is
+            // which places this restaurant is near, and that is one list read
+            // once rather than a clause repeated on four screens.
+            //
+            // Overlapping the week rather than starting in it, the same as the
+            // diary below: a market that began last Thursday still covers
+            // Monday and a date range on event_date alone would miss it.
+            supabase.from('events').select('*')
+                .lte('event_date', addDays(weekStart, 6))
+                .or(`ends_on.gte.${weekStart},and(ends_on.is.null,event_date.gte.${weekStart})`)
+                .order('event_time'),
+            supabase.from('restaurant_places')
+                .select(PAIRING_COLUMNS)
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order'),
             // The diary: catering, meetings, promotions. Overlapping the
             // week rather than starting in it, the same reason the absences
             // below are asked for that way: a discount week that began last
@@ -255,7 +271,10 @@ export default function RosterPage() {
         setNearbyShifts(fetched.filter(s => s.shift_date < weekStart || s.shift_date > weekLast))
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
-        setEvents(eventRes.data || [])
+        // One pass, so the roster and the calendar cannot disagree about which
+        // listing belongs to which shop. See lib/nearby.
+        setNearbyOn(nearbyRows(eventRes.data, nearRes.data, activeRestaurant))
+        setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
@@ -749,9 +768,10 @@ export default function RosterPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
-                            {jumpLabel(weekStart === weekStartOf(today))}
-                        </button>
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(today)}
+                            onClick={() => setWeekStart(weekStartOf(today))}
+                        />
                     )}
                 >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
@@ -1022,7 +1042,8 @@ export default function RosterPage() {
                         employees={roster}
                         shifts={shifts}
                         dayNotes={dayNotes}
-                        events={events}
+                        nearby={nearbyOn}
+                        nearbyPlaces={nearbyPlaces}
                         diary={diary}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
@@ -1048,7 +1069,8 @@ export default function RosterPage() {
                     shifts={shifts}
                     positions={positions}
                     dayNotes={dayNotes}
-                    events={events}
+                    nearby={nearbyOn}
+                    nearbyPlaces={nearbyPlaces}
                     diary={diary}
                     onOpenDiary={entry => setViewingDiary(entry)}
                     onOpenWeekExtras={() => setWeekExtrasOpen(true)}
@@ -1082,7 +1104,7 @@ export default function RosterPage() {
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
                     breakRules={activeRestaurant?.break_rules}
                     onResizeShift={resizeShift}
-                    events={events.filter(ev => ev.event_date === date)}
+                    nearby={rowsOn(nearbyOn, date)}
                     diary={diary}
                     onOpenDiary={entry => setViewingDiary(entry)}
                     onDragShift={dragShift}

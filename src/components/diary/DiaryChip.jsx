@@ -1,4 +1,4 @@
-import { kindChip } from '@/lib/diary'
+import { kindChip, kindDash } from '@/lib/diary'
 
 // One thing on a day, wherever it is drawn.
 //
@@ -6,10 +6,10 @@ import { kindChip } from '@/lib/diary'
 // the same reason the roster does it: a delivery at eleven and a delivery at
 // three are different problems.
 //
-// What is a button here depends on what you can do with it. An Arena listing
-// always opens, because it opens to be read. A diary entry opens only if you can
-// change it, so an employee gets a label rather than a control that looks
-// pressable and does nothing, which is worse than a plain label.
+// What is a button here depends on what you can do with it. A listing from
+// next door always opens, because it opens to be read. A diary entry opens only
+// if you can change it, so an employee gets a label rather than a control that
+// looks pressable and does nothing, which is worse than a plain label.
 export default function DiaryChip({ item, onOpen, canEdit = true, compact = false }) {
     const look = `block w-full text-left rounded-md border-l-[3px] ${kindChip(item.kind)} `
         + `${compact ? 'px-1 py-0.5 text-[0.6875rem]' : 'px-1.5 py-1 text-xs'} `
@@ -23,11 +23,12 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
         </>
     )
 
-    // The Arena gets a dashed edge, because it is the one thing on this screen
-    // that nobody at Papi Chulo typed and nobody here can change. It still
-    // opens, since what is on that night is worth reading; it just opens to be
-    // read rather than to be edited.
-    const edge = item.source === 'arena' ? 'border-y border-r border-dashed border-purple-300' : ''
+    // Dashed means nobody has checked it. It used to mean the Arena, on the
+    // grounds that it was the one thing here nobody at Papi Chulo typed, but
+    // the colour already says that about all three of the nearby kinds. This
+    // says something the colour cannot: a model read it off a page and no
+    // person has looked at it yet.
+    const edge = item.checked === false ? kindDash(item.kind) : ''
 
     // A delivery belongs to the day it was ticked onto, so it is not a button
     // here. Pressing it would have to take you somewhere else to change it, and
