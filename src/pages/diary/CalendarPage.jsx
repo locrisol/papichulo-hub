@@ -281,19 +281,32 @@ export default function CalendarPage() {
     // ours, and a dismissal stays in the table on purpose: the next read of the
     // same page lands on that row and does not offer it again.
     //
+    // A corrected name rides along with a keep. It is only written when it has
+    // actually changed and is not blank, so keeping forty rows does not rewrite
+    // forty names with what they already said. The reading key is untouched by
+    // it, which is what lets the correction stick: next week's read is keyed on
+    // what was read rather than on what it was renamed to, so it lands on this
+    // row and does not bring the short name back.
+    //
     // Written straight into the list as well as to the database, rather than
     // waiting for a reload. Pressing Keep on four things in a row and watching
     // the whole calendar blink four times is the sort of thing that makes
     // somebody stop pressing it.
-    async function decide(event, review) {
+    async function decide(event, review, renamed) {
+        const name = String(renamed ?? '').trim()
+        const change = {
+            review,
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: user?.id || null,
+            ...(review === 'kept' && name && name !== event.name ? { name } : {}),
+        }
+
         setDeciding(true)
-        const { error: failed } = await supabase.from('events')
-            .update({ review, reviewed_at: new Date().toISOString(), reviewed_by: user?.id || null })
-            .eq('id', event.id)
+        const { error: failed } = await supabase.from('events').update(change).eq('id', event.id)
         setDeciding(false)
 
         if (failed) { setError(friendlyError(failed)); return }
-        setEvents(was => was.map(e => (e.id === event.id ? { ...e, review } : e)))
+        setEvents(was => was.map(e => (e.id === event.id ? { ...e, ...change } : e)))
     }
 
     // The jump says what pressing it does, and only says where you are when

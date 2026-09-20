@@ -20,8 +20,21 @@ import { foundWords } from '@/lib/nearby'
 // the difference between a fact and a reading, and it is what lets somebody
 // trust the ones they have not looked at and correct the ones that are wrong,
 // permanently.
+//
+// **The name can be corrected before it is kept**, and this is the only place
+// it can be, because it is the one moment somebody is already looking at the
+// row. The cinema forced it: ODEON's own site cannot be read at all, the
+// aggregator that can is the only source there is, and it normalises titles, so
+// "Avengers: Endgame Encore" arrives as "Avengers: Endgame".
+//
+// The correction sticks. The reading key is built from what was read rather
+// than from what it was renamed to, so next week's read still lands on this row
+// and does not bring the short name back.
 export default function FoundNearby({ rows, today, restaurantName, onDecide, busy }) {
     const [open, setOpen] = useState(false)
+    // What a name has been corrected to, by event id. Empty until somebody
+    // types, so a row nobody touches keeps exactly what was read.
+    const [names, setNames] = useState({})
 
     if (!rows?.length) return null
 
@@ -48,13 +61,27 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                     <p className="px-4 py-2 bg-sidebar text-white text-sm font-semibold">
                         Found since you last looked
                     </p>
+                    <p className="px-4 py-2 text-xs text-muted border-b border-border">
+                        Correct a name before you keep it if the page got it short. What you type
+                        is what the roster says.
+                    </p>
                     {rows.map(row => (
                         <div
                             key={row.event.id}
                             className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 px-4 py-3 border-t border-border first:border-t-0"
                         >
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900">{row.event.name}</p>
+                                {/* An ordinary field rather than a pencil that
+                                    opens one. There is no state to get into and
+                                    out of, and a row nobody touches keeps
+                                    exactly what was read. */}
+                                <input
+                                    value={names[row.event.id] ?? row.event.name}
+                                    onChange={e => setNames(was => ({ ...was, [row.event.id]: e.target.value }))}
+                                    maxLength={160}
+                                    aria-label={`Name of ${row.event.name}`}
+                                    className="w-full font-semibold text-gray-900 bg-transparent rounded-md px-1.5 -mx-1.5 py-0.5 border border-transparent transition-colors hover:border-border focus:border-accent focus:bg-white focus:outline-none"
+                                />
                                 <p className="text-xs text-muted mt-0.5">{foundWords(row, today)}</p>
                             </div>
                             {/* Keep says what happens and Not for us says why
@@ -66,7 +93,7 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                 <button
                                     type="button"
                                     disabled={busy}
-                                    onClick={() => onDecide(row.event, 'kept')}
+                                    onClick={() => onDecide(row.event, 'kept', names[row.event.id])}
                                     className="px-3 py-1.5 rounded-lg bg-green-brand hover:bg-green-brand/90 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
                                 >
                                     Keep
