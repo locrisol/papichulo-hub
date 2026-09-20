@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle, agendaRows, watchesVenue } from '@/lib/events'
+import { groupByWeek, statusNote, dayName, categoryStyle, weekTitle, agendaRows } from '@/lib/events'
 
 const on = date => ({ id: date, event_date: date })
 
@@ -194,29 +194,5 @@ describe('agendaRows', () => {
     it('copes with nothing at all', () => {
         expect(agendaRows([], today)).toEqual([])
         expect(agendaRows(null, today)).toEqual([])
-    })
-})
-
-// The events table is one list with no restaurant on it, because it is what is
-// on at a venue and a venue does not belong to a shop. What ties them together
-// is the venue written on the restaurant, and the roster was not asking.
-describe('whether a restaurant watches a venue', () => {
-    it('does when there is a venue on it', () => {
-        expect(watchesVenue({ forecasting_venue_id: 'KovZpZA6kJeA' })).toBe(true)
-    })
-
-    it('does not when there is not', () => {
-        expect(watchesVenue({ forecasting_venue_id: null })).toBe(false)
-        expect(watchesVenue({ forecasting_venue_id: '' })).toBe(false)
-        expect(watchesVenue({})).toBe(false)
-        expect(watchesVenue(null)).toBe(false)
-    })
-
-    // The near miss. Forecasting is a feature somebody turns on to get
-    // predicted sales; nine thousand people next door at half six is a
-    // rostering fact and should not disappear with it.
-    it('is not the forecasting switch', () => {
-        expect(watchesVenue({ forecasting_enabled: true })).toBe(false)
-        expect(watchesVenue({ forecasting_enabled: false, forecasting_venue_id: 'v1' })).toBe(true)
     })
 })

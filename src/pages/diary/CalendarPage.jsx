@@ -6,7 +6,8 @@ import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
-import { watchesVenue } from '@/lib/events'
+import { nearbyRows, waiting } from '@/lib/nearby'
+import FoundNearby from '@/components/nearby/FoundNearby'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
 } from '@/lib/diary'
@@ -73,7 +74,9 @@ export default function CalendarPage() {
     const [selected, setSelected] = useState(null)
 
     const [entries, setEntries] = useState([])
-    const [arena, setArena] = useState([])
+    const [events, setEvents] = useState([])
+    const [pairings, setPairings] = useState([])
+    const [deciding, setDeciding] = useState(false)
     const [dayNotes, setDayNotes] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [loading, setLoading] = useState(true)
@@ -107,12 +110,6 @@ export default function CalendarPage() {
         ? addDays(today, 120)
         : (view === 'week' ? addDays(weekStart, 6) : addDays(weekStartOf(viewMonth), 41))
 
-    // Whether this restaurant watches a venue, not whether it forecasts.
-    // Knowing there are nine thousand people next door at half six is a
-    // rostering fact and should not go away because somebody turned a
-    // forecast off. It is the same test the roster uses now, which it was
-    // not: that screen asked for the events with no test at all.
-    const arenaOn = watchesVenue(activeRestaurant)
 
     useEffect(() => {
         if (!activeRestaurant) return undefined
@@ -133,13 +130,13 @@ export default function CalendarPage() {
             // The restaurant, never the venue. The function reads the venue
             // off that restaurant's own row, so nothing the browser says can
             // point the quota at a venue of somebody else's choosing.
-            if (canWrite && arenaOn && syncIsDue()) {
+            if (canWrite && syncIsDue()) {
                 try {
                     setSyncing(true)
                     const r = await syncEvents(supabase, activeRestaurant.id)
                     markSynced()
                     if (r.added > 0) {
-                        setNote(`Found ${r.added} new ${r.added === 1 ? 'event' : 'events'} at the Arena.`)
+                        setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
                     }
                 } catch (e) {
                     // A failed sync is not a failed page. What is already in the
@@ -150,25 +147,36 @@ export default function CalendarPage() {
                 }
             }
 
-            const [diary, events, notes, places] = await Promise.all([
+            const [diary, eventRes, notes, places, nearRes] = await Promise.all([
                 supabase.from('diary_entries').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),
-                arenaOn
-                    ? supabase.from('events').select('*')
-                        .gte('event_date', from).lte('event_date', to).order('event_date')
-                    : Promise.resolve({ data: [], error: null }),
+                // Everything in the window. Which of it belongs to this
+                // restaurant is decided by which places it is near, once, in
+                // lib/nearby, rather than by a clause repeated on four screens.
+                //
+                // Overlapping rather than starting in the window, the same as
+                // the diary above: a market that began last week still covers
+                // Monday.
+                supabase.from('events').select('*')
+                    .lte('event_date', to)
+                    .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
+                    .order('event_date'),
                 supabase.from('day_notes').select('note_date, extras')
                     .eq('restaurant_id', activeRestaurant.id)
                     .gte('note_date', from).lte('note_date', to),
                 supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
                     .eq('is_active', true).order('sort_order'),
+                supabase.from('restaurant_places')
+                    .select('id, relation, walk_minutes, distance_km, is_active, sort_order, place:places(*)')
+                    .eq('restaurant_id', activeRestaurant.id)
+                    .order('sort_order'),
             ])
 
             if (!alive) return
 
-            const failed = [diary, events, notes, places].find(r => r.error)
+            const failed = [diary, eventRes, notes, places, nearRes].find(r => r.error)
             if (failed) setError(friendlyError(failed.error))
 
             // Only this restaurant's. The policy answers whether you may
@@ -176,7 +184,8 @@ export default function CalendarPage() {
             // is not the same as them belonging on the restaurant you have
             // switched to. See atRestaurant.
             setEntries((diary.data || []).filter(e => atRestaurant(e, activeRestaurant.id)))
-            setArena(events.data || [])
+            setEvents(eventRes.data || [])
+            setPairings(nearRes.data || [])
             setDayNotes(notes.data || [])
             setRestaurants(places.data || [])
             setLoading(false)
@@ -184,17 +193,29 @@ export default function CalendarPage() {
 
         load()
         return () => { alive = false }
-    }, [activeRestaurant, arenaOn, canWrite, from, to, refresh])
+    }, [activeRestaurant, canWrite, from, to, refresh])
+
+    // One pass, so this screen and the roster cannot disagree about which
+    // listing belongs to which shop. See lib/nearby.
+    const nearby = useMemo(
+        () => nearbyRows(events, pairings, activeRestaurant),
+        [events, pairings, activeRestaurant],
+    )
+
+    // The ones nobody has settled, and only what is still to come. A reading of
+    // something that has already happened is not a decision anybody needs to
+    // make, and offering it is how a list stops being opened.
+    const found = useMemo(() => waiting(nearby, today), [nearby, today])
 
     const items = useMemo(
-        () => calendarItems({ entries, arena, dayNotes }),
-        [entries, arena, dayNotes],
+        () => calendarItems({ entries, nearby, dayNotes }),
+        [entries, nearby, dayNotes],
     )
     const byDate = useMemo(() => itemsByDate(items, layers), [items, layers])
 
     // A layer with nothing in it anywhere is not worth a switch to turn off.
-    // The Arena one is simply absent where forecasting is off, which is why it
-    // is not a special case here.
+    // The nearby ones are simply absent where a restaurant is near nothing,
+    // which is why they are not a special case here.
     const present = useMemo(() => {
         const seen = new Set(items.map(layerOf))
         return LAYERS.filter(l => seen.has(l))
@@ -221,8 +242,14 @@ export default function CalendarPage() {
     // to find out what it was. An Arena listing opened and told you about
     // itself. Two answers to the same gesture, and only one of them was right.
     function open(thing) {
-        if (thing?.ticketmaster_id || thing?.event_date) setOpenEvent(thing)
-        else setViewing(thing)
+        if (thing?.ticketmaster_id || thing?.event_date) {
+            // The row rather than the bare event, so the modal can say where
+            // it is, how far, and whether anybody has checked it. The chip
+            // hands over what it was given, which is the event itself.
+            setOpenEvent(nearby.find(r => r.event.id === thing.id) || { event: thing })
+            return
+        }
+        setViewing(thing)
     }
 
     // Press the same day again and it shuts. The same gesture My Shifts uses
@@ -246,6 +273,27 @@ export default function CalendarPage() {
     function saved() {
         setEditing(null)
         setRefresh(n => n + 1)
+    }
+
+    // Keeping one or saying no to it.
+    //
+    // The row is already there either way. What this writes is whether it is
+    // ours, and a dismissal stays in the table on purpose: the next read of the
+    // same page lands on that row and does not offer it again.
+    //
+    // Written straight into the list as well as to the database, rather than
+    // waiting for a reload. Pressing Keep on four things in a row and watching
+    // the whole calendar blink four times is the sort of thing that makes
+    // somebody stop pressing it.
+    async function decide(event, review) {
+        setDeciding(true)
+        const { error: failed } = await supabase.from('events')
+            .update({ review, reviewed_at: new Date().toISOString(), reviewed_by: user?.id || null })
+            .eq('id', event.id)
+        setDeciding(false)
+
+        if (failed) { setError(friendlyError(failed)); return }
+        setEvents(was => was.map(e => (e.id === event.id ? { ...e, review } : e)))
     }
 
     // The jump says what pressing it does, and only says where you are when
@@ -352,6 +400,18 @@ export default function CalendarPage() {
             </div>
 
             {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
+
+            {/* Everything behind this is already saved. What a person decides
+                here is not whether a thing exists, it is whether it is ours. */}
+            {canWrite && (
+                <FoundNearby
+                    rows={found}
+                    today={today}
+                    restaurantName={activeRestaurant?.name}
+                    onDecide={decide}
+                    busy={deciding}
+                />
+            )}
             {note && <p className="mb-3 text-sm text-green-700 bg-green-50 rounded-lg p-3">{note}</p>}
             {syncing && <p className="mb-3 text-sm text-muted">Checking Ticketmaster...</p>}
 
@@ -428,7 +488,7 @@ export default function CalendarPage() {
                 </button>
             )}
 
-            {openEvent && <EventModal event={openEvent} onClose={() => setOpenEvent(null)} />}
+            {openEvent && <EventModal row={openEvent} onClose={() => setOpenEvent(null)} />}
 
             {viewing && (
                 <DiaryEntryModal
