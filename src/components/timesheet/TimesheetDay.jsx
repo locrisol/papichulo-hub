@@ -1,4 +1,5 @@
 import { fullDate } from '@/lib/dates'
+import { fmtHours } from '@/lib/roster'
 import { fmtMoney } from '@/lib/format'
 import { toSeconds, shortClock } from '@/lib/clock'
 import { cellColour, BANK_HOLIDAY_COLOUR } from '@/lib/timesheet'
@@ -14,6 +15,11 @@ import { kindLabel as absenceLabel } from '@/lib/absences'
 //
 // The track runs from the earliest thing on the day to the latest, rather than
 // midnight to midnight, or every bar would be a sliver in the middle.
+//
+// The bars are for seeing; the figures beside them are for reading. He asked
+// for both: the roster carries an hours column and so does this, and each row
+// says what was rostered and what the clock registered rather than leaving you
+// to measure a bar by eye.
 
 const MINUTE = 60
 
@@ -51,11 +57,23 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
                 </span>
             </div>
 
+            <div className="hidden sm:grid grid-cols-[7rem_1fr_11rem_3.5rem] gap-x-3 px-3 py-1 border-b border-border">
+                <span className="text-[0.6rem] font-bold uppercase tracking-wider text-muted">Who</span>
+                <span />
+                <span className="text-[0.6rem] font-bold uppercase tracking-wider text-muted">
+                    Rostered, then registered
+                </span>
+                <span className="text-[0.6rem] font-bold uppercase tracking-wider text-muted text-right">Hours</span>
+            </div>
+
             {mine.map(({ row, cell }) => (
-                <div key={row.person.id} className="grid grid-cols-[5.5rem_1fr] gap-2 items-center px-3 py-2 border-b border-border last:border-b-0">
+                <div
+                    key={row.person.id}
+                    className="grid grid-cols-[5rem_1fr] sm:grid-cols-[7rem_1fr_11rem_3.5rem] gap-x-3 gap-y-1 items-center px-3 py-2 border-b border-border last:border-b-0"
+                >
                     <span className="text-xs font-semibold text-gray-900 truncate">{row.person.full_name}</span>
 
-                    <div className="relative h-8 rounded bg-gray-100 overflow-hidden">
+                    <div className="relative h-8 rounded bg-gray-100 overflow-hidden order-3 sm:order-none col-span-2 sm:col-span-1">
                         {cell.absence ? (
                             <span
                                 className="absolute inset-y-0 left-0 right-0 flex items-center pl-2 text-[0.6rem] font-bold uppercase tracking-wider"
@@ -99,6 +117,32 @@ export default function TimesheetDay({ rows, date, sundayPremium }) {
                             </>
                         )}
                     </div>
+
+                    {/* Rostered above, registered below, in the same order as
+                        the two bars, so the pair reads the same way twice. */}
+                    <span className="text-[0.66rem] tabular-nums leading-tight whitespace-nowrap">
+                        <span className="block text-gray-400">
+                            {cell.rostered.length
+                                ? cell.rostered.map(sh => `${shortClock(sh.starts_at)}\u2013${shortClock(sh.ends_at)}`).join(', ')
+                                : 'not rostered'}
+                        </span>
+                        <span className={`block font-semibold ${cell.entries.length ? 'text-gray-900' : 'text-accent-ink'}`}>
+                            {cell.absence
+                                ? absenceLabel(cell.absence.kind)
+                                : cell.entries.filter(e => e.ends_at).length
+                                    ? cell.entries.filter(e => e.ends_at)
+                                        .map(e => `${shortClock(e.starts_at)}\u2013${shortClock(e.ends_at)}`).join(', ')
+                                    : 'nothing registered'}
+                        </span>
+                    </span>
+
+                    <span className="text-xs font-bold text-gray-900 tabular-nums text-right whitespace-nowrap">
+                        {cell.hours > 0 ? fmtHours(cell.hours) : (
+                            cell.holidayHours > 0
+                                ? <span className="text-blue-700">{fmtHours(cell.holidayHours)}</span>
+                                : <span className="text-muted">-</span>
+                        )}
+                    </span>
                 </div>
             ))}
 

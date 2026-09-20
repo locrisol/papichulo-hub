@@ -15,6 +15,7 @@ import TimesheetWeek from '@/components/timesheet/TimesheetWeek'
 import TimesheetPhone from '@/components/timesheet/TimesheetPhone'
 import TimesheetDay from '@/components/timesheet/TimesheetDay'
 import TouchBar from '@/components/timesheet/TouchBar'
+import DayEditModal from '@/components/timesheet/DayEditModal'
 
 // What people actually worked.
 //
@@ -42,6 +43,10 @@ export default function TimesheetPage() {
     const [pickerDate, setPickerDate] = useState(weekStart)
     const [view, setView] = useState('week')
     const [openDay, setOpenDay] = useState(todayISO())
+    // Which person and day the phone has open to be typed. Held as ids rather
+    // than as the row, so it survives the rows being worked out again after a
+    // save and does not go stale halfway through.
+    const [editing, setEditing] = useState(null)
 
     const [people, setPeople] = useState([])
     const [entries, setEntries] = useState([])
@@ -119,6 +124,14 @@ export default function TimesheetPage() {
 
     const totals = weekTotals(rows, premium)
     const waiting = unanswered(rows)
+
+    // Looked up fresh each render, so the dialog is always showing what the
+    // rows hold rather than a copy taken when it opened.
+    const open = editing && (() => {
+        const row = rows.find(r => r.person.id === editing.personId)
+        const cell = row?.days.find(d => d.date === editing.date)
+        return row && cell ? { row, cell } : null
+    })()
 
     // ---- writing -----------------------------------------------------------
 
@@ -398,15 +411,33 @@ export default function TimesheetPage() {
                         />
                     </div>
                     <div className="md:hidden">
+                        {/* Tapping a day opens it to be typed. It used to
+                            jump to the day view, which is a reading and not an
+                            entry screen, so a phone had nowhere to type a time
+                            at all. */}
                         <TimesheetPhone
                             rows={rows}
                             dates={dates}
                             sundayPremium={premium}
-                            onOpenDay={(person, cell) => { setOpenDay(cell.date); setView('day') }}
+                            onOpenDay={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
                         />
                     </div>
                     <TouchBar gridRef={grid} onState={stateFromBar} />
                 </div>
+            )}
+
+            {open && (
+                <DayEditModal
+                    person={open.row.person}
+                    cell={open.cell}
+                    onClose={() => setEditing(null)}
+                    onType={(entry, field, value) => type(open.row.person, open.cell, entry, field, value)}
+                    onSettle={(entry, field, value) => settle(open.row.person, open.cell, entry, field, value)}
+                    onState={key => setState(open.row.person, open.cell, key)}
+                    onClear={() => { clear(open.row.person, open.cell); setEditing(null) }}
+                    onAdd={() => addSpan(open.row.person, open.cell)}
+                    onHours={value => setHolidayHours(open.cell, value)}
+                />
             )}
         </div>
     )
