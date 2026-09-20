@@ -201,10 +201,15 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const kind = cell.entries.find(e => e.kind !== 'worked')
     if (kind) bits.unshift(kindOf(kind.kind).label)
 
-    // A till time moved by hand with nothing said about it. It is asked for on
-    // the cell as well as in the banner, because the banner names a person and
-    // this says which day.
-    if (cell.unexplained) bits.push('changed, say why')
+    // Hours the till's report does not have, on a week it covered. Two ways
+    // to get there and they want different words: a time off the report that
+    // somebody moved, or a shift typed onto a day the report says nothing
+    // about. Asked for on the cell as well as in the banner, because the
+    // banner names a person and this says which day.
+    if (cell.unexplained) {
+        const moved = cell.entries.some(e => e.source === 'corrected')
+        bits.push(moved ? 'changed, say why' : 'not on the report, say why')
+    }
 
     // Nothing to say and nothing typed yet. A quiet way in rather than no way
     // in at all.

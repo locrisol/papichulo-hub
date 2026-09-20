@@ -156,14 +156,21 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         // A part day is not an answer either way. She could work until three,
         // so whether she did is still an open question.
         unanswered: !imported && mine.length === 0 && rostered.length > 0 && !absence,
-        // A time the till gave that somebody has moved and not said why.
+        // Hours on a week whose report has been read in that the report does
+        // not have. **Both ways round, because they are the same difference.**
         //
-        // **This is the one change on a week an accountant cannot see coming.**
-        // Everything else is what it looks like: a figure off the clock, or a
-        // week typed by hand because no file came. A clock time that was then
-        // corrected looks exactly like a clock time, and only the person who
-        // changed it knows what happened.
-        unexplained: mine.some(e => e.source === 'corrected' && !String(e.note || '').trim()),
+        // A till time somebody moved: the file says one thing and the timesheet
+        // says another. A shift typed by hand on an imported week: the file
+        // says nothing at all and the timesheet says eight hours. The second
+        // one is the bigger difference of the two and it was the one nothing
+        // asked about, which is what he found on his own 15th of September.
+        //
+        // On a week nobody imported, a typed row is the only kind there is and
+        // says nothing new by existing, so nothing is asked.
+        unexplained: mine.some(e => (
+            !String(e.note || '').trim()
+            && (e.source === 'corrected' || (imported && e.source === 'typed'))
+        )),
     }
 }
 

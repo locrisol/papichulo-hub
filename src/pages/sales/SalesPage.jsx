@@ -8,7 +8,7 @@ import { fmtMoney, num } from '@/lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
-import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
+import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
@@ -424,8 +424,13 @@ export default function SalesPage() {
                 stacks back into one column in the same order. */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 <div>
-                    {/* Date selector */}
-                    <div className={`${card} p-4 mb-3`}>
+                    {/* Date selector. The card carries the bank holiday
+                        colour, since this screen is one day and the day is the
+                        whole of it. */}
+                    <div
+                        className={`${card} p-4 mb-3`}
+                        style={bankHolidayOn(saleDate) ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
+                    >
                         <DateStepper
                             onBack={() => shiftDate(-1)}
                             onNext={() => shiftDate(1)}

@@ -246,6 +246,8 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     box(l.pad, y, pageWidth - l.pad * 2, h(l.headH), GREEN)
     at('STAFF', l.pad + 8, y + h(l.headH) / 2 + 3, { size: 8, style: 'bold', rgb: [255, 255, 255] })
     const GOLD = [232, 200, 120]
+    // The same wash the screen uses, as the numbers a PDF wants.
+    const GOLD_WASH = [251, 244, 226]
     table.head.forEach((head, i) => {
         const x = l.columnX(i) + l.dayCol / 2
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
@@ -270,6 +272,9 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), SLATE)
     at('STORE HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
     table.storeHours.forEach((v, i) => {
+        // The whole column, a row at a time, because rows paint their own
+        // backgrounds after this point and would cover one tall rectangle.
+        if (table.head[i]?.holiday) box(l.columnX(i), y, l.dayCol, h(l.metaH), GOLD_WASH)
         at(v, l.columnX(i) + l.dayCol / 2, y + h(l.metaH) / 2 + 3, {
             align: 'center', size: 7, rgb: [51, 65, 85], max: l.dayCol - 8,
         })
@@ -425,6 +430,9 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         const top = y
         const rowH = h(l.shiftH + l.breakH)
         if (row % 2 === 0) box(l.pad, y, pageWidth - l.pad * 2, rowH, [252, 251, 249])
+        table.head.forEach((head, i) => {
+            if (head.holiday) box(l.columnX(i), y, l.dayCol, rowH, GOLD_WASH)
+        })
 
         // Down the middle of the whole row, breaks included, rather than of
         // the shift half of it.

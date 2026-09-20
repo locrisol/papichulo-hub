@@ -12,7 +12,7 @@ import RosterRulesModal from '@/components/settings/RosterRulesModal'
 import { todayISO, weekStartOf, shortDate, stampDateTime } from '@/lib/dates'
 import { resolveTarget, describeTargets } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
-import { DEFAULT_BREAK_RULES } from '@/lib/roster'
+import { DEFAULT_BREAK_RULES, BANK_HOLIDAY } from '@/lib/roster'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import { numberField } from '@/lib/numberInput'
 import { card, rowButton, labelClass, pageTitle } from '@/lib/controlStyles'
@@ -134,11 +134,19 @@ export default function RestaurantPage() {
 
     // Enough of each setting to see at a glance whether it has been done,
     // without opening the dialog to find out.
-    const openDays = Object.values(activeRestaurant?.opening_hours || {})
-        .filter(d => d?.open && d?.close).length
+    // Seven days, and the bank holiday hours are the eighth entry rather than
+    // an eighth day. Counting the lot said "Open 8 days a week", which is the
+    // kind of sentence nobody reads twice and everybody notices once.
+    const hours = activeRestaurant?.opening_hours || {}
+    const openDays = Object.entries(hours)
+        .filter(([day, d]) => day !== BANK_HOLIDAY && d?.open && d?.close).length
+    const bankHours = hours[BANK_HOLIDAY]
+    const bankSummary = bankHours?.open && bankHours?.close
+        ? ` Bank holidays ${bankHours.open} to ${bankHours.close}, on every one of the ten without anybody marking it.`
+        : ' No bank holiday hours set, so a bank holiday keeps the usual ones.'
     const openingSummary = openDays === 0
         ? 'Not set yet. Until they are, the roster cannot mark opening or closing shifts.'
-        : `Open ${openDays} ${openDays === 1 ? 'day' : 'days'} a week. Used by the roster to mark opening and closing shifts.`
+        : `Open ${openDays} ${openDays === 1 ? 'day' : 'days'} a week.${bankSummary}`
 
     const ladder = activeRestaurant?.break_rules?.length
         ? [...activeRestaurant.break_rules].sort((a, b) => b.hours - a.hours)

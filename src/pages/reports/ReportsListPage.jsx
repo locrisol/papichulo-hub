@@ -63,10 +63,11 @@ function unansweredWords(waiting) {
     }
 
     const missing = waiting.filter(w => w.days?.length)
-    // A till time somebody moved by hand and has not explained. It blocks the
-    // same way a shift with nothing said does, and for the same reason: the
-    // report carries a wage bill, and a figure that was changed after the clock
-    // gave it is the one change nobody reading it can see.
+    // Hours the till's report does not have: a time off it that somebody moved,
+    // or a shift typed onto a day it says nothing about. It blocks the same way
+    // a shift with nothing said does, and for the same reason: the report
+    // carries a wage bill, and a figure the accountant's own copy disagrees
+    // with is the one thing nobody reading it can see.
     const changed = waiting.filter(w => w.changed?.length)
 
     const said = []
@@ -75,8 +76,8 @@ function unansweredWords(waiting) {
             + 'with nothing said on the timesheet.')
     }
     if (changed.length) {
-        said.push(`${who(changed)} ${changed.length === 1 ? 'has a till time' : 'have till times'} `
-            + 'changed by hand with nothing said about it.')
+        said.push(`${who(changed)} ${changed.length === 1 ? 'has hours' : 'have hours'} `
+            + "the till's report does not have, with nothing said about them.")
     }
     return said.join(' ')
 }

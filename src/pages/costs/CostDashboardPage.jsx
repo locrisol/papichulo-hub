@@ -198,7 +198,11 @@ export default function CostDashboardPage() {
                     .eq('restaurant_id', restaurantId)
                     .gte('invoice_date', weekStart)
                     .lte('invoice_date', end),
-                supabase.from('labour_entries')
+                // labour_by_day, not labour_entries. The table is the
+                // archive and stops at the 5th of September; the view reads the
+                // timesheet for every day it covers and the archive for the
+                // rest, so the percentage is right on both sides of the join.
+                supabase.from('labour_by_day')
                     .select('labour_cost')
                     .eq('restaurant_id', restaurantId)
                     .gte('entry_date', weekStart)

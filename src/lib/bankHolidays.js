@@ -99,6 +99,9 @@ function holidaysFor(year) {
 export const BANK_HOLIDAY_INK = '#B08A2E'      // on white
 export const BANK_HOLIDAY_ON_DARK = '#E8C878'  // on the sidebar green
 export const BANK_HOLIDAY_WASH = '#FBF4E2'     // behind a cell or a column
+// The same wash as a class, for the screens that colour a column by class name
+// rather than by style. Written out in full so Tailwind's scanner sees it.
+export const BANK_HOLIDAY_WASH_CLASS = 'bg-[#FBF4E2]'
 
 // The one every screen calls. Null when it is an ordinary day.
 export function bankHolidayOn(dateStr) {

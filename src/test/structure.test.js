@@ -216,6 +216,23 @@ describe('a screen that judges the timesheet asks for the whole row', () => {
     })
 })
 
+describe('labour is read from the view, never from the frozen table', () => {
+    // labour_entries is the old Labour page's table. It stops on the 5th of
+    // September 2026 and nothing writes to it again. labour_by_day is the view
+    // that reads the timesheet for every day it covers and that table for the
+    // rest, which is what makes the cost percentage right on both sides of the
+    // join.
+    //
+    // Two screens were left reading the table directly, so the day the
+    // timesheet started being used they showed a week with no labour cost at
+    // all and no sign anything was missing. He found it, not us.
+    const reads = sourcePaths.filter(p => sources[p].includes("from('labour_entries')"))
+
+    it('nothing asks the table for figures', () => {
+        expect(reads, 'read labour_by_day: the table is the archive half only').toEqual([])
+    })
+})
+
 describe('a style that is a function gets called', () => {
     // Some of the controls are functions because they take a size or a tone.
     // The import dialog used one as if it were a string, twice, and the two

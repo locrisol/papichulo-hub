@@ -154,6 +154,11 @@ export default function RosterWeek({
     }
 
     const cell = 'px-2 py-1.5 border-r border-border last:border-r-0 align-middle'
+    // The whole column, not just the heading. A bank holiday is a different day
+    // to roster and the eye should find it by running down the week rather than
+    // by reading the top of it. Inline, because most of these rows carry a
+    // background of their own and a class would lose to it.
+    const wash = d => (bankHolidayFor(d, noteFor(d)) ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined)
     // The same hatch the day timeline uses for the hours somebody cannot work.
     // Here it can only say the whole day, since this view has no hours in it.
     const awayHatch =
@@ -335,7 +340,7 @@ export default function RosterWeek({
                                 {dates.map(d => {
                                     const on = rowsOn(group.rows, d)
                                     return (
-                                        <td key={d} className={`${cell} text-center p-0`}>
+                                        <td key={d} className={`${cell} text-center p-0`} style={wash(d)}>
                                             {on.length === 0 ? (
                                                 <span className="block py-1.5 text-muted text-xs">—</span>
                                             ) : (
@@ -468,7 +473,7 @@ export default function RosterWeek({
                                     </span>
                                 )))
                                 return (
-                                    <td key={d} className={`${cell} text-center p-0`}>
+                                    <td key={d} className={`${cell} text-center p-0`} style={wash(d)}>
                                         {/* The same way in as an empty cell on
                                             somebody's row: press it and the
                                             day opens, which is where all of
@@ -574,6 +579,12 @@ export default function RosterWeek({
                                                         ? `${row.employee.full_name} can work ${windowsLabel(windowsFor(availabilityOn(row.employee, day.date), day.date))}`
                                                         : undefined}
                                             style={{
+                                                // The bank holiday wash sits
+                                                // under everything about the
+                                                // person: a day they are off
+                                                // still shows the reason in its
+                                                // own colour on top of it.
+                                                ...wash(day.date),
                                                 ...(offKind
                                                     ? { backgroundColor: offKind.fill }
                                                     : away === 'none' ? { backgroundImage: awayHatch } : {}),

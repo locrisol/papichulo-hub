@@ -646,10 +646,12 @@ export default function TimesheetPage() {
                         <p>
                             <strong className="font-bold">
                                 {names(waiting.filter(w => w.changed.length))} {waiting.filter(w => w.changed.length).length === 1
-                                    ? 'has a till time' : 'have till times'} changed by hand with nothing said about it.
+                                    ? 'has hours' : 'have hours'} the till&apos;s report does not have, with nothing
+                                said about them.
                             </strong>{' '}
-                            A figure that came off the clock and was then moved needs a comment, or
-                            nobody reading the week can tell it was.
+                            A time off the report that was moved, or a shift typed onto a day the
+                            report says nothing about. Either way the accountant is reading a
+                            different figure, so the week needs a comment saying why.
                         </p>
                     )}
                 </div>

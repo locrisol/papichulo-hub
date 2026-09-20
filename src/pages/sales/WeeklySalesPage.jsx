@@ -13,7 +13,7 @@ import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, pr
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
-import { bankHolidayOn, BANK_HOLIDAY_ON_DARK } from '@/lib/bankHolidays'
+import { bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS } from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -612,8 +612,13 @@ export default function WeeklySalesPage() {
 
     // A closed day is not a day nobody has filled in, it is a day we did not
     // trade, so the whole column says so rather than just the boxes going flat.
+    //
+    // A bank holiday colours its column the same way, and closed wins: a bank
+    // holiday you were shut for is just shut. One class either way, never two,
+    // for the reason written under this one.
     function closedCol(date) {
-        return days[date]?.isClosed ? 'bg-red-50' : ''
+        if (days[date]?.isClosed) return 'bg-red-50'
+        return bankHolidayOn(date) ? BANK_HOLIDAY_WASH_CLASS : ''
     }
     // The label and total cells paint their own background, because the label
     // is sticky and would otherwise go transparent over the rows as it scrolls.

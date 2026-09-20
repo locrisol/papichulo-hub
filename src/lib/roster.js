@@ -4,6 +4,8 @@
 // be got wrong quietly lives in this file so it can be tested: what a shift is
 // worth, what break it earns, and what a week costs.
 
+import { isBankHoliday } from '@/lib/bankHolidays'
+
 // The ladder every restaurant starts with.
 //
 // The bottom two rungs come from the Irish rules on breaks. The hour is this
@@ -245,8 +247,7 @@ export function staffPerSlot(shifts, from, to, slot) {
 // The key the bank holiday hours are stored under, alongside the seven days.
 //
 // Every bank holiday at these restaurants opens the same, so it is one setting
-// rather than a date somebody has to remember to fill in every August. A day
-// only has to be ticked as a bank holiday and it picks these up.
+// rather than a date somebody has to remember to fill in every August.
 export const BANK_HOLIDAY = 'bh'
 
 // The hours a particular day actually runs.
@@ -254,13 +255,25 @@ export const BANK_HOLIDAY = 'bh'
 // Three things can decide it, and they are tried in this order:
 //
 //   1. hours typed for this one day, which win outright
-//   2. the bank holiday hours, if the day is ticked as one
+//   2. the bank holiday hours, on a day that is a bank holiday
 //   3. the usual hours for that weekday
 //
 // The one off wins outright rather than merging, so a day opening late for a
 // concert carries its own times and nothing borrowed from the usual. And the
 // one off beats the bank holiday too, because a bank holiday with something
 // unusual on it is still something unusual.
+//
+// **A bank holiday no longer has to be ticked.** The ten Irish public holidays
+// are worked out from the date, so a restaurant with bank holiday hours set
+// keeps them on every one of those days whether or not anybody remembered. His
+// call, and the right one: the tick lived three screens deep, in the day view
+// under Options, and he had forgotten it was there at all. What it is for now
+// is a day that is not a public holiday and is being run like one, which is the
+// only thing left that nobody can work out from a calendar.
+//
+// It does nothing at all until the bank holiday hours are set, which is what
+// makes it safe to apply on its own: a restaurant that never filled them in
+// keeps exactly the hours it had.
 export function hoursForDate(openingHours, dayNote, date) {
     if (dayNote?.is_closed) return null
 
@@ -268,11 +281,11 @@ export function hoursForDate(openingHours, dayNote, date) {
         return { open: shortTime(dayNote.opens_at), close: shortTime(dayNote.closes_at) }
     }
 
-    if (dayNote?.is_bank_holiday) {
+    if (dayNote?.is_bank_holiday || isBankHoliday(date)) {
         const bh = openingHours?.[BANK_HOLIDAY]
         if (bh?.open && bh?.close) return { open: bh.open, close: bh.close }
-        // Ticked as a bank holiday with no bank holiday hours set. The usual
-        // day is a better guess than nothing, and the settings screen says so.
+        // A bank holiday with no bank holiday hours set. The usual day is a
+        // better guess than nothing, and the settings screen says so.
     }
 
     return hoursForDay(openingHours, date)

@@ -193,7 +193,9 @@ export default function ReportPage() {
                         .select('total_amount, category')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('invoice_date', weekStart).lte('invoice_date', end),
-                    supabase.from('labour_entries')
+                    // The view rather than the frozen table: see the
+                    // comment on the same read in the cost dashboard.
+                    supabase.from('labour_by_day')
                         .select('labour_cost')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('entry_date', weekStart).lte('entry_date', end),
@@ -273,7 +275,7 @@ export default function ReportPage() {
                     .select('invoice_date, total_amount, category')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('invoice_date', yearFrom).lte('invoice_date', end),
-                supabase.from('labour_entries')
+                supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('entry_date', yearFrom).lte('entry_date', end),

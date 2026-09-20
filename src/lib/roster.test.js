@@ -422,6 +422,39 @@ describe('hoursForDate', () => {
         const withBh = { ...week, bh: { open: '12:00', close: '18:00' } }
         expect(hoursForDate(withBh, { is_bank_holiday: true, is_closed: true }, '2026-08-24')).toBe(null)
     })
+
+    // His call, after finding the tick three screens deep in the day view and
+    // not remembering it was there. The ten Irish public holidays are worked
+    // out from the date, so a restaurant with bank holiday hours set keeps them
+    // on every one whether or not anybody ticked it.
+    describe('a public holiday nobody ticked', () => {
+        // Monday 26 October 2026 is the October bank holiday. The usual week
+        // here says nothing about a Monday, so the figures cannot be confused.
+        const october = { ...week, 1: { open: '09:00', close: '21:00' }, bh: { open: '12:00', close: '18:00' } }
+
+        it('keeps the bank holiday hours anyway', () => {
+            expect(hoursForDate(october, null, '2026-10-26')).toEqual({ open: '12:00', close: '18:00' })
+        })
+
+        it('leaves an ordinary Monday alone', () => {
+            expect(hoursForDate(october, null, '2026-10-19')).toEqual({ open: '09:00', close: '21:00' })
+        })
+
+        // Which is what makes it safe to apply on its own: a restaurant that
+        // never filled the bank holiday hours in keeps exactly what it had.
+        it('changes nothing where there are no bank holiday hours', () => {
+            expect(hoursForDate(week, null, '2026-10-26')).toEqual({ open: '09:00', close: '21:00' })
+        })
+
+        it('still lets a one off day beat it', () => {
+            const note = { opens_at: '14:00', closes_at: '23:00' }
+            expect(hoursForDate(october, note, '2026-10-26')).toEqual({ open: '14:00', close: '23:00' })
+        })
+
+        it('is still nothing at all when the day is closed', () => {
+            expect(hoursForDate(october, { is_closed: true }, '2026-10-26')).toBe(null)
+        })
+    })
 })
 
 describe('timelineRange', () => {

@@ -196,6 +196,37 @@ describe('a week whose till report has been read in', () => {
         const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, imported: true })]
         expect(weekAnswered(rows)).toBe(true)
     })
+
+    // The bigger half of the same difference, and the one that was missed.
+    // His 15th of September: the file had nothing for him that day and the
+    // timesheet has 8.67 hours typed by hand. The accountant's copy of the
+    // report says nothing there, so somebody has to.
+    it('wants a comment on hours typed onto a week the file covered', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+    })
+
+    it('is happy once those hours say why', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed', note: 'covered the delivery, never clocked in' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // And it asks nothing of a row that came off the clock untouched, which is
+    // most of an imported week.
+    it('asks nothing of the rows the file itself wrote', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:13', ends_at: '18:02:44', source: 'import' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
 })
 
 describe('time off that is only part of a day', () => {
