@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { shortClock } from '@/lib/clock'
 import { STATE_KEYS, kindOf } from '@/lib/timesheet'
 import { stepFrom } from '@/components/timesheet/boxes'
 import { kindOf as absenceKind } from '@/lib/absences'
@@ -14,7 +13,7 @@ import { kindOf as absenceKind } from '@/lib/absences'
 //
 // It is on for any touch screen rather than only for phones, because somebody
 // with a keyboard case still reaches up and taps.
-export default function TouchBar({ gridRef, onTake, onState }) {
+export default function TouchBar({ gridRef, onState }) {
     const [box, setBox] = useState(null)
 
     // The focused box, watched rather than asked for, so the bar always talks
@@ -33,9 +32,6 @@ export default function TouchBar({ gridRef, onTake, onState }) {
             document.removeEventListener('input', look)
         }
     }, [])
-
-    const rostered = box?.placeholder || ''
-    const canTake = Boolean(box && rostered && !box.value)
 
     // mousedown and touchstart are cancelled so pressing a button never takes
     // the cursor out of the box it is meant to act on.
@@ -60,14 +56,6 @@ export default function TouchBar({ gridRef, onTake, onState }) {
             <Key onClick={() => step(-1)} label="Previous box">&lsaquo;</Key>
             <Key onClick={() => step(1)} label="Next box">&rsaquo;</Key>
 
-            <Key
-                onClick={() => { onTake(box); step(1) }}
-                disabled={!canTake}
-                strong
-            >
-                {rostered ? `Take ${shortClock(rostered) || rostered}` : 'Nothing rostered'}
-            </Key>
-
             <span className="flex-1 min-w-[0.5rem]" />
 
             {STATE_KEYS.map(state => (
@@ -86,10 +74,8 @@ export default function TouchBar({ gridRef, onTake, onState }) {
     )
 }
 
-function Key({ children, onClick, disabled, label, strong, tone }) {
-    const look = strong
-        ? 'border-accent text-accent-ink font-bold'
-        : 'border-gray-300 text-gray-900'
+function Key({ children, onClick, disabled, label, tone }) {
+    const look = 'border-gray-300 text-gray-900'
 
     return (
         <button

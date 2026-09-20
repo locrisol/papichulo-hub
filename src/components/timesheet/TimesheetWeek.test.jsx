@@ -96,30 +96,35 @@ describe('moving about', () => {
     })
 })
 
-describe('Enter, which is the fast path through a normal week', () => {
+describe('Enter, which moves on and nothing else', () => {
     const rostered = [{ id: 's1', employee_id: 'e1', shift_date: SUN, starts_at: '12:00:00', ends_at: '20:00:00' }]
 
-    it('takes the rostered time when the box is empty', async () => {
+    // The one he stopped. Enter used to put the rostered time into an empty
+    // box. What somebody was rostered for is never what goes to the accountant,
+    // only what the clock said is, and a key that fills the plan in makes it
+    // easy to file the plan as the record.
+    it('never puts the rostered time in the box', async () => {
         const { onSettle } = grid({ shifts: rostered })
         boxes()[0].focus()
         await userEvent.keyboard('{Enter}')
-        expect(onSettle).toHaveBeenCalledWith(
-            aoife, expect.objectContaining({ date: SUN }), expect.anything(), 'starts_at', '12:00:00',
-        )
+        expect(onSettle.mock.calls.map(call => call[4])).not.toContain('12:00:00')
     })
 
-    it('moves on afterwards', async () => {
+    it('moves on', async () => {
         grid({ shifts: rostered })
         boxes()[0].focus()
         await userEvent.keyboard('{Enter}')
         expect(document.activeElement).toBe(boxes()[1])
     })
 
-    // It is a suggestion, not a correction. A box somebody has already filled
-    // must not be quietly overwritten by the roster.
-    // Moving on blurs the box, and a blur settles it. That is right and it is
-    // a no-op when nothing changed, so what these check is the value: the
-    // rostered time must never land on top of something already typed.
+    // The figure itself stays behind the box, because knowing who was meant to
+    // be in is worth having. It is something to read, not something to accept.
+    it('still shows what they were rostered for', () => {
+        grid({ shifts: rostered })
+        expect(boxes()[0]).toHaveAttribute('placeholder', '12:00')
+        expect(boxes()[0]).toHaveValue('')
+    })
+
     it('leaves a box that already has something alone', async () => {
         const { onSettle } = grid({
             shifts: rostered,
@@ -127,17 +132,7 @@ describe('Enter, which is the fast path through a normal week', () => {
         })
         boxes()[0].focus()
         await userEvent.keyboard('{Enter}')
-        const sent = onSettle.mock.calls.map(call => call[4])
-        expect(sent).not.toContain('12:00:00')
-        expect(sent).toEqual(['11:58:04'])
-    })
-
-    it('has nothing to take when nothing was rostered', async () => {
-        const { onSettle } = grid()
-        boxes()[0].focus()
-        await userEvent.keyboard('{Enter}')
-        expect(onSettle.mock.calls.map(call => call[4])).toEqual([''])
-        expect(document.activeElement).toBe(boxes()[1])
+        expect(onSettle.mock.calls.map(call => call[4])).toEqual(['11:58:04'])
     })
 })
 

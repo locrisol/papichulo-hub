@@ -13,6 +13,13 @@ import { kindLabel as absenceLabel } from '@/lib/absences'
 // nobody planned as a dead cell, and he caught it: somebody can work a day at
 // short notice, and a grid that will not let you type that is a grid you keep a
 // second list beside.
+//
+// **The rostered time shows, and can never be taken.** It sits behind the box
+// as a placeholder so you can see who was meant to be in, and that is all it
+// does. Enter used to fill it in and he stopped that: what somebody was
+// rostered for is never what goes to the accountant, only what the clock said
+// is, and a key that puts the plan in the box makes it easy to file the plan as
+// the record. That is the exact confusion this screen exists to end.
 
 const box = 'block w-full font-sans text-xs tabular-nums tracking-tight '
     + 'border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-900 '

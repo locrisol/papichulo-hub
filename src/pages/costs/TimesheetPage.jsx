@@ -254,20 +254,7 @@ export default function TimesheetPage() {
     }
 
     // The touch bar acts on whatever box has the cursor, so it needs to turn a
-    // DOM element back into the entry it belongs to.
-    function takeRostered(box) {
-        if (!box) return
-        const at = {
-            r: Number(box.dataset.r), d: Number(box.dataset.d),
-            s: Number(box.dataset.s), i: Number(box.dataset.i),
-        }
-        const row = rows[at.r]
-        const cell = row?.days[at.d]
-        if (!cell) return
-        const entry = cell.entries[at.s] || { id: null, starts_at: '', ends_at: '' }
-        settle(row.person, cell, entry, at.i === 0 ? 'starts_at' : 'ends_at', `${box.placeholder}:00`)
-    }
-
+    // DOM element back into the person and the day it belongs to.
     function stateFromBar(box, key) {
         if (!box) return
         const row = rows[Number(box.dataset.r)]
@@ -398,7 +385,7 @@ export default function TimesheetPage() {
                             onOpenDay={(person, cell) => { setOpenDay(cell.date); setView('day') }}
                         />
                     </div>
-                    <TouchBar gridRef={grid} onTake={takeRostered} onState={stateFromBar} />
+                    <TouchBar gridRef={grid} onState={stateFromBar} />
                 </div>
             )}
         </div>

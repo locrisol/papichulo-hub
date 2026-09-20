@@ -19,9 +19,8 @@ import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 // order. The thing he asked for costs no code, which also means it cannot drift
 // out of step with anything.
 //
-// What is handled is Enter, which takes the rostered time, and the up and down
-// arrows, which change person. Left and right are left alone so a typo can
-// still be fixed.
+// What is handled is Enter, which moves on, and the up and down arrows, which
+// change person. Left and right are left alone so a typo can still be fixed.
 
 export default function TimesheetWeek({
     rows, dates, sundayPremium, canEdit = true,
@@ -37,21 +36,15 @@ export default function TimesheetWeek({
             s: Number(el.dataset.s), i: Number(el.dataset.i),
         }
 
+        // Enter moves on and nothing else.
+        //
+        // It used to put the rostered time into an empty box, and he stopped
+        // that: a rostered time is never what goes to the accountant, only what
+        // the clock said is. The grey figure behind the box stays, because
+        // knowing who was meant to be in is worth having, but there is no key
+        // and no button that turns it into a value.
         if (e.key === 'Enter') {
             e.preventDefault()
-            // An empty box takes what they were rostered for. Most shifts run
-            // as rostered, so a normal week is mostly Enter and correcting the
-            // two or three that did not.
-            //
-            // The full five arguments, the same as a cell sends. Sending three
-            // from here was a real bug: the page reads the person and the day
-            // off the first two, so Enter would have made a row for whoever
-            // happened to be first.
-            const row = rows[at.r]
-            const cell = row?.days[at.d]
-            if (cell && !el.value && el.placeholder) {
-                onSettle(row.person, cell, entryAt(rows, at), fieldOf(at), `${el.placeholder}:00`)
-            }
             stepFrom(e.currentTarget, el, 1)
             return
         }
@@ -189,16 +182,6 @@ export default function TimesheetWeek({
             </table>
         </div>
     )
-}
-
-// Which entry a box belongs to, so Enter can hand the right one back. A box in
-// a day with nothing in it yet belongs to no entry, and the page makes one.
-function entryAt(rows, at) {
-    return rows[at.r]?.days[at.d]?.entries[at.s] || { id: null, starts_at: '', ends_at: '' }
-}
-
-function fieldOf(at) {
-    return at.i === 0 ? 'starts_at' : 'ends_at'
 }
 
 const Head = ({ children }) => (
