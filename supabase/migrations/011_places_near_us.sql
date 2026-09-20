@@ -51,7 +51,19 @@ COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery AP
 
 -- One row per venue, so the geo search that adds a restaurant finds the place
 -- we already have rather than making a second one.
-CREATE UNIQUE INDEX IF NOT EXISTS "places_one_per_venue" ON "public"."places" USING "btree" ("ticketmaster_venue_id") WHERE ("ticketmaster_venue_id" IS NOT NULL);
+--
+-- **No WHERE clause on it, and that is not an oversight.** It was written as a
+-- partial index, on the grounds that only rows with a venue id need to be
+-- unique, and that quietly broke the thing the index exists for: ON CONFLICT
+-- can only infer a partial index when the statement repeats its predicate, and
+-- PostgREST has no way to send one. Every upsert would have come back with
+-- "there is no unique or exclusion constraint matching the ON CONFLICT
+-- specification", which is a runtime error and not a migration one.
+--
+-- The predicate was never needed anyway. Postgres treats nulls as distinct in a
+-- unique index, so every place with no venue id is already free to exist
+-- alongside every other one.
+CREATE UNIQUE INDEX IF NOT EXISTS "places_one_per_venue" ON "public"."places" USING "btree" ("ticketmaster_venue_id");
 
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 
@@ -142,7 +154,12 @@ END $$;
 -- A second read of the same page lands on the row it made last time. Without
 -- this a dismissal is forgotten every week, which is the one detail that
 -- decides whether the whole feature is useful or is noise.
-CREATE UNIQUE INDEX IF NOT EXISTS "events_one_per_reading" ON "public"."events" USING "btree" ("place_id", "source_key") WHERE ("source_key" IS NOT NULL);
+--
+-- No WHERE clause, for the reason places_one_per_venue gives: a partial index
+-- cannot be inferred by ON CONFLICT, and nulls are distinct in a unique index
+-- anyway, so every Ticketmaster row with no reading key of its own already sits
+-- happily beside every other one.
+CREATE UNIQUE INDEX IF NOT EXISTS "events_one_per_reading" ON "public"."events" USING "btree" ("place_id", "source_key");
 
 CREATE INDEX IF NOT EXISTS "idx_events_place" ON "public"."events" USING "btree" ("place_id", "event_date");
 
