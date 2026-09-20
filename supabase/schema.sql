@@ -662,13 +662,15 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     CONSTRAINT "timesheet_entries_has_a_person" CHECK (
         ("employee_id" IS NOT NULL) OR ("btrim"(COALESCE("person_name", ''::"text")) <> ''::"text")
     ),
-    -- And something to say: a start time, a note saying why there is none, or
-    -- a kind that is a statement in itself, a training day or a trial marked
-    -- before the times are typed.
+    -- And something to say: a start time, a note saying why there is none, a
+    -- kind that is a statement in itself, a training day or a trial marked
+    -- before the times are typed, or a correction, which is a shift the till
+    -- reported with its times rubbed out and the week waiting to be told why.
     CONSTRAINT "timesheet_entries_says_something" CHECK (
         ("starts_at" IS NOT NULL)
         OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
         OR ("kind" <> 'worked'::"text")
+        OR ("source" = 'corrected'::"text")
     )
 );
 

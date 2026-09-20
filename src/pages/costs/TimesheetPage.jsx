@@ -7,7 +7,7 @@ import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
-import { personWeek, weekTotals, unanswered, STATE_KEYS } from '@/lib/timesheet'
+import { personWeek, weekTotals, unanswered, cameFromTill, STATE_KEYS } from '@/lib/timesheet'
 import { kindLabel as absenceLabel } from '@/lib/absences'
 import {
     card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField, secondaryButton,
@@ -234,8 +234,23 @@ export default function TimesheetPage() {
         if (entry.id) {
             const next = { ...entry, [field]: value }
             if (!next.starts_at && !next.ends_at) {
-                if (!entry.note) return remove(entry)
-                return save(entry.id, { starts_at: null, ends_at: null, ...changedByHand(entry) })
+                // **A shift the till reported is emptied, never deleted.**
+                //
+                // Changing one of those times by hand is marked as a correction
+                // and the week waits for a comment. Rubbing both of them out
+                // used to escape that: the row went, nothing was left to carry
+                // the mark, and on a week whose report has been read in nothing
+                // asked. The week would go to the accountant lighter than the
+                // report she is holding with nothing saying why, which is a
+                // small change asking for an explanation and a big one not.
+                //
+                // Same for a row carrying a comment: the times were the part
+                // that was wrong, and throwing the sentence away with them
+                // would lose the only thing on that row anybody wrote.
+                if (entry.note || cameFromTill(entry)) {
+                    return save(entry.id, { starts_at: null, ends_at: null, ...changedByHand(entry) })
+                }
+                return remove(entry)
             }
             if (entry[field] === value) return
             return save(entry.id, { [field]: value, ...changedByHand(entry) })

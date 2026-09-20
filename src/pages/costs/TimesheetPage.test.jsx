@@ -19,6 +19,7 @@ const rows = {
 }
 const inserted = []
 const updated = []
+const deleted = []
 
 function chain(table) {
     const result = Promise.resolve({ data: rows[table] || [], error: null })
@@ -49,7 +50,13 @@ function chain(table) {
                 },
             }),
         }),
-        delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        delete: () => ({
+            eq: (_, id) => {
+                deleted.push({ table, id })
+                rows[table] = (rows[table] || []).filter(r => r.id !== id)
+                return Promise.resolve({ error: null })
+            },
+        }),
         then: (...args) => result.then(...args),
     }
     return self
@@ -71,6 +78,7 @@ const boxes = () => Array.from(document.querySelectorAll('input[data-r]'))
 beforeEach(() => {
     inserted.length = 0
     updated.length = 0
+    deleted.length = 0
     rows.timesheet_entries = []
     rows.roster_shifts = []
 })
@@ -200,6 +208,44 @@ describe('changing a time the till gave', () => {
 
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].patch).toMatchObject({ starts_at: '09:20:00', source: 'corrected' })
+    })
+
+    // Rubbing both times out is how a shift goes, since the x is only ever on
+    // a day off. A till row emptied that way used to disappear with nothing
+    // left to say it ever existed, which is the one change bigger than an edit
+    // and the only one that escaped having to explain itself.
+    it('is emptied rather than deleted when both times are rubbed out', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[0])
+        await userEvent.tab()
+        await userEvent.clear(boxes()[1])
+        await userEvent.tab()
+
+        await waitFor(() => expect(updated.length).toBeGreaterThan(0))
+        expect(deleted).toHaveLength(0)
+        // What it ends up as, rather than what the last patch said: rubbing out
+        // the first box already marked it, so the second one has nothing left
+        // to mark.
+        expect(rows.timesheet_entries[0]).toMatchObject({
+            id: 't1', starts_at: null, ends_at: null, source: 'corrected',
+        })
+    })
+
+    it('deletes a row somebody typed, because no report disagrees with it', async () => {
+        rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[0])
+        await userEvent.tab()
+        await userEvent.clear(boxes()[1])
+        await userEvent.tab()
+
+        await waitFor(() => expect(deleted).toHaveLength(1))
+        expect(deleted[0].id).toBe('t1')
     })
 
     it('leaves a time somebody typed alone', async () => {

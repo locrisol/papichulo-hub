@@ -52,6 +52,14 @@ export const STATE_KEYS = [
 // so it is never in KINDS and never in STATE_KEYS.
 export const BANK_HOLIDAY_COLOUR = '#B08A2E'
 
+// Where a row's times came from. The two that came off the clock are defended
+// differently from the two that did not: they are never quietly replaced by a
+// second import, changing one asks for a comment, and rubbing both times out
+// leaves it empty and waiting to be explained rather than deleting it.
+export function cameFromTill(entry) {
+    return entry?.source === 'import' || entry?.source === 'corrected'
+}
+
 export function kindOf(value) {
     return KINDS.find(k => k.value === value) || KINDS[0]
 }
