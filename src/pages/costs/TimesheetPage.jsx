@@ -416,7 +416,6 @@ export default function TimesheetPage() {
                             onState={setState}
                             onClear={clear}
                             onAdd={addSpan}
-                            onHours={setHolidayHours}
                             onOpen={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
                         />
                     </div>

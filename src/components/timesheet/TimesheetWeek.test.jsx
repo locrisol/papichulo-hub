@@ -165,28 +165,35 @@ describe('what the cells say', () => {
         expect(figures).toEqual(['8.00', '0.00', '€0.00'])
     })
 
-    // A holiday's hours come off the payslip and nothing here can know them.
-    // The roster's own dialog leaves the figure empty for somebody to type, so
-    // this does too: it is a box, not a default. Eight would be a made up
-    // number going to an accountant.
-    it('gives a holiday a box for its hours rather than a guess', () => {
-        grid({
-            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: null }],
-        })
-        const box = screen.getByLabelText('Holiday hours')
-        expect(box).toHaveValue('')
-        // Marked, so a holiday worth nothing does not sit there looking done.
-        expect(box.className).toContain('border-accent')
-    })
-
-    it('shows the figure once it has one', () => {
+    // **The figure belongs to the whole holiday, not to this day.** The cell
+    // used to hold a box with the run's total in it, so fifteen hours over
+    // three days showed 15 on each and invited somebody to edit a run from one
+    // day of it. The cell shows this day's share and opens the day to change
+    // anything, where the box can say what it is for.
+    it('never puts an hours box in the grid', () => {
         grid({
             absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: 8 }],
         })
-        expect(screen.getByLabelText('Holiday hours')).toHaveValue('8')
+        expect(screen.queryByLabelText('Holiday hours')).not.toBeInTheDocument()
     })
 
-    it('tells you this day’s share of a holiday that runs several days', () => {
+    it('says so when nobody has put hours on it yet', () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: null }],
+        })
+        expect(screen.getByText('no hours yet')).toBeInTheDocument()
+    })
+
+    it('opens the day when the holiday is pressed', async () => {
+        const calls = grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: 8 }],
+        })
+        // 'Holiday' is a column heading too, so ask the body for it.
+        await userEvent.click(within(document.querySelector('tbody')).getByText('Holiday'))
+        expect(calls.onOpen).toHaveBeenCalledWith(aoife, expect.objectContaining({ date: TUE }))
+    })
+
+    it('tells you this day’s share, never the run’s total', () => {
         grid({
             absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: '2026-10-29', ends_on: '2026-10-31', hours: 15 }],
         })
@@ -195,11 +202,12 @@ describe('what the cells say', () => {
         expect(screen.getAllByText('5.00 this day')).toHaveLength(3)
     })
 
-    it('has no hours box for a day off sick, which carries none', () => {
+    it('says nothing about hours for a day off sick, which carries none', () => {
         grid({
             absences: [{ id: 'a2', employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: TUE, ends_on: TUE }],
         })
-        expect(screen.queryByLabelText('Holiday hours')).not.toBeInTheDocument()
+        expect(screen.queryByText('no hours yet')).not.toBeInTheDocument()
+        expect(screen.queryByText(/this day/)).not.toBeInTheDocument()
     })
 
     it('says when somebody worked a day nobody planned', () => {

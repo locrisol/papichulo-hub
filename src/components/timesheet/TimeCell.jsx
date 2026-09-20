@@ -1,7 +1,6 @@
 import { maskTime, settleTime, shortClock } from '@/lib/clock'
 import { kindOf, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours } from '@/lib/absences'
-import { numberField } from '@/lib/numberInput'
 
 // One person, one day.
 //
@@ -28,7 +27,7 @@ const box = 'block w-full font-sans text-xs tabular-nums tracking-tight '
     + 'placeholder:text-gray-300 disabled:bg-gray-50 disabled:text-gray-400'
 
 export default function TimeCell({
-    cell, at, canEdit = true, onType, onSettle, onState, onClear, onAdd, onHours, onOpen,
+    cell, at, canEdit = true, onType, onSettle, onState, onClear, onAdd, onOpen,
 }) {
     const { entries, absence, rostered, unplanned } = cell
 
@@ -36,55 +35,58 @@ export default function TimeCell({
     // and a trial are worked time and keep their boxes, which is the thing the
     // first design got wrong.
     if (absence) {
-        // A holiday carries the hours it comes to off the payslip, and nothing
-        // here should guess them. The roster's own dialog leaves the figure
-        // empty for somebody to type, so this does too: it is a box, not a
-        // default. A holiday spanning several days holds one figure for the
-        // whole run, which is why the box shows the run's number and the grey
-        // line under it says what this day's share is.
+        // **The figure a holiday carries belongs to the whole holiday, not to
+        // this day.** It used to be a box in the cell holding the run's total,
+        // so a holiday of fifteen hours over three days showed 15 on each of
+        // them and invited somebody to edit a run from one day of it. That is
+        // the same confusion as the bug he found: a figure that looks like this
+        // day's and is not.
+        //
+        // So the cell shows this day's share and nothing else, and the way to
+        // change the run is to open the day, where the box can be labelled
+        // properly and say what it is for. What Team put in stands until
+        // somebody changes it there or here on purpose.
         const runs = takesHours(absence.kind)
         const share = cell.holidayHours
-        const many = absence.starts_on !== absence.ends_on
 
         return (
-            <div>
-                <div className="flex items-start gap-1">
+            <div className="flex items-start gap-1">
+                <button
+                    type="button"
+                    onClick={onOpen}
+                    disabled={!canEdit}
+                    title={canEdit ? 'Open the day' : undefined}
+                    className="text-left disabled:cursor-default"
+                >
                     <span
                         className="inline-block text-[0.58rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-white whitespace-nowrap"
                         style={{ backgroundColor: cellColour({ absence }) }}
                     >
                         {absenceLabel(absence.kind)}
                     </span>
-                    {canEdit && (
-                        <button
-                            type="button"
-                            onClick={onClear}
-                            aria-label="Clear the day"
-                            className="ml-auto text-gray-400 hover:text-gray-900 leading-none px-1 rounded"
-                        >
-                            &times;
-                        </button>
+                    {runs && (
+                        absence.hours == null
+                            ? (
+                                <span className="block text-[0.62rem] font-semibold text-accent-ink mt-0.5">
+                                    no hours yet
+                                </span>
+                            )
+                            : (
+                                <span className="block text-[0.62rem] text-gray-500 tabular-nums mt-0.5">
+                                    {share.toFixed(2)} this day
+                                </span>
+                            )
                     )}
-                </div>
-
-                {runs && (
-                    <input
-                        {...numberField({
-                            value: absence.hours == null ? '' : String(absence.hours),
-                            onChange: onHours,
-                            decimals: 2,
-                        })}
-                        disabled={!canEdit}
-                        aria-label="Holiday hours"
-                        placeholder="hours"
-                        className={`${box} mt-1 text-right ${absence.hours == null ? 'border-accent' : ''}`}
-                    />
-                )}
-
-                {runs && many && absence.hours != null && (
-                    <span className="block text-[0.62rem] text-gray-400 tabular-nums mt-0.5">
-                        {share.toFixed(2)} this day
-                    </span>
+                </button>
+                {canEdit && (
+                    <button
+                        type="button"
+                        onClick={onClear}
+                        aria-label="Clear the day"
+                        className="ml-auto text-gray-400 hover:text-gray-900 leading-none px-1 rounded"
+                    >
+                        &times;
+                    </button>
                 )}
             </div>
         )
