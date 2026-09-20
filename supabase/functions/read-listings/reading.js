@@ -71,6 +71,17 @@ export function textFrom(html) {
 // a plausible one. Saying so plainly is worth more than any amount of schema,
 // and the checks below assume it will happen anyway.
 //
+// **The earliest of several times**, because a cinema listing "Mon 21 Sep, 5pm
+// & 8pm" is one row here and there is only one column to put a time in. The
+// earliest is also the more useful of the two for a restaurant: it is when
+// people stop eating and go in.
+//
+// **And the venue, because a page is not always about one place.** The county
+// council's own listings cover Dundrum and Ballinteer as readily as Dún
+// Laoghaire, and without the building named on each one, a review list shows
+// six things under one walking time that is right for one of them. Found by
+// running it for real on 20 September.
+//
 // Nothing about us goes in it. Not the restaurant, not the place, not why we
 // are asking. The page is public and the question is about the page.
 export function promptFor(text, { from, to, today }) {
@@ -84,8 +95,10 @@ export function promptFor(text, { from, to, today }) {
         '- If a date is not stated on the page, leave the row out. Never guess a date.',
         '- Use the date the event happens, not the date it goes on sale.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM, and only if one is stated.',
+        '- If several start times are listed for one day, use the earliest.',
         '- If something runs over several days, give the first day and the last day.',
         '- Use the name as written on the page. Do not summarise it.',
+        '- Give the venue or building named on the page for that event, if one is named.',
         '- If the page lists nothing in that range, return an empty list.',
         '',
         '--- page text ---',
@@ -107,6 +120,7 @@ export const SCHEMA = {
                     date: { type: 'string' },
                     ends: { type: 'string' },
                     time: { type: 'string' },
+                    where: { type: 'string' },
                 },
                 required: ['name', 'date'],
             },
@@ -235,7 +249,9 @@ export function eventsFrom(answer, { placeId, url, from, to, now }) {
             // until a person settles it.
             review: 'found',
             found_at: now,
-            venue: null,
+            // Where on the page said it was, which is not always where the
+            // page belongs. Null when it did not say.
+            venue: cleanName(one?.where) || null,
             category: null,
         })
     }

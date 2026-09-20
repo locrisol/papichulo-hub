@@ -16,6 +16,7 @@ import {
     waiting,
     placeName,
     chipWords,
+    elsewhere,
     walkWords,
     hostOf,
     sourceWords,
@@ -219,6 +220,58 @@ describe('the words on a chip', () => {
 
     it('falls back to the name when there is no short one', () => {
         expect(placeName(park, { short: true })).toBe("People's Park")
+    })
+})
+
+// Found by running the reader for real on 20 September. The county council's
+// own listings page carries the LexIcon five minutes away and a library in
+// Dundrum ten kilometres away in the same list, and both arrived under one
+// walking time that was right for one of them.
+describe('a listing that is somewhere else entirely', () => {
+    const council = {
+        id: 'p9', name: 'Dun Laoghaire Rathdown County Council', short_name: 'dlr Council',
+        page_url: 'https://www.dlrcoco.ie/dlr-events',
+    }
+    const pairing = { place: council, relation: 'walk', walk_minutes: 5, is_active: true }
+    const rowFor = venue => nearbyRows(
+        [{
+            id: 'x1', place_id: 'p9', name: 'Arts & Crafts Evening', event_date: '2026-10-15',
+            source: 'page', review: 'found', venue,
+        }],
+        [pairing],
+        {},
+    )[0]
+
+    it('says where the page said, not where the page belongs', () => {
+        expect(elsewhere(rowFor('Dundrum Library'))).toBe('Dundrum Library')
+        expect(chipWords(rowFor('Dundrum Library'), { short: true }))
+            .toBe('Arts & Crafts Evening, Dundrum Library')
+    })
+
+    // The walking time belongs to the place. Saying the council's five minutes
+    // against a thing in Dundrum is not a rounding error, it is wrong.
+    it('drops the walking time when it is not the place we measured', () => {
+        expect(foundWords(rowFor('Dundrum Library'), '2026-10-01'))
+            .toBe('Thu 15 Oct · Dundrum Library · read from dlrcoco.ie')
+    })
+
+    it('keeps the place and the walk when the listing is at the place', () => {
+        expect(elsewhere(rowFor('dlr LexIcon'))).toBe('dlr LexIcon')
+        expect(foundWords(rowFor(null), '2026-10-01'))
+            .toBe('Thu 15 Oct · Dun Laoghaire Rathdown County Council, 5 min · read from dlrcoco.ie')
+    })
+
+    // A feed calls it "The Convention Centre Dublin" and our own row calls it
+    // "Convention Centre Dublin". One place, not two.
+    it('treats a longer or shorter way of saying the same place as the same', () => {
+        const ccd = { id: 'p8', name: 'Convention Centre Dublin' }
+        const row = { place: ccd, event: { venue: 'The Convention Centre Dublin' } }
+        expect(elsewhere(row)).toBe('')
+    })
+
+    it('says nothing when the page named no venue', () => {
+        expect(elsewhere({ place: council, event: {} })).toBe('')
+        expect(elsewhere(null)).toBe('')
     })
 })
 

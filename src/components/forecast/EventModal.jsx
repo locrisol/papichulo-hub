@@ -1,6 +1,6 @@
 import Modal from '@/components/ui/Modal'
 import { categoryStyle, statusNote, dayName } from '@/lib/events'
-import { placeName, walkWords, hostOf, agoWords, whenWords } from '@/lib/nearby'
+import { placeName, elsewhere, walkWords, hostOf, agoWords, whenWords } from '@/lib/nearby'
 import { fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { badge } from '@/lib/controlStyles'
@@ -53,13 +53,21 @@ export default function EventModal({ row, onClose }) {
         },
     ]
 
-    const where = placeName(row?.place) || event.venue
+    // What the page said, when that is somewhere else entirely. A council's
+    // listings cover a whole county, and the walking time on our own row is the
+    // walk to the council rather than to a library ten kilometres away.
+    const other = elsewhere(row)
+    const where = other || placeName(row?.place) || event.venue
     if (where) {
-        const walk = walkWords(row?.pairing?.walk_minutes)
+        const walk = other ? '' : walkWords(row?.pairing?.walk_minutes)
         rows.push({
             label: row?.kind === 'city' ? 'In the city' : 'Where',
             value: walk ? `${where}, ${walk} away` : where,
         })
+        // Still worth saying which list it turned up on, since that is what
+        // decides whether it is watched at all.
+        const ours = placeName(row?.place)
+        if (other && ours) rows.push({ label: 'Found on', value: `${ours}'s listings` })
     }
 
     if (event.min_price != null || event.max_price != null) {

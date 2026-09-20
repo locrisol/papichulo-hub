@@ -61,6 +61,19 @@ describe('promptFor', () => {
         expect(prompt).toContain('Never guess a date')
     })
 
+    // A cinema listing reads "Mon 21 Sep, 5pm & 8pm" and there is one column
+    // to put a time in. The earliest is the more useful of the two here: it is
+    // when people stop eating and go in.
+    it('says which of several times to take', () => {
+        expect(prompt).toContain('use the earliest')
+    })
+
+    // The council's page covers a whole county, so without this a review list
+    // shows six things under one walking time that is right for one of them.
+    it('asks where on the page each one is', () => {
+        expect(prompt).toContain('venue or building named on the page')
+    })
+
     it('says which window it is asking about', () => {
         expect(prompt).toContain('2026-11-01')
         expect(prompt).toContain('2026-12-06')
@@ -94,6 +107,14 @@ describe('answerFrom', () => {
 })
 
 describe('what survives the check', () => {
+    it('carries the venue the page named, when it named one', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Arts & Crafts Evening', date: '2026-11-19', where: '  Dundrum   Library ' },
+            { name: 'Quiz night', date: '2026-11-20' },
+        ]), WHEN)
+        expect(rows.map(r => r.venue)).toEqual(['Dundrum Library', null])
+    })
+
     it('keeps a row with a real date and a name', () => {
         const { rows } = eventsFrom(answer([
             { name: 'Pentangle', date: '2026-11-19', time: '19:30' },

@@ -173,6 +173,26 @@ export function placeName(place, { short = false } = {}) {
     return place.name || ''
 }
 
+// Where a listing actually is, which is not always the place it came from.
+//
+// A venue's own page is about that venue, so the two agree and this answers the
+// place. A council's page is about a county: the same list carries the LexIcon
+// five minutes away and a library in Dundrum, and calling both of them "the
+// council, 5 minutes" is a walking time that is right for one of them.
+//
+// Loose containment either way, so "The Convention Centre Dublin" from a feed
+// and "Convention Centre Dublin" on our own row are still one place rather than
+// two. Only a name with nothing in common with ours counts as somewhere else.
+export function elsewhere(row) {
+    const said = String(row?.event?.venue || '').trim()
+    if (!said) return ''
+    const ours = placeName(row?.place)
+    if (!ours) return said
+    const a = said.toLowerCase()
+    const b = ours.toLowerCase()
+    return a.includes(b) || b.includes(a) ? '' : said
+}
+
 // How a chip reads: the thing, then where it is.
 //
 // The name leads because with a concert the question is which one, and the
@@ -184,7 +204,10 @@ export function placeName(place, { short = false } = {}) {
 // Festival, Dun Laoghaire Rathdown County Council" says one thing twice.
 export function chipWords(row, { short = false } = {}) {
     const name = String(row?.event?.name || '').trim()
-    const where = placeName(row?.place, { short })
+    // What the page said, when that is somewhere else entirely. A chip reading
+    // "Arts & Crafts Evening, dlr Council" for a thing in Dundrum is worse than
+    // no chip, because it looks like it is next door.
+    const where = elsewhere(row) || placeName(row?.place, { short })
     if (!where || !name) return name || where
     return name.toLowerCase().includes(where.toLowerCase()) ? name : `${name}, ${where}`
 }
@@ -271,8 +294,12 @@ export function agoWords(stamp, today) {
 export function foundWords(row, today) {
     const bits = [whenWords(row?.event)]
 
-    const where = placeName(row?.place)
-    const walk = walkWords(row?.pairing?.walk_minutes, { short: true })
+    // The walking time belongs to the place, so it is only said when the
+    // listing is actually at the place. Somewhere else on the same page has a
+    // name and no distance we know, and saying the place's would be a lie.
+    const other = elsewhere(row)
+    const where = other || placeName(row?.place)
+    const walk = other ? '' : walkWords(row?.pairing?.walk_minutes, { short: true })
     if (where) bits.push(walk ? `${where}, ${walk}` : where)
 
     const from = hostOf(row?.event?.source_url) || hostOf(row?.place?.page_url)
