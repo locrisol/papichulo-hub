@@ -9,7 +9,7 @@ import { hasWarnings } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absences'
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
-import { extrasFor } from '@/lib/dayExtras'
+import { extrasFor, whatIsOn } from '@/lib/dayExtras'
 import {
     bandsForWeek, kindChip, kindLabel, showsOnRoster, onDate, timeLabel, labelsOf,
 } from '@/lib/diary'
@@ -315,14 +315,17 @@ export default function RosterWeek({
                                 )}
                             </td>
                             {dates.map(d => {
-                                const extras = extrasFor(noteFor(d))
-                                // The diary first, because a catering job is
-                                // something somebody committed to and a
-                                // delivery is something that turns up. Both are
-                                // the same chip with a different edge: two
+                                // One list, in the order the day happens. Both
+                                // are the same chip with a different edge: two
                                 // kinds of thing on one day, and this row is
                                 // about the day rather than about which table
                                 // they came out of.
+                                //
+                                // It used to draw the diary first and then the
+                                // deliveries, which put a catering job at 13:00
+                                // above a Lunch Team drop at 11:30. See
+                                // whatIsOn. The day view never had this,
+                                // because the lane packer sorted for it.
                                 //
                                 // Not a button, though it looks like one it
                                 // could be. For a manager this whole cell is
@@ -331,10 +334,10 @@ export default function RosterWeek({
                                 // band above is pressable because it has a cell
                                 // to itself; these are read here and changed on
                                 // the calendar.
-                                const commitments = diaryOn(d)
-                                const inside = (extras.length === 0 && commitments.length === 0) ? (
+                                const onToday = whatIsOn(diaryOn(d), noteFor(d))
+                                const inside = onToday.length === 0 ? (
                                     <span className="text-muted text-xs">{staff ? '' : '+'}</span>
-                                ) : [...commitments.map(entry => (
+                                ) : onToday.map(({ entry, extra }) => (entry ? (
                                     <span
                                         key={entry.id}
                                         className={`block rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words text-left ${kindChip(entry.kind)}`}
@@ -357,7 +360,7 @@ export default function RosterWeek({
                                         </span>
                                         {` (${entry.title})`}
                                     </span>
-                                )), ...extras.map(extra => (
+                                ) : (
                                     // One chip each, because two of them as
                                     // plain lines read as one paragraph, and
                                     // the time picked out from the name because
@@ -385,7 +388,7 @@ export default function RosterWeek({
                                         )}
                                         <span className="text-slate-600">{extra.name}</span>
                                     </span>
-                                ))]
+                                )))
                                 return (
                                     <td key={d} className={`${cell} text-center p-0`}>
                                         {/* The same way in as an empty cell on
