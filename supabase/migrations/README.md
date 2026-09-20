@@ -1,6 +1,6 @@
 # Migrations
 
-Eight in here, and the next one is `015`.
+Nine in here, and the next one is `016`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
@@ -18,6 +18,9 @@ Eight in here, and the next one is `015`.
   fixes the council, which was being read six events at a time.
 - **`014_a_place_can_have_its_own_row.sql`** lets one place near a restaurant
   have a roster row with its name on it, and gives the Arena its own back.
+- **`015_a_listing_can_be_called_something_shorter.sql`** lets a listing be
+  called something shorter than it calls itself, beside the name rather than
+  over it.
 
 None has a backup newer than it yet, so none can go.
 

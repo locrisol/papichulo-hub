@@ -20,6 +20,7 @@ import {
     waiting,
     placeName,
     chipWords,
+    eventName,
     elsewhere,
     walkWords,
     hostOf,
@@ -434,6 +435,47 @@ describe('a listing that is somewhere else entirely', () => {
     it('says nothing when the page named no venue', () => {
         expect(elsewhere({ place: council, event: {} })).toBe('')
         expect(elsewhere(null)).toBe('')
+    })
+})
+
+// Three conferences arrived as "IAPF Investment Conference", "Irish Funds
+// Conference October 2026" and "ITIC Conference 2026", and drawn on a day in
+// October 2026 the month and the year are two things the reader can already
+// see. His point, and the same one behind the short names on places.
+describe('what to call a listing', () => {
+    it('uses what it arrived as until somebody shortens it', () => {
+        expect(eventName({ name: 'Irish Funds Conference October 2026' }))
+            .toBe('Irish Funds Conference October 2026')
+    })
+
+    it('prefers the name we chose', () => {
+        expect(eventName({ name: 'Irish Funds Conference October 2026', display_name: 'Irish Funds' }))
+            .toBe('Irish Funds')
+    })
+
+    // Emptying the field puts the original back rather than leaving a listing
+    // with no name at all.
+    it('falls back when the one we chose is blank', () => {
+        expect(eventName({ name: 'ITIC Conference 2026', display_name: '   ' }))
+            .toBe('ITIC Conference 2026')
+        expect(eventName({ name: 'ITIC Conference 2026', display_name: null }))
+            .toBe('ITIC Conference 2026')
+    })
+
+    it('copes with nothing at all', () => {
+        expect(eventName(null)).toBe('')
+        expect(eventName({})).toBe('')
+    })
+
+    // The whole point: it has to reach the chip, or renaming changed nothing.
+    it('is what a chip says', () => {
+        const [row] = nearbyRows(
+            [{ ...gig, name: 'Westlife 25 - The Anniversary World Tour', display_name: 'Westlife' }],
+            pairs,
+            {},
+        )
+        expect(chipWords(row, { short: true })).toBe('Westlife [3Arena]')
+        expect(row.title).toBe('Westlife [3Arena]')
     })
 })
 

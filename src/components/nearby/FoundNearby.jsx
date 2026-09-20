@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { card, secondaryButton } from '@/lib/controlStyles'
-import { foundWords } from '@/lib/nearby'
+import { foundWords, eventName } from '@/lib/nearby'
 
 // What a read off a page turned up, waiting for somebody to settle it.
 //
@@ -27,9 +27,9 @@ import { foundWords } from '@/lib/nearby'
 // aggregator that can is the only source there is, and it normalises titles, so
 // "Avengers: Endgame Encore" arrives as "Avengers: Endgame".
 //
-// The correction sticks. The reading key is built from what was read rather
-// than from what it was renamed to, so next week's read still lands on this row
-// and does not bring the short name back.
+// The correction sticks, and it is written beside what was read rather than
+// over it. The reading key is built from what arrived, so next week's read
+// still lands on this row and does not bring the old name back.
 export default function FoundNearby({ rows, today, restaurantName, onDecide, busy }) {
     const [open, setOpen] = useState(false)
     // What a name has been corrected to, by event id. Empty until somebody
@@ -76,10 +76,10 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
                                     out of, and a row nobody touches keeps
                                     exactly what was read. */}
                                 <input
-                                    value={names[row.event.id] ?? row.event.name}
+                                    value={names[row.event.id] ?? eventName(row.event)}
                                     onChange={e => setNames(was => ({ ...was, [row.event.id]: e.target.value }))}
                                     maxLength={160}
-                                    aria-label={`Name of ${row.event.name}`}
+                                    aria-label={`Name of ${eventName(row.event)}`}
                                     className="w-full font-semibold text-gray-900 bg-transparent rounded-md px-1.5 -mx-1.5 py-0.5 border border-transparent transition-colors hover:border-border focus:border-accent focus:bg-white focus:outline-none"
                                 />
                                 <p className="text-xs text-muted mt-0.5">{foundWords(row, today)}</p>

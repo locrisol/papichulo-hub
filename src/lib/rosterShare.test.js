@@ -169,6 +169,25 @@ describe('weekTable', () => {
         expect(t.headlines[0].perDay[4][0].name).toBe('Westlife')
     })
 
+    // Renaming has to reach the picture too, or the week on the wall still
+    // says the long one.
+    it('calls a listing what we renamed it to', () => {
+        const t = build({
+            nearby: [{
+                kind: 'arena',
+                time: '18:00',
+                place: { id: 'p1', name: '3Arena' },
+                event: {
+                    id: 'v3',
+                    event_date: DATES[4],
+                    name: 'Westlife 25 - The Anniversary World Tour',
+                    display_name: 'Westlife',
+                },
+            }],
+        })
+        expect(t.extras[4][0].name).toBe('Westlife [3Arena]')
+    })
+
     // The sheet said "[Odeon Point Square]" where the grid said "[Odeon]".
     // His answer, and the right one: we know it is in Point Square, we are
     // there. A sheet and a screen of the same week must not disagree about

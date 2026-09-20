@@ -299,6 +299,22 @@ export function elsewhere(row) {
     return a.includes(b) || b.includes(a) ? '' : said
 }
 
+// What to call a listing.
+//
+// What it calls itself, unless somebody has shortened it. "Irish Funds
+// Conference October 2026" on a day in October 2026 spends half a roster cell
+// telling a reader two things they can see, and "Westlife 25 - The Anniversary
+// World Tour" is the same problem from a feed.
+//
+// The two are kept apart rather than one overwriting the other. name is what
+// arrived and display_name is ours, which matters because a page read a second
+// time lands on the row it made the first time, and because a Ticketmaster
+// name is rewritten by every sync. See migration 015.
+export function eventName(event) {
+    const ours = String(event?.display_name || '').trim()
+    return ours || String(event?.name || '').trim()
+}
+
 // How a chip reads: the thing, then where it is, in brackets.
 //
 // The name leads because with a concert the question is which one, and the
@@ -323,7 +339,7 @@ export function elsewhere(row) {
 // a council listing at Dundrum Library is not at the council, and a row headed
 // with the council would be hiding the one word that matters.
 export function chipWords(row, { short = false, withPlace = true } = {}) {
-    const name = String(row?.event?.name || '').trim()
+    const name = eventName(row?.event)
     // What the page said, when that is somewhere else entirely. A chip reading
     // "Arts & Crafts Evening, dlr Council" for a thing in Dundrum is worse than
     // no chip, because it looks like it is next door.

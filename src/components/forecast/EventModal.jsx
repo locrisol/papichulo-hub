@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import { categoryStyle, statusNote, dayName } from '@/lib/events'
-import { placeName, elsewhere, walkWords, hostOf, agoWords, whenWords } from '@/lib/nearby'
+import {
+    placeName, elsewhere, walkWords, hostOf, agoWords, whenWords, eventName,
+} from '@/lib/nearby'
 import { fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
-import { badge } from '@/lib/controlStyles'
+import { badge, fieldClass, labelClass, secondaryButton } from '@/lib/controlStyles'
 
 // One thing on near us, opened from the calendar or from the list beside it.
 //
@@ -18,8 +21,11 @@ import { badge } from '@/lib/controlStyles'
 // a name, a date and the address it was read from. Attendance and ticket
 // numbers are not in the free tier at all, so those are not missing by accident
 // and there is no point leaving a blank line for them.
-export default function EventModal({ row, onClose }) {
+export default function EventModal({ row, canEdit = false, onRename, onClose }) {
     const event = row?.event
+    // Before the early return, because a hook cannot sit behind one. The empty
+    // string is never used: there is no modal to type into without an event.
+    const [name, setName] = useState(() => eventName(row?.event) || '')
     if (!event) return null
 
     const note = statusNote(event.status)
@@ -90,7 +96,7 @@ export default function EventModal({ row, onClose }) {
     }
 
     return (
-        <Modal title={event.name} onClose={onClose}>
+        <Modal title={eventName(event)} onClose={onClose}>
             <div className="px-6 py-4">
                 {event.category && (
                     <div className="mb-4">
@@ -120,6 +126,44 @@ export default function EventModal({ row, onClose }) {
 
                 {note && (
                     <p className={`text-sm rounded-lg p-3 mt-4 ${noteCls}`}>{note.text}</p>
+                )}
+
+                {/* Renaming one that is already kept.
+                    "Irish Funds Conference October 2026" drawn on a day in
+                    October 2026 spends half a roster cell on two things the
+                    reader can already see.
+                    It writes beside the name rather than over it, so what
+                    arrived is still what a second reading is matched on, and a
+                    Ticketmaster name that the sync rewrites twice a day keeps
+                    the one we chose. See migration 015. */}
+                {canEdit && onRename && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                        <label className={labelClass} htmlFor="event-name">
+                            What to call it on the roster
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            <input
+                                id="event-name"
+                                className={`${fieldClass} flex-1 min-w-[12rem]`}
+                                value={name}
+                                maxLength={160}
+                                onChange={e => setName(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                disabled={name.trim() === eventName(event)}
+                                onClick={() => onRename(event, name)}
+                                className={`${secondaryButton} disabled:opacity-50`}
+                            >
+                                Save
+                            </button>
+                        </div>
+                        <p className="text-xs text-muted mt-1">
+                            {event.display_name
+                                ? `It arrived as "${event.name}". Empty the box to put that back.`
+                                : 'Only what the roster and the calendar show. What it arrived as is kept.'}
+                        </p>
+                    </div>
                 )}
             </div>
         </Modal>

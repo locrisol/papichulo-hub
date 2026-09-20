@@ -6,7 +6,7 @@ import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
-import { nearbyRows, waiting, PAIRING_COLUMNS } from '@/lib/nearby'
+import { nearbyRows, waiting, eventName, PAIRING_COLUMNS } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
@@ -275,18 +275,41 @@ export default function CalendarPage() {
         setRefresh(n => n + 1)
     }
 
+    // Renaming one that has already been kept.
+    //
+    // He asked for this having kept three conferences and then wanted the month
+    // and the year off them, which the review list could no longer offer because
+    // they were settled. So the listing itself carries it, which is also where
+    // somebody looking at a name they do not like already is.
+    //
+    // Emptying the field puts the original back rather than leaving a blank
+    // name, which is the only sensible reading of clearing it.
+    async function rename(event, to) {
+        const name = String(to ?? '').trim()
+        const display_name = name && name !== event.name ? name : null
+        if (display_name === (event.display_name ?? null)) return
+
+        const { error: failed } = await supabase.from('events')
+            .update({ display_name }).eq('id', event.id)
+
+        if (failed) { setError(friendlyError(failed)); return }
+        setEvents(was => was.map(e => (e.id === event.id ? { ...e, display_name } : e)))
+        setOpenEvent(was => (was?.event?.id === event.id
+            ? { ...was, event: { ...was.event, display_name } }
+            : was))
+    }
+
     // Keeping one or saying no to it.
     //
     // The row is already there either way. What this writes is whether it is
     // ours, and a dismissal stays in the table on purpose: the next read of the
     // same page lands on that row and does not offer it again.
     //
-    // A corrected name rides along with a keep. It is only written when it has
-    // actually changed and is not blank, so keeping forty rows does not rewrite
-    // forty names with what they already said. The reading key is untouched by
-    // it, which is what lets the correction stick: next week's read is keyed on
-    // what was read rather than on what it was renamed to, so it lands on this
-    // row and does not bring the short name back.
+    // A corrected name rides along with a keep, into display_name rather than
+    // over the name that arrived. It is only written when it has actually
+    // changed and is not blank, so keeping forty rows does not rewrite forty
+    // names with what they already said. See migration 015 for why the two are
+    // kept apart.
     //
     // Written straight into the list as well as to the database, rather than
     // waiting for a reload. Pressing Keep on four things in a row and watching
@@ -298,7 +321,9 @@ export default function CalendarPage() {
             review,
             reviewed_at: new Date().toISOString(),
             reviewed_by: user?.id || null,
-            ...(review === 'kept' && name && name !== event.name ? { name } : {}),
+            ...(review === 'kept' && name && name !== eventName(event)
+                ? { display_name: name }
+                : {}),
         }
 
         setDeciding(true)
@@ -501,7 +526,14 @@ export default function CalendarPage() {
                 </button>
             )}
 
-            {openEvent && <EventModal row={openEvent} onClose={() => setOpenEvent(null)} />}
+            {openEvent && (
+                <EventModal
+                    row={openEvent}
+                    canEdit={canWrite}
+                    onRename={rename}
+                    onClose={() => setOpenEvent(null)}
+                />
+            )}
 
             {viewing && (
                 <DiaryEntryModal

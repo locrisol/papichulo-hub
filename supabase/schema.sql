@@ -1040,6 +1040,7 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "max_price" numeric,
     "last_seen_at" timestamp with time zone,
     "place_id" "uuid",
+    "display_name" "text",
     "ends_on" "date",
     "source" "text" DEFAULT 'ticketmaster'::"text" NOT NULL,
     "source_url" "text",
@@ -1054,6 +1055,7 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
 );
 
 COMMENT ON TABLE "public"."events" IS 'What is on near a restaurant. It started as the 3Arena and nothing else, which is why the table is called this and why one column still says venue in words. A row belongs to a place now, and which restaurants see it follows from which of them are near that place.';
+COMMENT ON COLUMN "public"."events"."display_name" IS 'What we call this listing, when what it calls itself is too long for a roster cell. Null means we have not renamed it and the feed or the reading stands. A separate column rather than an edit in place, because name is what arrived: a page read a second time lands on the row it made the first time, and a Ticketmaster name is overwritten by every sync, so a rename typed into it would vanish twice a day with nothing said.';
 COMMENT ON COLUMN "public"."events"."ends_on" IS 'Null means the same day, the rule diary_entries already follows. A Christmas market over three weekends is one row rather than seventeen, so a roster week can draw it once.';
 COMMENT ON COLUMN "public"."events"."found_at" IS 'When a read first turned this up. Shown beside it while it is waiting to be kept, because how old a reading is changes how much it is worth.';
 COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still found this event in the API. Once an event has happened it disappears from Ticketmaster, so this is when we last saw it.';
