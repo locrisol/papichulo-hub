@@ -13,7 +13,9 @@ import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, pr
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
-import { bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS } from '@/lib/bankHolidays'
+import {
+    bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
+} from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -781,7 +783,7 @@ export default function WeeklySalesPage() {
                                     className="text-[0.65rem] font-bold"
                                     style={{ color: BANK_HOLIDAY_ON_DARK }}
                                 >
-                                    {holiday.short}
+                                    {BANK_HOLIDAY_LABEL}
                                 </div>
                             )}
                         </th>

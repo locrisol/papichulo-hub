@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
-import { hoursForDay, shortTime } from '@/lib/roster'
+import { hoursForDay, shortTime, BANK_HOLIDAY } from '@/lib/roster'
 import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
 import { mirrorClosedToSales } from '@/lib/closedDays'
@@ -43,6 +43,11 @@ export default function DayNoteDialog({
     // One of the ten, worked out from the date. Nothing to tick on a day that
     // is one.
     const publicHoliday = bankHolidayOn(date)
+    // What the restaurant actually does on one, which is the half of the
+    // sentence worth saying. Null when nobody has set them.
+    const bankHours = usualHours?.[BANK_HOLIDAY]?.open && usualHours?.[BANK_HOLIDAY]?.close
+        ? usualHours[BANK_HOLIDAY]
+        : null
 
     const [form, setForm] = useState({
         opensAt: shortTime(note?.opens_at) || '',
@@ -200,8 +205,11 @@ export default function DayNoteDialog({
                         >
                             {publicHoliday.name}.
                             <span className="block text-xs font-normal text-gray-500 mt-0.5">
-                                Marked everywhere without being ticked, and it takes the bank holiday
-                                hours from Restaurant settings unless different hours are typed above.
+                                {bankHours
+                                    ? `Marked everywhere without being ticked, and open ${bankHours.open} `
+                                        + `to ${bankHours.close} unless different hours are typed above.`
+                                    : 'Marked everywhere without being ticked. No bank holiday hours are '
+                                        + 'set in Restaurant settings, so the usual ones are in force.'}
                             </span>
                         </p>
                     ) : (

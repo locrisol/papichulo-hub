@@ -1,6 +1,8 @@
 import { addDays, fullDate, dayMonth } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
+import {
+    bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL,
+} from '@/lib/bankHolidays'
 import { card, closeButton } from '@/lib/controlStyles'
 import { bandsForWeek, kindChip, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
@@ -231,7 +233,7 @@ export default function DiaryMonth({
                                                     className="ml-1 text-[0.6rem] font-bold"
                                                     style={{ color: BANK_HOLIDAY_INK }}
                                                 >
-                                                    {holiday.short}
+                                                    {BANK_HOLIDAY_LABEL}
                                                 </span>
                                             )}
 

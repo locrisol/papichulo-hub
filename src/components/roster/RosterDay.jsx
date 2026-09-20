@@ -299,11 +299,15 @@ export default function RosterDay({
                         ? undefined
                         : { backgroundColor: BANK_HOLIDAY_WASH, color: BANK_HOLIDAY_INK }}
                 >
+                    {/* What hours are actually in force, rather than where
+                        they came from. The day takes the bank holiday hours on
+                        its own now, so the old sentence about nobody having
+                        marked it was saying the opposite of what happens. */}
                     {closed
                         ? 'The store is closed this day. Anything rostered here is somebody coming in anyway.'
-                        : `${bankHoliday.name}. ${dayNote?.is_bank_holiday
-                            ? 'The bank holiday hours are the ones in force.'
-                            : 'The usual hours are in force: nobody has marked it as one here.'}`}
+                        : `${bankHoliday.name}.${dayHours
+                            ? ` The store is open ${dayHours.open} to ${dayHours.close}.`
+                            : ''}`}
                 </div>
             )}
 

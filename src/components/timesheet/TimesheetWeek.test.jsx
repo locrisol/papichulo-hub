@@ -53,9 +53,11 @@ describe('the week grid', () => {
         expect(box).toHaveValue('')
     })
 
-    it('names the bank holiday in the column head', () => {
+    // Two words rather than the name of it. "October" at the top of a column in
+    // October is a word nobody needs.
+    it('marks the bank holiday in the column head', () => {
         grid()
-        expect(screen.getByText('October')).toBeInTheDocument()
+        expect(screen.getByText('BANK HOLIDAY')).toBeInTheDocument()
     })
 })
 

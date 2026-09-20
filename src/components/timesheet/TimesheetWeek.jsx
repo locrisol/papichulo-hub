@@ -3,7 +3,7 @@ import { shortDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { weekTotals } from '@/lib/timesheet'
 import { tableHeadRow } from '@/lib/controlStyles'
-import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
+import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import TimeCell from '@/components/timesheet/TimeCell'
 import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 
@@ -97,7 +97,7 @@ export default function TimesheetWeek({
                                             className="block normal-case tracking-normal text-[0.65rem] font-bold"
                                             style={{ color: BANK_HOLIDAY_ON_DARK }}
                                         >
-                                            {day.bankHoliday.short}
+                                            {BANK_HOLIDAY_LABEL}
                                         </span>
                                     )}
                                 </th>

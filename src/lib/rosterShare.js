@@ -18,7 +18,7 @@ import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extraLabel, whatIsOn } from '@/lib/dayExtras'
 import { rowsOn, chipWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
-import { bankHolidayFor } from '@/lib/bankHolidays'
+import { bankHolidayFor, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 
 // A day somebody is not there, as it goes out.
 //
@@ -76,7 +76,7 @@ export function weekTable({
         date: d,
         day: DAY_NAMES[i],
         label: fullDate(d),
-        holiday: bankHolidayFor(d, noteFor(d))?.short || '',
+        holiday: bankHolidayFor(d, noteFor(d)) ? BANK_HOLIDAY_LABEL : '',
     }))
 
     const storeHours = (dates || []).map(d => {

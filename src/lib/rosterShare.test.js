@@ -136,13 +136,15 @@ describe('weekTable', () => {
         const table = build({
             dates: ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31'],
         })
-        expect(table.head[1].holiday).toBe('October')
+        // Two words, not the name of it: a column headed October in October
+        // tells nobody anything.
+        expect(table.head[1].holiday).toBe('BANK HOLIDAY')
         expect(table.head[2].holiday).toBe('')
     })
 
     it('honours a day somebody ticked as one, on a date the calendar knows nothing about', () => {
         const table = build({ dayNotes: [{ note_date: DATES[2], is_bank_holiday: true }] })
-        expect(table.head[2].holiday).toBe('Bank hol')
+        expect(table.head[2].holiday).toBe('BANK HOLIDAY')
     })
 
     it('gives the heading a line more room only in a week that has one', () => {

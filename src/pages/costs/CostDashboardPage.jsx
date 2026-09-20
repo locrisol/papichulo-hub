@@ -13,7 +13,7 @@ import { friendlyError } from '@/lib/errors'
 import { tendersToShow } from '@/lib/salesTenders'
 import WeekTakenChart from '@/components/costs/WeekTakenChart'
 import { DAY_NAMES } from '@/lib/events'
-import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
+import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -532,7 +532,7 @@ export default function CostDashboardPage() {
                                             className="ml-1.5 text-xs font-bold"
                                             style={{ color: BANK_HOLIDAY_INK }}
                                         >
-                                            {bankHolidayOn(d).short}
+                                            {BANK_HOLIDAY_LABEL}
                                         </span>
                                     )}
                                 </span>

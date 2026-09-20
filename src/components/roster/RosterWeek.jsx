@@ -20,7 +20,7 @@ import {
     shiftEdges,
 } from '@/lib/roster'
 import {
-    bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH,
+    bankHolidayFor, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 
 // The whole week at once, laid out the way the one that goes out to the staff
@@ -207,7 +207,7 @@ export default function RosterWeek({
                                             className="block font-bold text-[0.625rem]"
                                             style={{ color: BANK_HOLIDAY_ON_DARK }}
                                         >
-                                            {holiday.short}
+                                            {BANK_HOLIDAY_LABEL}
                                         </span>
                                     )}
                                 </th>
@@ -253,23 +253,6 @@ export default function RosterWeek({
                                         : hours
                                             ? `${hours.open} to ${hours.close}`
                                             : '—'}
-                                    {/* What the store is actually doing, which
-                                        is the thing a roster needs. A day the
-                                        calendar calls a bank holiday and nobody
-                                        has ticked opens on its usual hours, and
-                                        a week rostered against hours the store
-                                        will not keep is the mistake worth
-                                        stopping here. */}
-                                    {holiday && !note?.is_closed && (
-                                        <span
-                                            className="block text-[0.625rem] font-semibold"
-                                            style={{ color: BANK_HOLIDAY_INK }}
-                                        >
-                                            {note?.is_bank_holiday
-                                                ? 'bank holiday hours'
-                                                : 'usual hours, not bank holiday ones'}
-                                        </span>
-                                    )}
                                 </td>
                             )
                         })}
@@ -743,7 +726,11 @@ export default function RosterWeek({
                                     Breaks
                                 </td>
                                 {row.days.map(day => (
-                                    <td key={day.date} className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight">
+                                    <td
+                                        key={day.date}
+                                        style={wash(day.date)}
+                                        className="px-2 py-0 border-r border-border last:border-r-0 align-middle text-center text-[0.625rem] text-red-600 leading-tight"
+                                    >
                                         {dayBreakLabels(day.shifts).map((words, i) => (
                                             <span key={i} className="block">{words}</span>
                                         ))}

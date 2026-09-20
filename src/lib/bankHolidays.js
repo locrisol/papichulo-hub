@@ -99,6 +99,15 @@ function holidaysFor(year) {
 export const BANK_HOLIDAY_INK = '#B08A2E'      // on white
 export const BANK_HOLIDAY_ON_DARK = '#E8C878'  // on the sidebar green
 export const BANK_HOLIDAY_WASH = '#FBF4E2'     // behind a cell or a column
+// What a column says when it has room for two words and no more.
+//
+// **Not the name of the holiday.** A week column headed "October" in October
+// tells nobody anything, which is what he said the first time he saw one. The
+// name is worth printing where there is room for the whole of it, on the day
+// view, the report header, daily sales and a staff member's own week, and
+// nowhere else.
+export const BANK_HOLIDAY_LABEL = 'BANK HOLIDAY'
+
 // The same wash as a class, for the screens that colour a column by class name
 // rather than by style. Written out in full so Tailwind's scanner sees it.
 export const BANK_HOLIDAY_WASH_CLASS = 'bg-[#FBF4E2]'
