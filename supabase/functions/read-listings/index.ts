@@ -44,6 +44,12 @@
 //         'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'arena_events_key')),
 //       body := '{}'::jsonb) $$);
 //
+// The vault secret is called arena_events_key for historical reasons and it is
+// not an Arena thing: it is the project's service key, which is what lets a
+// scheduled call say it is the schedule. Both jobs read the same one. Renaming
+// it means editing both job commands in the same breath, which is more risk
+// than the tidiness is worth.
+//
 //   GEMINI_KEY   a Google AI Studio key. Free, no card, a couple of clicks on a
 //                Workspace account. Note that Gemini in Gmail and Docs is the
 //                assistant and not API access: they are different things.

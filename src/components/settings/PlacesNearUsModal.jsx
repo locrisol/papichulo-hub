@@ -45,6 +45,9 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const [form, setForm] = useState(BLANK)
     const [editingId, setEditingId] = useState(null)
 
+    const [reading, setReading] = useState(false)
+    const [read, setRead] = useState('')
+
     const [address, setAddress] = useState('')
     const [searching, setSearching] = useState(false)
     const [candidates, setCandidates] = useState(null)
@@ -157,6 +160,51 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             ticketmaster_venue_id: row.place.ticketmaster_venue_id || '',
             capacity: row.place.capacity ?? '',
         })
+    }
+
+    // Reading the pages now rather than waiting for Monday.
+    //
+    // The schedule is what really keeps these up to date, once a week, because
+    // a page that is read every time somebody opens a screen is a page whose
+    // owner starts blocking us. This is here for the two moments a week is too
+    // long to wait: the day a page is added, and the day somebody wants to know
+    // whether it still works.
+    //
+    // It says what it found rather than just that it ran. A page that has
+    // changed its layout goes quiet rather than going wrong, and "3 pages read,
+    // nothing found" is the sentence that tells somebody to go and look.
+    async function readPages() {
+        setReading(true)
+        setError('')
+        setRead('')
+
+        const { data, error: failed } = await supabase.functions.invoke('read-listings', {
+            body: { restaurantId: activeRestaurant.id },
+        })
+        setReading(false)
+
+        if (failed) { setError(friendlyError(failed)); return }
+        if (data?.error) { setError(data.error); return }
+
+        const pages = data?.pages || []
+        if (pages.length === 0) {
+            setRead('No page is set up on any place this restaurant watches.')
+            return
+        }
+
+        const broke = pages.filter(p => p.error)
+        const found = pages.reduce((total, p) => total + (p.found || 0), 0)
+        const added = pages.reduce((total, p) => total + (p.added || 0), 0)
+
+        setRead([
+            `${pages.length} ${pages.length === 1 ? 'page' : 'pages'} read.`,
+            found === 0
+                ? 'Nothing found on any of them.'
+                : `${found} found, ${added} of them new. Keep or dismiss them on the calendar.`,
+            broke.length ? `${broke.map(p => p.place).join(', ')} could not be read.` : '',
+        ].filter(Boolean).join(' '))
+
+        done()
     }
 
     // Type the address and the Hub asks what is near it.
@@ -363,6 +411,23 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 </div>
                             </form>
                         )}
+
+                        <ModalSectionBar>What their pages say</ModalSectionBar>
+                        <div className="py-3 flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                disabled={reading}
+                                onClick={readPages}
+                                className={secondaryButton}
+                            >
+                                {reading ? 'Reading...' : 'Read the pages now'}
+                            </button>
+                            <p className="text-xs text-muted flex-1 min-w-[12rem]">
+                                Read once a week on their own. Anything found waits on the
+                                calendar until somebody keeps it.
+                            </p>
+                        </div>
+                        {read && <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">{read}</p>}
 
                         <ModalSectionBar>Look for what is near us</ModalSectionBar>
                         <form onSubmit={findNearby} className="py-3 flex flex-wrap gap-2 items-end">
