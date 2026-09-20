@@ -84,6 +84,10 @@ export default function TimesheetPage() {
     const [drafts, setDrafts] = useState({})
     const [absences, setAbsences] = useState([])
     const [shifts, setShifts] = useState([])
+    // Whether the till's report covering this week has been read in. It decides
+    // one thing: a rostered shift with nothing against it is a question on a
+    // week nobody has imported and an answer on a week somebody has.
+    const [imported, setImported] = useState(false)
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -108,7 +112,7 @@ export default function TimesheetPage() {
             setLoading(true)
             setError('')
 
-            const [team, worked, away, rostered] = await Promise.all([
+            const [team, worked, away, rostered, week] = await Promise.all([
                 supabase.from('employees')
                     .select('id, full_name, hourly_rate, sort_order, started_on, ended_on')
                     .eq('restaurant_id', restaurantId)
@@ -125,6 +129,11 @@ export default function TimesheetPage() {
                     .select('id, employee_id, shift_date, starts_at, ends_at')
                     .eq('restaurant_id', restaurantId)
                     .gte('shift_date', weekStart).lte('shift_date', weekEnd),
+                supabase.from('timesheet_weeks')
+                    .select('imported_at')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('week_start', weekStart)
+                    .maybeSingle(),
             ])
 
             const failed = team.error || worked.error || away.error || rostered.error
@@ -141,6 +150,7 @@ export default function TimesheetPage() {
             setDrafts({})
             setAbsences(away.data || [])
             setShifts(rostered.data || [])
+            setImported(Boolean(week.data?.imported_at))
             loadedKey.current = key
             setLoading(false)
         }
@@ -158,8 +168,8 @@ export default function TimesheetPage() {
 
     const rows = useMemo(() => people.map(person => personWeek({
         person, weekStart, entries: shown, absences, shifts,
-        restaurantRate,
-    })), [people, weekStart, shown, absences, shifts, restaurantRate])
+        restaurantRate, imported,
+    })), [people, weekStart, shown, absences, shifts, restaurantRate, imported])
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
@@ -302,8 +312,19 @@ export default function TimesheetPage() {
         const { data, error: failed } = await supabase.from('timesheet_entries')
             .update(patch).eq('id', id).select()
         setSaving(false)
-        if (failed) { setError(friendlyError(failed)); return }
-        if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
+
+        // **A refused save must not leave its figure on the screen.** Typing
+        // moves the cell before anything is written, so a database that says no
+        // used to leave the new time sitting there looking saved, with one line
+        // of red above the fold that scrolls away. The week is read again, so
+        // what is on the screen is what is in the database, which is the only
+        // thing this page is allowed to show.
+        if (failed) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
+        if (!data?.length) {
+            setError('That could not be saved, so nothing has changed.')
+            setRefresh(n => n + 1)
+            return
+        }
         setEntries(was => was.map(e => (e.id === id ? data[0] : e)))
     }
 
@@ -311,7 +332,7 @@ export default function TimesheetPage() {
         setSaving(true)
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
         setSaving(false)
-        if (failed) { setError(friendlyError(failed)); return }
+        if (failed) { setError(friendlyError(failed)); setRefresh(n => n + 1); return }
         setEntries(was => was.filter(e => e.id !== entry.id))
     }
 

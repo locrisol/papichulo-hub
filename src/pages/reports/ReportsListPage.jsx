@@ -183,7 +183,7 @@ export default function ReportsListPage() {
         // cheaper than thirty round trips. The last four are what says whether
         // the timesheet has been done: who is on the team, what they were
         // rostered, what the clock registered and who was away.
-        const [reports, sales, tenders, team, entries, absences, shifts, labour] = await Promise.all([
+        const [reports, sales, tenders, team, entries, absences, shifts, labour, weekRows] = await Promise.all([
             supabase
                 .from('weekly_reports')
                 .select('id, week_start, status, published_at, send_count')
@@ -207,7 +207,11 @@ export default function ReportsListPage() {
                 .order('sort_order'),
             supabase
                 .from('timesheet_entries')
-                .select('employee_id, work_date, starts_at, ends_at, kind')
+                // source and note are not decoration here. A till time changed
+                // by hand is the one thing on a week that has to say why, and
+                // without these two columns that rule was never checked on this
+                // page at all: it read every row as typed and unremarkable.
+                .select('employee_id, work_date, starts_at, ends_at, kind, source, note')
                 .eq('restaurant_id', restaurantId)
                 .gte('work_date', from).lte('work_date', to),
             supabase
@@ -229,10 +233,19 @@ export default function ReportsListPage() {
                 .select('entry_date, came_from')
                 .eq('restaurant_id', restaurantId)
                 .gte('entry_date', from).lte('entry_date', to),
+            // The weeks whose till report has been read in. On those, a
+            // rostered shift with nothing against it is not a question: the
+            // file said nothing was clocked, and the accountant has the file.
+            supabase
+                .from('timesheet_weeks')
+                .select('week_start, imported_at')
+                .eq('restaurant_id', restaurantId)
+                .gte('week_start', from),
         ])
 
         const failed = reports.error || sales.error || tenders.error
             || team.error || entries.error || absences.error || shifts.error || labour.error
+            || weekRows.error
         if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
         const archived = new Set((labour.data || [])
@@ -240,6 +253,9 @@ export default function ReportsListPage() {
             .map(l => l.entry_date))
 
         const byWeek = new Map((reports.data || []).map(r => [r.week_start, r]))
+        const imported = new Set((weekRows.data || [])
+            .filter(w => w.imported_at)
+            .map(w => w.week_start))
 
         setWeeks(wanted.map(weekStart => {
             const weekEnd = addDays(weekStart, 6)
@@ -257,6 +273,7 @@ export default function ReportsListPage() {
                     entries: entries.data || [],
                     absences: absences.data || [],
                     shifts: shifts.data || [],
+                    imported: imported.has(weekStart),
                 }))
 
             return {

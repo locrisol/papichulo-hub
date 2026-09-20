@@ -151,7 +151,23 @@ export default function ImportDialog({
             if (failed) { setBusy(false); setError(friendlyError(failed)); return }
         }
 
+        // The week keeps the fact that the file was read in, and from then on a
+        // rostered shift with nothing against it is taken as not worked rather
+        // than as a question for somebody to answer. The file answered it.
+        //
+        // After the rows, and it does not stop the import if it fails: the
+        // hours are the thing that had to be saved, and a week that is asked
+        // one question too many is a smaller fault than one that loses a day.
+        const { error: notMarked } = await supabase.from('timesheet_weeks')
+            .upsert({
+                restaurant_id: restaurantId,
+                week_start: weekStart,
+                imported_at: new Date().toISOString(),
+                imported_by: user?.id,
+            }, { onConflict: 'restaurant_id,week_start' })
+
         setBusy(false)
+        if (notMarked) setError(friendlyError(notMarked))
         setResult({
             shifts: made.length + changed.length,
             people: new Set(plan.steps.map(s => s.employee_id)).size,

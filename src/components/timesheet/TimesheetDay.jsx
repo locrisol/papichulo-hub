@@ -210,8 +210,12 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                             not rostered
                                         </span>
                                     )}
-                                    {cell.unanswered && (
-                                        <span className="text-[0.625rem] font-bold text-accent-ink">
+                                    {/* Said whether or not anybody has to
+                                        answer for it. Once the week's file has
+                                        been read in the question is settled,
+                                        but the fact is still worth seeing. */}
+                                    {cell.nothingRegistered && (
+                                        <span className={`text-[0.625rem] font-bold ${cell.unanswered ? 'text-accent-ink' : 'text-muted'}`}>
                                             nothing registered
                                         </span>
                                     )}

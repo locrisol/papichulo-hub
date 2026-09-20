@@ -183,6 +183,39 @@ describe('a page does not decide how wide it is', () => {
     })
 })
 
+describe('a screen that judges the timesheet asks for the whole row', () => {
+    // The reports page decided whether a week could be written, and asked the
+    // database for five columns of a timesheet row. Two of the rules it
+    // applies are about the other two: a till time changed by hand is
+    // `source`, and whether it has been explained is `note`. So the rule ran
+    // on every week and could never once be true.
+    //
+    // Nothing was broken in a way anything could see. The query worked, the
+    // page rendered, and a week that should have been blocked was offered with
+    // a Start button on it.
+    const NEEDED = ['source', 'note']
+    // A comment can sit between the two calls, so the window is wide.
+    const reads = sourcePaths.filter(p => /\.from\('timesheet_entries'\)[\s\S]{0,500}?\.select\(/.test(sources[p]))
+
+    it('has screens reading it', () => {
+        expect(reads.length).toBeGreaterThan(0)
+    })
+
+    it.each(reads)('%s selects what the rules read', path => {
+        const asked = [...sources[path].matchAll(/\.from\('timesheet_entries'\)[\s\S]{0,500}?\.select\(([^)]*)\)/g)]
+            .map(m => m[1])
+            // A select with nothing in it follows an insert or an update and is
+            // only there to get the row back.
+            .filter(list => list.trim() !== '')
+
+        for (const list of asked) {
+            if (list.includes('*')) continue
+            const missing = NEEDED.filter(column => !list.includes(column))
+            expect(missing, 'a rule reads these and a select without them turns it off').toEqual([])
+        }
+    })
+})
+
 describe('a style that is a function gets called', () => {
     // Some of the controls are functions because they take a size or a tone.
     // The import dialog used one as if it were a string, twice, and the two

@@ -90,7 +90,7 @@ function hoursOf(entry) {
 
 // One day for one person: everything a cell needs to draw itself, worked out
 // once so no component has to.
-export function dayCell({ person, date, entries = [], absences = [], shifts = [] }) {
+export function dayCell({ person, date, entries = [], absences = [], shifts = [], imported = false }) {
     const mine = entries.filter(e => e.work_date === date)
     // **A whole day, not any time off at all.** Somebody who can work until
     // three is in that morning, and the comment on isPartDay says exactly what
@@ -132,12 +132,26 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         // Somebody worked a day nobody planned. Worth saying on the cell: it is
         // the only way unplanned hours ever become visible.
         unplanned: mine.length > 0 && rostered.length === 0,
-        // Rostered and nothing said about it. This is what the report block
-        // counts, and it is the thing that catches a shift nobody filled in.
+        // Down to work and never clocked in. Worth saying on the screen
+        // whatever else is true, because it is the thing somebody reading the
+        // day wants to know.
+        nothingRegistered: mine.length === 0 && rostered.length > 0 && !absence,
+        // The same fact, asked as a question the week has to answer before a
+        // report can be drafted. **The till's report answers it.**
         //
-        // A part day is not an answer. She could work until three, so whether
-        // she did is still an open question.
-        unanswered: mine.length === 0 && rostered.length > 0 && !absence,
+        // His, on the week of 6 September: Georgiana was rostered for the
+        // Thursday, the file was read in and had nothing for her that day, and
+        // the screen still wanted a comment. There is nothing to explain. The
+        // file and the timesheet agree, and *the accountant is reading the same
+        // Pixel Point report*, so a sentence from him saying she did not clock
+        // in tells her something she can already see.
+        //
+        // Unanswered means nobody has said anything at all. Once the week's
+        // file has been read in, somebody has: the clock did.
+        //
+        // A part day is not an answer either way. She could work until three,
+        // so whether she did is still an open question.
+        unanswered: !imported && mine.length === 0 && rostered.length > 0 && !absence,
         // A time the till gave that somebody has moved and not said why.
         //
         // **This is the one change on a week an accountant cannot see coming.**
@@ -157,13 +171,13 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
 // of it altogether.
 export function personWeek({
     person, weekStart, entries = [], absences = [], shifts = [],
-    restaurantRate = 0,
+    restaurantRate = 0, imported = false,
 }) {
     const mine = entries.filter(e => e.employee_id === person.id)
     const theirs = shifts.filter(s => s.employee_id === person.id)
 
     const days = weekDates(weekStart).map(date => dayCell({
-        person, date, entries: mine, absences, shifts: theirs,
+        person, date, entries: mine, absences, shifts: theirs, imported,
     }))
 
     // Bank holiday hours are held apart because that is the whole of what the

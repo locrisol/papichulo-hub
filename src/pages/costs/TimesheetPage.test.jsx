@@ -28,6 +28,10 @@ function chain(table) {
         gte: () => self,
         lte: () => self,
         order: () => self,
+        // The week's own row, which says whether the till's report has been
+        // read in for it. Not set in these tests, so every week reads as one
+        // nobody has imported.
+        maybeSingle: () => Promise.resolve({ data: (rows[table] || [])[0] || null, error: null }),
         insert: values => {
             inserted.push({ table, values })
             const made = { id: `new-${inserted.length}`, ...values }

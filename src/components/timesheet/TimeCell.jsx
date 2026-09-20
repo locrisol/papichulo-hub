@@ -231,9 +231,12 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
         )
     }
 
+    // It wraps rather than running on. A comment is as long as it needs to be
+    // and the column is a fixed width, so the alternative to two lines is a
+    // sentence disappearing off the side of the cell.
     const line = (
         <span
-            className={`block text-[0.62rem] tabular-nums whitespace-nowrap mt-0.5 ${
+            className={`block text-[0.62rem] tabular-nums break-words leading-snug mt-0.5 ${
                 unplanned || cell.unexplained ? 'text-accent-ink font-semibold' : 'text-gray-400'
             }`}
         >

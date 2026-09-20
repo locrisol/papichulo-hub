@@ -711,7 +711,8 @@ ALTER TABLE ONLY "public"."timesheet_names"
 
 COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose.';
 
--- One row per restaurant per week: when it was filed and by whom.
+-- One row per restaurant per week: when the till's report was read in, and
+-- when the week was filed and by whom.
 --
 -- It was built to keep the Sunday premium in force at the time as well, so that
 -- changing the figure could not quietly rewrite what last March cost. That
@@ -721,6 +722,11 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
     "week_start" "date" NOT NULL,
+    -- When the till's report covering this week was last read in. While it is
+    -- set, a rostered shift with nothing against it is taken as not worked
+    -- rather than as an open question: the file answered it.
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
     "filed_at" timestamp with time zone,
     "filed_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -733,7 +739,8 @@ ALTER TABLE ONLY "public"."timesheet_weeks"
 ALTER TABLE ONLY "public"."timesheet_weeks"
     ADD CONSTRAINT "timesheet_weeks_once" UNIQUE ("restaurant_id", "week_start");
 
-COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week, for when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
+COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week: when the till''s report was read in, and when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."imported_at" IS 'When the till''s report covering this week was last read in. While it is set, a rostered shift with nothing against it is taken as not worked rather than as an open question: the file answered it, and the accountant has the same file.';
 
 CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,

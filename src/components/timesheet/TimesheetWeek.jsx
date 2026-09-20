@@ -58,7 +58,20 @@ export default function TimesheetWeek({
 
     return (
         <div className="overflow-x-auto" onKeyDown={onKeyDown}>
-            <table className="w-full min-w-[64rem] text-xs border-collapse">
+            {/* Fixed, and the widths are declared once here.
+                A table sizes its columns from what is in them, so typing a
+                comment into Friday made Friday wider and shoved every other
+                day along. Nothing you type should move a column you are not
+                typing in. The row is free to get taller, which is what a
+                comment should cost. */}
+            <table className="w-full min-w-[64rem] text-xs border-collapse table-fixed">
+                <colgroup>
+                    <col className="w-[10%]" />
+                    {dates.map(date => <col key={date} className="w-[10%]" />)}
+                    <col className="w-[6%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[8%]" />
+                </colgroup>
                 <thead>
                     <tr className={tableHeadRow}>
                         <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
@@ -110,7 +123,7 @@ export default function TimesheetWeek({
                             {row.days.map((cell, d) => (
                                 <td
                                     key={cell.date}
-                                    className="px-3 py-2 min-w-[5.5rem]"
+                                    className="px-3 py-2 align-top"
                                     style={cell.bankHoliday ? { backgroundColor: '#FBF4E2' } : undefined}
                                 >
                                     <TimeCell

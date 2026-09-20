@@ -156,6 +156,48 @@ describe('one day', () => {
     })
 })
 
+describe('a week whose till report has been read in', () => {
+    // His, on the week of 6 September. Georgiana was rostered for the Thursday,
+    // the file was read in and had nothing for her, and the screen still wanted
+    // a comment. There is nothing to explain: the file and the timesheet agree,
+    // and the accountant is reading the same report he is.
+    const rostered = [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }]
+
+    it('takes silence as an answer', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered, imported: true })
+        expect(cell.unanswered).toBe(false)
+    })
+
+    // The fact is still worth seeing. What changes is whether anybody has to
+    // write a sentence about it.
+    it('still says nobody clocked in', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered, imported: true })
+        expect(cell.nothingRegistered).toBe(true)
+    })
+
+    it('asks on a week nobody has imported', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered })
+        expect(cell.unanswered).toBe(true)
+        expect(cell.nothingRegistered).toBe(true)
+    })
+
+    // The one thing an import does not settle. A figure that came off the clock
+    // and was then moved is not in the file the accountant has.
+    it('still wants a comment on a till time changed by hand', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, imported: true,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+    })
+
+    it('blocks nothing at all once the week is imported and nothing was changed', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, imported: true })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+})
+
 describe('time off that is only part of a day', () => {
     // Found on the real week of 21 September: somebody down as a day off with
     // can_work_to 15:00. It came out as a day gone with no boxes to type into.
