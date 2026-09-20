@@ -52,7 +52,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    discoveryUrl, eventsFrom, isServiceRole, roleOf,
+    discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
     geocodeUrl, pointFrom, venuesUrl, venuesFrom, suggestions,
 } from './discovery.js'
 
@@ -130,7 +130,46 @@ async function syncOne(admin: Admin, place: Place, key: string) {
 
     if (error) throw new Error(error.message)
 
-    return { added: fetched.length - (existing || []).length, total: fetched.length }
+    // **A reading of a night this feed now covers is superseded by it.**
+    //
+    // A place can have both, and the Convention Centre is why: the feed sells
+    // the ticketed nights down to the minute and its own page carries the
+    // conferences nobody sells a ticket for. Without this the same night lands
+    // twice, once from each, and one of the two sits on the calendar with no
+    // time on it asking somebody to approve what the other already called a
+    // fact.
+    //
+    // The reading already skips what the feed knows. This is the other
+    // direction, which matters more: the page is read weekly and the feed twice
+    // a day, so a reading made on Monday is routinely older than what arrives
+    // on Tuesday.
+    //
+    // Dismissed rather than deleted. The row is what was read and it stays,
+    // which is also what stops next Monday's read offering it all over again.
+    const covers = new Set(fetched.map(e => sourceKeyFor(e.event_date, e.name)).filter(Boolean))
+
+    const { data: readings } = await admin
+        .from('events')
+        .select('id, name, event_date')
+        .eq('place_id', place.id)
+        .eq('source', 'page')
+        .neq('review', 'dismissed')
+        .gte('event_date', new Date().toISOString().slice(0, 10))
+
+    const stale = (readings || [])
+        .filter(r => covers.has(sourceKeyFor(r.event_date, r.name)))
+        .map(r => r.id)
+
+    if (stale.length) {
+        await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
+        console.log('nearby-events', place.name, `${stale.length} readings superseded by the feed`)
+    }
+
+    return {
+        added: fetched.length - (existing || []).length,
+        total: fetched.length,
+        ...(stale.length ? { superseded: stale.length } : {}),
+    }
 }
 
 // Every ticketed place one restaurant is near.

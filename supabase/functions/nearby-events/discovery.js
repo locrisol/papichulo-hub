@@ -107,6 +107,23 @@ export function eventsFrom(payload) {
     return events.map(mapEvent).filter(e => e.event_date)
 }
 
+// What makes two listings the same listing.
+//
+// The same rule reading.js uses, written out again because a function deploys
+// on its own and cannot import from the folder next door. Checked against that
+// copy and against lib/nearby in the tests, since three copies that disagree
+// would be worse than none.
+export function sourceKeyFor(date, name) {
+    const flat = String(name || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60)
+    return flat ? `${date}-${flat}` : ''
+}
+
 // ---------------------------------------------------------- who is calling
 
 // What a token says it is, without checking whether it is telling the truth.

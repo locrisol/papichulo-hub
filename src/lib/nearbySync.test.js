@@ -8,10 +8,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
-    distanceKm, walkMinutesFor, WALKABLE_MINUTES,
+    distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
+    sourceKeyFor as browserSourceKeyFor,
 } from '@/lib/nearby'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 
@@ -385,4 +386,19 @@ describe('the two copies of the distance agree', () => {
         expect(distanceKm(a, b)).toBe(browserDistanceKm(a, b))
         expect(walkMinutesFor(3.4)).toBe(browserWalkMinutesFor(3.4))
     })
+})
+
+// Three copies of this now: here, in read-listings, and in lib/nearby. A
+// function deploys on its own and cannot import from the folder next door, so
+// the only thing keeping them honest is this.
+describe('the feed and the reading agree what a listing is called', () => {
+    for (const [date, name] of [
+        ['2026-10-25', 'An Evening with Fran Lebowitz'],
+        ['2026-07-04', 'Dún Laoghaire Coastival'],
+        ['2026-11-19', '  '],
+    ]) {
+        it(`agrees about ${name.trim() || 'a nameless row'}`, () => {
+            expect(sourceKeyFor(date, name)).toBe(browserSourceKeyFor(date, name))
+        })
+    }
 })
