@@ -131,6 +131,26 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             page_depth: Math.max(1, Math.min(12, Number(form.page_depth) || 1)),
         }
         const minutes = figure(form.walk_minutes)
+        const mine = editingId ? rows.find(r => r.id === editingId)?.place?.id : null
+
+        // One venue, one row, which the database enforces with a unique index
+        // and answers with "that already exists". True, and it does not say
+        // which one, and the one holding it is often a place nobody watches any
+        // more: taking a place off the list leaves the place behind, so its
+        // venue id is still spoken for.
+        if (patch.ticketmaster_venue_id) {
+            const { data: clash } = await supabase.from('places')
+                .select('id, name')
+                .eq('ticketmaster_venue_id', patch.ticketmaster_venue_id)
+                .maybeSingle()
+
+            if (clash && clash.id !== mine) {
+                setBusy(false)
+                setError(`${clash.name} already has that venue id. Clear it from there first, `
+                    + 'or take that place off the list.')
+                return
+            }
+        }
 
         if (editingId) {
             const row = rows.find(r => r.id === editingId)
@@ -196,6 +216,26 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         setBusy(false)
 
         if (failed) { setError(friendlyError(failed)); return }
+
+        // **A place nobody watches and nothing has been read from is nothing.**
+        // Left behind it holds its venue id against a unique index, so putting
+        // that id on the place it should have been on answers "that already
+        // exists" and names nothing.
+        //
+        // Both guards matter. A place another restaurant watches is theirs, and
+        // a place with listings against it would take them with it, since
+        // events cascade from a place. Either one and it stays.
+        const [{ count: watchers }, { count: listings }] = await Promise.all([
+            supabase.from('restaurant_places')
+                .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
+            supabase.from('events')
+                .select('id', { count: 'exact', head: true }).eq('place_id', row.place.id),
+        ])
+
+        if (!watchers && !listings) {
+            await supabase.from('places').delete().eq('id', row.place.id)
+        }
+
         setEditingId(null)
         setAdding(false)
         done()
