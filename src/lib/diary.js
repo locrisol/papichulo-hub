@@ -95,6 +95,7 @@ const KIND = {
     // before nearby events existed, so the two new ones are blue and indigo.
     arena: {
         dash: 'border-purple-300',
+        ring: 'border-purple-700',
         // Not 3Arena any more. It was the only ticketed venue the Hub could
         // hold when this was written, and the Pavilion and the Convention
         // Centre sell the same way. What these have in common is that somebody
@@ -126,6 +127,7 @@ const KIND = {
     nearby: {
         label: 'Nearby',
         dash: 'border-blue-300',
+        ring: 'border-blue-600',
         chip: 'bg-blue-50 text-blue-900 border-l-blue-600',
         tag: 'bg-blue-50 text-blue-900',
         dot: 'bg-blue-600',
@@ -143,6 +145,7 @@ const KIND = {
     city: {
         label: 'City',
         dash: 'border-indigo-300',
+        ring: 'border-indigo-700',
         chip: 'bg-indigo-50 text-indigo-900 border-l-indigo-700',
         tag: 'bg-indigo-50 text-indigo-900',
         dot: 'bg-indigo-700',
@@ -186,6 +189,23 @@ export function kindDot(kind) {
 export function kindDash(kind) {
     const edge = (KIND[kind] || FALLBACK).dash
     return edge ? `border-y border-r border-dashed ${edge}` : ''
+}
+
+// The same dot, hollow, for something nobody has checked yet.
+//
+// A month cell on a phone is fifty pixels and holds coloured dots and nothing
+// else: no chip, no dashed edge, no words. So the one thing that separates a
+// listing somebody kept from one still waiting on them was invisible on the
+// screen most of this gets read on. **He kept seven things on a computer,
+// opened the calendar on a phone, saw five more sitting there and reasonably
+// took them for the same seven.** They were five conferences he had not got to,
+// and nothing on that screen could have told him.
+//
+// Hollow rather than a different colour, because the colour is already saying
+// which kind of thing it is and cannot say two things at once.
+export function kindRing(kind) {
+    const edge = (KIND[kind] || FALLBACK).ring
+    return edge ? `border bg-white ${edge}` : 'border border-gray-500 bg-white'
 }
 
 // The same colours as real values, for the two things that cannot read a class

@@ -44,8 +44,13 @@ export default function FoundNearby({ rows, today, restaurantName, onDecide, bus
     return (
         <div className="mb-3">
             <div className="rounded-lg border border-accent bg-accent-light px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                {/* "found near Point Campus" read as news about things
+                    that had already been dealt with, because a found listing
+                    is drawn on the calendar the same as a kept one. What it
+                    actually is, is a decision waiting on somebody. */}
                 <p className="text-sm font-semibold text-accent-ink">
-                    {count} {what} found near {restaurantName || 'us'}
+                    {count} {what} near {restaurantName || 'us'}{' '}
+                    {count === 1 ? 'is' : 'are'} waiting on you
                 </p>
                 <button
                     type="button"

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    KINDS, kindLabel, kindChip, kindGoogleColour,
+    KINDS, kindLabel, kindChip, kindDot, kindRing, kindGoogleColour,
     scopeLabel, scopeFrom,
     lastDay, coversDate, isAllDay, runsMoreThanADay, timeLabel,
     sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
@@ -446,6 +446,33 @@ describe('one screen out of three sources', () => {
 
     it('copes with nothing at all', () => {
         expect(calendarItems({})).toEqual([])
+    })
+})
+
+// A month cell on a phone is fifty pixels and holds coloured dots and nothing
+// else: no chip, no dashed edge, no words. So the one thing separating a
+// listing somebody kept from one still waiting on them was invisible on the
+// screen most of this gets read on. He kept seven things on a computer, opened
+// the calendar on a phone, saw five more and reasonably took them for the same
+// seven.
+describe('something nobody has checked looks different', () => {
+    it('is the same colour, hollow', () => {
+        expect(kindRing('nearby')).toContain('border-blue-600')
+        expect(kindRing('nearby')).toContain('bg-white')
+        expect(kindDot('nearby')).toBe('bg-blue-600')
+    })
+
+    it('has one for every kind that can arrive unchecked', () => {
+        for (const kind of ['arena', 'nearby', 'city']) {
+            expect(kindRing(kind), kind).not.toContain('gray')
+        }
+    })
+
+    // A catering job cannot be unchecked, but a fallback that returned nothing
+    // would draw an invisible dot rather than an obvious one.
+    it('falls back to something visible rather than to nothing', () => {
+        expect(kindRing('catering')).toContain('border')
+        expect(kindRing(undefined)).toContain('border')
     })
 })
 

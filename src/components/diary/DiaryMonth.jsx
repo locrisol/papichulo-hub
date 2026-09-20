@@ -1,7 +1,7 @@
 import { addDays, fullDate, dayMonth } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
 import { card, closeButton } from '@/lib/controlStyles'
-import { bandsForWeek, kindChip, kindDot, scopeLabel, timeLabel } from '@/lib/diary'
+import { bandsForWeek, kindChip, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
 
 // The month, as six weeks that do not change height as you step through them.
@@ -217,12 +217,23 @@ export default function DiaryMonth({
                                             {/* A phone: a dot each, because
                                                 fifty pixels cannot hold a word
                                                 and a row of "W..." says
-                                                nothing. */}
+                                                nothing.
+
+                                                Hollow for anything nobody has
+                                                checked. It is the only thing
+                                                this screen can say about that,
+                                                and without it a listing waiting
+                                                on somebody looks exactly like
+                                                one they settled last week. */}
                                             <span className="sm:hidden flex flex-wrap gap-0.5 mt-1 min-h-[0.6rem]">
                                                 {items.slice(0, 6).map(item => (
                                                     <span
                                                         key={item.key}
-                                                        className={`w-1.5 h-1.5 rounded-full ${kindDot(item.kind)}`}
+                                                        className={`w-1.5 h-1.5 rounded-full ${
+                                                            item.checked === false
+                                                                ? kindRing(item.kind)
+                                                                : kindDot(item.kind)
+                                                        }`}
                                                     />
                                                 ))}
                                             </span>
