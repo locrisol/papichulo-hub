@@ -5,6 +5,7 @@ import { STATE_KEYS, kindOf, cellColour } from '@/lib/timesheet'
 import { kindLabel as absenceLabel, takesHours, kindOf as absenceKind } from '@/lib/absences'
 import { numberField } from '@/lib/numberInput'
 import Modal from '@/components/ui/Modal'
+import AutoTextarea from '@/components/ui/AutoTextarea'
 import { modalFooter, secondaryButton, labelClass, fieldClass, removeButton } from '@/lib/controlStyles'
 
 // One person, one day, on a phone.
@@ -15,7 +16,7 @@ import { modalFooter, secondaryButton, labelClass, fieldClass, removeButton } fr
 // grid has, with room for them, and the states as buttons because a phone has
 // no h s t r either.
 export default function DayEditModal({
-    person, cell, canEdit = true, onClose, onType, onSettle, onState, onClear, onAdd, onHours,
+    person, cell, canEdit = true, onClose, onType, onSettle, onState, onClear, onAdd, onHours, onNote,
 }) {
     if (!person || !cell) return null
 
@@ -85,15 +86,40 @@ export default function DayEditModal({
                 ) : (
                     <div>
                         {spans.map((entry, i) => (
-                            <div key={entry.id || `new-${i}`} className="flex gap-2 items-end mb-3">
-                                <div className="flex-1">
-                                    <label className={labelClass}>Clock in</label>
-                                    <Box entry={entry} field="starts_at" canEdit={canEdit} onType={onType} onSettle={onSettle} />
+                            <div key={entry.id || `new-${i}`} className="mb-4">
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-1">
+                                        <label className={labelClass}>Clock in</label>
+                                        <Box entry={entry} field="starts_at" canEdit={canEdit} onType={onType} onSettle={onSettle} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className={labelClass}>Clock out</label>
+                                        <Box entry={entry} field="ends_at" canEdit={canEdit} onType={onType} onSettle={onSettle} />
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <label className={labelClass}>Clock out</label>
-                                    <Box entry={entry} field="ends_at" canEdit={canEdit} onType={onType} onSettle={onSettle} />
-                                </div>
+
+                                {/* One note per pair of times, not one per day.
+                                    A split shift is two spans and the reason one
+                                    ran long has nothing to do with the other.
+                                    It goes out with the week, because this is
+                                    how he tells the accountant why a figure is
+                                    what it is. */}
+                                {entry.id && (
+                                    <div className="mt-2">
+                                        <label className={labelClass} htmlFor={`note-${entry.id}`}>
+                                            Why, for the accountant
+                                        </label>
+                                        <AutoTextarea
+                                            id={`note-${entry.id}`}
+                                            rows={2}
+                                            disabled={!canEdit}
+                                            className={fieldClass}
+                                            placeholder="Stayed to close, came in early for a delivery..."
+                                            defaultValue={entry.note || ''}
+                                            onBlur={e => onNote(entry, e.target.value)}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ))}
 

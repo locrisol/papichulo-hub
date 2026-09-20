@@ -22,7 +22,7 @@ function grid(over = {}) {
     }))
     const calls = {
         onType: vi.fn(), onSettle: vi.fn(), onState: vi.fn(),
-        onClear: vi.fn(), onAdd: vi.fn(),
+        onClear: vi.fn(), onAdd: vi.fn(), onHours: vi.fn(), onOpen: vi.fn(),
     }
     render(<TimesheetWeek rows={rows} dates={DATES} sundayPremium={10} {...calls} />)
     return calls
@@ -228,6 +228,48 @@ describe('what the cells say', () => {
             entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:33:16', kind: 'worked', note: 'stayed to close' }],
         })
         expect(screen.getByText(/stayed to close/)).toBeInTheDocument()
+    })
+
+    // His way of telling the accountant why a shift ran long or finished early.
+    // One per pair of times, not one per day: a split shift is two spans and
+    // the reason one of them ran over has nothing to do with the other.
+    it('shows a note beside the times it belongs to', () => {
+        grid({
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:33:16', kind: 'worked', note: 'stayed to close' }],
+        })
+        expect(screen.getByText(/stayed to close/)).toBeInTheDocument()
+    })
+
+    // Only where the line has nothing else to say. A day that ran differently
+    // to the roster already has a line, and that line is the way in.
+    it('offers a quiet way in when the line is otherwise empty', () => {
+        grid({ shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }], entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }] })
+        expect(screen.getByText('+ note')).toBeInTheDocument()
+    })
+
+    it('uses the line itself when there is already something on it', () => {
+        grid({ entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }] })
+        expect(screen.queryByText('+ note')).not.toBeInTheDocument()
+        expect(screen.getByText('not rostered')).toBeInTheDocument()
+    })
+
+    it('offers none on a day with nothing on it', () => {
+        grid()
+        expect(screen.queryByText('+ note')).not.toBeInTheDocument()
+    })
+
+    it('opens the day when the line is pressed', async () => {
+        const onOpen = vi.fn()
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, restaurantRate: 15, sundayPremium: 10,
+            shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }], entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked' }],
+        })]
+        render(<TimesheetWeek
+            rows={rows} dates={DATES} sundayPremium={10} onOpen={onOpen}
+            onType={vi.fn()} onSettle={vi.fn()} onState={vi.fn()} onClear={vi.fn()} onAdd={vi.fn()} onHours={vi.fn()}
+        />)
+        await userEvent.click(screen.getByText('+ note'))
+        expect(onOpen).toHaveBeenCalledWith(aoife, expect.objectContaining({ date: TUE }))
     })
 
     it('offers a second span only once the first one is finished', () => {

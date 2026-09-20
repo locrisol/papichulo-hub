@@ -28,7 +28,7 @@ const box = 'block w-full font-sans text-xs tabular-nums tracking-tight '
     + 'placeholder:text-gray-300 disabled:bg-gray-50 disabled:text-gray-400'
 
 export default function TimeCell({
-    cell, at, canEdit = true, onType, onSettle, onState, onClear, onAdd, onHours,
+    cell, at, canEdit = true, onType, onSettle, onState, onClear, onAdd, onHours, onOpen,
 }) {
     const { entries, absence, rostered, unplanned } = cell
 
@@ -122,7 +122,7 @@ export default function TimeCell({
                 </div>
             ))}
 
-            <UnderLine cell={cell} unplanned={unplanned} />
+            <UnderLine cell={cell} unplanned={unplanned} canEdit={canEdit} onOpen={onOpen} />
 
             {/* A split shift is a second span, not a cell that holds two of
                 everything. Offered only once the first one is finished, so it
@@ -172,10 +172,13 @@ function Box({ entry, field, at, suggest, canEdit, muted, onType, onSettle, onSt
     )
 }
 
-// The small grey line. Never typed: it is the roster, drawn in, and only when
-// the day did not go to plan. The note, which is typed, sits on the same line
-// so a cell never grows a third row for it.
-function UnderLine({ cell, unplanned }) {
+// The small grey line. Two things on it, and only one of them is typed: the
+// roster drawn in, which nobody writes, and the note, which is how he tells the
+// accountant why a shift ran long or finished early.
+//
+// It is also the way in to writing one. Pressing it opens the day, because a
+// cell with a text box in it stops being a grid.
+function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     const bits = []
     const first = cell.entries[0]
 
@@ -195,9 +198,22 @@ function UnderLine({ cell, unplanned }) {
     const kind = cell.entries.find(e => e.kind !== 'worked')
     if (kind) bits.unshift(kindOf(kind.kind).label)
 
-    if (!bits.length) return null
+    // Nothing to say and nothing typed yet. A quiet way in rather than no way
+    // in at all, and only where there is something to attach a note to.
+    if (!bits.length) {
+        if (!canEdit || !first?.starts_at) return null
+        return (
+            <button
+                type="button"
+                onClick={onOpen}
+                className="block text-[0.62rem] text-gray-300 hover:text-accent-ink mt-0.5"
+            >
+                + note
+            </button>
+        )
+    }
 
-    return (
+    const line = (
         <span
             className={`block text-[0.62rem] tabular-nums whitespace-nowrap mt-0.5 ${
                 unplanned ? 'text-accent-ink font-semibold' : 'text-gray-400'
@@ -205,5 +221,18 @@ function UnderLine({ cell, unplanned }) {
         >
             {bits.join(' · ')}
         </span>
+    )
+
+    if (!canEdit) return line
+
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            title="Open the day to write a note"
+            className="block text-left w-full hover:opacity-70"
+        >
+            {line}
+        </button>
     )
 }

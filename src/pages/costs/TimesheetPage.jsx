@@ -278,6 +278,15 @@ export default function TimesheetPage() {
         if (!data?.length) { setError('That could not be saved, so nothing has changed.'); return }
     }
 
+    // Why a shift is what it is, in his words, going out with the week. Saved
+    // when the box is left rather than on every key, the same as a time.
+    async function setNote(entry, text) {
+        if (!entry?.id) return
+        const note = String(text || '').trim() || null
+        if (note === (entry.note ?? null)) return
+        await save(entry.id, { note })
+    }
+
     function addSpan(person, cell) {
         // A second span appears as an empty pair. It only becomes a row once
         // somebody types a start into it, which is the same path a first span
@@ -408,6 +417,7 @@ export default function TimesheetPage() {
                             onClear={clear}
                             onAdd={addSpan}
                             onHours={setHolidayHours}
+                            onOpen={(person, cell) => setEditing({ personId: person.id, date: cell.date })}
                         />
                     </div>
                     <div className="md:hidden">
@@ -437,6 +447,7 @@ export default function TimesheetPage() {
                     onClear={() => { clear(open.row.person, open.cell); setEditing(null) }}
                     onAdd={() => addSpan(open.row.person, open.cell)}
                     onHours={value => setHolidayHours(open.cell, value)}
+                    onNote={setNote}
                 />
             )}
         </div>
