@@ -307,8 +307,8 @@ describe('where the listings come from', () => {
 
     // The most common answer, and the honest one. A harbour and a park both
     // hold things and neither publishes anything we can read.
-    it('says nothing is set up when nothing is', () => {
-        expect(sourceWords(park)).toBe('nothing set up')
+    it('says there is no page yet when there is not', () => {
+        expect(sourceWords(park)).toBe('no page to read yet')
     })
 })
 
@@ -318,17 +318,19 @@ describe('placeTag', () => {
     })
 
     it('anything read off a page waits for a person', () => {
-        expect(placeTag(odeon, pairs[1]).text).toBe('Needs checking')
+        expect(placeTag(odeon, pairs[1]).text).toBe('You approve')
         expect(placeTag({ ...arena, page_url: 'https://theccd.ie' }, pairs[0]).text)
-            .toBe('Needs checking')
+            .toBe('You approve')
     })
 
     it('says off before it says anything else', () => {
         expect(placeTag(arena, { is_active: false }).text).toBe('Off')
     })
 
-    it('says so when there is nothing behind it', () => {
-        expect(placeTag(park, { ...pairs[3], is_active: true }).text).toBe('Nothing set up')
+    // It used to say "Nothing set up", which reads as a fault rather than as
+    // the ordinary state of a park, and says nothing about what to do next.
+    it('says what to do when there is nothing behind it', () => {
+        expect(placeTag(park, { ...pairs[3], is_active: true }).text).toBe('Add a page')
     })
 })
 
@@ -471,5 +473,12 @@ describe('sourceKeyFor', () => {
 
     it('gives nothing back for a nameless row', () => {
         expect(sourceKeyFor('2026-11-19', '  ')).toBe('')
+    })
+
+    // A cinema lists the same film every day for a month, and it is one thing
+    // that happened once. See migration 012.
+    it('leaves the day out for a place keyed by title', () => {
+        expect(sourceKeyFor('2026-11-19', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
+        expect(sourceKeyFor('2026-11-26', 'Practical Magic 2', 'title')).toBe('practical-magic-2')
     })
 })

@@ -239,7 +239,7 @@ export function sourceWords(place) {
     if (feed && page) return `Ticketmaster and ${page}`
     if (feed) return 'Ticketmaster, six months ahead'
     if (page) return `${page}, read weekly`
-    return 'nothing set up'
+    return 'no page to read yet'
 }
 
 // What the settings row says about how much this place is trusted.
@@ -247,11 +247,24 @@ export function sourceWords(place) {
 // Automatic is only ever earned by a feed. Anything read off a page waits for
 // a person, and the tag is where somebody finds that out before they wonder
 // why a listing is not on the roster.
+//
+// **The words were wrong the first time and it mattered.** "Needs checking"
+// reads as an instruction about the place, when what it means is that anything
+// found there waits for you. And "Nothing set up" reads as a fault, when it
+// means nobody has given this place a page to read yet, which is the ordinary
+// state of a hotel or a park and is fixed by pasting one address in. His words,
+// on being shown fifteen rows saying it: "I thought there was an AI looking for
+// this information".
+//
+// There is no AI looking. The reader reads a page it is pointed at, and going
+// out to find one would mean searching the open web and guessing which result
+// is the right page, which is exactly where a model starts inventing. So the
+// tag says what to do instead of describing a state.
 export function placeTag(place, pairing) {
     if (pairing && pairing.is_active === false) return { text: 'Off', tone: 'off' }
-    if (place?.page_url) return { text: 'Needs checking', tone: 'quiet' }
+    if (place?.page_url) return { text: 'You approve', tone: 'quiet' }
     if (place?.ticketmaster_venue_id) return { text: 'Automatic', tone: 'on' }
-    return { text: 'Nothing set up', tone: 'off' }
+    return { text: 'Add a page', tone: 'off' }
 }
 
 // When it is, in one phrase.
@@ -396,7 +409,10 @@ export function pastWalking(km, capacity) {
 // weekly read would make a second copy and a dismissal would be forgotten by
 // the following Monday. The date and a flattened title, which is as close to
 // the same thing twice as a page will ever give.
-export function sourceKeyFor(date, name) {
+//
+// A place whose reading_key is title leaves the day out, because a cinema lists
+// the same film every day for a month and it is one thing that happened once.
+export function sourceKeyFor(date, name, key = 'date') {
     const flat = String(name || '')
         .toLowerCase()
         .normalize('NFD')
@@ -404,5 +420,6 @@ export function sourceKeyFor(date, name) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 60)
-    return flat ? `${date}-${flat}` : ''
+    if (!flat) return ''
+    return key === 'title' ? flat : `${date}-${flat}`
 }

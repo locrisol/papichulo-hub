@@ -1,6 +1,6 @@
 # Migrations
 
-Five in here, and the next one is `012`.
+Six in here, and the next one is `013`.
 
 - **`007_test_accounts.sql`** marks the developer accounts, so eleven rows on
   the Users page are not read as eleven people.
@@ -12,6 +12,8 @@ Five in here, and the next one is `012`.
 - **`011_places_near_us.sql`** adds `places` and `restaurant_places`, gives
   `events` a place and a say in where it came from, and carries the one venue
   that used to live on the restaurant across into the first of them.
+- **`012_a_cinema_is_not_a_list_of_events.sql`** lets a place say how its
+  readings are keyed, and points the cinema at a page that can be read at all.
 
 None has a backup newer than it yet, so none can go.
 

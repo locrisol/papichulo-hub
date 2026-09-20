@@ -14,7 +14,10 @@ import {
     walkWords, sourceWords, placeTag, readWords, pastWalking,
 } from '@/lib/nearby'
 
-const BLANK = { name: '', walk_minutes: '', page_url: '', ticketmaster_venue_id: '', capacity: '' }
+const BLANK = {
+    name: '', walk_minutes: '', page_url: '', ticketmaster_venue_id: '', capacity: '',
+    reading_key: 'date',
+}
 
 const TAG_LOOK = {
     on: 'bg-green-50 text-green-900 border-green-300',
@@ -114,6 +117,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             page_url: form.page_url.trim() || null,
             ticketmaster_venue_id: form.ticketmaster_venue_id.trim() || null,
             capacity: figure(form.capacity),
+            reading_key: form.reading_key === 'title' ? 'title' : 'date',
         }
         const minutes = figure(form.walk_minutes)
 
@@ -159,6 +163,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
             page_url: row.place.page_url || '',
             ticketmaster_venue_id: row.place.ticketmaster_venue_id || '',
             capacity: row.place.capacity ?? '',
+            reading_key: row.place.reading_key || 'date',
         })
     }
 
@@ -383,6 +388,31 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                     <p className="text-xs text-muted mt-1">
                                         Read once a week. Anything found waits on the calendar for
                                         somebody to keep it.
+                                    </p>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className={labelClass} htmlFor="place-reading">
+                                        What that page lists
+                                    </label>
+                                    <select
+                                        id="place-reading"
+                                        className={fieldClass}
+                                        value={form.reading_key}
+                                        onChange={e => setForm({ ...form, reading_key: e.target.value })}
+                                    >
+                                        <option value="date">Things happening on a day</option>
+                                        <option value="title">A running programme, like a cinema</option>
+                                    </select>
+                                    {/* A cinema lists the same film every day
+                                        for a month. Read as days that is a
+                                        hundred and thirty eight rows and the
+                                        roster is unreadable; read as a
+                                        programme it is one row per film, kept
+                                        the first time it appears. */}
+                                    <p className="text-xs text-muted mt-1">
+                                        A programme keeps each thing once, the first time it turns
+                                        up, so a film showing all month is one line rather than
+                                        thirty.
                                     </p>
                                 </div>
                                 <div className="sm:col-span-2">

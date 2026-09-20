@@ -84,7 +84,9 @@ export function textFrom(html) {
 //
 // Nothing about us goes in it. Not the restaurant, not the place, not why we
 // are asking. The page is public and the question is about the page.
-export function promptFor(text, { from, to, today }) {
+export function promptFor(text, { from, to, today, key = 'date' } = {}) {
+    if (key === 'title') return filmPrompt(text, { from, to, today })
+
     return [
         'The text below was taken from a public web page that lists events.',
         '',
@@ -100,6 +102,37 @@ export function promptFor(text, { from, to, today }) {
         '- Use the name as written on the page. Do not summarise it.',
         '- Give the venue or building named on the page for that event, if one is named.',
         '- If the page lists nothing in that range, return an empty list.',
+        '',
+        '--- page text ---',
+        text,
+    ].join('\n')
+}
+
+// The same question asked of a cinema, which is a different question.
+//
+// A cinema lists seventeen films and a hundred and thirty eight showings over
+// ten days, and a roster cell that takes twelve chips on a Sunday is a roster
+// cell nobody reads. What a restaurant wants from a cinema is not the timetable,
+// it is that something new has opened.
+//
+// So: one row per film, never one per showing. The row is kept under the film's
+// own name rather than under a day, so the same film showing all month collides
+// with the row already there and is ignored. See the header of migration 012.
+function filmPrompt(text, { from, to, today }) {
+    return [
+        'The text below was taken from a public web page listing what is showing at a cinema.',
+        '',
+        `Today is ${today}.`,
+        `List the films showing between ${from} and ${to}.`,
+        '',
+        'Rules:',
+        '- One row per film. Never one row per showing.',
+        '- The date is the first day that film is listed as showing.',
+        '- The time is its earliest showing on that first day, if one is stated.',
+        '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM.',
+        '- Use the title as written. Do not add the year, the rating or the format.',
+        '- If a film has no date against it anywhere, leave it out.',
+        '- Leave ends and where empty.',
         '',
         '--- page text ---',
         text,
@@ -173,7 +206,13 @@ export function cleanName(value) {
 // weekly read would make a second copy and a dismissal would be forgotten by
 // the following Monday. The same rule as lib/nearby, written out again because
 // a function deploys on its own, and checked against it in the tests.
-export function sourceKeyFor(date, name) {
+//
+// **The day is left out of it when the place says title.** A cinema shows the
+// same film for a month and lists it every day of that month, so keying on the
+// day would make a new row every week for a film nobody needs telling about
+// twice. Without the day, the first sighting is the one that lands and the rest
+// collide with it. See the header of migration 012.
+export function sourceKeyFor(date, name, key = 'date') {
     const flat = String(name || '')
         .toLowerCase()
         .normalize('NFD')
@@ -181,7 +220,8 @@ export function sourceKeyFor(date, name) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 60)
-    return flat ? `${date}-${flat}` : ''
+    if (!flat) return ''
+    return key === 'title' ? flat : `${date}-${flat}`
 }
 
 // No real event runs longer than this, and a model that says one does has
@@ -200,7 +240,7 @@ export const MOST_ROWS = 40
 // is a reader and readers misread. Every row that survives here is one whose
 // date is a real date, inside the window we asked about, with a name on it, and
 // no two rows describing the same thing twice.
-export function eventsFrom(answer, { placeId, url, from, to, now }) {
+export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }) {
     let parsed
     try {
         parsed = typeof answer === 'string' ? JSON.parse(answer) : answer
@@ -231,9 +271,9 @@ export function eventsFrom(answer, { placeId, url, from, to, now }) {
             if (days > LONGEST_RUN_DAYS) ends = ''
         }
 
-        const key = sourceKeyFor(date, name)
-        if (!key || seen.has(key)) continue
-        seen.add(key)
+        const reading = sourceKeyFor(date, name, key)
+        if (!reading || seen.has(reading)) continue
+        seen.add(reading)
 
         rows.push({
             place_id: placeId,
@@ -243,7 +283,7 @@ export function eventsFrom(answer, { placeId, url, from, to, now }) {
             event_time: realTime(one?.time),
             source: 'page',
             source_url: url,
-            source_key: key,
+            source_key: reading,
             // Found, and waiting. It shows on the calendar with a Keep beside
             // it and on the roster with a dashed edge, and it stays marked
             // until a person settles it.

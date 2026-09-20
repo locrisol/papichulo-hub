@@ -94,6 +94,73 @@ describe('promptFor', () => {
     })
 })
 
+// A cinema lists seventeen films and a hundred and thirty eight showings over
+// ten days. What a restaurant wants out of that is not the timetable, it is that
+// something new has opened.
+describe('asking a cinema', () => {
+    const prompt = promptFor('Sun 20 Sep | Practical Magic 2 12A | 11:15 14:15 17:15', {
+        from: '2026-09-20', to: '2026-10-25', today: '2026-09-20', key: 'title',
+    })
+
+    it('asks for films rather than showings', () => {
+        expect(prompt).toContain('One row per film. Never one row per showing.')
+        expect(prompt).toContain('first day that film is listed as showing')
+    })
+
+    it('still says nothing about us', () => {
+        for (const ours of ['Papi Chulo', 'Point Campus', 'restaurant', 'roster']) {
+            expect(prompt.toLowerCase()).not.toContain(ours.toLowerCase())
+        }
+    })
+
+    it('is a different question from the ordinary one', () => {
+        const ordinary = promptFor('x', { from: '2026-09-20', to: '2026-10-25', today: '2026-09-20' })
+        expect(ordinary).not.toContain('One row per film')
+        expect(ordinary).toContain('Never guess a date')
+    })
+})
+
+// The whole point of it. The same film showing all month is one thing that
+// happened once, so the first sighting lands and every later one collides with
+// the row already there and is ignored.
+describe('a film is kept under its own name, not under a day', () => {
+    it('gives the same key whatever day it is seen on', () => {
+        expect(sourceKeyFor('2026-09-20', 'Practical Magic 2', 'title'))
+            .toBe(sourceKeyFor('2026-09-27', 'Practical Magic 2', 'title'))
+    })
+
+    it('still separates two different films', () => {
+        expect(sourceKeyFor('2026-09-20', 'Practical Magic 2', 'title'))
+            .not.toBe(sourceKeyFor('2026-09-20', 'Minions & Monsters', 'title'))
+    })
+
+    // The ordinary case must not change. A theatre's Tuesday and its Wednesday
+    // are two different nights of the same run.
+    it('leaves a dated reading keyed by its day', () => {
+        expect(sourceKeyFor('2026-09-20', 'Quiz night'))
+            .not.toBe(sourceKeyFor('2026-09-27', 'Quiz night'))
+    })
+
+    it('carries the key through to the rows', () => {
+        const films = answer([
+            { name: 'Practical Magic 2', date: '2026-11-19', time: '11:15' },
+            { name: 'Minions & Monsters', date: '2026-11-20', time: '10:30' },
+        ])
+        const rows = eventsFrom(films, { ...WHEN, key: 'title' }).rows
+        expect(rows.map(r => r.source_key)).toEqual(['practical-magic-2', 'minions-monsters'])
+    })
+
+    // Two showings of one film on one day arriving as two rows would defeat the
+    // whole thing, so the second is dropped before it is ever written.
+    it('keeps one row when the same film comes back twice in one answer', () => {
+        const twice = answer([
+            { name: 'Practical Magic 2', date: '2026-11-19', time: '11:15' },
+            { name: 'Practical Magic 2', date: '2026-11-26', time: '14:15' },
+        ])
+        expect(eventsFrom(twice, { ...WHEN, key: 'title' }).rows).toHaveLength(1)
+    })
+})
+
 describe('answerFrom', () => {
     it('joins the parts Gemini split its answer into', () => {
         expect(answerFrom({ candidates: [{ content: { parts: [{ text: '{"ev' }, { text: 'ents":[]}' }] } }] }))
@@ -248,6 +315,11 @@ describe('the two copies of the reading key agree', () => {
             expect(sourceKeyFor(date, name)).toBe(browserSourceKeyFor(date, name))
         })
     }
+
+    it('agrees about a film, where the day is left out', () => {
+        expect(sourceKeyFor('2026-09-20', 'Practical Magic 2', 'title'))
+            .toBe(browserSourceKeyFor('2026-09-20', 'Practical Magic 2', 'title'))
+    })
 })
 
 describe('endpoint', () => {

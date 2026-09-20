@@ -100,7 +100,7 @@ const json = (body: unknown, status = 200) =>
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 type Admin = ReturnType<typeof createClient>
-type Place = { id: string; name: string; page_url: string }
+type Place = { id: string; name: string; page_url: string; reading_key: string }
 
 function windowOf(now: Date) {
     const to = new Date(now)
@@ -152,13 +152,19 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     const text = textFrom(await page.text())
     if (!text) throw new Error(`${place.page_url} had no words on it`)
 
-    const answer = await ask(key, promptFor(text, { from, to, today: from }))
+    // How this place's readings are keyed decides both what to ask for and
+    // what makes an answer the same answer twice. A cinema is asked for films
+    // rather than showings, and keeps them under their own names.
+    const reading = place.reading_key || 'date'
+
+    const answer = await ask(key, promptFor(text, { from, to, today: from, key: reading }))
     const { rows, refused } = eventsFrom(answer, {
         placeId: place.id,
         url: place.page_url,
         from,
         to,
         now: now.toISOString(),
+        key: reading,
     })
 
     if (refused) throw new Error(refused)
@@ -191,7 +197,7 @@ async function pagesFor(admin: Admin, restaurantId?: string): Promise<Place[]> {
     // fill a table nothing looks at is the sort of waste nobody notices.
     const query = admin
         .from('restaurant_places')
-        .select('restaurant_id, place:places(id, name, page_url)')
+        .select('restaurant_id, place:places(id, name, page_url, reading_key)')
         .eq('is_active', true)
 
     const { data } = restaurantId ? await query.eq('restaurant_id', restaurantId) : await query
