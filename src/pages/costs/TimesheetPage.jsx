@@ -585,9 +585,15 @@ export default function TimesheetPage() {
                     </span>
                 </DateStepper>
 
+                {/* Pick any date; it snaps to that week's Sunday. The same
+                    control Weekly Sales and the cost dashboard have beside
+                    their arrows, and named the same, for the same job: going
+                    back two months is eight presses of an arrow or one of
+                    these. The roster has none, because a roster is worked a
+                    week at a time and never far from today. */}
                 <input
                     type="date"
-                    aria-label="Week"
+                    aria-label="Jump to week"
                     className={`${dateField} w-full sm:w-auto`}
                     value={pickerDate}
                     onChange={e => e.target.value && goToWeek(e.target.value)}
