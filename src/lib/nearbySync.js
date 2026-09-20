@@ -17,6 +17,8 @@
 // That list is the other half of why this moved. It used to be one venue on one
 // varchar, so a restaurant near three places could watch one of them.
 
+import { functionError } from '@/lib/errors'
+
 // How long to leave it before fetching again. The spec asks for at least once a
 // day. Twelve hours means a normal day gets two goes at it without every page
 // load waiting on a network call to show a calendar that has not changed.
@@ -42,7 +44,12 @@ export async function syncEvents(supabase, restaurantId) {
     // Both halves. invoke() reports a transport failure in `error` and the
     // function's own refusal in the body, and a caller that only reads one of
     // them tells somebody it worked when it did not.
-    if (error) throw new Error(error.message || 'Could not reach the listings')
+    //
+    // A refusal with a status on it lands in `error` rather than in `data`,
+    // with the sentence the function wrote hidden in the response, so
+    // functionError goes and reads it. Without that this says "non-2xx status
+    // code", which is true and no use to anybody.
+    if (error) throw new Error(await functionError(error, 'Could not reach the listings'))
     if (data?.error) throw new Error(data.error)
 
     return { added: data?.added || 0, total: data?.total || 0 }

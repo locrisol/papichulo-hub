@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
-import { friendlyError } from '@/lib/errors'
+import { friendlyError, functionError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import {
     modalFooter, secondaryButton, fieldClass, labelClass, checkbox, checkRow, primaryButton,
@@ -55,6 +55,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const [address, setAddress] = useState('')
     const [searching, setSearching] = useState(false)
     const [candidates, setCandidates] = useState(null)
+    // Where it searched from. Shown because a lookup can succeed and be wrong:
+    // "Papi Chulo Dublin" finds the Dun Laoghaire shop and "Papi Chulo" finds
+    // one in Montreal, and neither of those announces itself as a mistake.
+    const [lookedFrom, setLookedFrom] = useState(null)
 
     const cityOn = activeRestaurant?.watch_city_events !== false
 
@@ -205,7 +209,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         })
         setReading(false)
 
-        if (failed) { setError(friendlyError(failed)); return }
+        if (failed) { setError(await functionError(failed)); return }
         if (data?.error) { setError(data.error); return }
 
         const pages = data?.pages || []
@@ -245,9 +249,10 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
         })
         setSearching(false)
 
-        if (failed) { setError(friendlyError(failed)); return }
+        if (failed) { setError(await functionError(failed)); return }
         if (data?.error) { setError(data.error); return }
         setCandidates(data?.places || [])
+        setLookedFrom(data?.point || null)
     }
 
     // Watching one the search turned up.
@@ -596,6 +601,21 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
                                 you give it is remembered, so this is asked once.
                             </p>
                         </form>
+
+                        {/* A lookup can succeed and be wrong. Saying where
+                            it searched from is the only way anybody would
+                            catch that, and the fix is to paste the right
+                            point over it. */}
+                        {lookedFrom && (
+                            <p className="text-xs text-muted pb-3">
+                                Looked from{' '}
+                                <code className="font-mono">
+                                    {lookedFrom.latitude}, {lookedFrom.longitude}
+                                </code>
+                                . If that is not where this restaurant is, paste the right
+                                coordinates above and look again.
+                            </p>
+                        )}
 
                         {candidates && candidates.length === 0 && (
                             <p className="text-sm text-muted pb-3">
