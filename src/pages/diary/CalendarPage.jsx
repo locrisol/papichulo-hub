@@ -6,7 +6,7 @@ import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
-import { nearbyRows, waiting } from '@/lib/nearby'
+import { nearbyRows, waiting, PAIRING_COLUMNS } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import {
     LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
@@ -169,7 +169,7 @@ export default function CalendarPage() {
                 supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
                     .eq('is_active', true).order('sort_order'),
                 supabase.from('restaurant_places')
-                    .select('id, relation, walk_minutes, distance_km, is_active, sort_order, place:places(*)')
+                    .select(PAIRING_COLUMNS)
                     .eq('restaurant_id', activeRestaurant.id)
                     .order('sort_order'),
             ])

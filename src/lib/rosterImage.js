@@ -93,6 +93,14 @@ export function drawWeek(canvas, table) {
     })
 
     const CARD_PAD_LINES = 1
+    // A band each for the places with a row of their own, measured the same way
+    // the deliveries below are.
+    const headlineCards = (table.headlines || []).map(one => one.perDay.map(list => list.map(e => ({
+        ...cardFor(e.time || e.name, e.time ? ` ${e.name}` : ''),
+        colours: kindColours(e.kind),
+        checked: e.checked !== false,
+    }))))
+
     const chipsPerDay = (table.extras || []).map(list => list.map(extra => ({
         ...cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
         // The colour it has on screen. Every card on this band used to be
@@ -126,6 +134,7 @@ export function drawWeek(canvas, table) {
     const l = sheetLayout(table, {
         ...cols,
         bandLines: bandLines.map(lines => lines.length),
+        headlineLines: headlineCards.map(days => Math.max(1, ...days.map(cardLines))),
         deliveryLines: Math.max(1, ...chipsPerDay.map(cardLines)),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
@@ -373,11 +382,26 @@ export function drawWeek(canvas, table) {
         y += l.bandsH
     }
 
-    // ---- everything the day has on, written out in full rather than cut short
+    // ---- the one place big enough for a row of its own
     //
-    // One band rather than two. What is on next door had one of its own, above
-    // this, in the app's own orange, which put it in the same colour as
-    // catering and left the week reading as two lists of the same thing.
+    // Named after the place rather than "Events", and in its own colour rather
+    // than the app's orange, which is catering's and was the reason this was
+    // folded away in the first place.
+    ;(table.headlines || []).forEach((one, i) => {
+        const bandH = l.headlineHeights[i]
+        if (!bandH) return
+        const colours = kindColours(one.kind)
+        box(l.pad, y, l.width - l.pad * 2, bandH, colours.fill)
+        font(11, '700')
+        text(one.name.toUpperCase(), l.pad + 12, y + bandH / 2, { colour: colours.ink })
+        headlineCards[i].forEach((cards, d) => drawCards(cards, d, y, bandH, colours.ink, colours.edge))
+        rule(l.pad, y + bandH, l.width - l.pad, y + bandH, RULE_ROW, 2)
+        y += bandH
+    })
+
+    // ---- everything else the day has on, written out in full rather than cut
+    // short. One band, because what is on next door used to have a second one
+    // in the app's own orange, which put it in the same colour as catering.
     if (l.deliveriesH) {
         box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
         font(11, '700')

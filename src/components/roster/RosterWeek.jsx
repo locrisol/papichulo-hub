@@ -297,7 +297,7 @@ export default function RosterWeek({
                                             ) : (
                                                 <span className="flex flex-col gap-1 px-2 py-1.5">
                                                     {on.map(row => (
-                                                        <NearbyChip key={row.event.id} row={row} short />
+                                                        <NearbyChip key={row.event.id} row={row} short bare />
                                                     ))}
                                                 </span>
                                             )}

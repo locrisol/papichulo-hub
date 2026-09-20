@@ -84,6 +84,25 @@ describe('drawing a week', () => {
         }
     })
 
+    // The sheet has to say what the screen says, or a manager reading the grid
+    // and somebody reading the picture are reading two different Thursdays.
+    it('names a place that has a band of its own', () => {
+        const { canvas, calls } = fakeCanvas()
+        drawWeek(canvas, {
+            ...table,
+            headlines: [{
+                name: '3Arena',
+                kind: 'arena',
+                perDay: DATES.map((_, i) => (
+                    i === 0 ? [{ name: 'Westlife', time: '18:00', kind: 'arena', checked: true }] : []
+                )),
+            }],
+            headlineHeights: undefined,
+        })
+        expect(calls.fillText).toContain('3ARENA')
+        expect(calls.fillText.join(' ')).toContain('Westlife')
+    })
+
     it('writes the band out rather than cutting it short', () => {
         const { canvas, calls } = fakeCanvas()
         drawWeek(canvas, table)

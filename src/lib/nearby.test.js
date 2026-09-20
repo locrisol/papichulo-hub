@@ -226,9 +226,9 @@ describe('every listing says where it is', () => {
 
     it('carries where it is on the row, for whatever draws it', () => {
         expect(rows.map(r => r.title)).toEqual([
-            'Kings of Leon, 3Arena',
-            'Wicked: For Good opens, Odeon',
-            'Ireland v France, Aviva Stadium',
+            'Kings of Leon [3Arena]',
+            'Wicked: For Good opens [Odeon]',
+            'Ireland v France [Aviva Stadium]',
         ])
     })
 
@@ -243,7 +243,7 @@ describe('every listing says where it is', () => {
             [{ place: council, relation: 'walk', walk_minutes: 5, is_active: true }],
             {},
         )
-        expect(row.title).toBe('Harp recital, dlr Council')
+        expect(row.title).toBe('Harp recital [dlr Council]')
     })
 
     it('says the venue rather than the page when they differ', () => {
@@ -256,7 +256,7 @@ describe('every listing says where it is', () => {
             [{ place: council, relation: 'walk', walk_minutes: 5, is_active: true }],
             {},
         )
-        expect(row.title).toBe('Arts & Crafts Evening, Dundrum Library')
+        expect(row.title).toBe('Arts & Crafts Evening [Dundrum Library]')
     })
 
     it('says it once when the name already carries the place', () => {
@@ -345,13 +345,32 @@ describe('waiting', () => {
 describe('the words on a chip', () => {
     const rows = nearbyRows([gig, film], pairs, {})
 
-    it('puts the name first and the place after it', () => {
-        expect(chipWords(rows[0])).toBe('Kings of Leon, 3Arena')
+    // Brackets rather than a comma, because a comma reads as part of the name
+    // and this app already brackets a tag on a thing: [Students] on a promotion.
+    it('puts the name first and the place after it, in brackets', () => {
+        expect(chipWords(rows[0])).toBe('Kings of Leon [3Arena]')
+    })
+
+    // A row already headed with the place says it once. "Westlife [3Arena]"
+    // under a heading that says 3Arena is the place said twice in the narrowest
+    // cell on the screen.
+    it('leaves the place off entirely when the row is already named after it', () => {
+        expect(chipWords(rows[0], { withPlace: false })).toBe('Kings of Leon')
+    })
+
+    // The venue still shows, because that is different information: a council
+    // listing at Dundrum Library is not at the council.
+    it('keeps a venue that is somewhere else even with the place left off', () => {
+        const row = {
+            event: { name: 'Arts & Crafts Evening', venue: 'Dundrum Library' },
+            place: { name: 'Dun Laoghaire Rathdown County Council' },
+        }
+        expect(chipWords(row, { withPlace: false })).toBe('Arts & Crafts Evening [Dundrum Library]')
     })
 
     it('uses the short name where a cell is narrow', () => {
-        expect(chipWords(rows[1], { short: true })).toBe('Wicked: For Good opens, Odeon')
-        expect(chipWords(rows[1])).toBe('Wicked: For Good opens, Odeon Point Square')
+        expect(chipWords(rows[1], { short: true })).toBe('Wicked: For Good opens [Odeon]')
+        expect(chipWords(rows[1])).toBe('Wicked: For Good opens [Odeon Point Square]')
     })
 
     // "Dun Laoghaire Summer Festival, Dun Laoghaire Rathdown County Council"
@@ -388,7 +407,7 @@ describe('a listing that is somewhere else entirely', () => {
     it('says where the page said, not where the page belongs', () => {
         expect(elsewhere(rowFor('Dundrum Library'))).toBe('Dundrum Library')
         expect(chipWords(rowFor('Dundrum Library'), { short: true }))
-            .toBe('Arts & Crafts Evening, Dundrum Library')
+            .toBe('Arts & Crafts Evening [Dundrum Library]')
     })
 
     // The walking time belongs to the place. Saying the council's five minutes

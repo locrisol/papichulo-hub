@@ -6,7 +6,7 @@ import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { nearbyRows, rowsOn } from '@/lib/nearby'
+import { nearbyRows, rowsOn, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
 import DateStepper from '@/components/ui/DateStepper'
@@ -217,7 +217,7 @@ export default function RosterPage() {
                 .or(`ends_on.gte.${weekStart},and(ends_on.is.null,event_date.gte.${weekStart})`)
                 .order('event_time'),
             supabase.from('restaurant_places')
-                .select('id, relation, walk_minutes, distance_km, is_active, sort_order, place:places(*)')
+                .select(PAIRING_COLUMNS)
                 .eq('restaurant_id', restaurantId)
                 .order('sort_order'),
             // The diary: catering, meetings, promotions. Overlapping the

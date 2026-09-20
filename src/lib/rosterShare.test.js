@@ -140,6 +140,62 @@ describe('weekTable', () => {
         expect(t.storeHours[2]).toBe('Closed')
     })
 
+    // A concert two minutes away with nine thousand people at it is not the
+    // same kind of fact as a sandwich delivery, and a week grid that lists them
+    // together buries it. **The sheet has to say what the screen says**, or a
+    // manager reading the grid and somebody reading the picture in a WhatsApp
+    // group are reading two different Thursdays.
+    const headline = [{
+        kind: 'arena',
+        time: '18:00',
+        ownRow: true,
+        place: { id: 'p1', name: '3Arena', short_name: '3Arena' },
+        event: { id: 'v1', event_date: DATES[4], name: 'Westlife', event_time: '18:00:00' },
+    }]
+
+    it('gives a place with its own row a band of its own', () => {
+        const t = build({ nearby: headline })
+        expect(t.headlines).toHaveLength(1)
+        expect(t.headlines[0].name).toBe('3Arena')
+        expect(t.headlines[0].perDay[4]).toEqual([
+            { name: 'Westlife', time: '18:00', kind: 'arena', checked: true },
+        ])
+    })
+
+    // The band is named after the place. Saying it again on every card under it
+    // is the place said twice.
+    it('leaves the place off the cards, since the band already says it', () => {
+        const t = build({ nearby: headline })
+        expect(t.headlines[0].perDay[4][0].name).toBe('Westlife')
+    })
+
+    it('keeps it out of Also on, so it is not in both', () => {
+        const t = build({ nearby: headline })
+        expect(t.extras.flat()).toEqual([])
+    })
+
+    it('leaves everything in Also on when no place has its own row', () => {
+        const t = build({ nearby: headline.map(r => ({ ...r, ownRow: false })) })
+        expect(t.headlines).toEqual([])
+        expect(t.extras[4]).toHaveLength(1)
+    })
+
+    // A week where the Arena has nothing on should not carry an empty strip,
+    // the same rule Also on already follows.
+    it('reserves no height for a band with nothing in it', () => {
+        const quiet = build({
+            nearby: [{ ...headline[0], event: { ...headline[0].event, event_date: '2026-12-25' } }],
+        })
+        expect(sheetLayout(quiet).headlineHeights).toEqual([0])
+        expect(sheetLayout(build({ nearby: headline })).headlineHeights[0]).toBeGreaterThan(0)
+    })
+
+    it('makes room for the band in the sheet it is drawn on', () => {
+        const without = sheetLayout(build())
+        const with_ = sheetLayout(build({ nearby: headline }))
+        expect(with_.height - without.height).toBe(with_.headlinesH)
+    })
+
     // Next door joins the same row the catering and the deliveries are on,
     // rather than having a band of its own in the app's orange above them.
     // Two lists of the same thing, one of them wearing catering's colour.
@@ -153,7 +209,7 @@ describe('weekTable', () => {
             }],
         })
         expect(t.extras[4]).toEqual([
-            { name: 'Westlife, 3Arena', time: '18:00', kind: 'arena', checked: true },
+            { name: 'Westlife [3Arena]', time: '18:00', kind: 'arena', checked: true },
         ])
     })
 
@@ -175,7 +231,7 @@ describe('weekTable', () => {
             ],
         })
         expect(t.extras[4].map(e => `${e.time} ${e.name}`))
-            .toEqual(['13:00 One, Odeon', '19:00 Two, Odeon'])
+            .toEqual(['13:00 One [Odeon]', '19:00 Two [Odeon]'])
     })
 
     // A market over three weekends is one row, and drawing it on the first day

@@ -125,6 +125,12 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
     //
     // Measured in lines because that is the currency the layout works in.
     const CHIP_PAD_LINES = 1
+    const headlineCards = (table.headlines || []).map(one => one.perDay.map(list => list.map(e => ({
+        ...cardFor(e.time || e.name, e.time ? ` ${e.name}` : ''),
+        colours: kindColours(e.kind),
+        checked: e.checked !== false,
+    }))))
+
     const chipsPerDay = (table.extras || []).map(list => list.map(extra => ({
         ...cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
         // The colour it has on screen. Every card on this band used to be
@@ -158,6 +164,10 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         pad: 24,
         ...cols,
         bandLines: bandLines.map(lines => lines.length),
+        headlineLines: headlineCards.map(days => Math.max(
+            1,
+            ...days.map(cards => cards.reduce((t, c) => t + c.lines.length + 1, 0)),
+        )),
         deliveryLines: Math.max(1, ...dayChipLines),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
@@ -371,11 +381,24 @@ export async function weekPdf(table, restaurantName, weekStart, { save = true } 
         bandRule()
     }
 
-    // ---- everything the day has on, written out in full rather than cut short
-    //
-    // One band rather than two. What is on next door had one of its own, above
-    // this, in the app's own orange, which put it in the same colour as
-    // catering and left the week reading as two lists of the same thing.
+    // ---- the one place big enough for a row of its own
+    ;(table.headlines || []).forEach((one, i) => {
+        const bandH = l.headlineHeights[i]
+        if (!bandH) return
+        const colours = kindColours(one.kind)
+        box(l.pad, y, pageWidth - l.pad * 2, h(bandH), rgbOf(colours.fill))
+        at(one.name.toUpperCase(), l.pad + 8, y + h(bandH) / 2 + 3, {
+            size: 7, style: 'bold', rgb: rgbOf(colours.ink),
+        })
+        headlineCards[i].forEach((cards, d) =>
+            drawCards(cards, d, y, bandH, rgbOf(colours.ink), rgbOf(colours.edge)))
+        y += h(bandH)
+        bandRule()
+    })
+
+    // ---- everything else the day has on. One band, because what is on next
+    // door used to have a second one in the app's own orange, which put it in
+    // the same colour as catering.
     if (l.deliveriesH) {
         box(l.pad, y, pageWidth - l.pad * 2, h(l.deliveriesH), [241, 245, 249])
         at('ALSO ON', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {

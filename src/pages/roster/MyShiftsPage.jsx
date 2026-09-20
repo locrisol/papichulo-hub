@@ -23,7 +23,7 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { nearbyRows } from '@/lib/nearby'
+import { nearbyRows, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -230,7 +230,7 @@ export default function MyShiftsPage() {
                     .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
                     .order('event_time'),
                 supabase.from('restaurant_places')
-                    .select('id, relation, walk_minutes, distance_km, is_active, sort_order, place:places(*)')
+                    .select(PAIRING_COLUMNS)
                     .eq('restaurant_id', mine.restaurant_id)
                     .order('sort_order'),
                 // My own requests, not week bound. What I asked for in March is

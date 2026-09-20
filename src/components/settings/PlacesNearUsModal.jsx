@@ -11,7 +11,7 @@ import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     CITY_CAPACITY, CITY_RADIUS_KM, WALKABLE_MINUTES,
-    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem,
+    walkWords, sourceWords, placeTag, readWords, pastWalking, cityProblem, PAIRING_COLUMNS,
 } from '@/lib/nearby'
 
 const BLANK = {
@@ -60,7 +60,7 @@ export default function PlacesNearUsModal({ onClose, onChange }) {
     const load = useCallback(async () => {
         setLoading(true)
         const { data, error: failed } = await supabase.from('restaurant_places')
-            .select('id, relation, walk_minutes, distance_km, is_active, sort_order, place:places(*)')
+            .select(PAIRING_COLUMNS)
             .eq('restaurant_id', activeRestaurant.id)
             .order('sort_order')
 

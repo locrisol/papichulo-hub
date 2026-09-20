@@ -26,9 +26,12 @@ import { chipWords } from '@/lib/nearby'
 // Not a button on the roster week, though it looks like one it could be. That
 // whole cell is already a button that opens the day for a manager, and a button
 // inside a button is not a thing. Pass onOpen where there is room for one.
-export default function NearbyChip({ row, short = false, compact = true, onOpen }) {
+export default function NearbyChip({ row, short = false, bare = false, compact = true, onOpen }) {
     const kind = row?.kind || 'nearby'
-    const words = chipWords(row, { short })
+    // bare is for a row already headed with the place's name. Saying it again
+    // on every chip underneath is the place said twice in the narrowest cell
+    // on the screen.
+    const words = chipWords(row, { short, withPlace: !bare })
 
     const look = `block w-full text-left rounded-md border-l-[3px] ${kindChip(kind)} `
         + `${row?.checked === false ? kindDash(kind) : ''} `

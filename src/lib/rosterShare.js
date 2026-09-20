@@ -16,7 +16,7 @@ import {
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extraLabel, whatIsOn } from '@/lib/dayExtras'
-import { rowsOn, chipWords } from '@/lib/nearby'
+import { rowsOn, chipWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
 
 // A day somebody is not there, as it goes out.
@@ -165,6 +165,28 @@ export function weekTable({
     }))
     const banded = new Set(bandsForWeek(running, dates || []).map(b => b.entry.id))
 
+    // The one place big enough for a row of its own, drawn as its own band
+    // rather than in among the deliveries. **The sheet says what the screen
+    // says**, which is the whole reason this is here and not just on screen: a
+    // manager reading the grid and somebody reading the picture in a WhatsApp
+    // group are reading the same week, and the Arena being a headline on one
+    // and a line in a list on the other is two versions of Thursday.
+    //
+    // The cards carry no place name. The band is named after the place, and
+    // saying it again on every card under it is the place said twice.
+    const headlines = ownRows(nearby).map(group => ({
+        name: placeName(group.place, { short: true }),
+        kind: group.rows[0]?.kind || 'nearby',
+        perDay: (dates || []).map(d => rowsOn(group.rows, d).map(row => ({
+            name: chipWords(row, { withPlace: false }),
+            time: row.time,
+            kind: row.kind,
+            checked: row.checked !== false,
+        }))),
+    }))
+
+    const shared = sharedRows(nearby)
+
     // Everything a day has on it, in the order it happens, whichever table it
     // came out of. The same function the screen uses, so the sheet pinned to
     // the wall and the screen beside it cannot put the same day in two
@@ -181,7 +203,7 @@ export function weekTable({
     const extras = (dates || []).map(d => whatIsOn(
         onDate(running, d).filter(e => !banded.has(e.id)),
         noteFor(d),
-        rowsOn(nearby, d),
+        rowsOn(shared, d),
     ).map(({ entry, extra, near }) => {
         if (entry) {
             return {
@@ -220,6 +242,7 @@ export function weekTable({
         head,
         storeHours,
         bands,
+        headlines,
         deliveries,
         extras,
         people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
@@ -276,6 +299,7 @@ export function wrapLines(text, maxWidth, measure) {
 // whoever is drawing, because only they know how wide their own letters are.
 export function sheetLayout(table, {
     width = 1180, pad = 24, deliveryLines = 1, noteLines = 1, bandLines = null,
+    headlineLines = null,
     nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
     // The three columns either side of the week used to be fixed, and they were
@@ -315,6 +339,16 @@ export function sheetLayout(table, {
         (_, i) => (bandLines?.[i] ?? 1) * 14 + 8,
     )
     const bandsH = bandHeights.length ? bandHeights.reduce((t, n) => t + n, 0) + 6 : 0
+    // A band each for the places big enough to have their own row, and nothing
+    // at all for a week where that place has nothing on. Measured the same way
+    // the deliveries are, one count per band from whoever is drawing.
+    const headlineHeights = (table.headlines || []).map((h, i) => (
+        h.perDay?.some(day => day.length)
+            ? Math.max(metaH, (headlineLines?.[i] ?? 1) * 15 + 12)
+            : 0
+    ))
+    const headlinesH = headlineHeights.reduce((t, n) => t + n, 0)
+
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
     const hasDeliveries = table.deliveries?.some(d => d.length)
@@ -339,7 +373,7 @@ export function sheetLayout(table, {
     const standingH = table.standing ? 30 : 0
     const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH + bandsH + deliveriesH
+    const height = pad * 2 + titleH + headH + metaH + bandsH + headlinesH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
@@ -347,7 +381,7 @@ export function sheetLayout(table, {
     return {
         width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
         titleH, headH, metaH, bandsH, bandHeights,
-        deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
+        headlineHeights, headlinesH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         holidayX: width - pad - hoursCol - holidayCol,
         holidayCentreX: width - pad - hoursCol - holidayCol / 2,

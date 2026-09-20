@@ -106,6 +106,18 @@ export function cityProblem(pairing) {
     return ''
 }
 
+// What a screen has to ask for to get a pairing and the place on it.
+//
+// **Written out once because writing it out four times cost an afternoon.**
+// own_row was added to the table, the tick was set on live, and the Arena
+// stayed buried in Also on, because four hand typed select lists did not know
+// to ask for the new column and undefined is not true.
+//
+// place:places(*) on purpose. A place has a dozen columns that different
+// screens want different halves of, and the table is nineteen rows.
+export const PAIRING_COLUMNS =
+    'id, relation, walk_minutes, distance_km, is_active, own_row, sort_order, place:places(*)'
+
 // Switched off is switched off, and the city ones answer to three things rather
 // than one: the restaurant's switch, their own, and the rule itself.
 //
@@ -287,23 +299,37 @@ export function elsewhere(row) {
     return a.includes(b) || b.includes(a) ? '' : said
 }
 
-// How a chip reads: the thing, then where it is.
+// How a chip reads: the thing, then where it is, in brackets.
 //
 // The name leads because with a concert the question is which one, and the
 // place follows because a chip that says only "Pentangle" leaves you looking it
 // up. The short name is used where the cell is about fifty pixels wide, which
 // is the only reason a place has one.
 //
+// **Brackets rather than a comma**, which is his and is right for two reasons.
+// A comma reads as part of the name, so "Westlife 25, The Anniversary World
+// Tour, 3Arena" has three commas and one of them means something different from
+// the other two. And this app already uses brackets for exactly this: a
+// promotion band carries [Students] the same way.
+//
 // The place is left off when it is already the name. "Dun Laoghaire Summer
 // Festival, Dun Laoghaire Rathdown County Council" says one thing twice.
-export function chipWords(row, { short = false } = {}) {
+//
+// And left off entirely in a row that is already named after it. A chip reading
+// "Westlife, 3Arena" under a row heading that says 3Arena says it twice in the
+// narrowest cell on the screen.
+//
+// **The venue still shows either way**, because that is different information:
+// a council listing at Dundrum Library is not at the council, and a row headed
+// with the council would be hiding the one word that matters.
+export function chipWords(row, { short = false, withPlace = true } = {}) {
     const name = String(row?.event?.name || '').trim()
     // What the page said, when that is somewhere else entirely. A chip reading
     // "Arts & Crafts Evening, dlr Council" for a thing in Dundrum is worse than
     // no chip, because it looks like it is next door.
-    const where = elsewhere(row) || placeName(row?.place, { short })
+    const where = elsewhere(row) || (withPlace ? placeName(row?.place, { short }) : '')
     if (!where || !name) return name || where
-    return name.toLowerCase().includes(where.toLowerCase()) ? name : `${name}, ${where}`
+    return name.toLowerCase().includes(where.toLowerCase()) ? name : `${name} [${where}]`
 }
 
 export function walkWords(minutes, { short = false } = {}) {
