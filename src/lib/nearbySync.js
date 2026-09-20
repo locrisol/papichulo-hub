@@ -1,4 +1,4 @@
-// Asking for the Arena listings to be brought up to date.
+// Asking for what is on near us to be brought up to date.
 //
 // **The fetching itself is not here any more, and that is the point.** The
 // Discovery API key used to be read from `import.meta.env.VITE_TICKETMASTER_KEY`
@@ -7,16 +7,23 @@
 // day it allows. There was no fixing that in a browser, because a key a browser
 // can use is a key a browser can show you.
 //
-// So it is a secret on the `arena-events` function now. What is left here is the
+// So it is a secret on the `nearby-events` function now. What is left here is the
 // asking, and deciding whether it is worth asking at all.
 //
 // The function is told which restaurant, never which venue. It checks the caller
-// is allowed near that restaurant and reads the venue off its own row, so
+// is allowed near that restaurant and reads the places off its own list, so
 // nobody can point our quota somewhere of their choosing.
+//
+// That list is the other half of why this moved. It used to be one venue on one
+// varchar, so a restaurant near three places could watch one of them.
 
 // How long to leave it before fetching again. The spec asks for at least once a
 // day. Twelve hours means a normal day gets two goes at it without every page
 // load waiting on a network call to show a calendar that has not changed.
+//
+// The schedule is what really keeps the table fresh now. This is the belt to its
+// braces: a page opened at nine on a morning the cron has not run yet still
+// shows tonight.
 const SYNC_EVERY_HOURS = 12
 const SYNC_KEY = 'eventsLastSync'
 
@@ -28,14 +35,14 @@ const SYNC_KEY = 'eventsLastSync'
 export async function syncEvents(supabase, restaurantId) {
     if (!restaurantId) throw new Error('No restaurant to sync for')
 
-    const { data, error } = await supabase.functions.invoke('arena-events', {
+    const { data, error } = await supabase.functions.invoke('nearby-events', {
         body: { restaurantId },
     })
 
     // Both halves. invoke() reports a transport failure in `error` and the
     // function's own refusal in the body, and a caller that only reads one of
     // them tells somebody it worked when it did not.
-    if (error) throw new Error(error.message || 'Could not reach the Arena listings')
+    if (error) throw new Error(error.message || 'Could not reach the listings')
     if (data?.error) throw new Error(data.error)
 
     return { added: data?.added || 0, total: data?.total || 0 }

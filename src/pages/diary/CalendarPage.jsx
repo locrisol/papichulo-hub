@@ -5,7 +5,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { can, MANAGERS } from '@/lib/access'
 import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, weekMonthLabel } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { syncEvents, syncIsDue, markSynced } from '@/lib/ticketmaster'
+import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 import { nearbyRows, waiting } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import {
