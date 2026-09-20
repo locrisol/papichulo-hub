@@ -258,17 +258,26 @@ export function labourRollup(rows, sundayPremium = 0) {
 //
 // It names people rather than refusing quietly, because a block that does not
 // say what it wants is a block somebody works around.
-export function unanswered(rows) {
+//
+// `covered` is the days the old Labour archive already accounts for. Those are
+// answered by history: there is one total a day in labour_entries for every day
+// up to September 2026 and no timesheet will ever be typed for them, so a block
+// that demanded one would stop every report ever being written about the first
+// eight months of the year. His point, and the right one.
+export function unanswered(rows, covered) {
+    const already = covered instanceof Set ? covered : new Set(covered || [])
     const out = []
     for (const row of rows) {
-        const days = row.days.filter(d => d.unanswered).map(d => d.date)
+        const days = row.days
+            .filter(d => d.unanswered && !already.has(d.date))
+            .map(d => d.date)
         if (days.length) out.push({ person: row.person, days })
     }
     return out
 }
 
-export function weekAnswered(rows) {
-    return unanswered(rows).length === 0
+export function weekAnswered(rows, covered) {
+    return unanswered(rows, covered).length === 0
 }
 
 // ---------------------------------------------------------------------------

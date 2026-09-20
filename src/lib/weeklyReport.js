@@ -91,8 +91,14 @@ export function sectionKey(title, taken = []) {
 // report being written. It comes back as a warning instead.
 //
 // `days` is the sales_records rows for the week, `tenders` every till row for
-// the restaurant.
-export function weekReadiness(weekStart, days, tenders) {
+// the restaurant, and `unanswered` the people who have a rostered shift that
+// week with nothing said about it on the timesheet.
+//
+// A week is not ready while somebody was down to work and nobody has said
+// whether they did. That is a harder line than the missing sales day, and on
+// purpose: labour is a cost on this report, and a week missing a shift reports
+// a wage bill that is wrong without looking wrong.
+export function weekReadiness(weekStart, days, tenders, unanswered = []) {
     const dates = weekDates(weekStart)
     const byDate = new Map((days || []).map(d => [d.sale_date, d]))
     const shown = tendersToShow(tenders, (days || []).map(d => d.tender_sales))
@@ -109,7 +115,12 @@ export function weekReadiness(weekStart, days, tenders) {
         if (out !== 0) unbalanced.push({ date, out })
     }
 
-    return { ready: missing.length === 0, missing, unbalanced }
+    return {
+        ready: missing.length === 0 && unanswered.length === 0,
+        missing,
+        unbalanced,
+        unanswered,
+    }
 }
 
 // Has the week finished? A week is written up after it has ended, never while

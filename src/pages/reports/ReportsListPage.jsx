@@ -14,6 +14,7 @@ import {
     DEFAULT_SECTIONS,
     DEFAULT_OVERHEADS,
 } from '@/lib/weeklyReport'
+import { personWeek, unanswered } from '@/lib/timesheet'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -50,6 +51,18 @@ function missingWords(missing) {
     return `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]} have no figures yet.`
 }
 
+// The people who were down to work and nobody has said whether they did.
+// Named, the same as the missing days are, because a block that will not say
+// what it wants is a block somebody works around.
+function unansweredWords(waiting) {
+    const names = waiting.map(w => w.person.full_name)
+    const who = names.length === 1
+        ? names[0]
+        : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    const has = names.length === 1 ? 'has a rostered shift' : 'have rostered shifts'
+    return `${who} ${has} with nothing said on the timesheet.`
+}
+
 // The days that were entered and do not add up. Said, never enforced.
 function varianceWords(unbalanced) {
     return unbalanced
@@ -63,7 +76,7 @@ function varianceWords(unbalanced) {
 // Written once and used by both layouts. The phone list and the table showing
 // different buttons is exactly the kind of thing that happens when the same
 // decision is made twice.
-function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSales, wide }) {
+function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSales, onTimesheet, wide }) {
     const width = wide ? 'w-full justify-center ' : ''
 
     if (week.report) {
@@ -74,9 +87,16 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
         )
     }
     if (blocked) {
+        // Sent to whichever one is actually in the way. Sales first: a week
+        // with no figures at all is the bigger hole, and the timesheet is
+        // easier to finish once the days are there.
+        const toSales = week.readiness.missing.length > 0
         return (
-            <button onClick={onSales} className={`${width}${secondaryButton}`}>
-                Open weekly sales
+            <button
+                onClick={toSales ? onSales : onTimesheet}
+                className={`${width}${secondaryButton}`}
+            >
+                {toSales ? 'Open weekly sales' : 'Open the timesheet'}
             </button>
         )
     }
@@ -140,10 +160,12 @@ export default function ReportsListPage() {
         const from = wanted[wanted.length - 1]
         const to = addDays(wanted[0], 6)
 
-        // Three reads over a range, rather than one per week. Ten weeks is
-        // seventy days and a handful of reports, small enough to sort out here
-        // and far cheaper than thirty round trips.
-        const [reports, sales, tenders] = await Promise.all([
+        // Reads over a range, rather than one per week. Ten weeks is seventy
+        // days and a handful of reports, small enough to sort out here and far
+        // cheaper than thirty round trips. The last four are what says whether
+        // the timesheet has been done: who is on the team, what they were
+        // rostered, what the clock registered and who was away.
+        const [reports, sales, tenders, team, entries, absences, shifts, labour] = await Promise.all([
             supabase
                 .from('weekly_reports')
                 .select('id, week_start, status, published_at, send_count')
@@ -160,20 +182,69 @@ export default function ReportsListPage() {
                 .select('*')
                 .eq('restaurant_id', restaurantId)
                 .order('sort_order'),
+            supabase
+                .from('employees')
+                .select('id, full_name, hourly_rate, sort_order, started_on, ended_on')
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order'),
+            supabase
+                .from('timesheet_entries')
+                .select('employee_id, work_date, starts_at, ends_at, kind')
+                .eq('restaurant_id', restaurantId)
+                .gte('work_date', from).lte('work_date', to),
+            supabase
+                .from('absences')
+                .select('employee_id, kind, starts_on, ends_on, hours, status, can_work_from, can_work_to')
+                .eq('restaurant_id', restaurantId)
+                .lte('starts_on', to).gte('ends_on', from),
+            supabase
+                .from('roster_shifts')
+                .select('id, employee_id, shift_date, starts_at, ends_at')
+                .eq('restaurant_id', restaurantId)
+                .gte('shift_date', from).lte('shift_date', to),
+            // The days the old Labour archive already answers. Those weeks are
+            // accounted for by history and no timesheet will ever be typed for
+            // them, so asking for one would stop every report about the first
+            // eight months of 2026 from ever being written.
+            supabase
+                .from('labour_by_day')
+                .select('entry_date, came_from')
+                .eq('restaurant_id', restaurantId)
+                .gte('entry_date', from).lte('entry_date', to),
         ])
 
         const failed = reports.error || sales.error || tenders.error
+            || team.error || entries.error || absences.error || shifts.error || labour.error
         if (failed) { setError(friendlyError(failed)); setLoading(false); return }
+
+        const archived = new Set((labour.data || [])
+            .filter(l => l.came_from === 'archive')
+            .map(l => l.entry_date))
 
         const byWeek = new Map((reports.data || []).map(r => [r.week_start, r]))
 
         setWeeks(wanted.map(weekStart => {
+            const weekEnd = addDays(weekStart, 6)
             const days = (sales.data || []).filter(d =>
-                d.sale_date >= weekStart && d.sale_date <= addDays(weekStart, 6))
+                d.sale_date >= weekStart && d.sale_date <= weekEnd)
+
+            // Anybody who had left before the week or had not started is not on
+            // it, the same rule the timesheet itself uses.
+            const rows = (team.data || [])
+                .filter(p => (!p.ended_on || p.ended_on >= weekStart)
+                    && (!p.started_on || p.started_on <= weekEnd))
+                .map(person => personWeek({
+                    person,
+                    weekStart,
+                    entries: entries.data || [],
+                    absences: absences.data || [],
+                    shifts: shifts.data || [],
+                }))
+
             return {
                 weekStart,
                 report: byWeek.get(weekStart) || null,
-                readiness: weekReadiness(weekStart, days, tenders.data || []),
+                readiness: weekReadiness(weekStart, days, tenders.data || [], unanswered(rows, archived)),
                 net: days.filter(d => !d.is_closed).reduce((t, d) => t + num(d.net_sales), 0),
             }
         }))
@@ -333,6 +404,7 @@ export default function ReportsListPage() {
                                     onOpen={() => navigate(`/reports/${week.report.id}`)}
                                     onStart={() => start(week.weekStart)}
                                     onSales={() => navigate('/sales/weekly')}
+                                    onTimesheet={() => navigate('/costs/timesheet')}
                                 />
                             </div>
                         </div>
@@ -383,6 +455,7 @@ export default function ReportsListPage() {
                                                 onOpen={() => navigate(`/reports/${week.report.id}`)}
                                                 onStart={() => start(week.weekStart)}
                                                 onSales={() => navigate('/sales/weekly')}
+                                    onTimesheet={() => navigate('/costs/timesheet')}
                                             />
                                         </td>
                                     </tr>
@@ -392,7 +465,9 @@ export default function ReportsListPage() {
                                             <td colSpan={5} className="px-5 pb-3 text-sm">
                                                 {blocked && (
                                                     <span className="text-accent-ink">
-                                                        {missingWords(week.readiness.missing)}
+                                                        {week.readiness.missing.length > 0
+                                                            ? missingWords(week.readiness.missing)
+                                                            : unansweredWords(week.readiness.unanswered)}
                                                     </span>
                                                 )}
                                                 {off.length > 0 && (

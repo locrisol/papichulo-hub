@@ -108,6 +108,28 @@ describe('weekReadiness', () => {
         expect(weekReadiness('2026-08-09', days, TENDERS).ready).toBe(true)
     })
 
+    // Labour is a cost on this report, so a week where somebody was down to
+    // work and nobody has said whether they did reports a wage bill that is
+    // wrong without looking wrong. That is a harder line than a missing sales
+    // day on purpose.
+    it('stops a week where a rostered shift has nothing said about it', () => {
+        const waiting = [{ person: { id: 'e1', full_name: 'Aoife' }, days: ['2026-08-13'] }]
+        const out = weekReadiness('2026-08-09', fullWeek(), TENDERS, waiting)
+        expect(out.ready).toBe(false)
+        expect(out.unanswered).toBe(waiting)
+    })
+
+    it('is ready once the timesheet has nothing waiting', () => {
+        expect(weekReadiness('2026-08-09', fullWeek(), TENDERS, []).ready).toBe(true)
+    })
+
+    it('still minds the sales days as well', () => {
+        const days = fullWeek().filter(d => d.sale_date !== '2026-08-13')
+        const out = weekReadiness('2026-08-09', days, TENDERS, [])
+        expect(out.ready).toBe(false)
+        expect(out.missing).toEqual(['2026-08-13'])
+    })
+
     it('still stops a week that is missing a day', () => {
         const days = fullWeek().slice(0, 6)
         expect(weekReadiness('2026-08-09', days, TENDERS).ready).toBe(false)

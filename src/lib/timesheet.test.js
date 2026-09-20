@@ -418,6 +418,22 @@ describe('whether the week can go anywhere', () => {
     it('does not mind a blank day nobody was rostered for', () => {
         expect(weekAnswered([personWeek({ person: aoife, weekStart: WEEK })])).toBe(true)
     })
+
+    // His, and the right call: there are 245 days in the old Labour archive
+    // and no timesheet will ever be typed for any of them. A block that
+    // demanded one would stop every report about the first eight months of
+    // 2026 from ever being written.
+    it('lets a day the old Labour archive already answers through', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(weekAnswered(rows, [TUE])).toBe(true)
+        expect(unanswered(rows, new Set([TUE]))).toEqual([])
+    })
+
+    it('still asks about a day the archive does not cover', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
+        expect(weekAnswered(rows, ['2026-10-25'])).toBe(false)
+    })
 })
 
 describe('bringing a file in', () => {
