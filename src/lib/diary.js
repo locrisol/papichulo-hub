@@ -81,15 +81,24 @@ const KIND = {
         google: '7', // Peacock
     },
 
-    // These two are not kinds anybody can choose. They are the other two
-    // sources the calendar draws, and they are in here so one function answers
-    // "what colour is this item" whatever it came from.
+    // These four are not kinds anybody can choose. They are the other sources
+    // the calendar draws, and they are in here so one function answers "what
+    // colour is this item" whatever it came from.
     //
-    // Neither carries a Google colour, because neither is ever written there. An
-    // Arena listing is context rather than a commitment, and a quarter of them
+    // None carries a Google colour, because none is ever written there. What is
+    // on next door is context rather than a commitment, and a quarter of them
     // would bury everything that is actually ours.
+    //
+    // **Nothing that existed before this work shares a colour with anything
+    // new**, which is his rule and it is wider than the one case that caused
+    // it. Purple, grey, orange, green, amber, slate and stone were all taken
+    // before nearby events existed, so the two new ones are blue and indigo.
     arena: {
-        label: '3Arena',
+        // Not 3Arena any more. It was the only ticketed venue the Hub could
+        // hold when this was written, and the Pavilion and the Convention
+        // Centre sell the same way. What these have in common is that somebody
+        // bought a seat, which is the strongest signal any of this carries.
+        label: 'Ticketed',
         chip: 'bg-purple-50 text-purple-900 border-l-purple-700',
         tag: 'bg-purple-50 text-purple-900',
         dot: 'bg-purple-700',
@@ -108,6 +117,36 @@ const KIND = {
         fill: '#FFFFFF',
         ink: '#374151',
         edge: '#CBD5E1',
+        google: null,
+    },
+
+    // Read off a page somebody publishes for people rather than for us. The
+    // same badge whether it is a film opening, a regatta or a market.
+    nearby: {
+        label: 'Nearby',
+        chip: 'bg-blue-50 text-blue-900 border-l-blue-600',
+        tag: 'bg-blue-50 text-blue-900',
+        dot: 'bg-blue-600',
+        bar: '#2563EB',
+        fill: '#EFF6FF',
+        ink: '#1E3A8A',
+        edge: '#A8C5F0',
+        google: null,
+    },
+
+    // Nobody walks from these. They are here because they fill the hotels
+    // beside us, which is a different claim from the one every other badge
+    // makes, so the chip says CITY out loud rather than resting on somebody
+    // telling two blues apart at eleven pixels.
+    city: {
+        label: 'City',
+        chip: 'bg-indigo-50 text-indigo-900 border-l-indigo-700',
+        tag: 'bg-indigo-50 text-indigo-900',
+        dot: 'bg-indigo-700',
+        bar: '#4338CA',
+        fill: '#EEF2FF',
+        ink: '#312E81',
+        edge: '#B0B4EE',
         google: null,
     },
 }
@@ -450,7 +489,7 @@ export function entryProblem(form) {
 
 export const LAYERS = [
     'catering', 'meeting', 'promotion', 'maintenance', 'other',
-    'arena', 'delivery', 'private',
+    'arena', 'nearby', 'city', 'delivery', 'private',
 ]
 
 // Which switch turns this item off.
@@ -458,12 +497,15 @@ export const LAYERS = [
 // A private entry answers to its own layer rather than to its kind, so hiding
 // what is only yours is one press and does not also hide the catering.
 export function layerOf(item) {
-    if (item?.source === 'arena') return 'arena'
+    // A nearby listing answers to its own three, because what you want to
+    // switch off is a kind of noise rather than a source: somebody watching the
+    // Arena may well not want the city ones, and they arrive the same way.
+    if (item?.source === 'nearby') return item.kind || 'nearby'
     if (item?.source === 'delivery') return 'delivery'
     return item?.scope === 'private' ? 'private' : (item?.kind || 'other')
 }
 
-export function calendarItems({ entries, arena, dayNotes, from, to }) {
+export function calendarItems({ entries, nearby, dayNotes, from, to }) {
     const items = []
 
     for (const entry of entries || []) {
@@ -484,17 +526,32 @@ export function calendarItems({ entries, arena, dayNotes, from, to }) {
         }
     }
 
-    for (const event of arena || []) {
-        items.push({
-            key: `arena-${event.id}`,
-            source: 'arena',
-            kind: 'arena',
-            title: event.name,
-            date: event.event_date,
-            time: event.event_time ? shortTime(event.event_time) : '',
-            allDay: !event.event_time,
-            entry: event,
-        })
+    // Already decided by lib/nearby: which place it is at, whether this
+    // restaurant is near it, and whether anybody has checked it. This only
+    // spreads it over the days it covers, the same way a diary entry is spread.
+    //
+    // A run of days matters here as much as it does in the diary. A Christmas
+    // market over three weekends is one row and drawing it on the first day
+    // only would be a lie about it.
+    for (const row of nearby || []) {
+        const event = row?.event
+        if (!event) continue
+        for (const date of datesBetween(event.event_date, event.ends_on)) {
+            if (from && date < from) continue
+            if (to && date > to) continue
+            items.push({
+                key: `nearby-${event.id}-${date}`,
+                source: 'nearby',
+                kind: row.kind || 'nearby',
+                title: row.title || event.name,
+                date,
+                time: event.event_time ? shortTime(event.event_time) : '',
+                allDay: !event.event_time,
+                checked: row.checked !== false,
+                place: row.place,
+                entry: event,
+            })
+        }
     }
 
     for (const note of dayNotes || []) {

@@ -276,7 +276,15 @@ describe('everything a day has on it', () => {
         { id: 'c1', title: 'MUFG', starts_at: '13:00:00' },
         { id: 'm1', title: 'Area manager', starts_at: '09:00:00' },
     ]
-    const names = list => list.map(i => (i.entry ? i.entry.title : i.extra.name))
+    const near = [
+        { time: '17:00', event: { id: 'n1', name: 'Wicked opens' } },
+        { time: '18:30', event: { id: 'n2', name: 'Kings of Leon' } },
+    ]
+    const names = list => list.map(i => {
+        if (i.entry) return i.entry.title
+        if (i.near) return i.near.event.name
+        return i.extra.name
+    })
 
     it('reads down the day whichever table a thing came out of', () => {
         expect(names(whatIsOn(diary, day)))
@@ -318,5 +326,39 @@ describe('everything a day has on it', () => {
     it('copes with a day that has neither', () => {
         expect(whatIsOn([], null)).toEqual([])
         expect(whatIsOn(null, null)).toEqual([])
+    })
+
+    // The Thursday the whole thing is for: four things from three different
+    // tables, and one glance says the evening is going to move.
+    it('threads what is on next door into the same list', () => {
+        expect(names(whatIsOn(diary, day, near))).toEqual([
+            'Area manager', 'Lunch Team', 'Feedr', 'MUFG',
+            'Wicked opens', 'Kings of Leon', 'Extraction clean',
+        ])
+    })
+
+    // At the same moment: a job somebody booked, then a concert, then the
+    // delivery that arrives every week anyway.
+    it('ranks a commitment over a concert over a delivery at the same time', () => {
+        const all = whatIsOn(
+            [{ id: 'c1', title: 'MUFG', starts_at: '18:30' }],
+            { extras: [{ name: 'Feedr', time: '18:30' }] },
+            [{ time: '18:30', event: { id: 'n2', name: 'Kings of Leon' } }],
+        )
+        expect(names(all)).toEqual(['MUFG', 'Kings of Leon', 'Feedr'])
+    })
+
+    it('hands a nearby one back as it arrived', () => {
+        const found = whatIsOn([], null, near).find(i => i.near)
+        expect(found.near.event.id).toBe('n1')
+        expect(found.entry).toBe(undefined)
+        expect(found.extra).toBe(undefined)
+    })
+
+    // A listing nobody put a time on is still worth having, and it lands at
+    // the end with everything else that cannot be placed in the day.
+    it('leaves an untimed listing at the end', () => {
+        const order = names(whatIsOn([], day, [{ time: '', event: { id: 'n3', name: 'Regatta' } }]))
+        expect(order.slice(-2)).toEqual(['Regatta', 'Extraction clean'])
     })
 })

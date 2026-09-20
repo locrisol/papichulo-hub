@@ -938,6 +938,7 @@ CREATE UNIQUE INDEX "report_items_one_per_key" ON "public"."report_items" USING 
 CREATE TABLE IF NOT EXISTS "public"."places" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" "text" NOT NULL,
+    "short_name" "text",
     "ticketmaster_venue_id" "text",
     "page_url" "text",
     "capacity" integer,
@@ -956,6 +957,7 @@ COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds th
 COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
 COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
 COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead.';
+COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
 COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';
 
 ALTER TABLE ONLY "public"."places"

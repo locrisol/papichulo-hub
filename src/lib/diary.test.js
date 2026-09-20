@@ -371,14 +371,21 @@ describe('what is wrong with it before it is saved', () => {
 })
 
 describe('one screen out of three sources', () => {
-    const arena = [{ id: 'a1', name: 'Fontaines D.C.', event_date: '2026-10-16', event_time: '18:30:00' }]
+    // Already decided by lib/nearby: which place, how near, and whether
+    // anybody has checked it. calendarItems only spreads it over its days.
+    const arena = [{
+        kind: 'arena',
+        place: { id: 'p1', name: '3Arena' },
+        checked: true,
+        event: { id: 'a1', name: 'Fontaines D.C.', event_date: '2026-10-16', event_time: '18:30:00' },
+    }]
     const dayNotes = [{
         note_date: '2026-10-16',
         extras: [{ name: 'Feedr', time: '12:00' }, { name: 'Somebody', time: '' }],
     }]
 
     const items = () => calendarItems({
-        entries: [catering, promotion], arena, dayNotes,
+        entries: [catering, promotion], nearby: arena, dayNotes,
     })
 
     it('turns a diary entry into an item on every day it covers', () => {
@@ -388,9 +395,35 @@ describe('one screen out of three sources', () => {
         expect(mine[0].allDay).toBe(true)
     })
 
-    it('brings the Arena in', () => {
-        const one = items().find(i => i.source === 'arena')
-        expect(one).toMatchObject({ title: 'Fontaines D.C.', date: '2026-10-16', time: '18:30' })
+    it('brings what is on next door in', () => {
+        const one = items().find(i => i.source === 'nearby')
+        expect(one).toMatchObject({
+            title: 'Fontaines D.C.', date: '2026-10-16', time: '18:30', kind: 'arena',
+        })
+        expect(one.place.name).toBe('3Arena')
+    })
+
+    // A Christmas market over three weekends is one row, and drawing it on the
+    // first day only would be a lie about it.
+    it('spreads a run of days the way a diary entry is spread', () => {
+        const market = calendarItems({
+            nearby: [{
+                kind: 'nearby',
+                event: {
+                    id: 'm1', name: 'Christmas market',
+                    event_date: '2026-11-29', ends_on: '2026-12-02',
+                },
+            }],
+        })
+        expect(market.map(i => i.date))
+            .toEqual(['2026-11-29', '2026-11-30', '2026-12-01', '2026-12-02'])
+    })
+
+    it('carries whether anybody has checked it', () => {
+        const found = calendarItems({
+            nearby: [{ kind: 'nearby', checked: false, event: { id: 'f1', name: 'Quiz', event_date: '2026-10-16' } }],
+        })
+        expect(found[0].checked).toBe(false)
     })
 
     // The whole reason this exists. A screen built to answer what is coming up
@@ -417,8 +450,13 @@ describe('one screen out of three sources', () => {
 })
 
 describe('which switch turns an item off', () => {
-    it('sends the Arena and the deliveries to their own layers', () => {
-        expect(layerOf({ source: 'arena' })).toBe('arena')
+    // Three of them rather than one, because what somebody switches off is a
+    // kind of noise rather than a source: watching the Arena and not wanting
+    // the city ones is an ordinary thing to want, and both arrive the same way.
+    it('sends a nearby listing to its own kind and the deliveries to theirs', () => {
+        expect(layerOf({ source: 'nearby', kind: 'arena' })).toBe('arena')
+        expect(layerOf({ source: 'nearby', kind: 'nearby' })).toBe('nearby')
+        expect(layerOf({ source: 'nearby', kind: 'city' })).toBe('city')
         expect(layerOf({ source: 'delivery' })).toBe('delivery')
     })
 
@@ -435,6 +473,8 @@ describe('which switch turns an item off', () => {
     it('has a layer for every kind and then some', () => {
         for (const kind of KINDS) expect(LAYERS).toContain(kind)
         expect(LAYERS).toContain('arena')
+        expect(LAYERS).toContain('nearby')
+        expect(LAYERS).toContain('city')
         expect(LAYERS).toContain('delivery')
         expect(LAYERS).toContain('private')
     })
@@ -444,7 +484,10 @@ describe('what a day holds, in order', () => {
     const day = '2026-10-16'
     const built = () => calendarItems({
         entries: [catering, promotion],
-        arena: [{ id: 'a1', name: 'Fontaines D.C.', event_date: day, event_time: '18:30:00' }],
+        nearby: [{
+            kind: 'arena',
+            event: { id: 'a1', name: 'Fontaines D.C.', event_date: day, event_time: '18:30:00' },
+        }],
         dayNotes: [{ note_date: day, extras: [{ name: 'Feedr', time: '12:00' }, { name: 'Late one', time: '' }] }],
     })
 
