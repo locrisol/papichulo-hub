@@ -535,7 +535,11 @@ export default function EmployeesPage() {
                     title={editing ? editing.full_name : 'Add someone'}
                     onClose={() => { setAdding(false); setEditing(null) }}
                 >
+                    {/* A fresh form per person. Each locked field reads whether
+                        there was anything to protect once, when it opens, so it
+                        must open again when the record underneath it changes. */}
                     <EmployeeForm
+                        key={editing?.id || 'new'}
                         formData={form}
                         onChange={change}
                         onSubmit={save}
