@@ -233,7 +233,7 @@ describe('what the cells say', () => {
         expect(screen.queryAllByText('for 12:00–20:00')).toHaveLength(1)
     })
 
-    it('carries a typed note on the same line', () => {
+    it('carries a typed comment under the times', () => {
         grid({
             entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:33:16', kind: 'worked', note: 'stayed to close' }],
         })
@@ -281,7 +281,9 @@ describe('what the cells say', () => {
             shifts: [{ id: 's9', employee_id: 'e1', shift_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' }],
             entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: null, ends_at: null, kind: 'worked', note: 'swapped with somebody' }],
         })
-        expect(screen.getByText('“swapped with somebody”')).toBeInTheDocument()
+        // His own words, on their own line rather than quoted at the end of
+        // the app's.
+        expect(screen.getByText('swapped with somebody')).toBeInTheDocument()
         expect(screen.queryByText('+ comment')).not.toBeInTheDocument()
     })
 

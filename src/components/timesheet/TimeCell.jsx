@@ -22,7 +22,7 @@ import { removeButton } from '@/lib/controlStyles'
 // is, and a key that puts the plan in the box makes it easy to file the plan as
 // the record. That is the exact confusion this screen exists to end.
 
-const box = 'block w-full font-sans text-xs tabular-nums tracking-tight '
+const box = 'block w-full font-sans text-xs tabular-nums tracking-tight text-center '
     + 'border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-900 '
     + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 '
     + 'placeholder:text-gray-300 disabled:bg-gray-50 disabled:text-gray-400'
@@ -195,8 +195,12 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
         }
     }
 
+    // The comment is kept out of the line rather than joined onto the end of
+    // it. Everything else under a cell is the app talking, and this is the one
+    // thing on the screen he wrote himself, on its own line with a mark down
+    // the side of it, which is also what stops a sentence reading as though it
+    // were part of the rostered times in front of it.
     const note = cell.entries.map(e => e.note).filter(Boolean)[0]
-    if (note) bits.push(`“${note}”`)
 
     const kind = cell.entries.find(e => e.kind !== 'worked')
     if (kind) bits.unshift(kindOf(kind.kind).label)
@@ -220,7 +224,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     // is waiting for, and **the reason is the other way of answering it**: the
     // block has always said "times or a reason" and there was no way to give
     // the second one unless it was a holiday or a sick day.
-    if (!bits.length) {
+    if (!bits.length && !note) {
         const wanted = first?.starts_at || cell.unanswered
         if (!canEdit || !wanted) return null
         return (
@@ -240,13 +244,22 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
     // and the column is a fixed width, so the alternative to two lines is a
     // sentence disappearing off the side of the cell.
     const line = (
-        <span
-            className={`block text-[0.62rem] tabular-nums break-words leading-snug mt-0.5 ${
-                unplanned || cell.unexplained ? 'text-accent-ink font-semibold' : 'text-gray-400'
-            }`}
-        >
-            {bits.join(' · ')}
-        </span>
+        <>
+            {bits.length > 0 && (
+                <span
+                    className={`block text-[0.62rem] tabular-nums break-words leading-snug mt-0.5 ${
+                        unplanned || cell.unexplained ? 'text-accent-ink font-semibold' : 'text-gray-400'
+                    }`}
+                >
+                    {bits.join(' · ')}
+                </span>
+            )}
+            {note && (
+                <span className="block text-[0.62rem] italic text-gray-600 break-words leading-snug mt-0.5 pl-1.5 border-l-2 border-accent/50">
+                    {note}
+                </span>
+            )}
+        </>
     )
 
     if (!canEdit) return line

@@ -110,8 +110,12 @@ export default function TimesheetWeek({
                 </thead>
 
                 <tbody>
+                    {/* A heavier line between people than between the two
+                        boxes inside a cell. A row here is four lines tall and
+                        the hairline that divides one person from the next was
+                        lighter than the borders on the boxes inside them. */}
                     {rows.map((row, r) => (
-                        <tr key={row.person.id} className="border-b border-border align-top">
+                        <tr key={row.person.id} className="border-b-2 border-gray-300 align-top">
                             <th className="text-left px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">
                                 {row.person.full_name}
                                 {row.ownRate && (

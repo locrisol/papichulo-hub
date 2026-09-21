@@ -907,14 +907,10 @@ export default function WeeklySalesPage() {
                             />
                         )}
                     >
-                        {/* A set width on a wide screen, so the arrows do not
-                            shift sideways when the text changes length: 3 Aug -
-                            9 Aug is a lot narrower than 31 Aug - 6 Sept, and
-                            clicking back through weeks moved the button out from
-                            under the mouse. On a phone the arrows are pinned to
-                            the edges instead, so they cannot move whatever the
-                            date says, and the text takes the room between. */}
-                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap sm:w-44">
+                        {/* The width that keeps the arrows still lives in
+                            DateStepper now, so every screen with these arrows
+                            gets it. */}
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
                             {shortDate(dates[0])} - {shortDate(dates[6])}
                         </span>
                     </DateStepper>
