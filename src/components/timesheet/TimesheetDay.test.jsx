@@ -246,6 +246,22 @@ describe('how far off the plan it was', () => {
         expect(screen.getAllByText(/not rostered/).length).toBeGreaterThan(1)
     })
 
+    // His, on 21 September. A trial is never on the roster, so having no plan
+    // behind it is not a thing to warn about. The day view showed nothing at
+    // all about the kind, so it looked exactly like a shift somebody forgot.
+    // The legend carries the words too, so what is counted is how many times
+    // they appear: one is the legend alone, which is the row saying nothing.
+    it('calls an unrostered trial a trial rather than a warning', () => {
+        day({ entries: [{ ...worked, kind: 'trial' }] })
+        expect(screen.getByText(/· trial/)).toBeInTheDocument()
+        expect(screen.getAllByText(/not rostered/)).toHaveLength(1)
+    })
+
+    it('still warns about a worked day nobody rostered', () => {
+        day({ entries: [worked] })
+        expect(screen.getAllByText(/not rostered/).length).toBeGreaterThan(1)
+    })
+
     it('shows a comment written on a day with no times', () => {
         day({
             shifts: [rostered],

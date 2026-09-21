@@ -8,7 +8,7 @@ import { shortClock } from '@/lib/clock'
 import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { kindOf as absenceKind } from '@/lib/absences'
-import { planDrift, NOTICEABLE_MINUTES, ROW_BANDS } from '@/lib/timesheet'
+import { planDrift, NOTICEABLE_MINUTES, ROW_BANDS, kindOf } from '@/lib/timesheet'
 
 // One day, drawn the way the roster draws one.
 //
@@ -305,7 +305,26 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                         const plan = cell.rostered[i]
                                         const drift = planDrift(plan, start, ran)
                                         const adrift = drift && Math.abs(drift.minutes) > NOTICEABLE_MINUTES
-                                        const colour = adrift || !plan ? NOT_AS_PLANNED : AS_PLANNED
+
+                                        // A day that is not an ordinary worked
+                                        // one says so here, in the colour the
+                                        // week grid gives it. The day view used
+                                        // to show nothing at all about it, so a
+                                        // trial looked exactly like a shift
+                                        // somebody forgot to roster.
+                                        const kind = entry.kind && entry.kind !== 'worked'
+                                            ? kindOf(entry.kind)
+                                            : null
+                                        // **A trial is never rostered.** So
+                                        // having no plan is what a trial looks
+                                        // like when it is right, not a thing to
+                                        // warn about. Being far off a plan
+                                        // still counts, on a trial as on
+                                        // anything else.
+                                        const trial = entry.kind === 'trial'
+                                        const colour = adrift || (!plan && !trial)
+                                            ? NOT_AS_PLANNED
+                                            : kind ? kind.colour : AS_PLANNED
 
                                         return (
                                             <span key={entry.id}>
@@ -355,7 +374,12 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                                         was being cut off. */}
                                                     <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap leading-tight">
                                                         {fmtHours(ran / 60)}h
-                                                        {!plan && <span className="font-semibold text-accent-ink"> · not rostered</span>}
+                                                        {kind && (
+                                                            <span className="font-semibold" style={{ color: kind.colour }}>
+                                                                {' '}· {kind.label.toLowerCase()}
+                                                            </span>
+                                                        )}
+                                                        {!plan && !trial && <span className="font-semibold text-accent-ink"> · not rostered</span>}
                                                         {drift && drift.minutes !== 0 && (
                                                             <span
                                                                 className="font-semibold"

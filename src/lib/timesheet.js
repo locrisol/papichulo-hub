@@ -139,7 +139,15 @@ export function dayCell({
         holidayHours,
         // Somebody worked a day nobody planned. Worth saying on the cell: it is
         // the only way unplanned hours ever become visible.
-        unplanned: mine.length > 0 && rostered.length === 0,
+        //
+        // **A trial is never rostered, so it is never "not rostered".**
+        // Somebody comes in to try the job before there is anything to put
+        // them on a roster for, and the day already carries a label saying
+        // exactly that. It is the same rule the team list and the roster
+        // rules have always followed for somebody on trial: do not warn about
+        // the one thing a trial is not expected to have. A worked span on the
+        // same day still counts, because that one was meant to be planned.
+        unplanned: rostered.length === 0 && mine.some(e => e.kind !== 'trial'),
         // Down to work and never clocked in. Worth saying on the screen
         // whatever else is true, because it is the thing somebody reading the
         // day wants to know.

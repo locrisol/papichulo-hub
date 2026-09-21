@@ -144,6 +144,38 @@ describe('one day', () => {
         expect(cell.unplanned).toBe(false)
     })
 
+    // His, on 21 September. Somebody comes in to try the job before there is
+    // anything to roster them for, so a trial with no plan behind it is what a
+    // trial looks like when everything is right.
+    it('says nothing about a trial nobody rostered', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '11:00:00', ends_at: '15:00:00', kind: 'trial' })],
+        })
+        expect(cell.unplanned).toBe(false)
+    })
+
+    // A trial does not cover for a shift that was meant to be on the roster.
+    it('still marks a worked span sharing the day with a trial', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [
+                shift({ work_date: MON, starts_at: '11:00:00', ends_at: '15:00:00', kind: 'trial' }),
+                shift({ work_date: MON, starts_at: '18:00:00', ends_at: '22:00:00' }),
+            ],
+        })
+        expect(cell.unplanned).toBe(true)
+    })
+
+    // Training is rostered like any other day, so it keeps the warning.
+    it('still marks a training day nobody rostered', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '13:00:00', kind: 'training' })],
+        })
+        expect(cell.unplanned).toBe(true)
+    })
+
     it('marks a rostered day nobody has answered', () => {
         const cell = dayCell({ ...args, shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }] })
         expect(cell.unanswered).toBe(true)
