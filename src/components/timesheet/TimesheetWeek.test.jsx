@@ -163,7 +163,8 @@ describe('what the cells say', () => {
         // nothing in Worked. That is where his sheet has always kept it.
         const hers = document.querySelectorAll('tbody tr')[0]
         expect(within(hers).getByText('Holiday')).toBeInTheDocument()
-        const figures = Array.from(hers.querySelectorAll('td.text-right')).map(td => td.textContent)
+        // The three figures are centred now, with the rest of them.
+        const figures = Array.from(hers.querySelectorAll('td.text-center')).map(td => td.textContent.trim())
         expect(figures).toEqual(['8.00', '0.00', '€0.00'])
     })
 

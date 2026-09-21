@@ -24,6 +24,36 @@ import { focusBox, stepFrom } from '@/components/timesheet/boxes'
 // What is handled is Enter, which moves on, and the up and down arrows, which
 // change person. Left and right are left alone so a typo can still be fixed.
 
+// The one table in the Hub with a palette of its own, and it earns it: three
+// different jobs are going on in one grid. The name says whose row it is, the
+// seven days are the only thing you type into, and the three figures on the
+// right are what the week came to.
+//
+// So there is a ladder, heaviest at the answer. The heading row keeps the green
+// every other table in the app uses and is darker than anything below it, which
+// is what stops the top-left corner reading as part of the name column. The
+// name and Cost are a lighter green, Worked a tint of it, Holiday a faint blue
+// because blue is what a holiday is everywhere else in the Hub, and the days
+// themselves are the app's own cream so the only white left on the screen is a
+// box you can type in.
+//
+// Two tones each, for the row bands: a long team is read across, and a band is
+// the cheapest way to keep an eye on one line of it.
+const SHEET = {
+    name: ['#33513F', '#3B5B48'],
+    // All seven the same. A deeper Saturday and Sunday was in the drawing and
+    // he took it out: the week is read a person at a time, and a column that is
+    // darker for no reason anybody types is one more thing to explain.
+    day: ['#F7F5F0', '#F2EFE9'],
+    holiday: ['#E9EFF6', '#E2EAF3'],
+    worked: ['#D9E1DB', '#D1DBD4'],
+    cost: ['#33513F', '#3B5B48'],
+    // One light line down each day, so a Wednesday cannot be read as a Tuesday.
+    rule: '1px solid rgba(24, 47, 36, 0.10)',
+    figureInk: '#16301F',
+    holidayInk: '#3F5871',
+}
+
 export default function TimesheetWeek({
     rows, dates, canEdit = true,
     onType, onSettle, onState, onClear, onAdd, onOpen,
@@ -74,7 +104,9 @@ export default function TimesheetWeek({
                     <col className="w-[8%]" />
                 </colgroup>
                 <thead>
-                    <tr className={tableHeadRow}>
+                    {/* A rule under the heading, because the first person used
+                        to start flush against it. */}
+                    <tr className={`${tableHeadRow} border-b-[3px] border-[#0B1A12]`}>
                         <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
                             Who
                         </th>
@@ -83,7 +115,8 @@ export default function TimesheetWeek({
                             return (
                                 <th
                                     key={date}
-                                    className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                                    style={{ borderLeft: SHEET.rule }}
+                                    className="text-center px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                                 >
                                     {DAY_NAMES[new Date(`${date}T00:00:00`).getDay()]} {shortDate(date)}
                                     {/* A bank holiday is named on the heading
@@ -114,12 +147,17 @@ export default function TimesheetWeek({
                         boxes inside a cell. A row here is four lines tall and
                         the hairline that divides one person from the next was
                         lighter than the borders on the boxes inside them. */}
-                    {rows.map((row, r) => (
+                    {rows.map((row, r) => {
+                        const band = r % 2
+                        return (
                         <tr key={row.person.id} className="border-b-2 border-gray-300 align-top">
-                            <th className="text-left px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">
+                            <th
+                                style={{ backgroundColor: SHEET.name[band] }}
+                                className="text-left px-3 py-2 font-semibold text-white whitespace-nowrap"
+                            >
                                 {row.person.full_name}
                                 {row.ownRate && (
-                                    <span className="block text-xs text-muted tracking-wide">
+                                    <span className="block text-xs text-white/60 tracking-wide">
                                         {fmtMoney(row.rate)}
                                     </span>
                                 )}
@@ -129,7 +167,12 @@ export default function TimesheetWeek({
                                 <td
                                     key={cell.date}
                                     className="px-3 py-2 align-top"
-                                    style={cell.bankHoliday ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
+                                    style={{
+                                        borderLeft: SHEET.rule,
+                                        backgroundColor: cell.bankHoliday
+                                            ? BANK_HOLIDAY_WASH
+                                            : SHEET.day[band],
+                                    }}
                                 >
                                     <TimeCell
                                         cell={cell}
@@ -145,11 +188,18 @@ export default function TimesheetWeek({
                                 </td>
                             ))}
 
-                            <Figure>{row.holiday ? row.holiday.toFixed(2) : '—'}</Figure>
-                            <Figure bold>{row.worked.toFixed(2)}</Figure>
-                            <Figure>{fmtMoney(row.cost)}</Figure>
+                            <Figure fill={SHEET.holiday[band]} ink={SHEET.holidayInk}>
+                                {row.holiday ? row.holiday.toFixed(2) : '—'}
+                            </Figure>
+                            <Figure fill={SHEET.worked[band]} ink={SHEET.figureInk} bold>
+                                {row.worked.toFixed(2)}
+                            </Figure>
+                            <Figure fill={SHEET.cost[band]} ink="#FFFFFF" bold>
+                                {fmtMoney(row.cost)}
+                            </Figure>
                         </tr>
-                    ))}
+                        )
+                    })}
 
                     {rows.length === 0 && (
                         <tr>
@@ -166,23 +216,37 @@ export default function TimesheetWeek({
                     more person's. Same situation, same answer. */}
                 <tfoot>
                     <tr className="border-t-2 border-gray-300 bg-gray-200">
-                        <Foot>Hours</Foot>
+                        <Foot style={{ backgroundColor: SHEET.name[0], color: '#FFFFFF' }}>Hours</Foot>
                         {totals.perDay.map(day => (
-                            <Foot key={day.date} right style={day.bankHoliday ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}>
+                            <Foot
+                                key={day.date}
+                                style={{
+                                    borderLeft: SHEET.rule,
+                                    ...(day.bankHoliday ? { backgroundColor: BANK_HOLIDAY_WASH } : {}),
+                                }}
+                            >
                                 {day.hours.toFixed(2)}
                             </Foot>
                         ))}
-                        <Foot right>{totals.holiday ? totals.holiday.toFixed(2) : '—'}</Foot>
-                        <Foot right>{totals.hours.toFixed(2)}</Foot>
-                        <Foot right>{fmtMoney(totals.cost)}</Foot>
+                        <Foot style={{ backgroundColor: SHEET.holiday[0], color: SHEET.holidayInk }}>
+                            {totals.holiday ? totals.holiday.toFixed(2) : '—'}
+                        </Foot>
+                        <Foot style={{ backgroundColor: SHEET.worked[0], color: SHEET.figureInk }}>
+                            {totals.hours.toFixed(2)}
+                        </Foot>
+                        <Foot style={{ backgroundColor: SHEET.cost[0], color: '#FFFFFF' }}>
+                            {fmtMoney(totals.cost)}
+                        </Foot>
                     </tr>
 
                     <tr className="border-t border-gray-300 bg-gray-200">
-                        <Foot>Cost</Foot>
+                        <Foot style={{ backgroundColor: SHEET.name[0], color: '#FFFFFF' }}>Cost</Foot>
                         {totals.perDay.map(day => (
-                            <Foot key={day.date} right>{fmtMoney(day.cost)}</Foot>
+                            <Foot key={day.date} style={{ borderLeft: SHEET.rule }}>{fmtMoney(day.cost)}</Foot>
                         ))}
-                        <Foot colSpan={3} />
+                        <Foot style={{ backgroundColor: SHEET.holiday[0] }} />
+                        <Foot style={{ backgroundColor: SHEET.worked[0] }} />
+                        <Foot style={{ backgroundColor: SHEET.cost[0] }} />
                     </tr>
                 </tfoot>
             </table>
@@ -191,22 +255,30 @@ export default function TimesheetWeek({
 }
 
 const Head = ({ children }) => (
-    <th className="text-right px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
+    <th
+        style={{ borderLeft: SHEET.rule }}
+        className="text-center px-3 py-2 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+    >
         {children}
     </th>
 )
 
-const Figure = ({ children, bold }) => (
-    <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${bold ? 'font-medium text-gray-900' : 'text-gray-900'}`}>
+// Centred, all of them. A column of figures under a centred heading was reading
+// right and the heading middle, and there is nothing in these three columns
+// long enough to need lining up on its last digit.
+const Figure = ({ children, bold, fill, ink }) => (
+    <td
+        style={{ backgroundColor: fill, color: ink, borderLeft: SHEET.rule }}
+        className={`px-3 py-2 text-center tabular-nums whitespace-nowrap ${bold ? 'font-semibold' : ''}`}
+    >
         {children}
     </td>
 )
 
-const Foot = ({ children, right, colSpan, style }) => (
+const Foot = ({ children, style }) => (
     <td
-        colSpan={colSpan}
         style={style}
-        className={`px-3 py-2.5 font-semibold text-gray-900 tabular-nums whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
+        className="px-3 py-2.5 font-semibold text-gray-900 tabular-nums whitespace-nowrap text-center first:text-left"
     >
         {children}
     </td>
