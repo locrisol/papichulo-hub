@@ -300,6 +300,11 @@ export const badge =
 export function jumpLabel(isCurrent, unit = 'week') {
     if (unit === 'day') return isCurrent ? 'Today' : 'Go to today'
     if (unit === 'month') return isCurrent ? 'This month' : 'Go to current month'
+    // The timesheet is the one screen whose home is not now. It is filled in
+    // once a week has finished and the till's report for it exists, so the week
+    // it opens on is last week, and a button offering to take you to this one
+    // is offering the week there is nothing to do on yet.
+    if (unit === 'lastWeek') return isCurrent ? 'Last week' : 'Go to last week'
     return isCurrent ? 'This week' : 'Go to current week'
 }
 

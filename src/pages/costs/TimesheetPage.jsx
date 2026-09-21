@@ -40,6 +40,10 @@ const VIEWS = [
     { id: 'day', label: 'Day' },
 ]
 
+// Where this screen lives. Not this week: a timesheet is filled in once the
+// week has finished and the till's report for it exists.
+const lastWeekStart = () => addDays(weekStartOf(todayISO()), -7)
+
 // A list of people, read out the way somebody would say it.
 function names(waiting) {
     const all = waiting.map(w => w.person.full_name)
@@ -57,7 +61,7 @@ export default function TimesheetPage() {
     // is still running means stepping back every single time. The roster is the
     // other way round and opens on this week, because a roster is written
     // forwards. Same button, opposite jobs.
-    const [weekStart, setWeekStart] = useState(addDays(weekStartOf(todayISO()), -7))
+    const [weekStart, setWeekStart] = useState(lastWeekStart)
     const [pickerDate, setPickerDate] = useState(weekStart)
     const [view, setView] = useState('week')
     const [openDay, setOpenDay] = useState(weekStart)
@@ -646,8 +650,9 @@ export default function TimesheetPage() {
                     nextLabel="Next week"
                     jump={(
                         <JumpButton
-                            isCurrent={weekStart === weekStartOf(todayISO())}
-                            onClick={() => goToWeek(todayISO())}
+                            isCurrent={weekStart === lastWeekStart()}
+                            unit="lastWeek"
+                            onClick={() => goToWeek(lastWeekStart())}
                         />
                     )}
                 >

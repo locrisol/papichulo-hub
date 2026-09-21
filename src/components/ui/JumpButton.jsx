@@ -1,8 +1,8 @@
 import { jumpButton, jumpLabel } from '@/lib/controlStyles'
 
-// The button that goes back to now. "This week" when you are already on it,
-// "Go to current week" when you are not, and the same pair for a day or a
-// month.
+// The button that goes back to where a screen lives. "This week" when you are
+// already on it, "Go to current week" when you are not, and the same pair for a
+// day, a month, or the timesheet's last week.
 //
 // It is a component rather than two loose helpers for one reason, and it is
 // not tidiness. The two labels are different lengths, so a button that shrinks

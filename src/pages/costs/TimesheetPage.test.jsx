@@ -398,3 +398,18 @@ describe('saying that it saved', () => {
         expect(screen.getByText('Not saved')).toBeInTheDocument()
     })
 })
+
+describe('the button that takes you home', () => {
+    // Home here is last week, not this one, so the button that said "This week"
+    // in the colour that means "you are here" was pointing at the week there is
+    // nothing to do on yet.
+    it('says you are on last week, and offers to bring you back to it', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.getByRole('button', { name: 'Last week' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: 'Next week' }))
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Go to last week' })).toBeInTheDocument())
+    })
+})
