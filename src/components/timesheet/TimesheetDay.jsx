@@ -8,6 +8,7 @@ import { shortClock } from '@/lib/clock'
 import { BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { kindOf as absenceKind } from '@/lib/absences'
+import { planDrift, NOTICEABLE_MINUTES, ROW_BANDS } from '@/lib/timesheet'
 
 // One day, drawn the way the roster draws one.
 //
@@ -33,12 +34,12 @@ import { kindOf as absenceKind } from '@/lib/absences'
 // answer at the time was "longer than the plan by five minutes", which is not
 // a rule anybody could have guessed from looking.
 //
-// **Green means the clock and the plan agree. Orange means they do not.** By
-// how much is written on the block, signed, so the colour says there is
-// something to look at and the figure says what. Five minutes was too fine:
-// almost every real shift is a few minutes either way, and a screen where
-// nearly everything is orange is a screen where orange means nothing.
-const NOTICEABLE_MINUTES = 15
+// **Dark means the clock and the plan agree. Orange means they do not.** How
+// far out, and at which end, is written on the block, signed, so the colour
+// says there is something to look at and the figure says what. Both halves of
+// the rule live in the rules module now: how far is too far, and the measuring
+// itself, which looks at the start, the end and the length rather than only at
+// how long the shift ran.
 const AS_PLANNED = '#182F24'
 const NOT_AS_PLANNED = '#BC552B'
 
@@ -193,15 +194,28 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
 
                     {mine.length === 0 ? (
                         <p className="p-8 text-center text-sm text-muted italic">Nobody on the team list yet.</p>
-                    ) : mine.map(({ row, cell }) => {
+                    ) : mine.map(({ row, cell }, n) => {
                         const off = cell.absence ? absenceKind(cell.absence.kind) : null
                         const registered = cell.entries.filter(e => e.starts_at && e.ends_at)
                         // A day somebody wrote a comment on instead of times.
                         const said = cell.entries.find(e => !e.starts_at && e.note)
 
                         return (
-                            <div key={row.person.id} className="flex border-b border-border last:border-b-0">
-                                <div className="w-40 flex-shrink-0 px-3 py-2 flex flex-col justify-center">
+                            /* A row is a person, and on a wide screen the
+                               name is a long way from the bar you are reading.
+                               So each one gets a ground of its own, the same
+                               two the week grid bands with, and the names get
+                               a column edge to sit against rather than
+                               floating beside the track. A hairline alone was
+                               not enough across that distance: the eye has
+                               nothing to follow between the name and the
+                               block, and picks up the wrong row. */
+                            <div
+                                key={row.person.id}
+                                className="flex border-b border-border last:border-b-0"
+                                style={{ backgroundColor: ROW_BANDS[n % 2] }}
+                            >
+                                <div className="w-40 flex-shrink-0 px-3 py-2 flex flex-col justify-center border-r border-border">
                                     <span className="text-sm font-semibold text-gray-900 truncate">
                                         {row.person.full_name}
                                     </span>
@@ -289,10 +303,8 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                             : shiftMinutes(entry.starts_at, entry.ends_at)
 
                                         const plan = cell.rostered[i]
-                                        const apart = plan
-                                            ? ran - shiftMinutes(plan.starts_at, plan.ends_at)
-                                            : 0
-                                        const adrift = plan && Math.abs(apart) > NOTICEABLE_MINUTES
+                                        const drift = planDrift(plan, start, ran)
+                                        const adrift = drift && Math.abs(drift.minutes) > NOTICEABLE_MINUTES
                                         const colour = adrift || !plan ? NOT_AS_PLANNED : AS_PLANNED
 
                                         return (
@@ -344,12 +356,12 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                                                     <span className="block text-[0.625rem] text-gray-600 whitespace-nowrap leading-tight">
                                                         {fmtHours(ran / 60)}h
                                                         {!plan && <span className="font-semibold text-accent-ink"> · not rostered</span>}
-                                                        {plan && apart !== 0 && (
+                                                        {drift && drift.minutes !== 0 && (
                                                             <span
                                                                 className="font-semibold"
                                                                 style={{ color: adrift ? NOT_AS_PLANNED : '#4B5563' }}
                                                             >
-                                                                {' '}· {apart > 0 ? '+' : '−'}{Math.abs(apart)} min
+                                                                {' '}· {drift.where} {drift.minutes > 0 ? '+' : '−'}{Math.abs(drift.minutes)} min
                                                             </span>
                                                         )}
                                                     </span>
@@ -378,7 +390,8 @@ export default function TimesheetDay({ rows, date, canEdit = true, onOpenDay, on
                 <Chip dashed>what they were rostered for</Chip>
                 <Chip colour={AS_PLANNED}>the clock agreed with it</Chip>
                 <Chip colour={NOT_AS_PLANNED}>
-                    out by more than {NOTICEABLE_MINUTES} minutes, or not rostered
+                    more than {NOTICEABLE_MINUTES} minutes out at either end, or in what it ran,
+                    or not rostered
                 </Chip>
                 {canEdit && (
                     <span className="ml-auto">Drag an end to correct it, or press it to type it exactly.</span>

@@ -2,7 +2,7 @@ import { DAY_NAMES } from '@/lib/events'
 import { shortDate } from '@/lib/dates'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { statusFor } from '@/lib/costTargets'
-import { weekTotals } from '@/lib/timesheet'
+import { weekTotals, ROW_BANDS } from '@/lib/timesheet'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import TimeCell from '@/components/timesheet/TimeCell'
@@ -45,7 +45,10 @@ const SHEET = {
     // All seven the same. A deeper Saturday and Sunday was in the drawing and
     // he took it out: the week is read a person at a time, and a column that is
     // darker for no reason anybody types is one more thing to explain.
-    day: ['#FDFCFA', '#FAF9F6'],
+    //
+    // Shared with the day view, so the same person bands the same way whichever
+    // way the week is being read.
+    day: ROW_BANDS,
     holiday: ['#E9EFF6', '#E2EAF3'],
     worked: ['#D9E1DB', '#D1DBD4'],
     cost: ['#33513F', '#3B5B48'],

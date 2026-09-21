@@ -132,7 +132,7 @@ describe('the legend', () => {
         day()
         expect(screen.getByText('what they were rostered for')).toBeInTheDocument()
         expect(screen.getByText('the clock agreed with it')).toBeInTheDocument()
-        expect(screen.getByText(/out by more than 15 minutes/)).toBeInTheDocument()
+        expect(screen.getByText(/more than 60 minutes out at either end/)).toBeInTheDocument()
     })
 })
 
@@ -221,9 +221,22 @@ describe('correcting a clock time from the day view', () => {
 })
 
 describe('how far off the plan it was', () => {
-    it('writes the difference on the block, signed', () => {
+    // Rostered 09:00 to 17:00, clocked 09:01:22 to 17:33:16. A minute late in
+    // and thirty-three past the end, so the end is what gets named.
+    it('writes the difference on the block, signed, and says which end', () => {
         day({ shifts: [rostered], entries: [worked] })
-        expect(screen.getByText(/\+32 min/)).toBeInTheDocument()
+        expect(screen.getByText(/out \+33 min/)).toBeInTheDocument()
+    })
+
+    // His, on 21 September. A shift moved wholesale runs for exactly as long
+    // as the plan, so a rule that only compared lengths had nothing to say
+    // about a day that started and finished three hours out.
+    it('sees a shift that moved even though it ran the same length', () => {
+        day({
+            shifts: [rostered],
+            entries: [{ ...worked, starts_at: '12:00:00', ends_at: '20:00:00' }],
+        })
+        expect(screen.getByText(/in \+180 min/)).toBeInTheDocument()
     })
 
     // Twice: under the name, and on the block itself, which is where somebody

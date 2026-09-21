@@ -3,6 +3,7 @@ import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
     personWeek, weekTotals, labourRollup, labourPercent,
     unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
+    planDrift, NOTICEABLE_MINUTES, ROW_BANDS,
 } from '@/lib/timesheet'
 
 // The week of Sunday 25 to Saturday 31 October 2026, which holds the October
@@ -800,5 +801,77 @@ describe('a week that has not finished yet', () => {
             entries: [shift({ employee_id: 'e1', work_date: SUN, starts_at: '09:00:00', ends_at: '17:00:00', source: 'corrected' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
+    })
+})
+
+
+// How far a shift ended up from the plan. The figures are the ones off his own
+// screen on 21 September, a Monday in the week of 13 September.
+describe('how far the clock ended up from the plan', () => {
+    const plan = (starts, ends) => ({ starts_at: starts, ends_at: ends })
+    const at = t => {
+        const [h, m] = t.split(':').map(Number)
+        return h * 60 + m
+    }
+    const drift = (planned, from, to) => planDrift(plan(planned[0], planned[1]), at(from), at(to) - at(from))
+
+    it('has nothing to say about a shift nobody rostered', () => {
+        expect(planDrift(null, 540, 480)).toBeNull()
+    })
+
+    // The one this was rewritten for. In three hours late and out three hours
+    // late is the same length as the plan, so comparing lengths made it nought
+    // and drew it as though the day had gone exactly as written.
+    it('sees a shift that simply moved, which comparing lengths could not', () => {
+        const out = drift(['09:00:00', '17:00:00'], '12:00', '20:00')
+        expect(out).toEqual({ where: 'in', minutes: 180 })
+        expect(Math.abs(out.minutes) > NOTICEABLE_MINUTES).toBe(true)
+    })
+
+    it('names the end that is furthest out', () => {
+        // Rostered 08:30 to 15:00, clocked 11:08 to 22:20: in +158, out +440.
+        expect(drift(['08:30:00', '15:00:00'], '11:08', '22:20'))
+            .toEqual({ where: 'out', minutes: 440 })
+    })
+
+    it('says how long it ran when both ends moved opposite ways', () => {
+        // Half an hour early and half an hour late is only thirty at each end,
+        // and an hour longer than the day that was planned.
+        expect(drift(['10:00:00', '18:00:00'], '09:30', '18:30'))
+            .toEqual({ where: 'ran', minutes: 60 })
+    })
+
+    it('signs a shift that came up short', () => {
+        expect(drift(['09:00:00', '17:00:00'], '09:00', '15:00'))
+            .toEqual({ where: 'out', minutes: -120 })
+    })
+})
+
+// His, on 21 September: an hour, everywhere, rather than fifteen minutes on
+// the length alone.
+describe('what counts as far enough to look at', () => {
+    const plan = { starts_at: '17:00:00', ends_at: '21:30:00' }
+    const far = out => Math.abs(out.minutes) > NOTICEABLE_MINUTES
+
+    it('is an hour', () => {
+        expect(NOTICEABLE_MINUTES).toBe(60)
+    })
+
+    // 17:05 to 22:20 against 17:00 to 21:30. Fifty minutes past the end, which
+    // used to be marked and is not the kind of difference anybody would look
+    // twice at.
+    it('leaves fifty minutes past the end alone', () => {
+        expect(far(planDrift(plan, 17 * 60 + 5, 315))).toBe(false)
+    })
+
+    it('marks an hour and a half past the end', () => {
+        expect(far(planDrift(plan, 17 * 60, 360))).toBe(true)
+    })
+
+    // Not a fourth shade. The day view has one colour for agreeing and one for
+    // not, and the figure beside it says by how much.
+    it('bands a row from the same two grounds the week grid uses', () => {
+        expect(ROW_BANDS).toHaveLength(2)
+        expect(ROW_BANDS[0]).not.toBe(ROW_BANDS[1])
     })
 })

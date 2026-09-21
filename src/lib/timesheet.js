@@ -19,6 +19,7 @@
 
 import { weekDates, todayISO } from '@/lib/dates'
 import { spanHours, toSeconds } from '@/lib/clock'
+import { toMinutes, shiftMinutes } from '@/lib/roster'
 import {
     wholeDayOn, absenceDays, holidayHoursInWeek, kindOf as absenceKind,
 } from '@/lib/absences'
@@ -501,3 +502,44 @@ export function planImport({ shifts = [], mappings = [], entries = [], absences 
         ...summarise(steps),
     }
 }
+
+// The two grounds a person's row alternates between.
+//
+// Here rather than in either view, because the week grid and the day view show
+// the same week two ways and a person banded in one and not the other is a
+// person you lose your place on.
+export const ROW_BANDS = ['#FDFCFA', '#FAF9F6']
+
+// How far the clock ended up from the plan, and at which end.
+//
+// **Everywhere, not just how long it ran.** This used to compare the two
+// lengths and nothing else, so a shift moved wholesale, in three hours late and
+// out three hours late, came out as nought and drew as though it had gone
+// exactly to plan. The start, the end and the length are three different ways
+// of being out, so all three are measured and the largest is what the day view
+// writes on the block and takes its colour from.
+export function planDrift(plan, startedAt, ranFor) {
+    if (!plan) return null
+
+    const planStart = toMinutes(plan.starts_at)
+    const planRan = shiftMinutes(plan.starts_at, plan.ends_at)
+
+    // 'in' first, so a shift that simply moved names the end somebody would
+    // look at first rather than the one that happens to sort earlier.
+    const ways = [
+        { where: 'in', minutes: startedAt - planStart },
+        { where: 'out', minutes: (startedAt + ranFor) - (planStart + planRan) },
+        { where: 'ran', minutes: ranFor - planRan },
+    ]
+
+    return ways.reduce((worst, one) => (
+        Math.abs(one.minutes) > Math.abs(worst.minutes) ? one : worst
+    ))
+}
+
+// **An hour.** It was fifteen minutes, and before that five. Five made nearly
+// every real shift orange, which is a screen where orange means nothing;
+// fifteen still caught the ordinary few minutes either side of a plan that
+// nobody would look twice at. An hour is the point where a difference is worth
+// somebody's attention, and it is his figure.
+export const NOTICEABLE_MINUTES = 60
