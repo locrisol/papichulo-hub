@@ -197,6 +197,54 @@ describe('saying why, when there are no times to hang it on', () => {
     })
 })
 
+describe('rubbing out a comment', () => {
+    // His, on Georgiana's 10th of September: a day with no times and the letter
+    // A typed into it while testing. Clearing it asked the database to keep a
+    // row saying nothing at all, which it refuses, and the screen came back
+    // with a sentence about a column.
+    const comment_only = {
+        id: 't9', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+        starts_at: null, ends_at: null, kind: 'worked', source: 'typed', note: 'A',
+    }
+
+    it('takes the row with it when there is nothing else on the day', async () => {
+        rows.timesheet_entries = [comment_only]
+        rows.roster_shifts = [{
+            id: 's1', employee_id: 'e1', shift_date: WEEK, starts_at: '09:00:00', ends_at: '17:00:00',
+        }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(screen.getByText('A'))
+        const box = await screen.findByLabelText('Why nothing was worked, for the accountant')
+        await userEvent.clear(box)
+        await userEvent.tab()
+
+        await waitFor(() => expect(deleted).toHaveLength(1))
+        expect(deleted[0].id).toBe('t9')
+        expect(updated).toHaveLength(0)
+    })
+
+    // A till shift somebody emptied is a correction waiting to be explained, so
+    // clearing the words leaves the row exactly where it is.
+    it('keeps an emptied till shift, which is still a correction', async () => {
+        rows.timesheet_entries = [{ ...comment_only, source: 'corrected' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        // It carries a comment, so the cell shows that rather than asking for
+        // one. Pressing it is how the day opens either way.
+        await userEvent.click(screen.getByText('A'))
+        const box = await screen.findByLabelText('Why nothing was worked, for the accountant')
+        await userEvent.clear(box)
+        await userEvent.tab()
+
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].patch).toEqual({ note: null })
+        expect(deleted).toHaveLength(0)
+    })
+})
+
 describe('changing a time the till gave', () => {
     // His rule. A week typed from nothing is what it looks like and so is a
     // week off the clock; a clock time somebody moved afterwards looks exactly

@@ -544,6 +544,22 @@ export default function TimesheetPage() {
 
         if (entry?.id) {
             if (note === (entry.note ?? null)) return
+
+            // **Rubbing out the last thing on a row takes the row with it.**
+            //
+            // A row with no times and no comment says nothing at all, and the
+            // database refuses one, so clearing the comment on a day that never
+            // had times came back as "that value is not one this field
+            // accepts", which is a sentence about a column and not about
+            // anything he did.
+            //
+            // Two rows are not nothing and stay: a day marked as training or a
+            // trial before the times were typed, and a till shift somebody
+            // emptied, which is a correction still waiting to be explained.
+            const bare = !entry.starts_at && !entry.ends_at
+                && entry.kind === 'worked' && !cameFromTill(entry)
+            if (!note && bare) return remove(entry)
+
             return save(entry.id, { note })
         }
 
