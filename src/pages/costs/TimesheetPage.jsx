@@ -82,6 +82,17 @@ export default function TimesheetPage() {
     // many as anybody can be typing into at once, and it becomes a real entry
     // the moment there is a start time to save.
     const [drafts, setDrafts] = useState({})
+    // What is being typed into a row that already exists, kept beside those
+    // rows rather than written into them.
+    //
+    // **`entries` is what the database has and nothing else.** It used to hold
+    // whatever was in the boxes, which made the check that skips a box nobody
+    // changed compare the new figure against itself: type a time out in full,
+    // seconds and all, and what the mask shows is exactly what the value
+    // settles to, so the two matched and the write never happened. No save, no
+    // error, nothing. Six digits typed in full is how he types every time, so
+    // it was most of them.
+    const [typing, setTyping] = useState({})
     const [absences, setAbsences] = useState([])
     const [shifts, setShifts] = useState([])
     // Whether the till's report covering this week has been read in. It decides
@@ -160,6 +171,7 @@ export default function TimesheetPage() {
             )))
             setEntries(worked.data || [])
             setDrafts({})
+            setTyping({})
             setAbsences(away.data || [])
             setShifts(rostered.data || [])
             setImported(Boolean(week.data?.imported_at))
@@ -171,11 +183,15 @@ export default function TimesheetPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [restaurantId, weekStart, refresh])
 
-    // What is saved, plus what is being typed. The grid cannot tell them apart
-    // and does not need to: a draft is an entry with no id yet.
+    // What is saved, with whatever is being typed over the top of it, plus the
+    // cells that have nothing saved in them yet. The grid cannot tell the three
+    // apart and does not need to.
     const shown = useMemo(
-        () => [...entries, ...Object.values(drafts)],
-        [entries, drafts],
+        () => [
+            ...entries.map(e => (typing[e.id] ? { ...e, ...typing[e.id] } : e)),
+            ...Object.values(drafts),
+        ],
+        [entries, typing, drafts],
     )
 
     const rows = useMemo(() => people.map(person => personWeek({
@@ -221,7 +237,7 @@ export default function TimesheetPage() {
     // written thirty times while somebody thinks.
     function type(person, cell, entry, field, value) {
         if (entry.id) {
-            setEntries(was => was.map(e => (e.id === entry.id ? { ...e, [field]: value } : e)))
+            setTyping(was => ({ ...was, [entry.id]: { ...was[entry.id], [field]: value } }))
             return
         }
         // Nothing saved here yet, so it goes in the draft for this cell. This
@@ -240,6 +256,20 @@ export default function TimesheetPage() {
                 [field]: value,
             },
         }))
+    }
+
+    // Done typing in one box: what the database says about it takes over again.
+    // Only that box, because the other one may still be being typed into.
+    function stopTyping(id, field) {
+        setTyping(was => {
+            if (!was[id] || !(field in was[id])) return was
+            const mine = { ...was[id] }
+            delete mine[field]
+            const next = { ...was }
+            if (Object.keys(mine).length) next[id] = mine
+            else delete next[id]
+            return next
+        })
     }
 
     function forget(person, cell) {
@@ -282,8 +312,11 @@ export default function TimesheetPage() {
                 }
                 return remove(entry)
             }
-            if (entry[field] === value) return
-            return save(entry.id, { [field]: value, ...changedByHand(entry) })
+            // Against what the database has, never against what is in the
+            // box. The box already holds what was typed.
+            const stored = entries.find(e => e.id === entry.id) || entry
+            if (stored[field] === value) { stopTyping(entry.id, field); return }
+            return save(entry.id, { [field]: value, ...changedByHand(entry) }, field)
         }
 
         const draft = drafts[keyFor(person, cell)] || {}
@@ -351,7 +384,7 @@ export default function TimesheetPage() {
         setEntries(was => [...was, data[0]])
     }
 
-    async function save(id, patch) {
+    async function save(id, patch, typed) {
         setSaving(true)
         const { data, error: failed } = await supabase.from('timesheet_entries')
             .update(patch).eq('id', id).select()
@@ -369,6 +402,9 @@ export default function TimesheetPage() {
             return
         }
         setEntries(was => was.map(e => (e.id === id ? data[0] : e)))
+        // The row that came back is the truth now, so the box stops holding
+        // its own copy of it.
+        if (typed) stopTyping(id, typed)
     }
 
     async function remove(entry) {
@@ -376,6 +412,12 @@ export default function TimesheetPage() {
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
         if (finish(failed)) { setRefresh(n => n + 1); return }
         setEntries(was => was.filter(e => e.id !== entry.id))
+        setTyping(was => {
+            if (!was[entry.id]) return was
+            const next = { ...was }
+            delete next[entry.id]
+            return next
+        })
     }
 
     // A letter sets the state of the whole day. Holiday and off sick are

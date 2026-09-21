@@ -253,6 +253,50 @@ describe('changing a time the till gave', () => {
         expect(deleted[0].id).toBe('t1')
     })
 
+    // His, on the 15th of September: 09:20:00 to 18:00:00, typed out to
+    // 21:50:25, and nothing happened at all. No save, no error, no line saying
+    // anything. Typing all six digits produces exactly what the value settles
+    // to, so the guard that skips a box nobody changed was comparing the new
+    // figure with the one already sitting in the box and finding them equal.
+    it('saves a time typed out in full, seconds and all', async () => {
+        rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[1])
+        await userEvent.type(boxes()[1], '215025')
+        await userEvent.tab()
+
+        await waitFor(() => expect(updated).toHaveLength(1))
+        expect(updated[0].patch).toEqual({ ends_at: '21:50:25' })
+    })
+
+    // The guard is still there and still does its job: tabbing through a row
+    // without changing anything must not write, and on a till row a write
+    // would mark it as corrected and ask for a comment about nothing.
+    it('writes nothing when a box is left exactly as it was', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.click(boxes()[1])
+        await userEvent.tab()
+
+        expect(updated).toHaveLength(0)
+    })
+
+    it('writes nothing when the same time is typed over itself', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[1])
+        await userEvent.type(boxes()[1], '170000')
+        await userEvent.tab()
+
+        expect(updated).toHaveLength(0)
+    })
+
     it('leaves a time somebody typed alone', async () => {
         rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
         render(<TimesheetPage />)
