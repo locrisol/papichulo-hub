@@ -18,6 +18,12 @@ const cathal = { id: 'e2', full_name: 'Cathal', hourly_rate: null }
 
 const shift = (over) => ({ kind: 'worked', source: 'typed', ...over })
 
+// The week under test is the last week of October 2026, and nothing on this
+// screen asks a question about a week that has not finished, so every test
+// about an unanswered day says when now is rather than depending on the clock
+// of whoever runs it.
+const AFTER = '2026-11-02'
+
 describe('what an entry can be', () => {
     it('has no holiday or sick in it, because those are absences', () => {
         expect(KINDS.map(k => k.value)).toEqual(['worked', 'training', 'trial'])
@@ -185,7 +191,7 @@ describe('a week whose till report has been read in', () => {
     // and was then moved is not in the file the accountant has.
     it('still wants a comment on a till time changed by hand', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered, imported: true,
+            person: aoife, weekStart: WEEK, shifts: rostered, imported: true, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
@@ -193,7 +199,7 @@ describe('a week whose till report has been read in', () => {
     })
 
     it('blocks nothing at all once the week is imported and nothing was changed', () => {
-        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, imported: true })]
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, imported: true, today: AFTER })]
         expect(weekAnswered(rows)).toBe(true)
     })
 
@@ -203,7 +209,7 @@ describe('a week whose till report has been read in', () => {
     // report says nothing there, so somebody has to.
     it('wants a comment on hours typed onto a week the file covered', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, imported: true,
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
@@ -212,7 +218,7 @@ describe('a week whose till report has been read in', () => {
 
     it('is happy once those hours say why', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, imported: true,
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed', note: 'covered the delivery, never clocked in' })],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -222,7 +228,7 @@ describe('a week whose till report has been read in', () => {
     // most of an imported week.
     it('asks nothing of the rows the file itself wrote', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, imported: true,
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:13', ends_at: '18:02:44', source: 'import' })],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -483,7 +489,7 @@ describe('whether the week can go anywhere', () => {
     const rostered = [{ employee_id: 'e1', shift_date: TUE, starts_at: '09:00', ends_at: '17:00' }]
 
     it('names who has a rostered shift nobody answered', () => {
-        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
         expect(weekAnswered(rows)).toBe(false)
         expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE], changed: [] }])
     })
@@ -492,7 +498,7 @@ describe('whether the week can go anywhere', () => {
     // nowhere to be written until the day a row stopped needing a start time.
     it('is happy with a comment and no times at all', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered,
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
             entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: null, ends_at: null, kind: 'worked', note: 'swapped with somebody' }],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -502,7 +508,7 @@ describe('whether the week can go anywhere', () => {
     // the one change on the week nobody reading it can see.
     it('names who changed a till time and said nothing', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered,
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
         })]
         expect(weekAnswered(rows)).toBe(false)
@@ -511,7 +517,7 @@ describe('whether the week can go anywhere', () => {
 
     it('is happy once the change says why', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered,
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected', note: 'clocked in on the wrong till' })],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -521,7 +527,7 @@ describe('whether the week can go anywhere', () => {
     // it was typed, so it is never asked for a comment.
     it('asks nothing of a week that was typed rather than imported', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered,
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'typed' })],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -529,7 +535,7 @@ describe('whether the week can go anywhere', () => {
 
     it('is happy once there are times against it', () => {
         const rows = [personWeek({
-            person: aoife, weekStart: WEEK, shifts: rostered,
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
             entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
         })]
         expect(weekAnswered(rows)).toBe(true)
@@ -547,14 +553,14 @@ describe('whether the week can go anywhere', () => {
     // demanded one would stop every report about the first eight months of
     // 2026 from ever being written.
     it('lets a day the old Labour archive already answers through', () => {
-        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
         expect(weekAnswered(rows)).toBe(false)
         expect(weekAnswered(rows, [TUE])).toBe(true)
         expect(unanswered(rows, new Set([TUE]))).toEqual([])
     })
 
     it('still asks about a day the archive does not cover', () => {
-        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered })]
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
         expect(weekAnswered(rows, ['2026-10-25'])).toBe(false)
     })
 })
@@ -758,5 +764,41 @@ describe('what an upload would do, before anything is written', () => {
 
     it('copes with an empty file', () => {
         expect(planImport({})).toMatchObject({ unknown: [], steps: [], filled: 0 })
+    })
+})
+
+describe('a week that has not finished yet', () => {
+    // His, on the week he was in the middle of: seven people named on a banner
+    // saying their shifts had nothing said about them, on days that had not
+    // happened. Nothing asks anything until the week is over.
+    const rostered = [{ employee_id: 'e1', shift_date: TUE, starts_at: '09:00', ends_at: '17:00' }]
+    const midweek = { person: aoife, weekStart: WEEK, shifts: rostered, today: TUE }
+
+    it('asks nothing at all', () => {
+        expect(weekAnswered([personWeek(midweek)])).toBe(true)
+        expect(unanswered([personWeek(midweek)])).toEqual([])
+    })
+
+    it('says nothing about a day that has already gone either', () => {
+        const [monday] = personWeek(midweek).days.filter(d => d.date === MON)
+        expect(monday.unanswered).toBe(false)
+        expect(monday.nothingRegistered).toBe(false)
+    })
+
+    // The day after the week ends is the earliest anything is asked, which is
+    // the same line the report draws.
+    it('asks on the Sunday after', () => {
+        const over = personWeek({ ...midweek, today: '2026-11-01' })
+        expect(weekAnswered([over])).toBe(false)
+    })
+
+    // A till time changed by hand is not about a day that has not happened, so
+    // that one is asked whenever it is done.
+    it('still wants a comment on a change somebody made this week', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, today: TUE,
+            entries: [shift({ employee_id: 'e1', work_date: SUN, starts_at: '09:00:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
     })
 })

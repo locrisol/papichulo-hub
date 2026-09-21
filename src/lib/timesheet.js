@@ -17,7 +17,7 @@
 // So a week is three sources laid over each other: what the roster planned,
 // what the absences say, and what the clock recorded.
 
-import { weekDates } from '@/lib/dates'
+import { weekDates, todayISO } from '@/lib/dates'
 import { spanHours, toSeconds } from '@/lib/clock'
 import {
     wholeDayOn, absenceDays, holidayHoursInWeek, kindOf as absenceKind,
@@ -94,7 +94,9 @@ function hoursOf(entry) {
 
 // One day for one person: everything a cell needs to draw itself, worked out
 // once so no component has to.
-export function dayCell({ person, date, entries = [], absences = [], shifts = [], imported = false }) {
+export function dayCell({
+    person, date, entries = [], absences = [], shifts = [], imported = false, asking = true,
+}) {
     const mine = entries.filter(e => e.work_date === date)
     // **A whole day, not any time off at all.** Somebody who can work until
     // three is in that morning, and the comment on isPartDay says exactly what
@@ -125,6 +127,7 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
 
     const hours = mine.reduce((total, entry) => total + hoursOf(entry), 0)
 
+
     return {
         date,
         entries: mine,
@@ -139,7 +142,7 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         // Down to work and never clocked in. Worth saying on the screen
         // whatever else is true, because it is the thing somebody reading the
         // day wants to know.
-        nothingRegistered: mine.length === 0 && rostered.length > 0 && !absence,
+        nothingRegistered: asking && mine.length === 0 && rostered.length > 0 && !absence,
         // The same fact, asked as a question the week has to answer before a
         // report can be drafted. **The till's report answers it.**
         //
@@ -155,7 +158,7 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
         //
         // A part day is not an answer either way. She could work until three,
         // so whether she did is still an open question.
-        unanswered: !imported && mine.length === 0 && rostered.length > 0 && !absence,
+        unanswered: asking && !imported && mine.length === 0 && rostered.length > 0 && !absence,
         // Hours on a week whose report has been read in that the report does
         // not have. **Both ways round, because they are the same difference.**
         //
@@ -182,13 +185,24 @@ export function dayCell({ person, date, entries = [], absences = [], shifts = []
 // of it altogether.
 export function personWeek({
     person, weekStart, entries = [], absences = [], shifts = [],
-    restaurantRate = 0, imported = false,
+    restaurantRate = 0, imported = false, today = todayISO(),
 }) {
     const mine = entries.filter(e => e.employee_id === person.id)
     const theirs = shifts.filter(s => s.employee_id === person.id)
 
+    // **A week that has not finished is not missing anything.**
+    //
+    // Nothing on this screen asks a question about a week that is still being
+    // worked. On a Wednesday the roster is full of Thursday, Friday and
+    // Saturday, and a banner saying seven people have shifts with nothing said
+    // about them is a banner nobody reads by the time it means something.
+    //
+    // The same line the report draws: a week is written up after it has ended,
+    // never while it is running.
+    const asking = today > weekDates(weekStart)[6]
+
     const days = weekDates(weekStart).map(date => dayCell({
-        person, date, entries: mine, absences, shifts: theirs, imported,
+        person, date, entries: mine, absences, shifts: theirs, imported, asking,
     }))
 
     // Bank holiday hours are held apart because that is the whole of what the

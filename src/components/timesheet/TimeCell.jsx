@@ -22,6 +22,20 @@ import { removeButton } from '@/lib/controlStyles'
 // is, and a key that puts the plan in the box makes it easy to file the plan as
 // the record. That is the exact confusion this screen exists to end.
 
+// Everything in a cell that is not a box is out of the tab order.
+//
+// **Tab goes box to box across the week, and nothing else.** The chip on a day
+// off, the x that takes it away, the way in to a comment and the second span:
+// every one of them is a button, so tabbing along a person used to stop at
+// three or four of them on the way from Monday to Tuesday. Filling in a week is
+// typing, and a key that means "next figure" cannot mean "the delete button"
+// every third press.
+//
+// They are all still pressable, and every one of them is also reachable from
+// the day's own dialog, which is what a phone uses and what the underline
+// opens.
+const NOT_IN_THE_WAY = -1
+
 const box = 'block w-full font-sans text-xs tabular-nums tracking-tight text-center '
     + 'border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-900 '
     + 'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 '
@@ -56,6 +70,7 @@ export default function TimeCell({
                     type="button"
                     onClick={onOpen}
                     disabled={!canEdit}
+                    tabIndex={NOT_IN_THE_WAY}
                     title={canEdit ? 'Open the day' : undefined}
                     className="text-left disabled:cursor-default"
                 >
@@ -83,6 +98,7 @@ export default function TimeCell({
                     <button
                         type="button"
                         onClick={onClear}
+                        tabIndex={NOT_IN_THE_WAY}
                         aria-label="Delete this time off"
                         className={`${removeButton} ml-auto`}
                     >
@@ -134,6 +150,7 @@ export default function TimeCell({
                 <button
                     type="button"
                     onClick={onAdd}
+                    tabIndex={NOT_IN_THE_WAY}
                     className="mt-0.5 text-[0.6rem] font-semibold text-accent-ink hover:underline"
                 >
                     + another
@@ -231,6 +248,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
             <button
                 type="button"
                 onClick={onOpen}
+                tabIndex={NOT_IN_THE_WAY}
                 className={`block text-[0.62rem] mt-0.5 hover:text-accent-ink ${
                     first?.starts_at ? 'text-gray-300' : 'text-accent-ink font-semibold'
                 }`}
@@ -268,6 +286,7 @@ function UnderLine({ cell, unplanned, canEdit, onOpen }) {
         <button
             type="button"
             onClick={onOpen}
+            tabIndex={NOT_IN_THE_WAY}
             title="Open the day to write a note"
             className="block text-left w-full hover:opacity-70"
         >

@@ -19,6 +19,9 @@ function grid(over = {}) {
     const rows = people.map(person => personWeek({
         person, weekStart: WEEK, entries, absences, shifts,
         restaurantRate: 15,
+        // The week under test is in October 2026 and nothing is asked about a
+        // week that has not finished, so now is pinned after it.
+        today: '2026-11-02',
     }))
     const calls = {
         onType: vi.fn(), onSettle: vi.fn(), onState: vi.fn(),
@@ -58,6 +61,36 @@ describe('the week grid', () => {
     it('marks the bank holiday in the column head', () => {
         grid()
         expect(screen.getByText('BANK HOLIDAY')).toBeInTheDocument()
+    })
+})
+
+describe('Tab, which goes box to box and nowhere else', () => {
+    // Filling in a week is typing. Every cell can hold four buttons: the chip
+    // on a day off, the x that takes it away, the way in to a comment and the
+    // second span, and tabbing along a person used to stop at each of them on
+    // the way from Monday to Tuesday.
+    it('steps from one box straight to the next', async () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: 8 }],
+            entries: [{ id: 't1', employee_id: 'e1', work_date: MON, starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked', note: 'stayed to close' }],
+        })
+
+        boxes()[0].focus()
+        await userEvent.tab()
+        expect(document.activeElement).toBe(boxes()[1])
+        await userEvent.tab()
+        expect(document.activeElement).toBe(boxes()[2])
+    })
+
+    it('leaves every one of them pressable', () => {
+        grid({
+            absences: [{ id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: TUE, ends_on: TUE, hours: 8 }],
+        })
+        // The Holiday column heading says the same word, so the chip is asked
+        // for by where it is rather than by what it says.
+        const chip = within(document.querySelector('tbody')).getByText('Holiday').closest('button')
+        expect(chip).not.toBeDisabled()
+        expect(chip.tabIndex).toBe(-1)
     })
 })
 

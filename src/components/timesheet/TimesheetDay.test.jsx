@@ -16,6 +16,7 @@ function day(over = {}) {
     const rows = people.map(person => personWeek({
         person, weekStart: WEEK, entries, absences, shifts,
         restaurantRate: 15,
+        today: '2026-11-02',
     }))
     render(<TimesheetDay rows={rows} date={DAY} {...calls} />)
     return calls
