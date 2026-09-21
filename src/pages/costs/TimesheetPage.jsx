@@ -721,18 +721,64 @@ export default function TimesheetPage() {
                     onChange={e => e.target.value && goToWeek(e.target.value)}
                 />
 
-                <button
-                    type="button"
-                    onClick={() => setImporting(true)}
-                    className={`${secondaryButton} ml-auto`}
-                >
-                    Upload the till&apos;s report
-                </button>
+                {/* What the week comes to, and where it stands. Everything the
+                    bar says sits together on the left of the two buttons, and
+                    the two buttons sit together at the end of it: the same
+                    shape the report's publish bar has, for the same reason.
+                    The send used to stand between the upload and these figures
+                    with a line of its own underneath, which left the one green
+                    thing on the page in the middle of the row and riding above
+                    the button beside it, because a caption made its half of
+                    the row taller than the other half. */}
+                <div className="ml-auto text-right">
+                    <p className="text-sm font-bold text-gray-900 tabular-nums">
+                        {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
+                    </p>
+                    {/* The same three states the report shows, in the same
+                        words, because it is the same promise: no Save button,
+                        it writes when you leave a box, and this line is what
+                        says so. Whether it has gone to the accountant is the
+                        other half of where the week stands, so it is on the
+                        same line rather than captioning a button. */}
+                    <p className="text-xs">
+                        <span
+                            className={problem ? 'font-bold text-red-700' : 'text-muted'}
+                            aria-live="polite"
+                        >
+                            {/* **Not saved** is the state that matters and it
+                                was the one this line could not say. The words
+                                were up at the top of the page, above a table
+                                you have scrolled past by the time you are
+                                typing into it, so a refused write looked like
+                                nothing happening. */}
+                            {problem
+                                ? 'Not saved'
+                                : saving
+                                    ? 'Saving'
+                                    : savedAt
+                                        ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
+                                        : 'Saves as you type'}
+                        </span>
+                        <span className="text-muted">
+                            {' '}&middot;{' '}
+                            {filedAt ? `Sent ${shortDate(String(filedAt).slice(0, 10))}` : 'Not sent yet'}
+                        </span>
+                    </p>
+                </div>
 
-                {/* Hours and comments, to whoever does the payroll. Green
-                    rather than the accent, the same as reading the till's file
-                    in: it is the other end of the same job. */}
-                <div className="text-right">
+                {/* Kept together so they wrap together and share a line, and
+                    in the order the week is worked: the till's file goes in,
+                    the hours go out. Green rather than the accent, the same as
+                    reading the file in, because it is the other end of the
+                    same job. */}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setImporting(true)}
+                        className={secondaryButton}
+                    >
+                        Upload the till&apos;s report
+                    </button>
                     <button
                         type="button"
                         onClick={() => setSending(true)}
@@ -740,36 +786,6 @@ export default function TimesheetPage() {
                     >
                         Send the hours
                     </button>
-                    <span className="block text-[0.66rem] text-muted mt-0.5">
-                        {filedAt ? `Sent ${shortDate(String(filedAt).slice(0, 10))}` : 'Not sent yet'}
-                    </span>
-                </div>
-
-                <div className="text-right">
-                    <p className="text-sm font-bold text-gray-900 tabular-nums">
-                        {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
-                    </p>
-                    {/* The same three states the report shows, in the same
-                        words, because it is the same promise: no Save button,
-                        it writes when you leave a box, and this line is what
-                        says so. */}
-                    <span
-                        className={`block text-xs ${problem ? 'font-bold text-red-700' : 'text-muted'}`}
-                        aria-live="polite"
-                    >
-                        {/* **Not saved** is the state that matters and it was
-                            the one this line could not say. The words were up
-                            at the top of the page, above a table you have
-                            scrolled past by the time you are typing into it,
-                            so a refused write looked like nothing happening. */}
-                        {problem
-                            ? 'Not saved'
-                            : saving
-                                ? 'Saving'
-                                : savedAt
-                                    ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
-                                    : 'Saves as you type'}
-                    </span>
                 </div>
             </div>
 
