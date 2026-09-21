@@ -45,7 +45,7 @@ const SHEET = {
     // All seven the same. A deeper Saturday and Sunday was in the drawing and
     // he took it out: the week is read a person at a time, and a column that is
     // darker for no reason anybody types is one more thing to explain.
-    day: ['#F7F5F0', '#F2EFE9'],
+    day: ['#FDFCFA', '#FAF9F6'],
     holiday: ['#E9EFF6', '#E2EAF3'],
     worked: ['#D9E1DB', '#D1DBD4'],
     cost: ['#33513F', '#3B5B48'],
