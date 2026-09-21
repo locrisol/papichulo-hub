@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "packaging_cost_target" numeric(5,2) DEFAULT 2.50,
     "hourly_rate" numeric(6,2) DEFAULT 15.00,
     "report_recipients" "text"[],
+    -- The payroll list, and nobody is on it by role. See the comment below.
+    "timesheet_recipients" "text"[],
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "slug" character varying(100) NOT NULL,
@@ -95,6 +97,7 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
 COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded by restaurant_places. Migration 011 copied it into a place row and nothing reads it any more. Kept until a backup is newer than that migration.';
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
+COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -742,6 +745,7 @@ ALTER TABLE ONLY "public"."timesheet_weeks"
     ADD CONSTRAINT "timesheet_weeks_once" UNIQUE ("restaurant_id", "week_start");
 
 COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week: when the till''s report was read in, and when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."filed_at" IS 'When this week''s hours were last mailed out. A week can be sent again after a correction, and this moves.';
 COMMENT ON COLUMN "public"."timesheet_weeks"."imported_at" IS 'When the till''s report covering this week was last read in. While it is set, a rostered shift with nothing against it is taken as not worked rather than as an open question: the file answered it, and the accountant has the same file.';
 
 CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (

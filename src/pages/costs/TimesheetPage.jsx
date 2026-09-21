@@ -14,6 +14,7 @@ import { resolveTarget } from '@/lib/costTargets'
 import { kindLabel as absenceLabel } from '@/lib/absences'
 import {
     card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField, secondaryButton,
+    primaryButton,
 } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
@@ -24,6 +25,7 @@ import TimesheetDay from '@/components/timesheet/TimesheetDay'
 import TouchBar from '@/components/timesheet/TouchBar'
 import DayEditModal from '@/components/timesheet/DayEditModal'
 import ImportDialog from '@/components/timesheet/ImportDialog'
+import SendDialog from '@/components/timesheet/SendDialog'
 
 // What people actually worked.
 //
@@ -57,7 +59,7 @@ function names(waiting) {
 export default function TimesheetPage() {
     const { user } = useAuth()
     const confirm = useConfirm()
-    const { activeRestaurant } = useRestaurant()
+    const { activeRestaurant, setActiveRestaurant } = useRestaurant()
 
     // Last week, not this one. A timesheet is filled in once the week has
     // finished and the till's report exists for it, so opening on the week that
@@ -73,6 +75,7 @@ export default function TimesheetPage() {
     // save and does not go stale halfway through.
     const [editing, setEditing] = useState(null)
     const [importing, setImporting] = useState(false)
+    const [sending, setSending] = useState(false)
     // Bumped to ask for the week again. Setting weekStart to the value it
     // already holds is a no-op, so it cannot be used to reload: the same trap
     // the Labour page carried a note about.
@@ -106,6 +109,9 @@ export default function TimesheetPage() {
     // one thing: a rostered shift with nothing against it is a question on a
     // week nobody has imported and an answer on a week somebody has.
     const [imported, setImported] = useState(false)
+    // When this week's hours were last mailed out, so the screen can say so
+    // rather than leaving somebody to wonder whether they sent it.
+    const [filedAt, setFiledAt] = useState(null)
     // What the week took, and what it is meant to cost. Only for the one figure
     // the old Labour page was read for: what the day's hours came to as a share
     // of what the day sold.
@@ -165,7 +171,7 @@ export default function TimesheetPage() {
                     .eq('restaurant_id', restaurantId)
                     .gte('shift_date', weekStart).lte('shift_date', weekEnd),
                 supabase.from('timesheet_weeks')
-                    .select('imported_at')
+                    .select('imported_at, filed_at')
                     .eq('restaurant_id', restaurantId)
                     .eq('week_start', weekStart)
                     .maybeSingle(),
@@ -194,6 +200,7 @@ export default function TimesheetPage() {
             setAbsences(away.data || [])
             setShifts(rostered.data || [])
             setImported(Boolean(week.data?.imported_at))
+            setFiledAt(week.data?.filed_at || null)
             setSales(Object.fromEntries((takings.data || []).map(d => [d.sale_date, d])))
             setOverrides(targets.data || [])
             loadedKey.current = key
@@ -397,6 +404,22 @@ export default function TimesheetPage() {
             ends_at: settleTime(endsAt),
             ...changedByHand(entry),
         })
+    }
+
+    // Who the hours go to, kept on the restaurant so the same people get next
+    // week's without anybody retyping them. The context holds the row every
+    // screen reads, so it is updated here rather than left stale until a
+    // reload.
+    async function keepRecipients(list) {
+        const { data, error: failed } = await supabase.from('restaurants')
+            .update({ timesheet_recipients: list })
+            .eq('id', restaurantId)
+            .select()
+            .maybeSingle()
+
+        if (failed) return friendlyError(failed)
+        if (data) setActiveRestaurant(data)
+        return ''
     }
 
     async function create(row) {
@@ -706,6 +729,22 @@ export default function TimesheetPage() {
                     Upload the till&apos;s report
                 </button>
 
+                {/* Hours and comments, to whoever does the payroll. Green
+                    rather than the accent, the same as reading the till's file
+                    in: it is the other end of the same job. */}
+                <div className="text-right">
+                    <button
+                        type="button"
+                        onClick={() => setSending(true)}
+                        className={primaryButton('md', 'good')}
+                    >
+                        Send the hours
+                    </button>
+                    <span className="block text-[0.66rem] text-muted mt-0.5">
+                        {filedAt ? `Sent ${shortDate(String(filedAt).slice(0, 10))}` : 'Not sent yet'}
+                    </span>
+                </div>
+
                 <div className="text-right">
                     <p className="text-sm font-bold text-gray-900 tabular-nums">
                         {totals.hours.toFixed(2)} h &middot; {fmtMoney(totals.cost)}
@@ -843,6 +882,19 @@ export default function TimesheetPage() {
                     onAdd={() => addSpan(open.row.person, open.cell)}
                     onHours={value => setHolidayHours(open.cell, value)}
                     onNote={(entry, text) => setNote(open.row.person, open.cell, entry, text)}
+                />
+            )}
+
+            {sending && (
+                <SendDialog
+                    weekStart={weekStart}
+                    weekEnd={weekEnd}
+                    restaurant={activeRestaurant}
+                    waiting={waiting}
+                    filedAt={filedAt}
+                    onClose={() => setSending(false)}
+                    onKeepList={keepRecipients}
+                    onSent={() => setRefresh(n => n + 1)}
                 />
             )}
 

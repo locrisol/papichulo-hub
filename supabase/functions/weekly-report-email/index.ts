@@ -43,6 +43,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
+import { timesheetEmail, personWeeks } from './timesheet.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -245,8 +246,11 @@ Deno.serve(async (req) => {
     )
 
     try {
-        const { reportId, test = false, origin, figures: posted, charts: postedCharts } = await req.json()
-        if (!reportId) return json({ error: 'Which report?' }, 400)
+        const {
+            reportId, kind, weekStart, restaurantId, comment,
+            test = false, origin, figures: posted, charts: postedCharts,
+        } = await req.json()
+        if (!reportId && kind !== 'timesheet') return json({ error: 'Which report?' }, 400)
 
         // ---- who is asking ----
         //
@@ -264,6 +268,19 @@ Deno.serve(async (req) => {
 
         if (!account || !['store_manager', 'super_admin'].includes(account.role)) {
             return json({ error: 'Only a manager can send a report.' }, 403)
+        }
+
+        // The other mail a finished week produces: the hours, for whoever runs
+        // the payroll. It is here rather than in a function of its own so it
+        // goes out through the send below, which is the one path in this
+        // project that has been sending real mail for weeks. A second copy of
+        // that would be a second thing to get wrong in the part of the Hub
+        // that has been wrong most often.
+        if (kind === 'timesheet') {
+            return await sendTimesheet({
+                admin, account, caller, send, from,
+                weekStart, restaurantId, comment, test,
+            })
         }
 
         // ---- the report ----
@@ -491,3 +508,151 @@ Deno.serve(async (req) => {
         return json({ error: why }, 500)
     }
 })
+
+// ---------------------------------------------------------------------------
+// The week's hours, for whoever runs the payroll
+// ---------------------------------------------------------------------------
+
+// Everything in the mail is read here, off the database, the same rule the
+// report follows: the browser says which week and nothing else. What it may
+// say is a comment to go at the top, which is somebody's own words and is
+// escaped before it is drawn.
+//
+// The list is the restaurant's own, typed in Settings. Nobody is on it by role.
+// An owner is on the report's list whether anybody likes it or not, because a
+// report the owner never sees is the failure that matters; this is a working
+// list for one job, and the person who does that job is the only one who
+// should be on it.
+async function sendTimesheet({
+    admin, account, caller, send, from, weekStart, restaurantId, comment, test,
+}: {
+    admin: ReturnType<typeof createClient>,
+    account: { id: string, role: string, restaurant_id: string | null, full_name?: string | null },
+    caller: { email?: string | null },
+    send: (mail: Mail) => Promise<unknown>,
+    from: (name?: string, address?: string | null) => string,
+    weekStart?: string,
+    restaurantId?: string,
+    comment?: string,
+    test?: boolean,
+}) {
+    const week = String(weekStart || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return json({ error: 'Which week?' }, 400)
+
+    const forRestaurant = restaurantId || account.restaurant_id
+    if (!forRestaurant) return json({ error: 'Which restaurant?' }, 400)
+    if (account.role !== 'super_admin' && forRestaurant !== account.restaurant_id) {
+        return json({ error: 'That week belongs to another restaurant.' }, 403)
+    }
+
+    const dates = Array.from({ length: 7 }, (_, i) => {
+        const day = new Date(`${week}T00:00:00Z`)
+        day.setUTCDate(day.getUTCDate() + i)
+        return day.toISOString().slice(0, 10)
+    })
+    const weekEnd = dates[6]
+
+    // timesheet_recipients arrived in migration 007 and a function can be
+    // deployed before a migration is run. Asking for a column that is not
+    // there does not throw, it comes back as an error and a null row, and an
+    // unchecked null would have sent a week headed "The restaurant" to nobody.
+    let { data: restaurant, error: missing } = await admin
+        .from('restaurants').select('id, name, mail_from, timesheet_recipients')
+        .eq('id', forRestaurant).maybeSingle()
+
+    if (missing) {
+        console.warn('restaurants.timesheet_recipients is missing, run migration 007', missing)
+        const again = await admin
+            .from('restaurants').select('id, name, mail_from')
+            .eq('id', forRestaurant).maybeSingle()
+        restaurant = again.data
+    }
+
+    const [{ data: team }, { data: worked }, { data: away }] = await Promise.all([
+        admin.from('employees')
+            .select('id, full_name, sort_order, started_on, ended_on')
+            .eq('restaurant_id', forRestaurant)
+            .order('sort_order'),
+        admin.from('timesheet_entries')
+            .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
+            .eq('restaurant_id', forRestaurant)
+            .gte('work_date', week).lte('work_date', weekEnd),
+        admin.from('absences')
+            .select('employee_id, kind, status, starts_on, ends_on, hours')
+            .eq('restaurant_id', forRestaurant)
+            .lte('starts_on', weekEnd).gte('ends_on', week),
+    ])
+
+    // Somebody who left before the week, or had not started, is not on it. The
+    // same rule the screen uses, so the mail and the screen hold the same
+    // people.
+    const people = (team || []).filter(p => (
+        (!p.ended_on || p.ended_on >= week) && (!p.started_on || p.started_on <= weekEnd)
+    ))
+
+    const skipped: string[] = []
+    const to: string[] = []
+    const seen = new Set<string>()
+
+    // The manager who sent it is on the list, the same as on the report and
+    // for the same two reasons: they need to see it arrive, because a week
+    // sent and a week not sent look identical from the Hub, and it is what
+    // keeps a reply in the right place.
+    for (const address of [caller.email, ...(restaurant?.timesheet_recipients || [])]) {
+        const key = String(address || '').trim().toLowerCase()
+        if (!key || seen.has(key)) continue
+        if (!deliverable(key)) {
+            console.warn('skipping an address that cannot receive mail:', key)
+            seen.add(key)
+            skipped.push(String(address).trim())
+            continue
+        }
+        seen.add(key)
+        to.push(String(address).trim())
+    }
+
+    if (to.length === 0) {
+        return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
+    }
+
+    let mail = timesheetEmail({
+        restaurantName: restaurant?.name,
+        weekStart: week,
+        people: personWeeks({ people, entries: worked || [], absences: away || [], dates }),
+        comment: String(comment || '').trim(),
+        test: Boolean(test),
+    })
+
+    const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
+    const sentTo = redirect ? [redirect] : to
+    if (redirect) mail = heldNotice(mail, to)
+
+    await send({
+        to: sentTo,
+        from: from(restaurant?.name, restaurant?.mail_from),
+        replyTo: caller.email || undefined,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+    })
+
+    // The week is marked as filed, and a test never is: a rehearsal that said
+    // a week had gone to the accountant would be worse than no mark at all.
+    // It moves on a second send, because a week can be corrected and sent
+    // again and what matters is when the figures she has were sent.
+    if (!test) {
+        await admin.from('timesheet_weeks').upsert({
+            restaurant_id: forRestaurant,
+            week_start: week,
+            filed_at: new Date().toISOString(),
+            filed_by: account.id,
+        }, { onConflict: 'restaurant_id,week_start' })
+    }
+
+    return json({
+        sent: sentTo.length,
+        to: test || redirect ? sentTo : undefined,
+        held: redirect ? to.length : undefined,
+        skipped: skipped.length ? skipped : undefined,
+    })
+}
