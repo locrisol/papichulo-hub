@@ -170,6 +170,53 @@ describe('typing into a cell with nothing in it', () => {
     })
 })
 
+// His, on 21 September. Typing a clock in and tabbing put the cursor in the
+// clock out box correctly, and then the row came back from the database with a
+// real id, the cell was rebuilt under the cursor, and focus fell to the top of
+// the document. The next Tab started again from the box he had just left, which
+// is why it looked like the message was stealing it.
+describe('Tab keeps its place while the row is being saved', () => {
+    it('stays in the clock out box after the row lands', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+        expect(boxes()[1]).toHaveFocus()
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(boxes()[1]).toHaveFocus()
+    })
+
+    // The same cell, still being typed into. Whatever the save did to the row
+    // underneath, the box has to go on taking digits.
+    it('takes the out time straight afterwards', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+        await waitFor(() => expect(inserted).toHaveLength(1))
+
+        await userEvent.type(boxes()[1], '1700')
+        expect(boxes()[1]).toHaveValue('17:00')
+    })
+
+    // Tab out of the last box of a day and the cursor belongs on the next day,
+    // not back at the start of the week.
+    it('carries on to the next day rather than starting over', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+        await waitFor(() => expect(inserted).toHaveLength(1))
+
+        await userEvent.tab()
+        expect(boxes()[2]).toHaveFocus()
+    })
+})
+
 describe('saying why, when there are no times to hang it on', () => {
     // The block says "times or a reason" and could only ever take the first of
     // them. A shift swapped after the roster went up was not a holiday and not

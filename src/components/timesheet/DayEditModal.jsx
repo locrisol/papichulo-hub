@@ -86,8 +86,14 @@ export default function DayEditModal({
                     </div>
                 ) : (
                     <div>
+                        {/* Where the span sits, not which row is in it. The same
+                            thing that pulled the cursor out of the grid: the id
+                            arriving from the database changed the key and threw
+                            the boxes away mid typing. The note box below keeps a
+                            key of its own on purpose, because it is uncontrolled
+                            and does have to reload once its row exists. */}
                         {spans.map((entry, i) => (
-                            <div key={entry.id || `new-${i}`} className="mb-4">
+                            <div key={i} className="mb-4">
                                 <div className="flex gap-2 items-end">
                                     <div className="flex-1">
                                         <label className={labelClass}>Clock in</label>

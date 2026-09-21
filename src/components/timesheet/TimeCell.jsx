@@ -115,8 +115,19 @@ export default function TimeCell({
 
     return (
         <div>
+            {/* Keyed on where the span sits in the cell, never on the row's id.
+                A cell being typed into holds a draft with no id yet, and the
+                moment the insert came back React saw a different key, threw the
+                pair of boxes away and built new ones: the cursor, which had
+                just tabbed into the clock out box, went with them. The next Tab
+                then started from the top of the page and landed back on the
+                clock in box, which is what it looked like from the outside.
+
+                Safe because a box is a controlled input and keeps nothing of
+                its own, and because Tab order and the arrows on the touch bar
+                go by the data-r/d/s/i marks below, not by which id is where. */}
             {spans.map((entry, i) => (
-                <div key={entry.id || `new-${i}`} className="mb-0.5 last:mb-0">
+                <div key={i} className="mb-0.5 last:mb-0">
                     <Box
                         entry={entry}
                         field="starts_at"
