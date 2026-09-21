@@ -7,7 +7,10 @@ import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
-import { personWeek, weekTotals, unanswered, cameFromTill, STATE_KEYS } from '@/lib/timesheet'
+import {
+    personWeek, weekTotals, unanswered, cameFromTill, labourPercent, STATE_KEYS,
+} from '@/lib/timesheet'
+import { resolveTarget } from '@/lib/costTargets'
 import { kindLabel as absenceLabel } from '@/lib/absences'
 import {
     card, cardEdge, pageTitle, segmentTrack, segmentButton, dateField, secondaryButton,
@@ -103,6 +106,11 @@ export default function TimesheetPage() {
     // one thing: a rostered shift with nothing against it is a question on a
     // week nobody has imported and an answer on a week somebody has.
     const [imported, setImported] = useState(false)
+    // What the week took, and what it is meant to cost. Only for the one figure
+    // the old Labour page was read for: what the day's hours came to as a share
+    // of what the day sold.
+    const [sales, setSales] = useState({})
+    const [overrides, setOverrides] = useState([])
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -139,7 +147,7 @@ export default function TimesheetPage() {
             setLoading(true)
             setError('')
 
-            const [team, worked, away, rostered, week] = await Promise.all([
+            const [team, worked, away, rostered, week, takings, targets] = await Promise.all([
                 supabase.from('employees')
                     .select('id, full_name, hourly_rate, sort_order, started_on, ended_on')
                     .eq('restaurant_id', restaurantId)
@@ -161,6 +169,13 @@ export default function TimesheetPage() {
                     .eq('restaurant_id', restaurantId)
                     .eq('week_start', weekStart)
                     .maybeSingle(),
+                supabase.from('sales_records')
+                    .select('sale_date, net_sales, is_closed')
+                    .eq('restaurant_id', restaurantId)
+                    .gte('sale_date', weekStart).lte('sale_date', weekEnd),
+                supabase.from('cost_target_overrides')
+                    .select('target_type, override_value, effective_from, effective_until, created_at')
+                    .eq('restaurant_id', restaurantId),
             ])
 
             const failed = team.error || worked.error || away.error || rostered.error
@@ -179,6 +194,8 @@ export default function TimesheetPage() {
             setAbsences(away.data || [])
             setShifts(rostered.data || [])
             setImported(Boolean(week.data?.imported_at))
+            setSales(Object.fromEntries((takings.data || []).map(d => [d.sale_date, d])))
+            setOverrides(targets.data || [])
             loadedKey.current = key
             setLoading(false)
         }
@@ -205,6 +222,12 @@ export default function TimesheetPage() {
 
     const totals = weekTotals(rows)
     const waiting = unanswered(rows)
+
+    // The share of the day's sales the day's hours came to, and the target it
+    // is judged against. Both the same as the cost dashboard uses, so a week is
+    // not green on one screen and amber on the other.
+    const percent = labourPercent(totals.perDay, sales)
+    const target = resolveTarget(overrides, 'labour', weekStart, Number(activeRestaurant?.labour_cost_target) || null)
 
     // Looked up fresh each render, so the dialog is always showing what the
     // rows hold rather than a copy taken when it opened.
@@ -783,6 +806,8 @@ export default function TimesheetPage() {
                         <TimesheetWeek
                             rows={rows}
                             dates={dates}
+                            percent={percent}
+                            target={target}
                             onType={type}
                             onSettle={settle}
                             onState={setState}

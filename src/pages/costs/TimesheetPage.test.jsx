@@ -16,6 +16,8 @@ const rows = {
     timesheet_entries: [],
     absences: [],
     roster_shifts: [],
+    sales_records: [],
+    cost_target_overrides: [],
 }
 const inserted = []
 const updated = []
@@ -91,6 +93,7 @@ beforeEach(() => {
     broken.update = false
     rows.timesheet_entries = []
     rows.roster_shifts = []
+    rows.sales_records = []
 })
 
 describe('typing into a cell with nothing in it', () => {
@@ -411,5 +414,24 @@ describe('the button that takes you home', () => {
 
         await userEvent.click(screen.getByRole('button', { name: 'Next week' }))
         await waitFor(() => expect(screen.getByRole('button', { name: 'Go to last week' })).toBeInTheDocument())
+    })
+})
+
+describe('what the week cost as a share of what it took', () => {
+    // The figure the old Labour page was read for, put back. One shift at
+    // 16.50 an hour against a day that took 500 euro.
+    it('reads the day against the day the sales screen entered', async () => {
+        rows.sales_records = [{ sale_date: WEEK, net_sales: 500, is_closed: false }]
+        rows.timesheet_entries = [{
+            id: 't1', restaurant_id: 'r1', employee_id: 'e1', work_date: WEEK,
+            starts_at: '09:00:00', ends_at: '17:00:00', kind: 'worked', source: 'typed',
+        }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        // 8 hours at 16.50 is 132.00, which is 26.4% of 500. Twice: on the
+        // Sunday, and as the week, since it is the only day that traded.
+        await waitFor(() => expect(screen.getByText('Of sales')).toBeInTheDocument())
+        expect(screen.getAllByText('26.4%')).toHaveLength(2)
     })
 })

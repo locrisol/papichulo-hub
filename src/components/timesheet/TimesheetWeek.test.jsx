@@ -15,7 +15,7 @@ const aoife = { id: 'e1', full_name: 'Aoife', hourly_rate: 16.5 }
 const cathal = { id: 'e2', full_name: 'Cathal', hourly_rate: null }
 
 function grid(over = {}) {
-    const { entries = [], shifts = [], absences = [], people = [aoife, cathal] } = over
+    const { entries = [], shifts = [], absences = [], people = [aoife, cathal], percent, target } = over
     const rows = people.map(person => personWeek({
         person, weekStart: WEEK, entries, absences, shifts,
         restaurantRate: 15,
@@ -24,7 +24,7 @@ function grid(over = {}) {
         onType: vi.fn(), onSettle: vi.fn(), onState: vi.fn(),
         onClear: vi.fn(), onAdd: vi.fn(), onHours: vi.fn(), onOpen: vi.fn(),
     }
-    render(<TimesheetWeek rows={rows} dates={DATES} {...calls} />)
+    render(<TimesheetWeek rows={rows} dates={DATES} percent={percent} target={target} {...calls} />)
     return calls
 }
 
@@ -351,5 +351,55 @@ describe('the totals along the bottom', () => {
     it('has no Sunday line on it', () => {
         grid({ entries })
         expect(within(document.querySelector('tfoot')).queryByText('Sunday')).not.toBeInTheDocument()
+    })
+})
+
+describe('what the week cost as a share of what it took', () => {
+    // The one figure the old Labour page had that this screen did not, and the
+    // reason it was read: it says a Tuesday was overstaffed without anybody
+    // knowing either figure by heart.
+    const percent = {
+        days: [
+            { date: SUN, percent: 22.5 },
+            { date: MON, percent: null },
+            { date: TUE, percent: 41.2 },
+            { date: '2026-10-28', percent: null },
+            { date: '2026-10-29', percent: null },
+            { date: '2026-10-30', percent: null },
+            { date: '2026-10-31', percent: null },
+        ],
+        week: 31.8,
+    }
+
+    it('gives the week a line of its own', () => {
+        grid({ percent, target: 30 })
+        const foot = document.querySelector('tfoot')
+        expect(within(foot).getByText('Of sales')).toBeInTheDocument()
+        expect(within(foot).getByText('22.5%')).toBeInTheDocument()
+        expect(within(foot).getByText('31.8%')).toBeInTheDocument()
+    })
+
+    // A closed day, or a day nobody has entered sales for, has nothing to
+    // divide by. A dash rather than a nought, which would read like an answer.
+    it('leaves a day with nothing to divide by blank', () => {
+        grid({ percent, target: 30 })
+        expect(within(document.querySelector('tfoot')).getAllByText('—').length).toBeGreaterThan(0)
+    })
+
+    it('shades a day against the target', () => {
+        grid({ percent, target: 30 })
+        const foot = document.querySelector('tfoot')
+        expect(within(foot).getByText('22.5%').className).toContain('green')
+        expect(within(foot).getByText('41.2%').className).toContain('red')
+    })
+
+    it('shades nothing when nobody has set a target', () => {
+        grid({ percent })
+        expect(within(document.querySelector('tfoot')).getByText('22.5%').className).toContain('gray')
+    })
+
+    it('has no such line on a week with no sales loaded', () => {
+        grid()
+        expect(within(document.querySelector('tfoot')).queryByText('Of sales')).not.toBeInTheDocument()
     })
 })

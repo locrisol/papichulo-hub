@@ -1,6 +1,7 @@
 import { DAY_NAMES } from '@/lib/events'
 import { shortDate } from '@/lib/dates'
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { statusFor } from '@/lib/costTargets'
 import { weekTotals } from '@/lib/timesheet'
 import { tableHeadRow } from '@/lib/controlStyles'
 import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
@@ -54,8 +55,18 @@ const SHEET = {
     holidayInk: '#3F5871',
 }
 
+// Green at or under target, amber within two points over, red past that. The
+// bands come from costTargets, the same as the dashboard and the report, so a
+// week cannot be judged differently depending on the screen you read it on.
+// Only the colours are this screen's own.
+const PERCENT_TONE = { green: 'text-green-700', amber: 'text-amber-600', red: 'text-red-600', none: 'text-gray-900' }
+
+// The same three judgements on the dark green of the Cost column, where the
+// text colours above would be unreadable.
+const DOT = { green: '#7BD3A0', amber: '#F0C36B', red: '#F08B7B', none: 'transparent' }
+
 export default function TimesheetWeek({
-    rows, dates, canEdit = true,
+    rows, dates, percent, target, canEdit = true,
     onType, onSettle, onState, onClear, onAdd, onOpen,
 }) {
     const totals = weekTotals(rows)
@@ -248,6 +259,43 @@ export default function TimesheetWeek({
                         <Foot style={{ backgroundColor: SHEET.worked[0] }} />
                         <Foot style={{ backgroundColor: SHEET.cost[0] }} />
                     </tr>
+
+                    {/* What the old Labour page was read for: the day's hours as
+                        a share of the day's sales. It is the only line on the
+                        week that says whether a Tuesday was overstaffed without
+                        anybody knowing either figure by heart.
+
+                        Blank where there is nothing to divide by, which is a
+                        closed day or a day nobody has entered sales for yet,
+                        rather than a nought that reads like an answer. */}
+                    {percent && (
+                        <tr className="border-t border-gray-300 bg-gray-200">
+                            <Foot style={{ backgroundColor: SHEET.name[0], color: '#FFFFFF' }}>
+                                Of sales
+                            </Foot>
+                            {percent.days.map(day => (
+                                <Foot key={day.date} style={{ borderLeft: SHEET.rule }}>
+                                    <span className={PERCENT_TONE[statusFor(day.percent, target)]}>
+                                        {day.percent == null ? '—' : fmtPct(day.percent)}
+                                    </span>
+                                </Foot>
+                            ))}
+                            <Foot style={{ backgroundColor: SHEET.holiday[0] }} />
+                            <Foot style={{ backgroundColor: SHEET.worked[0] }} />
+                            <Foot style={{ backgroundColor: SHEET.cost[0], color: '#FFFFFF' }}>
+                                {/* White on the green, with the judgement as a
+                                    dot beside it: green, amber and red on that
+                                    ground are three colours nobody can read. */}
+                                {percent.week != null && target && (
+                                    <i
+                                        className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
+                                        style={{ backgroundColor: DOT[statusFor(percent.week, target)] }}
+                                    />
+                                )}
+                                {percent.week == null ? '—' : fmtPct(percent.week)}
+                            </Foot>
+                        </tr>
+                    )}
                 </tfoot>
             </table>
         </div>

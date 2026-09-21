@@ -250,6 +250,48 @@ export function weekTotals(rows) {
     }
 }
 
+// What the week cost as a share of what it took, a day at a time.
+//
+// The figure the old Labour page was read for, and the one thing it had that
+// this screen did not: it is how you see that a Tuesday was overstaffed without
+// knowing either figure by heart.
+//
+// Its rules are the old page's, on purpose, so a week read here and a week read
+// in the history are the same number:
+//
+//   - a closed day has no percentage. A closed day can still have hours on it,
+//     for a stock take or a repair, and that cost is real, but there is nothing
+//     to measure it against.
+//   - a day nobody has entered sales for has none either, rather than a
+//     hundred per cent.
+//   - the week is the week's cost over the week's sales, never the average of
+//     seven percentages, which would weight a wet Monday the same as a Saturday.
+//     The cost of a closed day still counts in that total: it was spent.
+export function labourPercent(perDay = [], sales = {}) {
+    const netOn = date => {
+        const day = sales[date]
+        if (!day || day.is_closed) return null
+        const net = Number(day.net_sales || 0)
+        return net > 0 ? net : null
+    }
+
+    const days = perDay.map(day => {
+        const net = netOn(day.date)
+        return {
+            date: day.date,
+            percent: net == null ? null : Math.round((day.cost / net) * 1000) / 10,
+        }
+    })
+
+    const cost = perDay.reduce((total, day) => total + day.cost, 0)
+    const net = perDay.reduce((total, day) => total + (netOn(day.date) || 0), 0)
+
+    return {
+        days,
+        week: net > 0 ? Math.round((cost / net) * 1000) / 10 : null,
+    }
+}
+
 // What the daily rollup gets, so the cost dashboard and the report keep working
 // without knowing any of this exists.
 //

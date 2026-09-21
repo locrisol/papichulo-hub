@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
-    personWeek, weekTotals, labourRollup,
+    personWeek, weekTotals, labourRollup, labourPercent,
     unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
 } from '@/lib/timesheet'
 
@@ -408,6 +408,48 @@ describe('the week', () => {
 
     it('copes with nobody at all', () => {
         expect(weekTotals([])).toMatchObject({ hours: 0, cost: 0, perDay: [] })
+    })
+})
+
+describe('what the week cost as a share of what it took', () => {
+    // The figure the old Labour page was read for. Its rules are kept exactly,
+    // so a week read here and the same week read in the history agree.
+    const perDay = [
+        { date: SUN, cost: 200 },
+        { date: MON, cost: 150 },
+        { date: TUE, cost: 100 },
+    ]
+    const sales = {
+        [SUN]: { net_sales: 1000 },
+        [MON]: { net_sales: 500 },
+        [TUE]: { net_sales: 0, is_closed: true },
+    }
+
+    it('is the day cost over the day sales', () => {
+        const { days } = labourPercent(perDay, sales)
+        expect(days[0].percent).toBe(20)
+        expect(days[1].percent).toBe(30)
+    })
+
+    // A closed day can still have hours on it, for a stock take or a repair,
+    // and that cost is real. There is just nothing to measure it against.
+    it('says nothing at all about a closed day', () => {
+        expect(labourPercent(perDay, sales).days[2].percent).toBeNull()
+    })
+
+    it('says nothing about a day nobody has entered sales for', () => {
+        expect(labourPercent(perDay, {}).days[0].percent).toBeNull()
+    })
+
+    // The week over the week, never the average of seven days, which would
+    // weight a wet Monday the same as a Saturday. The closed day's cost still
+    // counts: it was spent.
+    it('divides the week by the week', () => {
+        expect(labourPercent(perDay, sales).week).toBe(30)
+    })
+
+    it('has no answer for a week with no sales at all', () => {
+        expect(labourPercent(perDay, {}).week).toBeNull()
     })
 })
 
