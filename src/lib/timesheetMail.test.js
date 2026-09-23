@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const invoke = vi.fn()
-vi.mock('@/lib/supabase', () => ({ supabase: { functions: { invoke: (...args) => invoke(...args) } } }))
+const upload = vi.fn(() => Promise.resolve({ error: null }))
+vi.mock('@/lib/supabase', () => ({
+    supabase: {
+        functions: { invoke: (...args) => invoke(...args) },
+        storage: { from: (...args) => ({ upload: (...rest) => upload(...args, ...rest) }) },
+    },
+}))
 
-const { sendTimesheet, sentWords } = await import('@/lib/timesheetMail')
+const { sendTimesheet, sentWords, HOURS_BUCKET } = await import('@/lib/timesheetMail')
 
-beforeEach(() => invoke.mockReset())
+beforeEach(() => {
+    invoke.mockReset()
+    upload.mockReset()
+    upload.mockResolvedValue({ error: null })
+})
 
 describe('what the browser is allowed to post', () => {
     // Which pay period, and a sentence to put at the top. Every figure in the mail is
@@ -24,6 +34,7 @@ describe('what the browser is allowed to post', () => {
             restaurantId: 'r1',
             comment: 'Two corrections',
             test: false,
+            attachment: null,
         })
     })
 
@@ -81,5 +92,59 @@ describe('what to tell somebody afterwards', () => {
     it('counts more than one of them', () => {
         expect(sentWords({ sent: 1, skipped: ['a@b.invalid', 'c@d.test'] }))
             .toContain('2 addresses were skipped')
+    })
+})
+
+
+// The paper goes up before the mail goes out. The browser draws it, because
+// that is where jsPDF and the logo are, and the function attaches it, because
+// that is where the mail is sent.
+describe('the PDF that travels with it', () => {
+    const aPdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+
+    it('puts it in the restaurant own folder, named for the period', async () => {
+        invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
+
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', pdf: aPdf })
+
+        expect(upload).toHaveBeenCalledWith(
+            HOURS_BUCKET,
+            'r1/2026-10-25.pdf',
+            aPdf,
+            { contentType: 'application/pdf', upsert: true },
+        )
+    })
+
+    it('tells the function where it put it', async () => {
+        invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', pdf: aPdf })
+        expect(invoke.mock.calls[0][1].body.attachment).toBe('r1/2026-10-25.pdf')
+    })
+
+    // He asked for the hours and the paper together, so a mail that quietly
+    // arrives without it is the kind of thing nobody notices until the
+    // accountant asks.
+    it('sends nothing at all when the upload fails', async () => {
+        upload.mockResolvedValue({ error: { message: 'no' } })
+
+        await expect(sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', pdf: aPdf }))
+            .rejects.toThrow(/went nowhere/)
+        expect(invoke).not.toHaveBeenCalled()
+    })
+
+    it('uploads nothing when there is no PDF to send', async () => {
+        invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1' })
+        expect(upload).not.toHaveBeenCalled()
+    })
+
+    // A rehearsal that arrived without the attachment would not be a rehearsal
+    // of the thing being sent.
+    it('goes with a test as well', async () => {
+        invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', pdf: aPdf, test: true })
+        expect(upload).toHaveBeenCalled()
+        expect(invoke.mock.calls[0][1].body.test).toBe(true)
+        expect(invoke.mock.calls[0][1].body.attachment).toBe('r1/2026-10-25.pdf')
     })
 })

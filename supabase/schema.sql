@@ -2692,6 +2692,53 @@ create policy report_charts_replace on storage.objects
   );
 
 
+
+-- The hours PDF that travels with the timesheet mail.
+--
+-- **Private, unlike report-charts, and that difference is the point.** The
+-- charts are public because they are linked images inside the mail and a
+-- signed url would expire. This one is an attachment: the bytes travel inside
+-- the mail, nothing ever fetches it by url, and a public bucket holding every
+-- employee's clock times for a fortnight would be a real leak the moment a
+-- path was guessed. The function reads it with the service role, which goes
+-- round all of this anyway.
+--
+-- The path always begins with the restaurant's id, so a manager cannot write
+-- into another restaurant's folder by typing the path themselves.
+
+drop policy if exists timesheet_hours_write on storage.objects;
+create policy timesheet_hours_write on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_replace on storage.objects;
+create policy timesheet_hours_replace on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_read on storage.objects;
+create policy timesheet_hours_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
 -- ======================================================================
 -- What watches it all
 -- ======================================================================

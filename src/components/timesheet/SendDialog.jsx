@@ -137,17 +137,22 @@ export default function SendDialog({
         if (failed) setError(failed)
     }
 
-    // The paper for her files. Built here rather than on the page behind,
-    // because this is where the whole fortnight has already been read.
+    // The paper for her files, built from the rows already read for the block
+    // so the mail and the PDF cannot be about two different fortnights.
+    async function draw(save) {
+        return timesheetPdf({
+            restaurant,
+            periodStart: period.start,
+            people: personPeriod({ ...rows, dates: periodDates(period.start) }),
+            save,
+        })
+    }
+
     async function paper() {
         setMaking(true)
         setError('')
         try {
-            await timesheetPdf({
-                restaurant,
-                periodStart: period.start,
-                people: personPeriod({ ...rows, dates: periodDates(period.start) }),
-            })
+            await draw(true)
         } catch (err) {
             setError(err.message || 'That PDF could not be made.')
         }
@@ -159,11 +164,17 @@ export default function SendDialog({
         setError('')
         setSaid('')
         try {
+            // The mail goes with the paper on it, a test included: a
+            // rehearsal that arrived without the attachment would not be a
+            // rehearsal of the thing being sent.
+            const doc = await draw(false)
+
             const result = await sendTimesheet({
                 periodStart: period.start,
                 restaurantId: restaurant?.id,
                 comment,
                 test,
+                pdf: doc.output('blob'),
             })
             setSaid(sentWords(result, { test }))
             if (!test) onSent()

@@ -65,7 +65,16 @@ const json = (body: unknown, status = 200) =>
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
-type Mail = { to: string[], from: string, replyTo?: string, subject: string, html: string, text: string }
+type Attachment = {
+    filename: string,
+    content: string,
+    encoding: 'base64',
+    contentType: string,
+}
+type Mail = {
+    to: string[], from: string, replyTo?: string, subject: string,
+    html: string, text: string, attachments?: Attachment[],
+}
 
 // One Workspace account sends for both restaurants and the restaurant's own
 // name goes in front of the address. Google rewrites the ADDRESS on a mail
@@ -102,6 +111,20 @@ globalThis.addEventListener('unhandledrejection', (event) => {
     event.preventDefault()
 })
 
+
+// Bytes to base64, in chunks.
+//
+// String.fromCharCode(...bytes) on a whole PDF blows the argument limit and
+// throws RangeError, which arrives as "failed to send a request to the edge
+// function" and says nothing at all. Eight thousand at a time is well inside it.
+function base64(bytes: Uint8Array) {
+    let binary = ''
+    const step = 8192
+    for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + step))
+    }
+    return btoa(binary)
+}
 
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
@@ -156,6 +179,10 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 subject: mail.subject,
                 content: mail.text,
                 html: mail.html,
+                // Left out entirely when there are none. denomailer walks
+                // whatever it is given, and an empty array still turns a plain
+                // mail into a multipart one for no reason.
+                ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
             })
         } finally {
             // Left open, the function is held until it times out. But closing a
@@ -247,7 +274,7 @@ Deno.serve(async (req) => {
 
     try {
         const {
-            reportId, kind, periodStart, restaurantId, comment,
+            reportId, kind, periodStart, restaurantId, comment, attachment,
             test = false, origin, figures: posted, charts: postedCharts,
         } = await req.json()
         if (!reportId && kind !== 'timesheet') return json({ error: 'Which report?' }, 400)
@@ -279,7 +306,7 @@ Deno.serve(async (req) => {
         if (kind === 'timesheet') {
             return await sendTimesheet({
                 admin, account, caller, send, from,
-                periodStart, restaurantId, comment, test,
+                periodStart, restaurantId, comment, test, attachment,
             })
         }
 
@@ -524,7 +551,7 @@ Deno.serve(async (req) => {
 // list for one job, and the person who does that job is the only one who
 // should be on it.
 async function sendTimesheet({
-    admin, account, caller, send, from, periodStart, restaurantId, comment, test,
+    admin, account, caller, send, from, periodStart, restaurantId, comment, test, attachment,
 }: {
     admin: ReturnType<typeof createClient>,
     account: { id: string, role: string, restaurant_id: string | null, full_name?: string | null },
@@ -535,6 +562,7 @@ async function sendTimesheet({
     restaurantId?: string,
     comment?: string,
     test?: boolean,
+    attachment?: string,
 }) {
     const period = String(periodStart || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
@@ -626,6 +654,36 @@ async function sendTimesheet({
         test: Boolean(test),
     })
 
+    // **The paper the browser drew, fetched with the service role.**
+    //
+    // The bucket is private and nothing ever fetches this by url: the bytes go
+    // inside the mail. The path always starts with the restaurant's id, and it
+    // is checked here as well as by the bucket's own policy, because this read
+    // goes round that policy.
+    const attachments: Attachment[] = []
+    if (attachment) {
+        if (!String(attachment).startsWith(`${forRestaurant}/`)) {
+            return json({ error: 'That file belongs to another restaurant.' }, 403)
+        }
+
+        const { data: file, error: missing } = await admin.storage
+            .from('timesheet-hours').download(attachment)
+
+        // He asked for the hours and the paper together, so a mail without it
+        // is not the thing he asked to send.
+        if (missing || !file) {
+            console.warn('the hours PDF could not be read', missing)
+            return json({ error: 'The PDF for this period could not be read, so nothing was sent.' }, 500)
+        }
+
+        attachments.push({
+            filename: `hours-${period}.pdf`,
+            content: base64(new Uint8Array(await file.arrayBuffer())),
+            encoding: 'base64',
+            contentType: 'application/pdf',
+        })
+    }
+
     const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
     const sentTo = redirect ? [redirect] : to
     if (redirect) mail = heldNotice(mail, to)
@@ -637,6 +695,7 @@ async function sendTimesheet({
         subject: mail.subject,
         html: mail.html,
         text: mail.text,
+        attachments: attachments.length ? attachments : undefined,
     })
 
     // The week is marked as filed, and a test never is: a rehearsal that said

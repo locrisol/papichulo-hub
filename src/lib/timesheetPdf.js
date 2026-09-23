@@ -505,7 +505,8 @@ export async function timesheetPdf({
     }
 
     // Saving is the only part a test skips, since a test has no business
-    // putting a file anywhere.
+    // putting a file anywhere. The document is handed back either way, so the
+    // send can ask it for a blob and put that in the mail.
     if (save) {
         const safeName = (restaurant?.name || 'hours').toLowerCase().replace(/[^a-z0-9]+/g, '-')
         pdf.save(`hours-${safeName}-${periodStart}.pdf`)

@@ -13,11 +13,39 @@
 // for weeks. See the comment on the branch in its index.ts.
 
 import { supabase } from '@/lib/supabase'
-import { functionError } from '@/lib/errors'
+import { functionError, friendlyError } from '@/lib/errors'
 
-export async function sendTimesheet({ periodStart, restaurantId, comment = '', test = false }) {
+// Private. See migration 009 for why this one is not public and report-charts is.
+export const HOURS_BUCKET = 'timesheet-hours'
+
+export async function sendTimesheet({
+    periodStart, restaurantId, comment = '', test = false, pdf = null,
+}) {
+    // **The paper goes up before the mail goes out.**
+    //
+    // The browser draws the PDF, because that is where jsPDF and the logo are,
+    // and the function attaches it, because that is where the mail is sent. So
+    // it is put down in a bucket in between and the function is told where.
+    //
+    // The bucket is private and the function reads it with the service role.
+    // Nothing ever fetches it by url: the bytes travel inside the mail. A
+    // public bucket of everybody's clock times would be a leak the moment a
+    // path was guessed.
+    let attachment = null
+    if (pdf) {
+        attachment = `${restaurantId}/${periodStart}.pdf`
+        const { error: failed } = await supabase.storage.from(HOURS_BUCKET)
+            .upload(attachment, pdf, { contentType: 'application/pdf', upsert: true })
+
+        // **It stops rather than sending a mail with nothing attached.** He
+        // asked for the hours and the paper together, and a mail that quietly
+        // arrives without it is the kind of thing nobody notices until the
+        // accountant asks.
+        if (failed) throw new Error(`The hours went nowhere: ${friendlyError(failed)}`)
+    }
+
     const { data, error } = await supabase.functions.invoke('weekly-report-email', {
-        body: { kind: 'timesheet', periodStart, restaurantId, comment, test },
+        body: { kind: 'timesheet', periodStart, restaurantId, comment, test, attachment },
     })
 
     if (error) throw new Error(await functionError(error))
