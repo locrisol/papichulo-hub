@@ -90,41 +90,81 @@ export async function timesheetPdf({
     // The top of every page: the logo, what this is, whose it is and when it
     // was made. A page of it on its own still says all four.
     function drawPageTop() {
-        pdf.addImage(logo, 'PNG', marginX, 9, LOGO_WIDTH, LOGO_HEIGHT)
-        const textX = marginX + LOGO_WIDTH + 6
+        pdf.addImage(logo, 'PNG', marginX, 11, LOGO_WIDTH, LOGO_HEIGHT)
+        // Twelve rather than six. At six the label sat against the edge of the
+        // logo and the three lines read as one crowded block, which is what he
+        // meant by squeezed.
+        const textX = marginX + LOGO_WIDTH + 12
 
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(7)
         pdf.setTextColor(150)
-        pdf.text('HOURS', textX, 13, { charSpace: 0.7 })
+        pdf.text('HOURS', textX, 14.5, { charSpace: 0.7 })
 
         pdf.setFontSize(15)
         pdf.setTextColor(...INK)
-        pdf.text(restaurant?.name || 'Papi Chulo', textX, 20.5)
+        pdf.text(restaurant?.name || 'Papi Chulo', textX, 22.5)
 
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(10)
         pdf.setTextColor(90)
-        pdf.text(`Pay period, ${period}`, textX, 26)
+        pdf.text(`Pay period, ${period}`, textX, 28.5)
 
         pdf.setFontSize(7)
         pdf.setTextColor(150)
-        pdf.text(`Prepared ${stampDateTime(at)}`, right, 13, { align: 'right' })
+        pdf.text(`Prepared ${stampDateTime(at)}`, right, 14.5, { align: 'right' })
 
         pdf.setDrawColor(...LINE)
         pdf.setLineWidth(0.3)
-        pdf.line(marginX, 31, right, 31)
+        pdf.line(marginX, 35, right, 35)
 
-        y = 38
+        y = 43
+    }
+
+    // Whose section is being drawn, so a page break inside one can say so.
+    let onPage = null
+
+    function drawPersonHead(name) {
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(10)
+        pdf.setTextColor(...DARK)
+        pdf.text(name, marginX, y)
+        y += 1.6
+        pdf.setDrawColor(...DARK)
+        pdf.setLineWidth(0.5)
+        pdf.line(marginX, y, right, y)
+        y += 5
     }
 
     function room(needed) {
         if (y + needed <= pageHeight - 16) return
         pdf.addPage()
         drawPageTop()
+        // **The same rule the stock take follows.** A section that has to run
+        // onto another page says whose it is at the top of it, because a page
+        // of times with no name on it is a page nobody can file.
+        if (onPage) drawPersonHead(`${onPage}, continued`)
+    }
+
+    // Roughly how tall a person's section will be, so one can be kept whole.
+    function heightOf(person) {
+        let need = 13
+        for (const w of [0, 1]) {
+            const mine = person.days.filter(day => day.week === w)
+            need += 4 + 8.5
+            need += mine.length
+                ? mine.reduce((t, day) => t + 5.4 + day.notes.length * 3.6, 0)
+                : 5.4
+        }
+        return need + 4
     }
 
     // One mark: a word in its own ink on its own pale ground.
+    //
+    // **It puts the pen back where it found it.** It used to leave the size at
+    // 5.6 and the colour at its own ink, so the hours drawn after a trial mark
+    // came out tiny and pink. It showed up on the first real fortnight and
+    // nowhere else, because only a trial or a training day draws one mid row.
     function drawMark(look, words, x, top) {
         const text = String(words || look.label).toUpperCase()
         pdf.setFont('helvetica', 'bold')
@@ -134,6 +174,10 @@ export async function timesheetPdf({
         pdf.roundedRect(x, top - 2.6, width, 3.6, 0.6, 0.6, 'F')
         pdf.setTextColor(...rgb(look.ink))
         pdf.text(text, x + 1.5, top)
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8)
+        pdf.setTextColor(...INK)
         return width + 1.5
     }
 
@@ -242,17 +286,20 @@ export async function timesheetPdf({
 
     // ---- everybody, day by day --------------------------------------------
     for (const person of people) {
-        room(26)
+        // **One person, one piece, wherever they fit.** The same thing the
+        // stock take does with a section: if what is left on the page cannot
+        // hold them, start them on a fresh one rather than leaving two days
+        // stranded at the foot. Somebody with a full fortnight can be taller
+        // than a whole page, and then they run on and say "continued".
+        onPage = null
+        const need = heightOf(person)
+        if (need > pageHeight - 16 - y && y > 50) {
+            pdf.addPage()
+            drawPageTop()
+        }
+        onPage = person.name
 
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(10)
-        pdf.setTextColor(...DARK)
-        pdf.text(person.name, marginX, y)
-        y += 1.6
-        pdf.setDrawColor(...DARK)
-        pdf.setLineWidth(0.5)
-        pdf.line(marginX, y, right, y)
-        y += 4.4
+        drawPersonHead(person.name)
 
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(7)
@@ -263,7 +310,7 @@ export async function timesheetPdf({
             + `Holiday ${h(person.holiday)}`,
             marginX, y,
         )
-        y += 5
+        y += 6
 
         for (const w of [0, 1]) {
             const mine = person.days.filter(day => day.week === w)
@@ -279,11 +326,11 @@ export async function timesheetPdf({
                 pdf.setFont('helvetica', 'italic')
                 pdf.setFontSize(8)
                 pdf.text('Nothing worked this week', marginX + 2, y)
-                y += 5
+                y += 5.4
             }
 
             for (const day of mine) {
-                room(8)
+                room(9)
                 pdf.setFont('helvetica', 'normal')
                 pdf.setFontSize(8)
                 pdf.setTextColor(...INK)
@@ -314,7 +361,7 @@ export async function timesheetPdf({
                     pdf.text('Nothing worked', x, y)
                 }
 
-                y += 4
+                y += 5.4
 
                 // His own words, under the day they belong to.
                 for (const words of day.notes) {
@@ -331,22 +378,23 @@ export async function timesheetPdf({
 
                 pdf.setDrawColor(...LINE)
                 pdf.setLineWidth(0.15)
-                pdf.line(marginX + 2, y - 2.6, right, y - 2.6)
+                pdf.line(marginX + 2, y - 3.4, right, y - 3.4)
             }
 
-            room(7)
+            room(9)
             pdf.setDrawColor(...DARK)
             pdf.setLineWidth(0.3)
-            pdf.line(marginX + 2, y - 2.2, right, y - 2.2)
+            pdf.line(marginX + 2, y - 3, right, y - 3)
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(8)
             pdf.setTextColor(...INK)
             pdf.text(`Week ${w + 1}`, marginX + 2, y + 1.4)
             pdf.text(`${h(person.week[w])} h`, right, y + 1.4, { align: 'right' })
-            y += 8
+            y += 8.5
         }
 
-        y += 3
+        onPage = null
+        y += 5
     }
 
     // Every page says what it is and where it sits, because one of them will be

@@ -82,3 +82,47 @@ describe('building the paper', () => {
         expect(doc.getNumberOfPages()).toBeGreaterThan(1)
     })
 })
+
+// What jsPDF has actually drawn, read back off the page. The text sits in the
+// content stream as (...)Tj, so a name that was printed can be found and one
+// that was not cannot.
+function drawnOn(doc, page) {
+    return String(doc.internal.pages[page] || '')
+}
+
+describe('a person is kept in one piece', () => {
+    // The rule the stock take and the allergen sheets already follow. Two days
+    // stranded at the foot of a page, with the name overleaf, is a page nobody
+    // can file.
+    it('starts somebody on a fresh page rather than splitting them', async () => {
+        // Eight people who each take well over a third of a page, so the
+        // breaks have to fall between them rather than through one.
+        const team = Array.from({ length: 8 }, (_, i) => ({ ...people[0], name: `Person${i}` }))
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: team, save: false })
+
+        // It really does run over several pages, or the check below proves
+        // nothing at all.
+        expect(doc.getNumberOfPages()).toBeGreaterThan(2)
+        for (let page = 1; page <= doc.getNumberOfPages(); page++) {
+            expect(drawnOn(doc, page)).not.toContain('continued')
+        }
+    })
+
+    // Somebody with a full fortnight can be taller than a whole page. Then it
+    // does run on, and says whose it is at the top.
+    it('says whose page it is when one person will not fit on any page', async () => {
+        const huge = {
+            ...people[0],
+            name: 'Someone Long',
+            days: Array.from({ length: 40 }, (_, i) => ({
+                ...people[0].days[0],
+                date: '2026-10-25',
+                week: i < 20 ? 0 : 1,
+                notes: ['A sentence about this day, long enough to take a line of its own'],
+            })),
+        }
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: [huge], save: false })
+        const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
+        expect(all).toContain('continued')
+    })
+})
