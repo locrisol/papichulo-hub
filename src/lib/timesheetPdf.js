@@ -153,16 +153,25 @@ export async function timesheetPdf({
     // Whose section is being drawn, so a page break inside one can say so.
     let onPage = null
 
-    function drawPersonHead(name) {
+    // **A band, not a heading.** Fourteen days of black figures on white and
+    // then another name in the same black is not a line anybody sees, so you
+    // read three days of the wrong person before noticing. It is the same band
+    // the mail gives each person, with the name on the left and what the period
+    // came to on the right.
+    function drawPersonHead(person, continued) {
+        const height = 7
+        pdf.setFillColor(...DARK)
+        pdf.rect(marginX, y - 4.6, right - marginX, height, 'F')
+
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(10)
-        pdf.setTextColor(...DARK)
-        pdf.text(name, marginX, y)
-        y += 1.6
-        pdf.setDrawColor(...DARK)
-        pdf.setLineWidth(0.5)
-        pdf.line(marginX, y, right, y)
-        y += 5
+        pdf.setTextColor(255)
+        pdf.text(continued ? `${person.name}, continued` : person.name, marginX + 3, y)
+
+        pdf.setFontSize(9)
+        pdf.text(`${h(person.worked)} h`, right - 3, y, { align: 'right' })
+
+        y += 7
     }
 
     function room(needed) {
@@ -172,17 +181,19 @@ export async function timesheetPdf({
         // **The same rule the stock take follows.** A section that has to run
         // onto another page says whose it is at the top of it, because a page
         // of times with no name on it is a page nobody can file.
-        if (onPage) drawPersonHead(`${onPage}, continued`)
+        if (onPage) drawPersonHead(onPage, true)
     }
 
     // Roughly how tall a person's section will be, so one can be kept whole.
     function heightOf(person) {
-        let need = 13
+        let need = 16
         for (const w of [0, 1]) {
             const mine = person.days.filter(day => day.week === w)
             need += 4 + 8.5
             need += mine.length
-                ? mine.reduce((t, day) => t + 5.4 + day.notes.length * 3.6, 0)
+                ? mine.reduce((t, day) => t + (day.notes.length
+                    ? 5.7 + day.notes.length * 3.4
+                    : 5.4), 0)
                 : 5.4
         }
         return need + 4
@@ -361,19 +372,33 @@ export async function timesheetPdf({
             pdf.addPage()
             drawPageTop()
         }
-        onPage = person.name
+        onPage = person
 
-        drawPersonHead(person.name)
+        drawPersonHead(person)
 
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(7)
-        pdf.setTextColor(...MUTED)
-        pdf.text(
-            `Week 1 ${h(person.week[0])}    Week 2 ${h(person.week[1])}    `
-            + `Hours worked ${h(person.worked)}    Bank holiday ${h(person.bankHoliday)}    `
-            + `Holiday ${h(person.holiday)}`,
-            marginX, y,
-        )
+        // **The label quiet and small, the figure dark and bold.** As one grey
+        // string, "Week 1 43.16" read as one number with a stray 1 in front of
+        // it. Drawn as two things with a gap, it reads as a label and a figure.
+        let fx = marginX
+        for (const [label, value] of [
+            ['Week 1', h(person.week[0])],
+            ['Week 2', h(person.week[1])],
+            ['Hours worked', h(person.worked)],
+            ['Bank holiday', h(person.bankHoliday)],
+            ['Holiday', h(person.holiday)],
+        ]) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.setFontSize(7)
+            pdf.setTextColor(...MUTED)
+            pdf.text(label, fx, y)
+            fx += pdf.getTextWidth(label) + 2.4
+
+            pdf.setFont('helvetica', 'bold')
+            pdf.setFontSize(8)
+            pdf.setTextColor(...INK)
+            pdf.text(value, fx, y)
+            fx += pdf.getTextWidth(value) + 7
+        }
         y += 6
 
         for (const w of [0, 1]) {
@@ -425,9 +450,12 @@ export async function timesheetPdf({
                     pdf.text('Nothing worked', x, y)
                 }
 
-                y += 5.4
+                // A comment belongs to the day above it, so it sits closer to
+                // that day than to the next one. A full row's gap put it in the
+                // middle and left it looking like it could belong to either.
+                const said = day.notes.length > 0
+                y += said ? 3.9 : 5.4
 
-                // His own words, under the day they belong to.
                 for (const words of day.notes) {
                     pdf.setFont('helvetica', 'italic')
                     pdf.setFontSize(7)
@@ -435,10 +463,10 @@ export async function timesheetPdf({
                     for (const line of pdf.splitTextToSize(words, right - marginX - 54)) {
                         room(5)
                         pdf.text(line, marginX + 52, y)
-                        y += 3.2
+                        y += 3.4
                     }
-                    y += 0.6
                 }
+                if (said) y += 1.8
 
                 pdf.setDrawColor(...LINE)
                 pdf.setLineWidth(0.15)
