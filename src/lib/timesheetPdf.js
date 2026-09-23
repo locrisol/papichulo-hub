@@ -35,6 +35,18 @@ async function loadJsPdf() {
 const LOGO_WIDTH = 26
 const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 
+// The summary's five figure columns, and what they are called. Exported so a
+// test can measure the words against the width rather than somebody finding out
+// on a printed page that two of them have run into each other.
+export const COL_WIDTH = 24
+export const SUMMARY_HEADS = ['WEEK 1', 'WEEK 2', 'HOURS WORKED', 'BANK HOLIDAY', 'HOLIDAY']
+export const HEAD_SIZE = 6
+// Tighter than the 0.4 the other small capitals use. At 0.4, HOURS WORKED
+// comes to 22.5mm inside a 24mm column, which is how three of these ran into
+// each other on the page. The alternative was to shorten the words, and the
+// accountant reading it is better served by HOURS WORKED than by WORKED.
+export const HEAD_SPACING = 0.2
+
 const DARK = [24, 47, 36]
 const INK = [40, 40, 40]
 const MUTED = [107, 100, 89]
@@ -90,35 +102,45 @@ export async function timesheetPdf({
     // The top of every page: the logo, what this is, whose it is and when it
     // was made. A page of it on its own still says all four.
     function drawPageTop() {
+        // **Who it is on the left, what it is on the right.**
+        //
+        // It was all stacked against the left margin with the right half of the
+        // page empty, which is what he meant by squeezed: not the gap between
+        // the logo and the words, but the whole header living in 45% of the
+        // width. Widening that gap only broke the logo away from the name.
+        // Identity on one side, the period and the stamp on the other, and the
+        // line under them now has something at both ends.
         pdf.addImage(logo, 'PNG', marginX, 11, LOGO_WIDTH, LOGO_HEIGHT)
-        // Twelve rather than six. At six the label sat against the edge of the
-        // logo and the three lines read as one crowded block, which is what he
-        // meant by squeezed.
-        const textX = marginX + LOGO_WIDTH + 12
+        const textX = marginX + LOGO_WIDTH + 7
 
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(7)
         pdf.setTextColor(150)
-        pdf.text('HOURS', textX, 14.5, { charSpace: 0.7 })
+        pdf.text('HOURS', textX, 16, { charSpace: 0.7 })
 
-        pdf.setFontSize(15)
+        pdf.setFontSize(16)
         pdf.setTextColor(...INK)
-        pdf.text(restaurant?.name || 'Papi Chulo', textX, 22.5)
+        pdf.text(restaurant?.name || 'Papi Chulo', textX, 25)
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(7)
+        pdf.setTextColor(150)
+        pdf.text('PAY PERIOD', right, 16, { align: 'right', charSpace: 0.7 })
 
         pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(10)
-        pdf.setTextColor(90)
-        pdf.text(`Pay period, ${period}`, textX, 28.5)
+        pdf.setFontSize(11)
+        pdf.setTextColor(...INK)
+        pdf.text(period, right, 22.5, { align: 'right' })
 
         pdf.setFontSize(7)
         pdf.setTextColor(150)
-        pdf.text(`Prepared ${stampDateTime(at)}`, right, 14.5, { align: 'right' })
+        pdf.text(`Prepared ${stampDateTime(at)}`, right, 27.5, { align: 'right' })
 
         pdf.setDrawColor(...LINE)
         pdf.setLineWidth(0.3)
-        pdf.line(marginX, 35, right, 35)
+        pdf.line(marginX, 32.5, right, 32.5)
 
-        y = 43
+        y = 41
     }
 
     // Whose section is being drawn, so a page break inside one can say so.
@@ -185,18 +207,25 @@ export async function timesheetPdf({
     //
     // **The payroll can be done from this alone.** Everything after it is for
     // the question that comes back, not for the run itself.
-    const cols = [right - 116, right - 92, right - 68, right - 40, right - 18, right]
+    // Five columns of the same width, because the headers are what set the
+    // floor and they are all about the same length. They were 24, 24, 28, 22
+    // and 18, so HOURS WORKED, BANK HOLIDAY and HOLIDAY ran into each other and
+    // the last one hung off the end of the band.
+    const COL = COL_WIDTH
+    const cols = [
+        right - COL * 5, right - COL * 4, right - COL * 3,
+        right - COL * 2, right - COL, right,
+    ]
 
     function drawSummaryHead() {
         pdf.setFillColor(...DARK)
         pdf.rect(marginX, y - 4.4, right - marginX, 6, 'F')
         pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(6)
+        pdf.setFontSize(HEAD_SIZE)
         pdf.setTextColor(255)
-        pdf.text('WHO', marginX + 2, y, { charSpace: 0.4 })
-        const heads = ['WEEK 1', 'WEEK 2', 'HOURS WORKED', 'BANK HOLIDAY', 'HOLIDAY']
-        heads.forEach((label, i) => {
-            pdf.text(label, cols[i + 1] - 2, y, { align: 'right', charSpace: 0.4 })
+        pdf.text('WHO', marginX + 2, y, { charSpace: HEAD_SPACING })
+        SUMMARY_HEADS.forEach((label, i) => {
+            pdf.text(label, cols[i + 1] - 2, y, { align: 'right', charSpace: HEAD_SPACING })
         })
         y += 6
     }

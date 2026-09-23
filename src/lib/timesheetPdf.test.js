@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { timesheetPdf } from '@/lib/timesheetPdf'
+import {
+    timesheetPdf, COL_WIDTH, SUMMARY_HEADS, HEAD_SIZE, HEAD_SPACING,
+} from '@/lib/timesheetPdf'
 import { personPeriod } from '@/lib/timesheet'
 import { periodDates } from '@/lib/payPeriod'
 
@@ -89,6 +91,25 @@ describe('building the paper', () => {
 function drawnOn(doc, page) {
     return String(doc.internal.pages[page] || '')
 }
+
+// He found this on a printed page: HOURS WORKED, BANK HOLIDAY and HOLIDAY ran
+// into one another and the last of them hung off the end of the dark band,
+// because the columns were 24, 24, 28, 22 and 18 while the headings are all
+// about the same length. Measured here rather than found again.
+describe('the summary headings fit their own columns', () => {
+    it.each(SUMMARY_HEADS)('%s', async label => {
+        const JsPDF = (await import('jspdf')).default
+        const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(HEAD_SIZE)
+
+        // charSpace is added per character on top of the measured width.
+        const width = pdf.getTextWidth(label) + label.length * HEAD_SPACING
+        // Two millimetres of padding on the right, and a millimetre of air on
+        // the left so two headings never touch.
+        expect(width).toBeLessThan(COL_WIDTH - 3)
+    })
+})
 
 describe('a person is kept in one piece', () => {
     // The rule the stock take and the allergen sheets already follow. Two days
