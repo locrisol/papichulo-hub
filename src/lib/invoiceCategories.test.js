@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { INVOICE_CATEGORIES, invoiceCategory, groupByDay } from '@/lib/invoiceCategories'
+import {
+    INVOICE_CATEGORIES, invoiceCategory, groupByDay, spendOn, FOOD, PACKAGING,
+} from '@/lib/invoiceCategories'
 
 describe('invoiceCategory', () => {
     it('finds each of the four', () => {
@@ -68,5 +70,45 @@ describe('groupByDay', () => {
     it('copes with nothing at all', () => {
         expect(groupByDay([])).toEqual([])
         expect(groupByDay(null)).toEqual([])
+    })
+})
+
+describe('what a week cost', () => {
+    // Rows out of invoice_cost_by_category. Three screens each had their own
+    // filter and reduce over the invoices themselves, and the three did not
+    // quite agree.
+    const spend = [
+        { cost_date: '2026-09-06', category: 'food', amount: 100, came_from: 'lines' },
+        { cost_date: '2026-09-06', category: 'packaging', amount: 20, came_from: 'lines' },
+        { cost_date: '2026-09-07', category: 'cleaning', amount: 5, came_from: 'header' },
+        { cost_date: '2026-09-07', category: 'other', amount: 400, came_from: 'header' },
+    ]
+
+    it('adds up one category', () => {
+        expect(spendOn(spend, FOOD)).toBe(100)
+    })
+
+    // Packaging and cleaning are one figure everywhere money is reported,
+    // measured against a single target, and they are stored apart.
+    it('adds packaging and cleaning together', () => {
+        expect(spendOn(spend, PACKAGING)).toBe(25)
+    })
+
+    it('leaves out what is neither', () => {
+        expect(spendOn(spend, FOOD) + spendOn(spend, PACKAGING)).toBe(125)
+    })
+
+    // Money asked back at the door and not yet credited comes through as a
+    // negative against the week it happened in, because it was never spent.
+    it('takes an open claim off the week', () => {
+        const withClaim = [...spend, {
+            cost_date: '2026-09-06', category: 'food', amount: -30, came_from: 'claim',
+        }]
+        expect(spendOn(withClaim, FOOD)).toBe(70)
+    })
+
+    it('is nought rather than NaN on nothing at all', () => {
+        expect(spendOn(null, FOOD)).toBe(0)
+        expect(spendOn([], FOOD)).toBe(0)
     })
 })

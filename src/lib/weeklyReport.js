@@ -5,6 +5,7 @@
 
 import { weekDates, weekStartOf, todayISO, addDays } from '@/lib/dates'
 import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
+import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
 //
@@ -155,7 +156,7 @@ export function reportableWeeks(count = 12, today = todayISO()) {
 //
 // Closed days are left out of the totals: they have no sales and would only
 // drag the denominator down.
-export function reportFigures({ days = [], invoices = [], labour = [], overheads = [], delivery = [] }) {
+export function reportFigures({ days = [], spend = [], labour = [], overheads = [], delivery = [] }) {
     const trading = days.filter(d => !d.is_closed)
     // How many days of labour were entered, not just what they came to. Nought
     // and nought are the same number and mean completely different things: a
@@ -165,16 +166,12 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
     const net = trading.reduce((t, d) => t + num(d.net_sales), 0)
     const gross = trading.reduce((t, d) => t + num(d.gross_sales), 0)
 
-    const food = invoices
-        .filter(i => i.category === 'food')
-        .reduce((t, i) => t + num(i.total_amount), 0)
-
-    // Packaging and cleaning are added together, matching the report as it has
-    // always been written. They are stored apart, so splitting them later is a
-    // change here rather than a migration.
-    const packaging = invoices
-        .filter(i => i.category === 'packaging' || i.category === 'cleaning')
-        .reduce((t, i) => t + num(i.total_amount), 0)
+    // Out of invoice_cost_by_category rather than off the invoices themselves.
+    // The view splits a mixed delivery the way the money actually went, and it
+    // takes off anything claimed back at the door that has not been credited
+    // yet, because money asked back was never spent.
+    const food = spendOn(spend, FOOD)
+    const packaging = spendOn(spend, PACKAGING)
 
     const labourCost = labour.reduce((t, l) => t + num(l.labour_cost), 0)
 
@@ -213,10 +210,21 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
 
         tradingDays: trading.length,
         labourDays,
-        foodInvoices: invoices.filter(i => i.category === 'food').length,
-        packagingInvoices: invoices.filter(
-            i => i.category === 'packaging' || i.category === 'cleaning').length,
+        // Whether anything at all was spent, which is a different question
+        // from what it came to. A claim does not count here: it comes off a
+        // week, it never puts anything into one, and a week with nothing but a
+        // claim on it is still a week with no invoices in it.
+        foodEntries: onPaper(spend, FOOD).length,
+        packagingEntries: onPaper(spend, PACKAGING).length,
     }
+}
+
+// Rows that came off a piece of paper.
+//
+// The cost view carries claims as well, as a negative against the week they
+// happened in, and a claim is not evidence that anything was bought.
+function onPaper(spend, cats) {
+    return (spend || []).filter(r => cats.includes(r.category) && r.came_from !== 'claim')
 }
 
 // What is missing before this week can be believed.
@@ -240,11 +248,11 @@ export function figureGaps(figures) {
             + 'so labour is lower than it really was.')
     }
 
-    if (figures.foodInvoices === 0) {
+    if (figures.foodEntries === 0) {
         out.push('No food invoices are dated in this week.')
     }
 
-    if (figures.packagingInvoices === 0) {
+    if (figures.packagingEntries === 0) {
         out.push('No packaging or cleaning invoices are dated in this week.')
     }
 

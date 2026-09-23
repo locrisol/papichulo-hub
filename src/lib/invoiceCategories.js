@@ -1,3 +1,5 @@
+import { num } from '@/lib/format'
+
 // What an invoice can be filed under, and the colour that goes with each.
 //
 // The colours are not decoration. Invoices get entered in batches, ten at a
@@ -95,6 +97,28 @@ export const INVOICE_SUMMARY_CARDS = [
         labelText: 'text-gray-700',
     },
 ]
+
+// Packaging and cleaning are added together wherever money is reported,
+// matching the weekly report, which has always measured the two against one
+// target. They are stored apart, so splitting them later is a change here
+// rather than a migration.
+export const FOOD = ['food']
+export const PACKAGING = ['packaging', 'cleaning']
+
+// What was spent on something, out of invoice_cost_by_category.
+//
+// The view is the only thing that may be asked what a week cost. It reads the
+// lines where an invoice has them, the header where it does not, and takes off
+// anything claimed back at the door and not yet credited, so a screen adding up
+// `total_amount` by `category` is now three different kinds of wrong at once.
+//
+// This was written out three times with three slightly different filters before
+// it lived here.
+export function spendOn(rows, cats) {
+    return (rows || [])
+        .filter(r => cats.includes(r.category))
+        .reduce((total, r) => total + num(r.amount), 0)
+}
 
 // The week's invoices, split into days, newest day first.
 //

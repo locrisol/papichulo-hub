@@ -14,6 +14,7 @@ import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey, publishCheck, figuresToStore } from '@/lib/weeklyReport'
 import { paperworkFor } from '@/lib/reportPeople'
 import { weeksBack, byWeek } from '@/lib/reportChart'
+import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
@@ -183,15 +184,17 @@ export default function ReportPage() {
             if (head.status === 'published' && head.figures) {
                 setFigures(head.figures)
             } else {
-                const [days, invoices, labour] = await Promise.all([
+                const [days, spend, labour] = await Promise.all([
                     supabase.from('sales_records')
                         .select('sale_date, net_sales, gross_sales, is_closed')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('sale_date', weekStart).lte('sale_date', end),
-                    supabase.from('invoices')
-                        .select('total_amount, category')
+                    // The view, not the invoices: see the comment on the
+                    // same read in the cost dashboard.
+                    supabase.from('invoice_cost_by_category')
+                        .select('cost_date, category, amount, came_from')
                         .eq('restaurant_id', head.restaurant_id)
-                        .gte('invoice_date', weekStart).lte('invoice_date', end),
+                        .gte('cost_date', weekStart).lte('cost_date', end),
                     // The view rather than the frozen table: see the
                     // comment on the same read in the cost dashboard.
                     supabase.from('labour_by_day')
@@ -200,13 +203,13 @@ export default function ReportPage() {
                         .gte('entry_date', weekStart).lte('entry_date', end),
                 ])
 
-                const failed = days.error || invoices.error || labour.error
+                const failed = days.error || spend.error || labour.error
                 if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
                 const all = (head.report_sections || []).flatMap(s => s.report_items || [])
                 setFigures(reportFigures({
                     days: days.data || [],
-                    invoices: invoices.data || [],
+                    spend: spend.data || [],
                     labour: labour.data || [],
                     overheads: all.filter(i => i.kind === 'overhead'),
                     delivery: all.filter(i => i.kind === 'delivery'),
@@ -265,15 +268,15 @@ export default function ReportPage() {
             const weekStarts = weeksBack(weekStart)
             const yearFrom = weekStarts[0]
 
-            const [hDays, hInvoices, hLabour, hReports] = await Promise.all([
+            const [hDays, hSpend, hLabour, hReports] = await Promise.all([
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', yearFrom).lte('sale_date', end),
-                supabase.from('invoices')
-                    .select('invoice_date, total_amount, category')
+                supabase.from('invoice_cost_by_category')
+                    .select('cost_date, category, amount')
                     .eq('restaurant_id', head.restaurant_id)
-                    .gte('invoice_date', yearFrom).lte('invoice_date', end),
+                    .gte('cost_date', yearFrom).lte('cost_date', end),
                 supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
@@ -290,11 +293,11 @@ export default function ReportPage() {
             const netWeeks = byWeek(trading, 'sale_date', d => d.net_sales)
             const grossWeeks = byWeek(trading, 'sale_date', d => d.gross_sales)
             const foodWeeks = byWeek(
-                (hInvoices.data || []).filter(i => i.category === 'food'),
-                'invoice_date', i => i.total_amount)
+                (hSpend.data || []).filter(r => FOOD.includes(r.category)),
+                'cost_date', r => r.amount)
             const packWeeks = byWeek(
-                (hInvoices.data || []).filter(i => ['packaging', 'cleaning'].includes(i.category)),
-                'invoice_date', i => i.total_amount)
+                (hSpend.data || []).filter(r => PACKAGING.includes(r.category)),
+                'cost_date', r => r.amount)
             const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
 
             // Each platform's own weekly line, and the two totals.
