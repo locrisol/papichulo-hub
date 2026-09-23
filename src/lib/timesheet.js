@@ -18,6 +18,7 @@
 // what the absences say, and what the clock recorded.
 
 import { weekDates, todayISO } from '@/lib/dates'
+import { num } from '@/lib/format'
 import { spanHours, toSeconds } from '@/lib/clock'
 import { toMinutes, shiftMinutes } from '@/lib/roster'
 import {
@@ -551,3 +552,117 @@ export function planDrift(plan, startedAt, ranFor) {
 // nobody would look twice at. An hour is the point where a difference is worth
 // somebody's attention, and it is his figure.
 export const NOTICEABLE_MINUTES = 60
+
+// ---------------------------------------------------------------------------
+// A pay period, for the paper that goes with the mail
+// ---------------------------------------------------------------------------
+
+// How a state is marked on the paper and in the mail.
+//
+// **Defined here and copied into the function**, which cannot import it because
+// only what is inside a function's folder is deployed with it. The test runs
+// the two against each other, so the mail and the PDF cannot end up calling the
+// same day two different things or drawing it two different colours.
+//
+// An ink and a pale ground rather than the single colour the screens use. On
+// screen these are chips at fourteen pixels with room around them; on paper and
+// in a mail they are nine point capitals inside a table, and white on the app's
+// own #B08A2E or #8c8c8c is under three to one.
+export const AWAY_LOOK = {
+    holiday: { label: 'Holiday', ink: '#2F5E8C', wash: '#E7EFF7' },
+    day_off: { label: 'Day off', ink: '#4F6270', wash: '#EBEFF2' },
+    sick: { label: 'Off sick', ink: '#8E4530', wash: '#F7EBE7' },
+    event: { label: 'Away at something', ink: '#584A8C', wash: '#ECE9F5' },
+    lent: { label: 'At the other restaurant', ink: '#2F7359', wash: '#E6F2ED' },
+    unpaid: { label: 'Unpaid leave', ink: '#5E5E5E', wash: '#EFEFEF' },
+}
+
+export const KIND_LOOK = {
+    trial: { label: 'Trial', ink: '#82406E', wash: '#F5EBF2' },
+    training: { label: 'Training', ink: '#55524A', wash: '#EEEDEA' },
+}
+
+// The wash is the app's own BANK_HOLIDAY_WASH, already a pale ground meant to
+// sit behind a cell.
+export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2' }
+
+// The two days that change what somebody is paid. A day off and a day away at
+// something are worth drawing where they fall, but counting them in a summary
+// meant to be keyed into a payroll would be noise.
+export const COUNTED_DAYS = ['sick', 'unpaid']
+
+// The same fortnight the mail works out, worked out again here.
+//
+// **Deliberately a second implementation**, the same as the bank holidays are:
+// a function only deploys what is inside its own folder, so the mail cannot
+// import this and this cannot import the mail. What keeps them honest is a test
+// that runs both over the same rows and demands the same answer, because a PDF
+// that disagreed with the mail it was attached to would be worse than no PDF.
+//
+// `half` is where the second week starts, which is always seven.
+export function personPeriod({
+    people = [], entries = [], absences = [], dates = [], half = 7,
+}) {
+    const awayOn = (employeeId, date) => (absences || []).find(a => (
+        a.employee_id === employeeId
+        && (!a.status || a.status === 'approved')
+        && String(a.starts_on) <= date && String(a.ends_on) >= date
+    )) || null
+
+    return people.map(person => {
+        const mine = entries.filter(e => e.employee_id === person.id)
+
+        const days = dates.map((date, i) => {
+            const spans = mine
+                .filter(e => e.work_date === date && e.starts_at && e.ends_at)
+                .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
+            const said = mine
+                .filter(e => e.work_date === date)
+                .map(e => String(e.note || '').trim())
+                .filter(Boolean)
+            const away = awayOn(person.id, date)
+
+            return {
+                date,
+                week: i < half ? 0 : 1,
+                spans: spans.map(e => ({
+                    starts_at: e.starts_at,
+                    ends_at: e.ends_at,
+                    hours: num(e.hours),
+                    kind: e.kind,
+                })),
+                notes: said,
+                hours: spans.reduce((t, e) => t + num(e.hours), 0),
+                bankHoliday: Boolean(bankHolidayOn(date)),
+                away: away ? away.kind : null,
+            }
+        }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
+
+        const inWeek = w => days.reduce((t, d) => (d.week === w ? t + d.hours : t), 0)
+        const ofKind = kind => days.reduce((t, d) => (
+            t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
+        ), 0)
+        const daysOf = kind => dates.filter(d => {
+            const away = awayOn(person.id, d)
+            return away && away.kind === kind
+        }).length
+
+        const week = [inWeek(0), inWeek(1)]
+        const worked = week[0] + week[1]
+        const bank = days.reduce((t, d) => t + (d.bankHoliday ? d.hours : 0), 0)
+
+        return {
+            name: person.full_name,
+            days,
+            week,
+            worked,
+            normal: worked - bank,
+            bankHoliday: bank,
+            holiday: holidayHoursInWeek(absences, person.id, dates),
+            trial: ofKind('trial'),
+            training: ofKind('training'),
+            sickDays: daysOf('sick'),
+            unpaidDays: daysOf('unpaid'),
+        }
+    }).filter(person => person.days.length > 0 || person.holiday > 0)
+}

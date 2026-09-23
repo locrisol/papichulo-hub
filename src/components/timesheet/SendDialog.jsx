@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { todayISO, addDays, shortDate, stampDateTime } from '@/lib/dates'
-import { periodWords, periodIsOver } from '@/lib/payPeriod'
-import { personWeek, unanswered } from '@/lib/timesheet'
+import { periodWords, periodIsOver, periodDates } from '@/lib/payPeriod'
+import { personWeek, unanswered, personPeriod } from '@/lib/timesheet'
+import { timesheetPdf } from '@/lib/timesheetPdf'
 import { sendTimesheet, sentWords } from '@/lib/timesheetMail'
 import { friendlyError } from '@/lib/errors'
 import Modal from '@/components/ui/Modal'
@@ -48,6 +49,10 @@ export default function SendDialog({
     // screen.
     const [loading, setLoading] = useState(true)
     const [waiting, setWaiting] = useState([])
+    // Kept from the same read the block uses, so the paper and the mail are
+    // built from one set of rows rather than two.
+    const [rows, setRows] = useState(null)
+    const [making, setMaking] = useState(false)
 
     useEffect(() => {
         if (!period || !restaurant?.id) return
@@ -104,6 +109,13 @@ export default function SendDialog({
             })
 
             setWaiting(open)
+            setRows({
+                people: (team.data || []).filter(p => (
+                    (!p.ended_on || p.ended_on >= start) && (!p.started_on || p.started_on <= end)
+                )),
+                entries: worked.data || [],
+                absences: away.data || [],
+            })
             setLoading(false)
         }
 
@@ -123,6 +135,23 @@ export default function SendDialog({
         setError('')
         const failed = await onKeepList(list)
         if (failed) setError(failed)
+    }
+
+    // The paper for her files. Built here rather than on the page behind,
+    // because this is where the whole fortnight has already been read.
+    async function paper() {
+        setMaking(true)
+        setError('')
+        try {
+            await timesheetPdf({
+                restaurant,
+                periodStart: period.start,
+                people: personPeriod({ ...rows, dates: periodDates(period.start) }),
+            })
+        } catch (err) {
+            setError(err.message || 'That PDF could not be made.')
+        }
+        setMaking(false)
     }
 
     async function go(test) {
@@ -253,6 +282,17 @@ export default function SendDialog({
             <div className={modalFooter}>
                 <button type="button" onClick={onClose} className={secondaryButton}>
                     {said ? 'Done' : 'Cancel'}
+                </button>
+                {/* The same fortnight as a piece of paper, in the shape of the
+                    sheet he has kept by hand for years: summary on top, then
+                    everybody in turn. */}
+                <button
+                    type="button"
+                    disabled={loading || making || !rows}
+                    onClick={paper}
+                    className={secondaryButton}
+                >
+                    {making ? 'Making it...' : 'Download the PDF'}
                 </button>
                 {/* A test goes to the same list, with the period on it and a
                     band saying it is a rehearsal, because a test that goes

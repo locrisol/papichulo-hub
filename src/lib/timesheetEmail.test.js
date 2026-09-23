@@ -6,7 +6,11 @@ import {
 } from '../../supabase/functions/weekly-report-email/timesheet'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
-import { KINDS } from '@/lib/timesheet'
+import {
+    KINDS, personPeriod as appPersonPeriod,
+    AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
+    COUNTED_DAYS as appCounted,
+} from '@/lib/timesheet'
 
 // The pay period the design was drawn against: Sunday 25 October to Saturday
 // 7 November 2026, which holds the October bank holiday on its first Monday.
@@ -176,6 +180,16 @@ describe('the marks match the ones on the screen', () => {
             expect(AWAY_LOOK[kind.value], kind.value).toBeTruthy()
             expect(AWAY_LOOK[kind.value].label).toBe(kind.label)
         }
+    })
+
+    // The mail is built in the function and the PDF in the browser, so the
+    // marks exist twice. Same objects, or the two say the same day two
+    // different ways.
+    it('is the same set of marks the app draws on the paper', () => {
+        expect(AWAY_LOOK).toEqual(appAway)
+        expect(KIND_LOOK).toEqual(appKind)
+        expect(BANK_LOOK).toEqual(appBank)
+        expect(COUNTED_DAYS).toEqual(appCounted)
     })
 
     it('calls a trial and a training day what the app calls them', () => {
@@ -396,5 +410,55 @@ describe('the mail itself', () => {
         expect(mail.html).toContain('Off sick')
         expect(mail.html).toContain('1 day sick')
         expect(mail.text).toContain('off sick')
+    })
+})
+
+// The PDF is built in the browser and the mail is built in the function, so the
+// fortnight is worked out twice. A PDF that disagreed with the mail it was
+// attached to would be worse than no PDF, so the two are run over the same rows
+// and made to give the same answer.
+describe('the browser and the function agree about a period', () => {
+    const away = [
+        {
+            employee_id: 'e1', kind: 'sick', status: 'approved',
+            starts_on: '2026-10-28', ends_on: '2026-10-29',
+        },
+        {
+            employee_id: 'e2', kind: 'holiday', status: 'approved',
+            starts_on: '2026-11-02', ends_on: '2026-11-06', hours: 20,
+        },
+        {
+            employee_id: 'e1', kind: 'unpaid', status: 'approved',
+            starts_on: '2026-11-04', ends_on: '2026-11-04',
+        },
+    ]
+    const withKinds = [
+        ...entries,
+        shift({
+            employee_id: 'e2', work_date: '2026-10-30', kind: 'trial',
+            starts_at: '17:00:00', ends_at: '22:00:00', hours: 5,
+        }),
+        shift({
+            employee_id: 'e1', work_date: '2026-11-06', kind: 'training',
+            starts_at: '09:00:00', ends_at: '13:00:00', hours: 4,
+        }),
+    ]
+
+    const args = { people: [aoife, cathal], entries: withKinds, absences: away, dates: DATES }
+
+    it('gives the same answer, field for field', () => {
+        expect(appPersonPeriod(args)).toEqual(personPeriod(args))
+    })
+
+    it('agrees when there is nothing at all', () => {
+        const empty = { people: [aoife], entries: [], absences: [], dates: DATES }
+        expect(appPersonPeriod(empty)).toEqual(personPeriod(empty))
+    })
+
+    // The one that would catch a drift in the rule rather than in the numbers.
+    it('agrees about who is left out', () => {
+        const nobody = { ...args, people: [...args.people, { id: 'e9', full_name: 'Nobody' }] }
+        expect(appPersonPeriod(nobody).map(p => p.name))
+            .toEqual(personPeriod(nobody).map(p => p.name))
     })
 })
