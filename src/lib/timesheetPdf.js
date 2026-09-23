@@ -48,6 +48,12 @@ export const HEAD_SIZE = 6
 export const HEAD_SPACING = 0.2
 
 const DARK = [24, 47, 36]
+// The two washes that group the summary's columns. Cream is the app's own
+// app-bg, and the green is the same one a worked cell carries on the week grid,
+// taken paler so a figure still reads black on it.
+const CREAM = [247, 245, 240]
+const WORKED_WASH = [238, 243, 239]
+const HEAD_QUIET = [42, 70, 54]
 const INK = [40, 40, 40]
 const MUTED = [107, 100, 89]
 const LINE = [222, 217, 207]
@@ -217,9 +223,29 @@ export async function timesheetPdf({
         right - COL * 2, right - COL, right,
     ]
 
+    // **Three zones, said in colour rather than in a rule.**
+    //
+    // A name on the left and a figure 160mm away on the right is a long way for
+    // an eye to travel with nothing to hold on to. The two weeks are washed as
+    // one block because they are the working, hours worked is washed on its own
+    // because it is the figure that gets keyed, and what is left is white.
+    // Inset by a third of a millimetre top and bottom. A row's wash and the
+    // hairline closing the row above it land within 0.2mm of each other, and a
+    // filled rectangle drawn later wins, so without the inset every separator
+    // in the table was painted out by the next row.
+    function drawSummaryWash(top, height) {
+        pdf.setFillColor(...CREAM)
+        pdf.rect(cols[0], top, COL_WIDTH * 2, height, 'F')
+        pdf.setFillColor(...WORKED_WASH)
+        pdf.rect(cols[2], top, COL_WIDTH, height, 'F')
+    }
+
     function drawSummaryHead() {
         pdf.setFillColor(...DARK)
         pdf.rect(marginX, y - 4.4, right - marginX, 6, 'F')
+        // The grouping starts at the head, a shade off the rest of the band.
+        pdf.setFillColor(...HEAD_QUIET)
+        pdf.rect(cols[0], y - 4.4, COL_WIDTH * 2, 6, 'F')
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(HEAD_SIZE)
         pdf.setTextColor(255)
@@ -241,7 +267,9 @@ export async function timesheetPdf({
         if (person.sickDays > 0) marks.push([AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`])
         if (person.unpaidDays > 0) marks.push([AWAY_LOOK.unpaid, `${plural(person.unpaidDays, 'day')} unpaid`])
 
-        room(marks.length ? 11 : 7)
+        const tall = marks.length ? 11.2 : 7.2
+        room(tall)
+        drawSummaryWash(y - 4.3, tall - 0.6)
 
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(8.5)
@@ -277,6 +305,7 @@ export async function timesheetPdf({
 
     // Everybody.
     room(10)
+    drawSummaryWash(y - 4.3, 6.6)
     pdf.setDrawColor(...DARK)
     pdf.setLineWidth(0.6)
     pdf.line(marginX, y - 4.6, right, y - 4.6)
