@@ -48,9 +48,13 @@ export default function RestaurantPage() {
         pay_period_start: '',
     })
 
-    const [loading, setLoading] = useState(false)
-    const [success, setSuccess] = useState('')
     const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
+    // When the last write landed. There is no Save button on this page any
+    // more, so this line is the only thing that says it happened. The same
+    // three words the Timesheet and the Report use, because it is the same
+    // promise.
+    const [savedAt, setSavedAt] = useState(null)
     // Kept apart from the page's error above. That one is for something that
     // would not load, which belongs at the top of the page because there is
     // nothing else up there to read. This is for a save that would not go
@@ -101,39 +105,37 @@ export default function RestaurantPage() {
         load()
     }, [activeRestaurant, refresh])
 
-    // Swap a row with its neighbour. Arrows rather than drag and drop: this is
-    // set once and rarely revisited, and arrows work on touch without a library.
-    async function handleSave(e) {
-        e.preventDefault()
-        setLoading(true)
+    // **It saves when you leave a box, the way the Timesheet and the Report do.**
+    //
+    // There used to be one Save button at the foot of the page. He set the pay
+    // period, went to the Timesheet to use it and it was not there: the change
+    // had been typed and never sent, and nothing on the screen said so. A form
+    // that can hold a change nobody asked it to hold is a form that will lose
+    // one, so it does not hold them any more.
+    //
+    // One field at a time, and only when it really changed. The locked fields
+    // are keyed on what the database holds, so a save makes them lock again,
+    // and that is the confirmation: the box going back to grey is the screen
+    // saying it went.
+    async function save(patch, field) {
+        const current = activeRestaurant?.[field]
+        const next = patch[field]
+        if ((current ?? null) === (next ?? null)) return
+
+        setSaving(true)
         setFormProblem('')
-        setSuccess('')
 
         const { data, error: e1 } = await supabase
             .from('restaurants')
-            .update({
-                hourly_rate: parseFloat(formData.hourly_rate),
-                // Empty is null, not an empty string. Null means "no
-                // address of its own", which is what the mail falls back
-                // on; an empty string would read as an address that is
-                // blank.
-                mail_from: formData.mail_from.trim() || null,
-                google_calendar_id: formData.google_calendar_id.trim() || null,
-                // Read back as the Sunday of its own week. A period that began
-                // mid week would put its boundary inside a Hub week and leave
-                // the two halves belonging to different weeks.
-                pay_period_start: anchorOf(formData.pay_period_start) || null,
-            })
+            .update(patch)
             .eq('id', activeRestaurant.id)
             .select()
             .single()
 
-        setLoading(false)
-        if (e1) setFormProblem(friendlyError(e1))
-        else {
-            setActiveRestaurant(data)
-            setSuccess('Settings saved.')
-        }
+        setSaving(false)
+        if (e1) { setFormProblem(friendlyError(e1)); return }
+        setActiveRestaurant(data)
+        setSavedAt(new Date())
     }
 
     // Enough of each setting to see at a glance whether it has been done,
@@ -194,7 +196,6 @@ export default function RestaurantPage() {
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
             {/* Two columns once there is room for them. On the left is what
                 you change most, the targets and the pay rate, finishing with
@@ -266,22 +267,31 @@ export default function RestaurantPage() {
                         </div>
                     </div>
 
-                    {/* Everything saved straight onto the restaurant row */}
-                    <form onSubmit={handleSave}>
+                    {/* Everything saved straight onto the restaurant row, each box
+                        as it is left. */}
+                    <div>
                         <div className={`${card} p-6 mb-4`}>
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className={labelClass}>
+                                    <label className={labelClass} htmlFor="hourly-rate">
                                         Hourly rate (€)
                                     </label>
                                     <input
+                                        id="hourly-rate"
                                         {...numberField({
                                             value: formData.hourly_rate,
                                             onChange: v => setFormData({ ...formData, hourly_rate: v }),
                                         })}
+                                        onBlur={() => {
+                                            // A half typed rate is not a rate. Leaving the box
+                                            // empty means somebody is still thinking, so nothing
+                                            // is written until there is a figure.
+                                            const rate = parseFloat(formData.hourly_rate)
+                                            if (isNaN(rate)) return
+                                            save({ hourly_rate: rate }, 'hourly_rate')
+                                        }}
                                         className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                                        required
                                     />
                                     {/* Safe to change without a date, because the rate is
                                         copied onto each labour entry when it is saved. */}
@@ -298,18 +308,38 @@ export default function RestaurantPage() {
                             <label className={labelClass} htmlFor="pay-period-start">
                                 A day the pay period started on
                             </label>
-                            {/* One date, and it never has to be touched again.
-                                The pay run is always a fortnight, so every other
-                                period is worked out from this by counting in
-                                fourteens, forwards or backwards. Pick any period
-                                start anybody can name, however long ago. */}
-                            <input
-                                id="pay-period-start"
-                                type="date"
-                                className={`${dateField} w-full sm:w-auto`}
-                                value={formData.pay_period_start}
-                                onChange={e => setFormData({ ...formData, pay_period_start: e.target.value })}
-                            />
+            {/* One date, and it never has to be touched again. The pay run is
+                always a fortnight, so every other period is worked out from
+                this by counting in fourteens, forwards or backwards. Pick any
+                period start anybody can name, however long ago.
+
+                **Locked once it is set**, and this is the one with the most to
+                lose of the three on this page. Changing it does not move one
+                figure, it moves every period boundary there has ever been, so
+                a stray keystroke silently puts every set of hours in a
+                different fortnight. Keyed on what the database holds, so
+                saving it locks it again, and the box going back to grey is how
+                the screen says it went. */}
+                            <LockedField
+                                key={activeRestaurant?.pay_period_start || 'none'}
+                                label="Pay period start"
+                                value={activeRestaurant?.pay_period_start}
+                                display={activeRestaurant?.pay_period_start
+                                    ? fullDate(anchorOf(activeRestaurant.pay_period_start))
+                                    : ''}
+                            >
+                                <input
+                                    id="pay-period-start"
+                                    type="date"
+                                    className={`${dateField} w-full sm:w-auto`}
+                                    value={formData.pay_period_start}
+                                    onChange={e => setFormData({ ...formData, pay_period_start: e.target.value })}
+                                    onBlur={() => save(
+                                        { pay_period_start: anchorOf(formData.pay_period_start) || null },
+                                        'pay_period_start',
+                                    )}
+                                />
+                            </LockedField>
                             <p className="text-xs text-muted mt-1">
                                 {formData.pay_period_start ? (
                                     <>
@@ -333,7 +363,14 @@ export default function RestaurantPage() {
                             <label className={labelClass}>
                                 Sent from
                             </label>
-                            {/* Locked once it is set, like an overhead line on the
+                            {/* **What decides the lock is the row, not the box.**
+                                formData is filled in by an effect, so on the
+                                first render it is still empty and a lock reading
+                                it snapshots "nothing to protect" and never
+                                closes again. The key is what makes it lock again
+                                once a new value has really been saved.
+
+                                Locked once it is set, like an overhead line on the
                                 report. An address that is already working is not
                                 something to leave a cursor sitting in: changing it
                                 needs a matching alias or relay rule in Google, and a
@@ -346,7 +383,7 @@ export default function RestaurantPage() {
                                 still typing into is left alone. */}
                             <LockedField
                                 key={activeRestaurant?.mail_from || 'none'}
-                                label="Sending address" value={formData.mail_from}
+                                label="Sending address" value={activeRestaurant?.mail_from}
                             >
                                 <input
                                     type="email"
@@ -354,6 +391,7 @@ export default function RestaurantPage() {
                                     autoComplete="off"
                                     value={formData.mail_from}
                                     onChange={e => setFormData({ ...formData, mail_from: e.target.value })}
+                                    onBlur={() => save({ mail_from: formData.mail_from.trim() || null }, 'mail_from')}
                                     placeholder="name@papichulo.ie"
                                     className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
@@ -385,7 +423,7 @@ export default function RestaurantPage() {
                                 up as each entry happens to be saved again. */}
                             <LockedField
                                 key={activeRestaurant?.google_calendar_id || 'none'}
-                                label="Google calendar" value={formData.google_calendar_id}
+                                label="Google calendar" value={activeRestaurant?.google_calendar_id}
                             >
                                 <input
                                     id="google-calendar-id"
@@ -393,6 +431,10 @@ export default function RestaurantPage() {
                                     autoComplete="off"
                                     value={formData.google_calendar_id}
                                     onChange={e => setFormData({ ...formData, google_calendar_id: e.target.value })}
+                                    onBlur={() => save(
+                                        { google_calendar_id: formData.google_calendar_id.trim() || null },
+                                        'google_calendar_id',
+                                    )}
                                     placeholder="something@group.calendar.google.com"
                                     className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
@@ -418,14 +460,24 @@ export default function RestaurantPage() {
                           <ErrorBanner className="mb-3">{formProblem}</ErrorBanner>
                         )}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="bg-accent hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors"
+                        {/* The same three words the Timesheet and the Report
+                            use, because it is the same promise: there is no
+                            Save button, it writes when you leave a box, and
+                            this line is what says so. **Not saved** is the
+                            state that matters, so it is the loud one. */}
+                        <p
+                            className={`text-xs ${formProblem ? 'font-bold text-red-700' : 'text-muted'}`}
+                            aria-live="polite"
                         >
-                            {loading ? 'Saving...' : 'Save settings'}
-                        </button>
-                    </form>
+                            {formProblem
+                                ? 'Not saved'
+                                : saving
+                                    ? 'Saving'
+                                    : savedAt
+                                        ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
+                                        : 'Saves as you leave each box'}
+                        </p>
+                    </div>
                 </div>
 
                 <div>
