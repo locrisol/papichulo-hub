@@ -7,11 +7,18 @@
 // too small for a thumb. They are the size of a finger now, and they stay the
 // size of a finger, because they are the control people press most.
 //
-// The middle takes whatever room is left rather than a fixed width. A fixed
-// width was there so the arrows did not shift when the text changed length, and
-// on a phone it did the opposite: it pushed an arrow onto its own line and left
-// the jump button stranded beside it. Pinned to the edges instead, the arrows
-// cannot move whatever the date says.
+// The middle is a set width on a wide screen and whatever is left on a phone.
+//
+// Both halves of that matter. On a wide screen the arrows have to stay where
+// they are: 3 Aug - 9 Aug is a lot narrower than 31 Aug - 6 Sept, so stepping
+// back through weeks moved the button out from under the mouse, which is
+// useless for the one thing people do with these, which is press them twice.
+// On a phone a set width did the opposite and pushed an arrow onto its own
+// line, so there the arrows are pinned to the edges instead and cannot move
+// whatever the date says.
+//
+// Weekly Sales had fixed this on its own span and the other six screens had
+// not, which is the whole argument for the control existing.
 //
 // And the jump button gets its own full width line on a phone rather than
 // floating off the end of the row.
@@ -42,7 +49,7 @@ export default function DateStepper({
 
                 {/* Everything that is left, and no less. A date box that cannot
                     show its own date is the fault this was built to fix. */}
-                <span className="flex-1 min-w-0 flex items-center justify-center">
+                <span className="flex-1 min-w-0 sm:flex-none sm:w-44 flex items-center justify-center">
                     {children}
                 </span>
 

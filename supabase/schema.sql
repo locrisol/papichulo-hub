@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "packaging_cost_target" numeric(5,2) DEFAULT 2.50,
     "hourly_rate" numeric(6,2) DEFAULT 15.00,
     "report_recipients" "text"[],
+    -- The payroll list, and nobody is on it by role. See the comment below.
+    "timesheet_recipients" "text"[],
+    "pay_period_start" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "slug" character varying(100) NOT NULL,
@@ -95,6 +98,8 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
 COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded by restaurant_places. Migration 011 copied it into a place row and nothing reads it any more. Kept until a backup is newer than that migration.';
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
+COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
+COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -172,6 +177,7 @@ CREATE TABLE IF NOT EXISTS "public"."employees" (
     "permission_renewal_reference" "text",
     "availability_next" "jsonb",
     "availability_from" "date",
+    "on_trial" boolean DEFAULT false NOT NULL,
     CONSTRAINT "employees_availability_next_needs_a_date" CHECK ((("availability_next" IS NULL) = ("availability_from" IS NULL))),
     CONSTRAINT "employees_check" CHECK ((("ended_on" IS NULL) OR ("started_on" IS NULL) OR ("ended_on" >= "started_on")))
 );
@@ -191,6 +197,7 @@ COMMENT ON COLUMN "public"."employees"."food_safety_expires" IS 'When it runs ou
 COMMENT ON COLUMN "public"."employees"."food_safety_issued" IS 'When they sat it. Only used to work out the expiry, which is offered as two years later and can be changed.';
 COMMENT ON COLUMN "public"."employees"."food_safety_level" IS 'Which food safety training they hold. Empty means none recorded, which for anybody handling food is itself worth knowing.';
 COMMENT ON COLUMN "public"."employees"."full_name" IS 'Kept here rather than read from the account, so a person with no account still has a name, and so two people called Ana can be told apart on the roster without anybody having to rename an account.';
+COMMENT ON COLUMN "public"."employees"."on_trial" IS 'On the team, doing shifts and being paid for them, but not hired. The only thing it changes is that food safety training is not asked for or warned about while it is true, since that is part of being hired. A work permit is still asked for from the first day, because working without one is the same offence either way. Turn it off when they are hired and the record is held to the full standard from then on.';
 COMMENT ON COLUMN "public"."employees"."hourly_rate" IS 'What they cost per hour, used only to total up what a rostered week costs. Not payroll and never shown to staff: the whole table is closed to the employee role, so this column is unreachable by anyone below a manager. When staff need to see each other on a published roster, they get a narrow view of name and position rather than this table.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_applied" IS 'The day they applied to renew their permission to work. Only earns the grace period if it is on or before work_permission_expires.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_reference" IS 'The OREG number from the renewal application receipt. Kept because it is the proof an employer is asked for.';
@@ -618,6 +625,130 @@ ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_restaurant_id_entry_date_key" UNIQUE ("restaurant_id", "entry_date");
+
+COMMENT ON TABLE "public"."labour_entries" IS 'The old Labour page, frozen. 245 days from January to September 2026, one total a day at one rate for everybody, because that is all it could record. Nothing writes here any more: timesheet_entries is where hours go, and labour_by_day reads this only for the months before it existed.';
+
+-- One person, one span of a day, to the second.
+--
+-- A span and not a day, because a split shift is two rows and a cell that has
+-- to hold two of everything will have to hold three next year. The till's own
+-- export already works this way.
+--
+-- **Holiday and off sick are deliberately not here.** They are already a record
+-- in absences, with an approval behind them and a colour the roster draws.
+-- Storing the same fact twice is how two screens end up disagreeing, and the
+-- roster would keep the stale answer.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "employee_id" "uuid",
+    "person_name" "text",
+    "work_date" "date" NOT NULL,
+    -- Both ends can be empty. A row with no times and a note is somebody
+    -- saying nothing was worked and why, which is the other half of what the
+    -- report block means by "times or a reason".
+    "starts_at" time without time zone,
+    "ends_at" time without time zone,
+    "hours" numeric(6,2) GENERATED ALWAYS AS (
+        CASE WHEN "ends_at" IS NULL THEN NULL ELSE
+            EXTRACT(epoch FROM ("ends_at" - "starts_at"
+                + CASE WHEN "ends_at" <= "starts_at" THEN interval '24 hours' ELSE interval '0 hours' END
+            )) / 3600
+        END
+    ) STORED,
+    "kind" "text" DEFAULT 'worked'::"text" NOT NULL,
+    "note" "text",
+    "source" "text" DEFAULT 'typed'::"text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "timesheet_entries_kind_known" CHECK (("kind" = ANY (ARRAY['worked'::"text", 'training'::"text", 'trial'::"text"]))),
+    CONSTRAINT "timesheet_entries_source_known" CHECK (("source" = ANY (ARRAY['typed'::"text", 'roster'::"text", 'import'::"text", 'corrected'::"text"]))),
+    CONSTRAINT "timesheet_entries_has_a_person" CHECK (
+        ("employee_id" IS NOT NULL) OR ("btrim"(COALESCE("person_name", ''::"text")) <> ''::"text")
+    ),
+    -- And something to say: a start time, a note saying why there is none, a
+    -- kind that is a statement in itself, a training day or a trial marked
+    -- before the times are typed, or a correction, which is a shift the till
+    -- reported with its times rubbed out and the week waiting to be told why.
+    CONSTRAINT "timesheet_entries_says_something" CHECK (
+        ("starts_at" IS NOT NULL)
+        OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
+        OR ("kind" <> 'worked'::"text")
+        OR ("source" = 'corrected'::"text")
+    )
+);
+
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_timesheet_entries_week" ON "public"."timesheet_entries" USING "btree" ("restaurant_id", "work_date");
+CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" USING "btree" ("employee_id");
+
+COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
+COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
+COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
+COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
+
+-- What the till calls people.
+--
+-- It says "ARREDONDO ESCALANTE Maria" and the roster says Maria. Surname first,
+-- in capitals, sometimes two surnames, sometimes none at all. No rule matches
+-- that reliably, so the import asks once and remembers.
+--
+-- `ignored` is for the accounts that are not people: MANAGER, CBE, end of day.
+-- Somebody typing the wrong employee number is **not** remembered, on purpose.
+-- That is one file's mistake, and remembering it would hide a real person's
+-- hours the first week they worked.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_names" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "employee_id" "uuid",
+    "ignored" boolean DEFAULT false NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "timesheet_names_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "timesheet_names_says_something" CHECK ((("employee_id" IS NOT NULL) <> "ignored"))
+);
+
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_once" UNIQUE ("restaurant_id", "name");
+
+COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose.';
+
+-- One row per restaurant per week: when the till's report was read in, and
+-- when the week was filed and by whom.
+--
+-- It was built to keep the Sunday premium in force at the time as well, so that
+-- changing the figure could not quietly rewrite what last March cost. That
+-- premium is gone, on his word, and what the table is for now is the mark the
+-- weekly email leaves on a week it has sent.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "week_start" "date" NOT NULL,
+    -- When the till's report covering this week was last read in. While it is
+    -- set, a rostered shift with nothing against it is taken as not worked
+    -- rather than as an open question: the file answered it.
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
+    "filed_at" timestamp with time zone,
+    "filed_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "timesheet_weeks_starts_on_a_sunday" CHECK ((EXTRACT(dow FROM "week_start") = (0)::numeric))
+);
+
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_once" UNIQUE ("restaurant_id", "week_start");
+
+COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week: when the till''s report was read in, and when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."filed_at" IS 'When this week''s hours were last mailed out. A week can be sent again after a correction, and this moves.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."imported_at" IS 'When the till''s report covering this week was last read in. While it is set, a rostered shift with nothing against it is taken as not worked rather than as an open question: the file answered it, and the accountant has the same file.';
 
 CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -1333,6 +1464,16 @@ ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_employee_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_employee_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."cost_target_overrides"
     ADD CONSTRAINT "cost_target_overrides_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."cost_target_overrides"
@@ -2121,6 +2262,21 @@ CREATE POLICY "labour_entries_select" ON "public"."labour_entries" FOR SELECT TO
 
 CREATE POLICY "labour_entries_write" ON "public"."labour_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
+-- The timesheet, same rule as the labour page it replaces: managers and
+-- above, their own restaurant. An employee has no business reading what the
+-- person beside them earns.
+ALTER TABLE "public"."timesheet_entries" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_entries_all" ON "public"."timesheet_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."timesheet_names" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_names_all" ON "public"."timesheet_names" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."timesheet_weeks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_weeks_all" ON "public"."timesheet_weeks" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
 ALTER TABLE "public"."cost_target_overrides" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "cost_target_overrides_select" ON "public"."cost_target_overrides" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
@@ -2340,6 +2496,44 @@ CREATE OR REPLACE VIEW "public"."roster_away" AS
    FROM "public"."absences" "a"
   WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
 
+-- What labour cost, per day, for everything that asks: the cost dashboard, the
+-- report and the weekly report. None of them has to know the answer comes from
+-- two places, or that a Labour page ever existed.
+--
+-- The timesheet for every day it covers, and the frozen labour_entries archive
+-- for the eight months before it. A day the timesheet has anything on is never
+-- taken from the archive, so nothing is ever counted twice.
+--
+-- security_invoker on purpose, and this is the case where that is right: both
+-- tables underneath already decide who sees what by restaurant, and the view
+-- has nothing of its own to hide. The public_ views are the opposite case and
+-- must stay SECURITY DEFINER.
+CREATE OR REPLACE VIEW "public"."labour_by_day" WITH ("security_invoker"='true') AS
+ SELECT "t"."restaurant_id",
+    "t"."work_date" AS "entry_date",
+    "round"("sum"("t"."hours"), 2) AS "total_hours",
+    "round"("sum"(("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", (0)::numeric))), 2) AS "labour_cost",
+    "count"(DISTINCT COALESCE(("t"."employee_id")::"text", "t"."person_name")) FILTER (WHERE ("t"."hours" > (0)::numeric)) AS "staff_count",
+    'timesheet'::"text" AS "came_from"
+   FROM (("public"."timesheet_entries" "t"
+     JOIN "public"."restaurants" "r" ON (("r"."id" = "t"."restaurant_id")))
+     LEFT JOIN "public"."employees" "e" ON (("e"."id" = "t"."employee_id")))
+  GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate"
+ HAVING ("count"("t"."hours") > 0)
+UNION ALL
+ SELECT "l"."restaurant_id",
+    "l"."entry_date",
+    "l"."total_hours",
+    "l"."labour_cost",
+    "l"."staff_count",
+    'archive'::"text" AS "came_from"
+   FROM "public"."labour_entries" "l"
+  WHERE (NOT (EXISTS ( SELECT 1
+           FROM "public"."timesheet_entries" "t"
+          WHERE (("t"."restaurant_id" = "l"."restaurant_id") AND ("t"."work_date" = "l"."entry_date") AND ("t"."hours" IS NOT NULL)))));
+
+COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for everything that asks: the cost dashboard, the report and the weekly report. The timesheet for every day it covers, and the frozen labour_entries archive for the months before it existed. Nothing writes to labour_entries any more.';
+
 CREATE OR REPLACE VIEW "public"."public_menu_categories" AS
  SELECT "id",
     "name",
@@ -2498,6 +2692,53 @@ create policy report_charts_replace on storage.objects
   );
 
 
+
+-- The hours PDF that travels with the timesheet mail.
+--
+-- **Private, unlike report-charts, and that difference is the point.** The
+-- charts are public because they are linked images inside the mail and a
+-- signed url would expire. This one is an attachment: the bytes travel inside
+-- the mail, nothing ever fetches it by url, and a public bucket holding every
+-- employee's clock times for a fortnight would be a real leak the moment a
+-- path was guessed. The function reads it with the service role, which goes
+-- round all of this anyway.
+--
+-- The path always begins with the restaurant's id, so a manager cannot write
+-- into another restaurant's folder by typing the path themselves.
+
+drop policy if exists timesheet_hours_write on storage.objects;
+create policy timesheet_hours_write on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_replace on storage.objects;
+create policy timesheet_hours_replace on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_read on storage.objects;
+create policy timesheet_hours_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
 -- ======================================================================
 -- What watches it all
 -- ======================================================================
@@ -2516,6 +2757,8 @@ CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."re
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();

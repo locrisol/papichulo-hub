@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // A field that is filled in already, shown locked until somebody says otherwise.
 //
@@ -9,16 +9,31 @@ import { useState } from 'react'
 // then never touched again, so leaving a cursor sitting in all of it is asking
 // for exactly that.
 //
-// The same shape the sending address in Restaurant settings uses, pulled out
-// here rather than written a fifteenth time.
-//
 // Empty fields are never locked. There is nothing to protect and a form that
 // makes you unlock a blank box before typing in it is a form nobody forgives.
+//
+// "Already" means when the form opened, and that one word is the whole of it.
+// This used to read the value on every keystroke, so a box you were halfway
+// through filling in counted as filled and locked itself under your hands: a
+// name shut after its first letter, and a date of birth after "20/03/2",
+// because a date box reports a year of 2 as a date like any other. Whether
+// there was anything here worth protecting is a fact about the record that was
+// loaded, so it is read once, on the way in, and not again.
 export default function LockedField({ value, display, children, label }) {
     const [open, setOpen] = useState(false)
+    const [wasFilled] = useState(() => hasSomething(value))
+    const box = useRef(null)
 
-    const filled = value !== null && value !== undefined && String(value).trim() !== ''
-    if (!filled || open) return children
+    // Pressing Edit takes the Edit button away with it. Without this, focus
+    // falls back to the top of the document, and anybody working down the form
+    // on the keyboard has to find their place again.
+    useEffect(() => {
+        if (open) box.current?.querySelector('input, select, textarea')?.focus()
+    }, [open])
+
+    // display:contents so the wrapper lays nothing out. The children sit in the
+    // grid exactly where they sat before there was one.
+    if (!wasFilled || open) return <div ref={box} className="contents">{children}</div>
 
     return (
         <div className="flex flex-wrap items-center gap-3">
@@ -53,4 +68,8 @@ export default function LockedField({ value, display, children, label }) {
             </button>
         </div>
     )
+}
+
+function hasSomething(value) {
+    return value !== null && value !== undefined && String(value).trim() !== ''
 }

@@ -13,6 +13,9 @@ import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, pr
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
+import {
+    bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
+} from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
@@ -611,8 +614,13 @@ export default function WeeklySalesPage() {
 
     // A closed day is not a day nobody has filled in, it is a day we did not
     // trade, so the whole column says so rather than just the boxes going flat.
+    //
+    // A bank holiday colours its column the same way, and closed wins: a bank
+    // holiday you were shut for is just shut. One class either way, never two,
+    // for the reason written under this one.
     function closedCol(date) {
-        return days[date]?.isClosed ? 'bg-red-50' : ''
+        if (days[date]?.isClosed) return 'bg-red-50'
+        return bankHolidayOn(date) ? BANK_HOLIDAY_WASH_CLASS : ''
     }
     // The label and total cells paint their own background, because the label
     // is sticky and would otherwise go transparent over the rows as it scrolls.
@@ -759,12 +767,28 @@ export default function WeeklySalesPage() {
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
                     &nbsp;
                 </th>
-                {dates.map((d, i) => (
-                    <th key={d} className="px-1.5 py-2 text-center w-24">
-                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
-                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
-                    </th>
-                ))}
+                {dates.map((d, i) => {
+                    const holiday = bankHolidayOn(d)
+                    return (
+                        <th key={d} className="px-1.5 py-2 text-center w-24">
+                            <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                            <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
+                            {/* A bank holiday takes a different week and a
+                                different wage bill, so a week being read
+                                against last year's should say which days were
+                                one. Worked out from the date, so it is on every
+                                week ever typed without anybody going back. */}
+                            {holiday && (
+                                <div
+                                    className="text-[0.65rem] font-bold"
+                                    style={{ color: BANK_HOLIDAY_ON_DARK }}
+                                >
+                                    {BANK_HOLIDAY_LABEL}
+                                </div>
+                            )}
+                        </th>
+                    )
+                })}
                 <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
             </tr>
         )
@@ -883,14 +907,10 @@ export default function WeeklySalesPage() {
                             />
                         )}
                     >
-                        {/* A set width on a wide screen, so the arrows do not
-                            shift sideways when the text changes length: 3 Aug -
-                            9 Aug is a lot narrower than 31 Aug - 6 Sept, and
-                            clicking back through weeks moved the button out from
-                            under the mouse. On a phone the arrows are pinned to
-                            the edges instead, so they cannot move whatever the
-                            date says, and the text takes the room between. */}
-                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap sm:w-44">
+                        {/* The width that keeps the arrows still lives in
+                            DateStepper now, so every screen with these arrows
+                            gets it. */}
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
                             {shortDate(dates[0])} - {shortDate(dates[6])}
                         </span>
                     </DateStepper>

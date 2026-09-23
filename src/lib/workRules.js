@@ -409,7 +409,12 @@ export function checkWeek({
         // has quietly run out, and finding that out during an inspection is the
         // expensive way. It warns rather than blocks: an expired certificate is
         // a course to book, not a reason the roster cannot go out.
-        if (settings.foodSafety?.on) {
+        //
+        // Nothing at all for somebody on trial. They have no certificate and
+        // are not expected to: it comes with being hired. Warning about one
+        // would put a line on the roster every week somebody does a trial shift
+        // and teach everybody to scroll past this whole section.
+        if (settings.foodSafety?.on && !employee.on_trial) {
             const food = expiryState(
                 employee.food_safety_expires, weekDates?.[0], weekEnd,
                 settings.foodSafety.warnDays,

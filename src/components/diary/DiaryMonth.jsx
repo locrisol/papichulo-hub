@@ -1,5 +1,8 @@
 import { addDays, fullDate, dayMonth } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
+import {
+    bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH, BANK_HOLIDAY_LABEL,
+} from '@/lib/bankHolidays'
 import { card, closeButton } from '@/lib/controlStyles'
 import { bandsForWeek, kindChip, kindDot, kindRing, scopeLabel, timeLabel } from '@/lib/diary'
 import DiaryChip from './DiaryChip'
@@ -192,10 +195,18 @@ export default function DiaryMonth({
                                 )
                                 const dim = date.slice(0, 7) !== month
 
+                                // The calendar is the one screen where a bank
+                                // holiday is the whole point of looking, and it
+                                // was the one screen that did not know. Worked
+                                // out from the date, so every month back and
+                                // forward has them without anybody typing one.
+                                const holiday = bankHolidayOn(date)
+
                                 return (
                                     <div
                                         key={date}
                                         className={`relative border-r border-b border-border last:border-r-0 min-h-[3rem] sm:min-h-[6rem] ${dim ? 'bg-gray-50' : 'bg-white'} ${selected === date ? 'ring-2 ring-inset ring-accent' : ''}`}
+                                        style={holiday && !dim ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
                                     >
                                         {/* The whole square opens the day, not
                                             just the number in the corner of it.
@@ -213,6 +224,18 @@ export default function DiaryMonth({
                                         />
                                         <div className="relative pointer-events-none px-1 pt-1">
                                             {dayNumber(date)}
+                                            {/* Named, not just tinted. A wash
+                                                on its own is one more colour to
+                                                learn; the words are the whole
+                                                point of a calendar. */}
+                                            {holiday && (
+                                                <span
+                                                    className="ml-1 text-[0.6rem] font-bold"
+                                                    style={{ color: BANK_HOLIDAY_INK }}
+                                                >
+                                                    {BANK_HOLIDAY_LABEL}
+                                                </span>
+                                            )}
 
                                             {/* A phone: a dot each, because
                                                 fifty pixels cannot hold a word

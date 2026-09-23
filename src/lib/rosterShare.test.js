@@ -129,6 +129,32 @@ describe('weekTable', () => {
         expect(shift.closes).toBe(false)
     })
 
+    // The sheet is what goes on the wall, so a bank holiday has to be on it as
+    // well as on the screen, or staff read a different week to the one that was
+    // planned.
+    it('names a bank holiday in the day heading', () => {
+        const table = build({
+            dates: ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31'],
+        })
+        // Two words, not the name of it: a column headed October in October
+        // tells nobody anything.
+        expect(table.head[1].holiday).toBe('BANK HOLIDAY')
+        expect(table.head[2].holiday).toBe('')
+    })
+
+    it('honours a day somebody ticked as one, on a date the calendar knows nothing about', () => {
+        const table = build({ dayNotes: [{ note_date: DATES[2], is_bank_holiday: true }] })
+        expect(table.head[2].holiday).toBe('BANK HOLIDAY')
+    })
+
+    it('gives the heading a line more room only in a week that has one', () => {
+        const plain = sheetLayout(build(), { width: 1200 })
+        const holiday = sheetLayout(build({
+            dates: ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31'],
+        }), { width: 1200 })
+        expect(holiday.headH).toBeGreaterThan(plain.headH)
+    })
+
     it('reads the store hours off the day', () => {
         const t = build()
         expect(t.storeHours[0]).toBe('10:00 to 21:00')

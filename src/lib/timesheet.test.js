@@ -1,0 +1,909 @@
+import { describe, it, expect } from 'vitest'
+import {
+    KINDS, STATE_KEYS, kindOf, kindLabel, cellColour, rateFor, dayCell,
+    personWeek, weekTotals, labourRollup, labourPercent,
+    unanswered, weekAnswered, importVerdict, summarise, planImport, ASK_ABOVE_SECONDS,
+    planDrift, NOTICEABLE_MINUTES, ROW_BANDS,
+} from '@/lib/timesheet'
+
+// The week of Sunday 25 to Saturday 31 October 2026, which holds the October
+// bank holiday on the Monday. Same week as the design, so the figures here and
+// the ones he looked at are the same figures.
+const WEEK = '2026-10-25'
+const SUN = '2026-10-25'
+const MON = '2026-10-26'
+const TUE = '2026-10-27'
+
+const aoife = { id: 'e1', full_name: 'Aoife', hourly_rate: 16.5 }
+const cathal = { id: 'e2', full_name: 'Cathal', hourly_rate: null }
+
+const shift = (over) => ({ kind: 'worked', source: 'typed', ...over })
+
+// The week under test is the last week of October 2026, and nothing on this
+// screen asks a question about a week that has not finished, so every test
+// about an unanswered day says when now is rather than depending on the clock
+// of whoever runs it.
+const AFTER = '2026-11-02'
+
+describe('what an entry can be', () => {
+    it('has no holiday or sick in it, because those are absences', () => {
+        expect(KINDS.map(k => k.value)).toEqual(['worked', 'training', 'trial'])
+    })
+
+    // The bug in the first version of the design. A training day is worked
+    // time, and calling it unpaid would have quietly underpaid somebody.
+    it.each(['worked', 'training', 'trial'])('counts %s as paid time', value => {
+        expect(kindOf(value).paid).toBe(true)
+    })
+
+    it('falls back to worked for anything it does not know', () => {
+        expect(kindLabel('nonsense')).toBe('Worked')
+    })
+
+    it('offers holiday and sick from the keyboard even so', () => {
+        expect(STATE_KEYS.map(s => s.key)).toEqual(['h', 's', 't', 'r'])
+        expect(STATE_KEYS.filter(s => s.absence).map(s => s.value)).toEqual(['holiday', 'sick'])
+    })
+
+    // The colour has to be the roster's, or the same holiday is two colours in
+    // two screens. That is the thing he caught with the Arena purple.
+    it('takes an absence colour from the roster list', () => {
+        expect(cellColour({ absence: { kind: 'holiday' } })).toBe('#4a7fb5')
+        expect(cellColour({ absence: { kind: 'sick' } })).toBe('#b5654a')
+    })
+
+    it('has no colour for an ordinary worked day', () => {
+        expect(cellColour({ kind: 'worked' })).toBeNull()
+    })
+})
+
+describe('what somebody costs an hour', () => {
+    it('uses their own rate when they have one', () => {
+        expect(rateFor(aoife, 15)).toBe(16.5)
+    })
+
+    it('falls back to the restaurant when they have none', () => {
+        expect(rateFor(cathal, 15)).toBe(15)
+        expect(rateFor({ id: 'e3' }, 15)).toBe(15)
+    })
+
+    // Nought is a rate somebody set, so it must not fall through to fifteen.
+    it('takes nought as a rate rather than as nothing', () => {
+        expect(rateFor({ id: 'e4', hourly_rate: 0 }, 15)).toBe(0)
+    })
+
+    it('is nought rather than NaN when nobody has said', () => {
+        expect(rateFor({}, null)).toBe(0)
+    })
+})
+
+describe('one day', () => {
+    const args = { person: aoife, date: MON }
+
+    it('adds up the times to the second', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '11:55:41', ends_at: '20:31:09' })],
+        })
+        expect(cell.hours).toBe(8.59)
+    })
+
+    // A split shift is two entries, not a cell holding two of everything.
+    it('adds up two spans in one day', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [
+                shift({ work_date: MON, starts_at: '09:00:00', ends_at: '13:00:00' }),
+                shift({ work_date: MON, starts_at: '17:00:00', ends_at: '21:00:00' }),
+            ],
+        })
+        expect(cell.hours).toBe(8)
+        expect(cell.entries).toHaveLength(2)
+    })
+
+    it('knows the Monday is a bank holiday', () => {
+        expect(dayCell(args).bankHoliday).toMatchObject({ name: 'October Bank Holiday' })
+        expect(dayCell({ ...args, date: TUE }).bankHoliday).toBeNull()
+    })
+
+    it('reads a holiday out of the absences rather than the entries', () => {
+        const cell = dayCell({
+            ...args,
+            absences: [{ employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: MON, ends_on: MON, hours: 8 }],
+        })
+        expect(cell.holidayHours).toBe(8)
+        expect(cell.absence.kind).toBe('holiday')
+    })
+
+    // Off sick carries no hours, by the roster's own list. It is a state, not
+    // a payment.
+    it('takes no hours from a sick day', () => {
+        const cell = dayCell({
+            ...args,
+            absences: [{ employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: MON, ends_on: MON }],
+        })
+        expect(cell.holidayHours).toBe(0)
+    })
+
+    // The fault he found in the first design: a day nobody rostered still has
+    // to take times, and it should say so once it has them.
+    it('marks a worked day nobody planned', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '17:00:00' })],
+        })
+        expect(cell.unplanned).toBe(true)
+    })
+
+    it('does not mark one that was planned', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '17:00:00' })],
+            shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }],
+        })
+        expect(cell.unplanned).toBe(false)
+    })
+
+    // His, on 21 September. Somebody comes in to try the job before there is
+    // anything to roster them for, so a trial with no plan behind it is what a
+    // trial looks like when everything is right.
+    it('says nothing about a trial nobody rostered', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '11:00:00', ends_at: '15:00:00', kind: 'trial' })],
+        })
+        expect(cell.unplanned).toBe(false)
+    })
+
+    // A trial does not cover for a shift that was meant to be on the roster.
+    it('still marks a worked span sharing the day with a trial', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [
+                shift({ work_date: MON, starts_at: '11:00:00', ends_at: '15:00:00', kind: 'trial' }),
+                shift({ work_date: MON, starts_at: '18:00:00', ends_at: '22:00:00' }),
+            ],
+        })
+        expect(cell.unplanned).toBe(true)
+    })
+
+    // Training is rostered like any other day, so it keeps the warning.
+    it('still marks a training day nobody rostered', () => {
+        const cell = dayCell({
+            ...args,
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '13:00:00', kind: 'training' })],
+        })
+        expect(cell.unplanned).toBe(true)
+    })
+
+    it('marks a rostered day nobody has answered', () => {
+        const cell = dayCell({ ...args, shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }] })
+        expect(cell.unanswered).toBe(true)
+    })
+
+    it('counts a holiday as an answer to a rostered day', () => {
+        const cell = dayCell({
+            ...args,
+            shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }],
+            absences: [{ employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: MON, ends_on: MON, hours: 8 }],
+        })
+        expect(cell.unanswered).toBe(false)
+    })
+
+    it('leaves an ordinary empty day alone', () => {
+        expect(dayCell(args)).toMatchObject({ hours: 0, unplanned: false, unanswered: false })
+    })
+})
+
+describe('a week whose till report has been read in', () => {
+    // His, on the week of 6 September. Georgiana was rostered for the Thursday,
+    // the file was read in and had nothing for her, and the screen still wanted
+    // a comment. There is nothing to explain: the file and the timesheet agree,
+    // and the accountant is reading the same report he is.
+    const rostered = [{ shift_date: MON, starts_at: '09:00', ends_at: '17:00' }]
+
+    it('takes silence as an answer', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered, imported: true })
+        expect(cell.unanswered).toBe(false)
+    })
+
+    // The fact is still worth seeing. What changes is whether anybody has to
+    // write a sentence about it.
+    it('still says nobody clocked in', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered, imported: true })
+        expect(cell.nothingRegistered).toBe(true)
+    })
+
+    it('asks on a week nobody has imported', () => {
+        const cell = dayCell({ person: aoife, date: MON, shifts: rostered })
+        expect(cell.unanswered).toBe(true)
+        expect(cell.nothingRegistered).toBe(true)
+    })
+
+    // The one thing an import does not settle. A figure that came off the clock
+    // and was then moved is not in the file the accountant has.
+    it('still wants a comment on a till time changed by hand', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+    })
+
+    it('blocks nothing at all once the week is imported and nothing was changed', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, imported: true, today: AFTER })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // The bigger half of the same difference, and the one that was missed.
+    // His 15th of September: the file had nothing for him that day and the
+    // timesheet has 8.67 hours typed by hand. The accountant's copy of the
+    // report says nothing there, so somebody has to.
+    it('wants a comment on hours typed onto a week the file covered', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [MON] }])
+    })
+
+    it('is happy once those hours say why', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:00', ends_at: '18:00:00', source: 'typed', note: 'covered the delivery, never clocked in' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // And it asks nothing of a row that came off the clock untouched, which is
+    // most of an imported week.
+    it('asks nothing of the rows the file itself wrote', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, imported: true, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: MON, starts_at: '09:20:13', ends_at: '18:02:44', source: 'import' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+})
+
+describe('time off that is only part of a day', () => {
+    // Found on the real week of 21 September: somebody down as a day off with
+    // can_work_to 15:00. It came out as a day gone with no boxes to type into.
+    // absences.js says what happens when a screen forgets the difference: a
+    // dentist at half three empties a Tuesday.
+    const partDay = {
+        id: 'a9', employee_id: 'e1', kind: 'day_off', status: 'approved',
+        starts_on: MON, ends_on: MON, can_work_to: '15:00:00',
+    }
+
+    it('does not take the day', () => {
+        const cell = dayCell({ person: aoife, date: MON, absences: [partDay] })
+        expect(cell.absence).toBeNull()
+    })
+
+    it('still takes times, because she can work the morning', () => {
+        const cell = dayCell({
+            person: aoife, date: MON, absences: [partDay],
+            entries: [shift({ work_date: MON, starts_at: '09:00:00', ends_at: '15:00:00' })],
+        })
+        expect(cell.hours).toBe(6)
+    })
+
+    // A rostered shift with only a part day against it is still unanswered.
+    // Whether she worked the morning is an open question.
+    it('does not answer a rostered shift on its own', () => {
+        const cell = dayCell({
+            person: aoife, date: MON, absences: [partDay],
+            shifts: [{ shift_date: MON, starts_at: '09:00', ends_at: '15:00' }],
+        })
+        expect(cell.unanswered).toBe(true)
+    })
+
+    // A whole day off still does take the day.
+    it('leaves a whole day alone', () => {
+        const cell = dayCell({
+            person: aoife, date: MON,
+            absences: [{ ...partDay, can_work_to: null }],
+        })
+        expect(cell.absence).toMatchObject({ kind: 'day_off' })
+    })
+})
+
+describe('holiday hours are for the absence, not for each of its days', () => {
+    // The real one, from the week of 20 September. Fifteen hours from the 25th
+    // to the 27th is five a day, and the 27th is next week's. It was putting
+    // fifteen on all three, which tripled a holiday while still looking like a
+    // number somebody had worked out.
+    const run = {
+        id: 'a10', employee_id: 'e1', kind: 'holiday', status: 'approved',
+        starts_on: '2026-10-29', ends_on: '2026-10-31', hours: 15,
+    }
+    const single = {
+        id: 'a11', employee_id: 'e1', kind: 'holiday', status: 'approved',
+        starts_on: '2026-10-25', ends_on: '2026-10-25', hours: 5,
+    }
+
+    it('splits them evenly across the days it covers', () => {
+        for (const date of ['2026-10-29', '2026-10-30', '2026-10-31']) {
+            expect(dayCell({ person: aoife, date, absences: [run] }).holidayHours, date).toBe(5)
+        }
+    })
+
+    it('leaves a one day holiday as it is', () => {
+        expect(dayCell({ person: aoife, date: '2026-10-25', absences: [single] }).holidayHours).toBe(5)
+    })
+
+    it('adds the week up from two separate holidays', () => {
+        const row = personWeek({
+            person: aoife, weekStart: WEEK, absences: [single, run], restaurantRate: 15,
+        })
+        expect(row.holiday).toBe(20)
+        expect(row.worked).toBe(0)
+        expect(row.cost).toBe(0)
+    })
+
+    // A holiday running past Saturday belongs to two weeks, and each takes only
+    // its own days. Anything else and the two weeks disagree about a payslip.
+    it('gives a week only the days that are in it', () => {
+        const over = { ...run, starts_on: '2026-10-30', ends_on: '2026-11-02', hours: 16 }
+        const row = personWeek({ person: aoife, weekStart: WEEK, absences: [over], restaurantRate: 15 })
+        // Four days at four hours, and two of them are in this week.
+        expect(row.holiday).toBe(8)
+    })
+
+    it('says nothing for a kind that carries no hours', () => {
+        const sick = { id: 'a12', employee_id: 'e1', kind: 'sick', status: 'approved', starts_on: MON, ends_on: MON }
+        expect(dayCell({ person: aoife, date: MON, absences: [sick] }).holidayHours).toBe(0)
+    })
+
+    it('copes with a holiday nobody put hours on', () => {
+        const none = { ...single, hours: null }
+        expect(dayCell({ person: aoife, date: '2026-10-25', absences: [none] }).holidayHours).toBe(0)
+    })
+})
+
+describe("one person's week", () => {
+    const entries = [
+        shift({ employee_id: 'e1', work_date: SUN, starts_at: '11:58:04', ends_at: '20:03:12' }),
+        shift({ employee_id: 'e1', work_date: MON, starts_at: '11:55:41', ends_at: '20:31:09' }),
+        shift({ employee_id: 'e1', work_date: TUE, starts_at: '16:02:55', ends_at: '23:14:38' }),
+    ]
+    const row = personWeek({
+        person: aoife, weekStart: WEEK, entries, restaurantRate: 15,
+    })
+
+    it('holds bank holiday hours apart from normal ones', () => {
+        expect(row.bankHoliday).toBe(8.59)
+        expect(row.normal).toBe(15.29)
+        expect(row.worked).toBe(23.88)
+    })
+
+    it('charges their own rate', () => {
+        expect(row.rate).toBe(16.5)
+        expect(row.cost).toBe(Math.round(23.88 * 16.5 * 100) / 100)
+    })
+
+    it('says whether the rate is theirs or the restaurant’s', () => {
+        expect(row.ownRate).toBe(true)
+        expect(personWeek({ person: cathal, weekStart: WEEK, restaurantRate: 15 }).ownRate).toBe(false)
+    })
+
+    it('gives seven days whatever happened', () => {
+        expect(row.days).toHaveLength(7)
+        expect(row.days.map(d => d.date)[0]).toBe(SUN)
+    })
+
+    it('leaves holiday out of worked and keeps it in the total', () => {
+        const withHoliday = personWeek({
+            person: aoife, weekStart: WEEK, entries, restaurantRate: 15,
+            absences: [{ employee_id: 'e1', kind: 'holiday', status: 'approved', starts_on: '2026-10-28', ends_on: '2026-10-28', hours: 8 }],
+        })
+        expect(withHoliday.worked).toBe(23.88)
+        expect(withHoliday.holiday).toBe(8)
+        expect(withHoliday.total).toBe(31.88)
+        // And it is never in the cost.
+        expect(withHoliday.cost).toBe(row.cost)
+    })
+
+    it('takes only that person’s entries and shifts', () => {
+        const mixed = personWeek({
+            person: cathal, weekStart: WEEK, restaurantRate: 15,
+            entries: [...entries, shift({ employee_id: 'e2', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
+        })
+        expect(mixed.worked).toBe(8)
+    })
+})
+
+describe('the week', () => {
+    const rows = [
+        personWeek({
+            person: aoife, weekStart: WEEK, restaurantRate: 15,
+            entries: [shift({ employee_id: 'e1', work_date: SUN, starts_at: '12:00:00', ends_at: '20:00:00' })],
+        }),
+        personWeek({
+            person: cathal, weekStart: WEEK, restaurantRate: 15,
+            entries: [shift({ employee_id: 'e2', work_date: SUN, starts_at: '09:00:00', ends_at: '17:00:00' })],
+        }),
+    ]
+    const totals = weekTotals(rows)
+
+    it('totals the day in hours and in money', () => {
+        expect(totals.perDay[0].hours).toBe(16)
+        // 8 at 16.50 and 8 at 15.00.
+        expect(totals.perDay[0].cost).toBe(252)
+    })
+
+    it('marks the bank holiday on the day it falls', () => {
+        expect(totals.perDay[1].bankHoliday).toMatchObject({ short: 'October' })
+        expect(totals.perDay[2].bankHoliday).toBeNull()
+    })
+
+    it('adds the week up from the days', () => {
+        expect(totals.hours).toBe(16)
+        expect(totals.cost).toBe(252)
+    })
+
+    it('copes with nobody at all', () => {
+        expect(weekTotals([])).toMatchObject({ hours: 0, cost: 0, perDay: [] })
+    })
+})
+
+describe('what the week cost as a share of what it took', () => {
+    // The figure the old Labour page was read for. Its rules are kept exactly,
+    // so a week read here and the same week read in the history agree.
+    const perDay = [
+        { date: SUN, cost: 200 },
+        { date: MON, cost: 150 },
+        { date: TUE, cost: 100 },
+    ]
+    const sales = {
+        [SUN]: { net_sales: 1000 },
+        [MON]: { net_sales: 500 },
+        [TUE]: { net_sales: 0, is_closed: true },
+    }
+
+    it('is the day cost over the day sales', () => {
+        const { days } = labourPercent(perDay, sales)
+        expect(days[0].percent).toBe(20)
+        expect(days[1].percent).toBe(30)
+    })
+
+    // A closed day can still have hours on it, for a stock take or a repair,
+    // and that cost is real. There is just nothing to measure it against.
+    it('says nothing at all about a closed day', () => {
+        expect(labourPercent(perDay, sales).days[2].percent).toBeNull()
+    })
+
+    it('says nothing about a day nobody has entered sales for', () => {
+        expect(labourPercent(perDay, {}).days[0].percent).toBeNull()
+    })
+
+    // The week over the week, never the average of seven days, which would
+    // weight a wet Monday the same as a Saturday. The closed day's cost still
+    // counts: it was spent.
+    it('divides the week by the week', () => {
+        expect(labourPercent(perDay, sales).week).toBe(30)
+    })
+
+    it('has no answer for a week with no sales at all', () => {
+        expect(labourPercent(perDay, {}).week).toBeNull()
+    })
+})
+
+describe('what the daily rollup gets', () => {
+    // labour_entries stays, because the cost dashboard, the report and
+    // weeklyReport.js all read it for the percentage. The figure in it just
+    // becomes true.
+    const rows = [personWeek({
+        person: aoife, weekStart: WEEK, restaurantRate: 15,
+        entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
+    })]
+    const rollup = labourRollup(rows)
+
+    it('gives one row a day, in the shape that table holds', () => {
+        expect(rollup).toHaveLength(7)
+        expect(Object.keys(rollup[0]).sort())
+            .toEqual(['entry_date', 'labour_cost', 'staff_count', 'total_hours'])
+    })
+
+    it('carries the real cost at the real rate', () => {
+        const tuesday = rollup.find(r => r.entry_date === TUE)
+        expect(tuesday).toMatchObject({ total_hours: 8, labour_cost: 132, staff_count: 1 })
+    })
+
+    it('counts nobody on a day nobody worked', () => {
+        expect(rollup.find(r => r.entry_date === SUN)).toMatchObject({ total_hours: 0, staff_count: 0 })
+    })
+})
+
+describe('whether the week can go anywhere', () => {
+    const rostered = [{ employee_id: 'e1', shift_date: TUE, starts_at: '09:00', ends_at: '17:00' }]
+
+    it('names who has a rostered shift nobody answered', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [TUE], changed: [] }])
+    })
+
+    // The other half of "times or a reason", which is the half that had
+    // nowhere to be written until the day a row stopped needing a start time.
+    it('is happy with a comment and no times at all', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
+            entries: [{ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: null, ends_at: null, kind: 'worked', note: 'swapped with somebody' }],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // His rule: a figure that came off the clock and was then moved by hand is
+    // the one change on the week nobody reading it can see.
+    it('names who changed a till time and said nothing', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(unanswered(rows)).toEqual([{ person: aoife, days: [], changed: [TUE] }])
+    })
+
+    it('is happy once the change says why', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'corrected', note: 'clocked in on the wrong till' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // A week typed by hand with no file behind it says nothing new by saying
+    // it was typed, so it is never asked for a comment.
+    it('asks nothing of a week that was typed rather than imported', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:20:00', ends_at: '17:00:00', source: 'typed' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    it('is happy once there are times against it', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER,
+            entries: [shift({ employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '17:00:00' })],
+        })]
+        expect(weekAnswered(rows)).toBe(true)
+    })
+
+    // A blank day is not an unanswered one. Somebody who was not rostered and
+    // did not work has nothing to say, and a block that demanded every cell
+    // would never let a report out.
+    it('does not mind a blank day nobody was rostered for', () => {
+        expect(weekAnswered([personWeek({ person: aoife, weekStart: WEEK })])).toBe(true)
+    })
+
+    // His, and the right call: there are 245 days in the old Labour archive
+    // and no timesheet will ever be typed for any of them. A block that
+    // demanded one would stop every report about the first eight months of
+    // 2026 from ever being written.
+    it('lets a day the old Labour archive already answers through', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
+        expect(weekAnswered(rows)).toBe(false)
+        expect(weekAnswered(rows, [TUE])).toBe(true)
+        expect(unanswered(rows, new Set([TUE]))).toEqual([])
+    })
+
+    it('still asks about a day the archive does not cover', () => {
+        const rows = [personWeek({ person: aoife, weekStart: WEEK, shifts: rostered, today: AFTER })]
+        expect(weekAnswered(rows, ['2026-10-25'])).toBe(false)
+    })
+})
+
+describe('bringing a file in', () => {
+    const incoming = { starts_at: '09:02:17', ends_at: '17:04:55' }
+
+    it('fills an empty box without asking', () => {
+        expect(importVerdict({ existing: null, incoming })).toMatchObject({ action: 'fill' })
+    })
+
+    // The thing he caught. 09:00:00 is a round roster time somebody accepted
+    // with Enter, waiting for exactly this file. Asking about it would be
+    // asking him to approve the thing he imported the file to get.
+    it('replaces an accepted roster time without asking', () => {
+        const existing = { starts_at: '09:00:00', ends_at: '17:00:00', source: 'roster' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'replace', why: 'roster' })
+    })
+
+    it('lets a corrected report correct an earlier one', () => {
+        const existing = { starts_at: '09:00:00', ends_at: '17:00:00', source: 'import' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'replace', why: 'reimport' })
+    })
+
+    it('takes a typed time that is only minutes out, and counts it', () => {
+        const existing = { starts_at: '09:00:00', ends_at: '17:00:00', source: 'typed' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'replace', why: 'near' })
+    })
+
+    it('asks when a typed time is an hour or more out', () => {
+        const existing = { starts_at: '09:00:00', ends_at: '17:00:00', source: 'typed' }
+        const far = { starts_at: '14:02:19', ends_at: '22:15:40' }
+        expect(importVerdict({ existing, incoming: far })).toMatchObject({ action: 'ask', why: 'far' })
+    })
+
+    it('draws the line at exactly an hour', () => {
+        const existing = { starts_at: '09:00:00', ends_at: '17:00:00', source: 'typed' }
+        expect(importVerdict({ existing, incoming: { starts_at: '10:00:00', ends_at: '17:00:00' } }))
+            .toMatchObject({ action: 'ask', apart: ASK_ABOVE_SECONDS })
+        expect(importVerdict({ existing, incoming: { starts_at: '09:59:59', ends_at: '17:00:00' } }))
+            .toMatchObject({ action: 'replace' })
+    })
+
+    it('says nothing changed when the times already match', () => {
+        const existing = { starts_at: '09:02:17', ends_at: '17:04:55', source: 'typed' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'same' })
+    })
+
+    // The one worth having. Either the holiday is wrong or somebody worked one,
+    // and both of those are things to know.
+    it('always asks about a shift landing on a day marked off', () => {
+        const absence = { kind: 'holiday' }
+        expect(importVerdict({ existing: null, incoming, absence })).toMatchObject({ action: 'ask', why: 'absence' })
+    })
+
+    // A day somebody wrote a comment on instead of typing times. The file and
+    // the sentence disagree, which is the same shape as the absence above.
+    it('asks when the day already says nothing was worked', () => {
+        const existing = { starts_at: null, ends_at: null, source: 'typed', note: 'did not turn up' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'ask', why: 'said' })
+    })
+
+    // A day marked as training before the times were typed. The clock is
+    // exactly what that row was waiting for, so it fills without asking.
+    it('fills a day that was marked and never typed', () => {
+        const existing = { starts_at: null, ends_at: null, source: 'typed', kind: 'training' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'replace', why: 'roster' })
+    })
+
+    // The correction rule. A hand change is usually twenty minutes, which is
+    // the exact range the quiet path covers, so without this the file would put
+    // the old figure back and say nothing.
+    it('never quietly undoes a correction', () => {
+        const existing = { starts_at: '09:20:00', ends_at: '17:04:55', source: 'corrected' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'ask', why: 'corrected' })
+    })
+
+    it('says nothing changed when a correction matches the file anyway', () => {
+        const existing = { starts_at: '09:02:17', ends_at: '17:04:55', source: 'corrected' }
+        expect(importVerdict({ existing, incoming })).toMatchObject({ action: 'same' })
+    })
+
+    it('counts the quiet ones and lists only the questions', () => {
+        const out = summarise([
+            { action: 'fill', why: 'empty' }, { action: 'fill', why: 'empty' },
+            { action: 'replace', why: 'roster' },
+            { action: 'replace', why: 'near' },
+            { action: 'same', why: 'same' },
+            { action: 'ask', why: 'absence' },
+        ])
+        expect(out).toMatchObject({ filled: 2, rosterReplaced: 1, nudged: 1, unchanged: 1 })
+        expect(out.asks).toHaveLength(1)
+    })
+})
+
+describe('what an upload would do, before anything is written', () => {
+    const mappings = [
+        { name: 'QUINN Aoife', employee_id: 'e1', ignored: false },
+        { name: 'MANAGER Manager', employee_id: null, ignored: true },
+    ]
+    const came = (over = {}) => ({
+        name: 'QUINN Aoife', work_date: TUE, starts_at: '09:01:22', ends_at: '17:33:16', ...over,
+    })
+
+    it('fills a day with nothing on it', () => {
+        const plan = planImport({ shifts: [came()], mappings })
+        expect(plan.filled).toBe(1)
+        expect(plan.asks).toEqual([])
+    })
+
+    it('names anybody it has never seen, once each', () => {
+        const plan = planImport({
+            shifts: [came({ name: 'Rosa' }), came({ name: 'Rosa', work_date: MON }), came()],
+            mappings,
+        })
+        expect(plan.unknown).toEqual(['Rosa'])
+        expect(plan.filled).toBe(1)
+    })
+
+    // MANAGER, CBE, end of day. Dropped without a word, because somebody has
+    // already said once that they are not a person.
+    it('drops a name that was marked as not a person', () => {
+        const plan = planImport({ shifts: [came({ name: 'MANAGER Manager' })], mappings })
+        expect(plan.ignored).toHaveLength(1)
+        expect(plan.steps).toEqual([])
+        expect(plan.unknown).toEqual([])
+    })
+
+    it('replaces a time somebody took off the roster without asking', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:00:00', ends_at: '17:00:00', source: 'roster',
+        })]
+        const plan = planImport({ shifts: [came()], mappings, entries })
+        expect(plan.rosterReplaced).toBe(1)
+        expect(plan.asks).toEqual([])
+    })
+
+    it('asks about a typed time that is an hour or more out', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '14:00:00', ends_at: '22:00:00', source: 'typed',
+        })]
+        const plan = planImport({ shifts: [came()], mappings, entries })
+        expect(plan.asks).toHaveLength(1)
+        expect(plan.asks[0]).toMatchObject({ why: 'far', employee_id: 'e1', date: TUE })
+    })
+
+    // The one worth having: either the holiday is wrong or somebody worked one.
+    it('always asks about a shift landing on a day marked off', () => {
+        const absences = [{
+            id: 'a1', employee_id: 'e1', kind: 'holiday', status: 'approved',
+            starts_on: TUE, ends_on: TUE, hours: 8,
+        }]
+        const plan = planImport({ shifts: [came()], mappings, absences })
+        expect(plan.asks).toHaveLength(1)
+        expect(plan.asks[0].why).toBe('absence')
+    })
+
+    // A split shift lines up with a split shift, in clock order, which is the
+    // only pairing that does not need the till and the Hub to have ever shared
+    // an id.
+    it('pairs two spans in a day with the two already there', () => {
+        const entries = [
+            shift({ id: 't1', employee_id: 'e1', work_date: TUE, starts_at: '17:00:00', ends_at: '21:00:00', source: 'roster' }),
+            shift({ id: 't2', employee_id: 'e1', work_date: TUE, starts_at: '09:00:00', ends_at: '13:00:00', source: 'roster' }),
+        ]
+        const plan = planImport({
+            shifts: [
+                came({ starts_at: '17:02:10', ends_at: '21:04:55' }),
+                came({ starts_at: '09:01:22', ends_at: '13:03:41' }),
+            ],
+            mappings,
+            entries,
+        })
+        expect(plan.rosterReplaced).toBe(2)
+        expect(plan.steps.map(s => s.existing.id)).toEqual(['t2', 't1'])
+    })
+
+    it('fills a second span the day did not have', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:00:00', ends_at: '13:00:00', source: 'roster',
+        })]
+        const plan = planImport({
+            shifts: [came({ starts_at: '09:01:22', ends_at: '13:03:41' }), came({ starts_at: '17:00:00', ends_at: '21:00:00' })],
+            mappings,
+            entries,
+        })
+        expect(plan.rosterReplaced).toBe(1)
+        expect(plan.filled).toBe(1)
+    })
+
+    it('says nothing changed when the file matches what is there', () => {
+        const entries = [shift({
+            id: 't1', employee_id: 'e1', work_date: TUE,
+            starts_at: '09:01:22', ends_at: '17:33:16', source: 'typed',
+        })]
+        expect(planImport({ shifts: [came()], mappings, entries }).unchanged).toBe(1)
+    })
+
+    it('copes with an empty file', () => {
+        expect(planImport({})).toMatchObject({ unknown: [], steps: [], filled: 0 })
+    })
+})
+
+describe('a week that has not finished yet', () => {
+    // His, on the week he was in the middle of: seven people named on a banner
+    // saying their shifts had nothing said about them, on days that had not
+    // happened. Nothing asks anything until the week is over.
+    const rostered = [{ employee_id: 'e1', shift_date: TUE, starts_at: '09:00', ends_at: '17:00' }]
+    const midweek = { person: aoife, weekStart: WEEK, shifts: rostered, today: TUE }
+
+    it('asks nothing at all', () => {
+        expect(weekAnswered([personWeek(midweek)])).toBe(true)
+        expect(unanswered([personWeek(midweek)])).toEqual([])
+    })
+
+    it('says nothing about a day that has already gone either', () => {
+        const [monday] = personWeek(midweek).days.filter(d => d.date === MON)
+        expect(monday.unanswered).toBe(false)
+        expect(monday.nothingRegistered).toBe(false)
+    })
+
+    // The day after the week ends is the earliest anything is asked, which is
+    // the same line the report draws.
+    it('asks on the Sunday after', () => {
+        const over = personWeek({ ...midweek, today: '2026-11-01' })
+        expect(weekAnswered([over])).toBe(false)
+    })
+
+    // A till time changed by hand is not about a day that has not happened, so
+    // that one is asked whenever it is done.
+    it('still wants a comment on a change somebody made this week', () => {
+        const rows = [personWeek({
+            person: aoife, weekStart: WEEK, today: TUE,
+            entries: [shift({ employee_id: 'e1', work_date: SUN, starts_at: '09:00:00', ends_at: '17:00:00', source: 'corrected' })],
+        })]
+        expect(weekAnswered(rows)).toBe(false)
+    })
+})
+
+
+// How far a shift ended up from the plan. The figures are the ones off his own
+// screen on 21 September, a Monday in the week of 13 September.
+describe('how far the clock ended up from the plan', () => {
+    const plan = (starts, ends) => ({ starts_at: starts, ends_at: ends })
+    const at = t => {
+        const [h, m] = t.split(':').map(Number)
+        return h * 60 + m
+    }
+    const drift = (planned, from, to) => planDrift(plan(planned[0], planned[1]), at(from), at(to) - at(from))
+
+    it('has nothing to say about a shift nobody rostered', () => {
+        expect(planDrift(null, 540, 480)).toBeNull()
+    })
+
+    // The one this was rewritten for. In three hours late and out three hours
+    // late is the same length as the plan, so comparing lengths made it nought
+    // and drew it as though the day had gone exactly as written.
+    it('sees a shift that simply moved, which comparing lengths could not', () => {
+        const out = drift(['09:00:00', '17:00:00'], '12:00', '20:00')
+        expect(out).toEqual({ where: 'in', minutes: 180 })
+        expect(Math.abs(out.minutes) > NOTICEABLE_MINUTES).toBe(true)
+    })
+
+    it('names the end that is furthest out', () => {
+        // Rostered 08:30 to 15:00, clocked 11:08 to 22:20: in +158, out +440.
+        expect(drift(['08:30:00', '15:00:00'], '11:08', '22:20'))
+            .toEqual({ where: 'out', minutes: 440 })
+    })
+
+    it('says how long it ran when both ends moved opposite ways', () => {
+        // Half an hour early and half an hour late is only thirty at each end,
+        // and an hour longer than the day that was planned.
+        expect(drift(['10:00:00', '18:00:00'], '09:30', '18:30'))
+            .toEqual({ where: 'ran', minutes: 60 })
+    })
+
+    it('signs a shift that came up short', () => {
+        expect(drift(['09:00:00', '17:00:00'], '09:00', '15:00'))
+            .toEqual({ where: 'out', minutes: -120 })
+    })
+})
+
+// His, on 21 September: an hour, everywhere, rather than fifteen minutes on
+// the length alone.
+describe('what counts as far enough to look at', () => {
+    const plan = { starts_at: '17:00:00', ends_at: '21:30:00' }
+    const far = out => Math.abs(out.minutes) > NOTICEABLE_MINUTES
+
+    it('is an hour', () => {
+        expect(NOTICEABLE_MINUTES).toBe(60)
+    })
+
+    // 17:05 to 22:20 against 17:00 to 21:30. Fifty minutes past the end, which
+    // used to be marked and is not the kind of difference anybody would look
+    // twice at.
+    it('leaves fifty minutes past the end alone', () => {
+        expect(far(planDrift(plan, 17 * 60 + 5, 315))).toBe(false)
+    })
+
+    it('marks an hour and a half past the end', () => {
+        expect(far(planDrift(plan, 17 * 60, 360))).toBe(true)
+    })
+
+    // Not a fourth shade. The day view has one colour for agreeing and one for
+    // not, and the figure beside it says by how much.
+    it('bands a row from the same two grounds the week grid uses', () => {
+        expect(ROW_BANDS).toHaveLength(2)
+        expect(ROW_BANDS[0]).not.toBe(ROW_BANDS[1])
+    })
+})

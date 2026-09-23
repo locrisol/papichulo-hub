@@ -5,7 +5,8 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num, fmtPct } from '@/lib/format'
-import { addDays, weekNumber, weekRange, todayISO } from '@/lib/dates'
+import { addDays, weekNumber, weekRange, todayISO, shortDate } from '@/lib/dates'
+import { bankHolidaysBetween, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
@@ -192,7 +193,9 @@ export default function ReportPage() {
                         .select('total_amount, category')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('invoice_date', weekStart).lte('invoice_date', end),
-                    supabase.from('labour_entries')
+                    // The view rather than the frozen table: see the
+                    // comment on the same read in the cost dashboard.
+                    supabase.from('labour_by_day')
                         .select('labour_cost')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('entry_date', weekStart).lte('entry_date', end),
@@ -272,7 +275,7 @@ export default function ReportPage() {
                     .select('invoice_date, total_amount, category')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('invoice_date', yearFrom).lte('invoice_date', end),
-                supabase.from('labour_entries')
+                supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('entry_date', yearFrom).lte('entry_date', end),
@@ -789,6 +792,19 @@ export default function ReportPage() {
                     <p className="text-sm text-muted mt-1">
                         {weekRange(week)} &middot; {activeRestaurant?.name}
                     </p>
+                    {/* A week with a bank holiday in it is not comparable with
+                        the one before it, in sales or in what it cost to staff.
+                        Whoever reads the report should not have to work out
+                        which week that was. */}
+                    {bankHolidaysBetween(week, addDays(week, 6)).map(holiday => (
+                        <p
+                            key={holiday.date}
+                            className="text-xs font-bold mt-1"
+                            style={{ color: BANK_HOLIDAY_INK }}
+                        >
+                            {holiday.name}, {shortDate(holiday.date)}
+                        </p>
+                    ))}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 flex-shrink-0 self-start">

@@ -14,6 +14,7 @@ import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor, hourLabelStep,
 } from '@/lib/roster'
+import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 
 // One day, drawn as a timeline.
 //
@@ -146,7 +147,10 @@ export default function RosterDay({
     const looseExtras = extras.filter(e => !e.time)
 
     const closed = dayNote?.is_closed
-    const bankHoliday = dayNote?.is_bank_holiday
+    // The date decides this now, and the tick only adds to it. Somebody had to
+    // remember to tick the October bank holiday for the day to know it was one,
+    // and a day nobody ticked looked like an ordinary Monday.
+    const bankHoliday = bankHolidayFor(date, dayNote)
 
     function beginDrag(employeeId, index, e) {
         // Only a mouse drags. A finger presses and releases, and that is a tap.
@@ -277,23 +281,33 @@ export default function RosterDay({
 
     // The tone the whole day carries. Closed beats bank holiday: a bank holiday
     // you are shut for is just shut.
-    const dayTone = closed
-        ? 'bg-red-50'
-        : bankHoliday
-            ? 'bg-blue-50'
-            : ''
+    //
+    // Gold rather than the blue it used to be. Blue is somebody's booked
+    // holiday, drawn on this same screen a few pixels away, and one screen
+    // cannot have two meanings for one colour.
+    const dayTone = closed ? 'bg-red-50' : ''
+    const dayWash = !closed && bankHoliday ? BANK_HOLIDAY_WASH : undefined
 
     return (
         <div className={`${cardEdge} bg-white overflow-hidden`}>
             {(closed || bankHoliday) && (
-                <div className={`px-4 py-2 text-sm font-semibold border-b ${
-                    closed
-                        ? 'bg-red-100 text-red-800 border-red-200'
-                        : 'bg-blue-100 text-blue-800 border-blue-200'
-                }`}>
+                <div
+                    className={`px-4 py-2 text-sm font-semibold border-b ${
+                        closed ? 'bg-red-100 text-red-800 border-red-200' : 'border-transparent'
+                    }`}
+                    style={closed
+                        ? undefined
+                        : { backgroundColor: BANK_HOLIDAY_WASH, color: BANK_HOLIDAY_INK }}
+                >
+                    {/* What hours are actually in force, rather than where
+                        they came from. The day takes the bank holiday hours on
+                        its own now, so the old sentence about nobody having
+                        marked it was saying the opposite of what happens. */}
                     {closed
                         ? 'The store is closed this day. Anything rostered here is somebody coming in anyway.'
-                        : 'Bank holiday. The bank holiday hours are the ones in force.'}
+                        : `${bankHoliday.name}.${dayHours
+                            ? ` The store is open ${dayHours.open} to ${dayHours.close}.`
+                            : ''}`}
                 </div>
             )}
 
@@ -579,8 +593,9 @@ export default function RosterDay({
                             <Fragment key={employee.id}>
                             <div
                                 className={`flex ${stripShowing ? '' : 'border-b border-border last:border-b-0'} ${
-                                    dayTone || (row % 2 ? 'bg-gray-50/40' : '')
+                                    dayTone || (dayWash ? '' : (row % 2 ? 'bg-gray-50/40' : ''))
                                 }`}
+                                style={dayWash ? { backgroundColor: dayWash } : undefined}
                             >
                                 {/* The exact minute lives in the hover rather
                                     than on the row. What matters at a glance is

@@ -156,3 +156,113 @@ describe('a section bar says what the section is', () => {
         expect(missing.length, 'a bar with no title is a grey stripe').toBe(0)
     })
 })
+
+describe('a page does not decide how wide it is', () => {
+    // AppLayout decides, for every page, and says so in its own comment: it
+    // used to be a PageContainer a page wrapped itself in and thirteen of the
+    // twenty six never did, so the app had three widths depending where you
+    // were. The Timesheet then went and set its own 1400 and its own padding,
+    // which is how it came back.
+    //
+    // A pixel width is the tell. max-w-sm on a paragraph is centring a line of
+    // text and is nobody's business but that paragraph's.
+    const pages = sourcePaths.filter(p => p.startsWith('../pages/'))
+
+    // The public allergen page is outside the layout on purpose: it is what a
+    // customer gets from the QR code, with no sidebar and no header.
+    const OUTSIDE_THE_LAYOUT = ['../pages/public/PublicAllergensPage.jsx']
+
+    it('is watching the pages', () => {
+        expect(pages.length).toBeGreaterThan(20)
+    })
+
+    it.each(pages)('%s sets no width of its own', path => {
+        if (OUTSIDE_THE_LAYOUT.includes(path)) return
+        const found = sources[path].match(/max-w-\[\d+px\]/g) || []
+        expect(found, 'AppLayout decides how wide a page is').toEqual([])
+    })
+})
+
+describe('a screen that judges the timesheet asks for the whole row', () => {
+    // The reports page decided whether a week could be written, and asked the
+    // database for five columns of a timesheet row. Two of the rules it
+    // applies are about the other two: a till time changed by hand is
+    // `source`, and whether it has been explained is `note`. So the rule ran
+    // on every week and could never once be true.
+    //
+    // Nothing was broken in a way anything could see. The query worked, the
+    // page rendered, and a week that should have been blocked was offered with
+    // a Start button on it.
+    const NEEDED = ['source', 'note']
+    // A comment can sit between the two calls, so the window is wide.
+    const reads = sourcePaths.filter(p => /\.from\('timesheet_entries'\)[\s\S]{0,500}?\.select\(/.test(sources[p]))
+
+    it('has screens reading it', () => {
+        expect(reads.length).toBeGreaterThan(0)
+    })
+
+    it.each(reads)('%s selects what the rules read', path => {
+        const asked = [...sources[path].matchAll(/\.from\('timesheet_entries'\)[\s\S]{0,500}?\.select\(([^)]*)\)/g)]
+            .map(m => m[1])
+            // A select with nothing in it follows an insert or an update and is
+            // only there to get the row back.
+            .filter(list => list.trim() !== '')
+
+        for (const list of asked) {
+            if (list.includes('*')) continue
+            const missing = NEEDED.filter(column => !list.includes(column))
+            expect(missing, 'a rule reads these and a select without them turns it off').toEqual([])
+        }
+    })
+})
+
+describe('labour is read from the view, never from the frozen table', () => {
+    // labour_entries is the old Labour page's table. It stops on the 5th of
+    // September 2026 and nothing writes to it again. labour_by_day is the view
+    // that reads the timesheet for every day it covers and that table for the
+    // rest, which is what makes the cost percentage right on both sides of the
+    // join.
+    //
+    // Two screens were left reading the table directly, so the day the
+    // timesheet started being used they showed a week with no labour cost at
+    // all and no sign anything was missing. He found it, not us.
+    const reads = sourcePaths.filter(p => sources[p].includes("from('labour_entries')"))
+
+    it('nothing asks the table for figures', () => {
+        expect(reads, 'read labour_by_day: the table is the archive half only').toEqual([])
+    })
+})
+
+describe('a style that is a function gets called', () => {
+    // Some of the controls are functions because they take a size or a tone.
+    // The import dialog used one as if it were a string, twice, and the two
+    // mistakes looked like two different bugs.
+    //
+    // `className={primaryButton}` hands React a function, which it drops, so
+    // the button rendered as plain dark words with nothing around it.
+    // `` className={`${primaryButton} ...`} `` is worse: the function's own
+    // source is stringified, so the handful of classes that happen to sit
+    // outside quote marks land and the padding, which does not, is gone. That
+    // one showed up as a button with a margin problem, which is a much harder
+    // thing to go looking for than a missing pair of brackets.
+    const style = sources['../lib/controlStyles.js']
+    const FUNCTIONS = [...style.matchAll(/^export function (\w+)/gm)].map(m => m[1])
+    const users = sourcePaths.filter(p => sources[p].includes("from '@/lib/controlStyles'"))
+
+    it('has functions to watch, and files using them', () => {
+        expect(FUNCTIONS.length).toBeGreaterThan(2)
+        expect(users.length).toBeGreaterThan(20)
+    })
+
+    it.each(users)('%s calls them', path => {
+        // The import line names them without calling them and is the one place
+        // that is meant to.
+        const body = sources[path]
+            .replace(/import\s*\{[^}]*\}\s*from\s*'@\/lib\/controlStyles'/g, '')
+        const bare = FUNCTIONS.filter(name => (
+            new RegExp(String.raw`\b${name}\b\s*(?!\()`).test(body)
+        ))
+
+        expect(bare, 'these are functions: call them, or the class is dropped').toEqual([])
+    })
+})

@@ -10,6 +10,7 @@
 
 import { sheetLayout, wrapLines, AWAY } from '@/lib/rosterShare'
 import { kindColours } from '@/lib/diary'
+import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -314,6 +315,11 @@ export function drawWeek(canvas, table) {
         text(h.day.toUpperCase(), x, y + 15, { align: 'center', colour: '#ffffff' })
         font(11)
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
+        // Gold on the green, the same as every screen shows it.
+        if (h.holiday) {
+            font(11, '700')
+            text(h.holiday.toUpperCase(), x, y + 47, { align: 'center', colour: BANK_HOLIDAY_ON_DARK })
+        }
     })
     font(13, '700')
     if (l.holidayCol) {
@@ -329,6 +335,10 @@ export function drawWeek(canvas, table) {
     text('STORE HOURS', l.pad + 12, y + l.metaH / 2, { colour: '#334155' })
     font(12)
     table.storeHours.forEach((v, i) => {
+        // The whole column, a row at a time. Painted per row rather than as one
+        // tall rectangle because rows paint their own backgrounds after this
+        // point and would cover it.
+        if (table.head[i]?.holiday) box(l.columnX(i), y, l.dayCol, l.metaH, BANK_HOLIDAY_WASH)
         text(v, l.columnX(i) + l.dayCol / 2, y + l.metaH / 2, {
             align: 'center', colour: '#334155', max: l.dayCol - 10,
         })
@@ -432,6 +442,9 @@ export function drawWeek(canvas, table) {
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+            if (table.head[i]?.holiday) {
+                box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, BANK_HOLIDAY_WASH)
+            }
 
             // A day they are not about, filled and said in one word. Which kind
             // of not about is deliberately not here: the manager sees that on

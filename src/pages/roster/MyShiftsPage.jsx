@@ -4,6 +4,7 @@ import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
+import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import {
@@ -728,12 +729,18 @@ function MyWeek({
                 const others = othersOn(d)
                 const isToday = d === today
 
+                // Staff read this and nobody else, so it is the one screen
+                // where a bank holiday has to be obvious without a legend: the
+                // day is washed gold and named.
+                const holiday = bankHolidayFor(d, note)
+
                 return (
                     <div
                         key={d}
                         className={`${cardEdge} overflow-hidden ${
                             note?.is_closed ? 'bg-red-50' : working.length ? 'bg-white' : 'bg-gray-50'
                         }`}
+                        style={holiday && !note?.is_closed ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
                     >
                         <div className={`px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b ${
                             isToday ? 'bg-accent-light border-accent/30' : 'bg-white/60 border-border'
@@ -741,6 +748,14 @@ function MyWeek({
                             <span className="font-semibold text-gray-900">
                                 {DAY_NAMES[i]} {fullDate(d)}
                                 {isToday && <span className={`${badge} bg-accent text-white ml-2`}>Today</span>}
+                                {holiday && (
+                                    <span
+                                        className="ml-2 text-xs font-bold"
+                                        style={{ color: BANK_HOLIDAY_INK }}
+                                    >
+                                        {holiday.name}
+                                    </span>
+                                )}
                             </span>
                             <span className="text-xs text-muted">
                                 {note?.is_closed

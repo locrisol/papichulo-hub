@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
-import { hoursForDay, shortTime } from '@/lib/roster'
+import { hoursForDay, shortTime, BANK_HOLIDAY } from '@/lib/roster'
+import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
 import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
 import { mirrorClosedToSales } from '@/lib/closedDays'
 import ModalSection from '@/components/ui/ModalSection'
@@ -39,6 +40,14 @@ export default function DayNoteDialog({
     // of them ends up clearing what the other just set.
     const show = part => !only || only === part
     const usual = hoursForDay(usualHours, date)
+    // One of the ten, worked out from the date. Nothing to tick on a day that
+    // is one.
+    const publicHoliday = bankHolidayOn(date)
+    // What the restaurant actually does on one, which is the half of the
+    // sentence worth saying. Null when nobody has set them.
+    const bankHours = usualHours?.[BANK_HOLIDAY]?.open && usualHours?.[BANK_HOLIDAY]?.close
+        ? usualHours[BANK_HOLIDAY]
+        : null
 
     const [form, setForm] = useState({
         opensAt: shortTime(note?.opens_at) || '',
@@ -182,21 +191,47 @@ export default function DayNoteDialog({
                         </span>
                     </label>
 
-                    <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={form.isBankHoliday}
-                            onChange={e => set('isBankHoliday', e.target.checked)}
-                            className={`${checkbox} mt-0.5`}
-                        />
-                        <span>
-                            <span className="block text-sm font-medium text-gray-900">Bank holiday</span>
-                            <span className="block text-xs text-gray-500">
-                                Marked in blue on the roster, and it uses the bank holiday hours set in
-                                Restaurant settings unless different hours are typed above.
+                    {/* The ten Irish public holidays need nobody to tick
+                        anything now: they are worked out from the date, marked
+                        everywhere, and they pick up the bank holiday hours on
+                        their own. So this is only ever about a day that is not
+                        one and is being run like one, and on a day that is one
+                        it says so rather than offering a tick that changes
+                        nothing. */}
+                    {publicHoliday ? (
+                        <p
+                            className="text-sm font-semibold"
+                            style={{ color: BANK_HOLIDAY_INK }}
+                        >
+                            {publicHoliday.name}.
+                            <span className="block text-xs font-normal text-gray-500 mt-0.5">
+                                {bankHours
+                                    ? `Marked everywhere without being ticked, and open ${bankHours.open} `
+                                        + `to ${bankHours.close} unless different hours are typed above.`
+                                    : 'Marked everywhere without being ticked. No bank holiday hours are '
+                                        + 'set in Restaurant settings, so the usual ones are in force.'}
                             </span>
-                        </span>
-                    </label>
+                        </p>
+                    ) : (
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={form.isBankHoliday}
+                                onChange={e => set('isBankHoliday', e.target.checked)}
+                                className={`${checkbox} mt-0.5`}
+                            />
+                            <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Run this day on the bank holiday hours
+                                </span>
+                                <span className="block text-xs text-gray-500">
+                                    For a day that is not a public holiday and is being treated like one.
+                                    It takes the bank holiday hours set in Restaurant settings unless
+                                    different hours are typed above.
+                                </span>
+                            </span>
+                        </label>
+                    )}
                 </div>
 
                 </ModalSection>

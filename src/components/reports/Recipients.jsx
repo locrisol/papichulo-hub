@@ -18,7 +18,13 @@ import AddButton from '@/components/ui/AddButton'
 // somebody covering for a month. They belong to the restaurant rather than to
 // this week, so the same people get next week's without anybody retyping them,
 // and removing one removes them from then on.
-export default function Recipients({ owners = [], extras = [], canEdit, onChange, busy }) {
+// `note` is the sentence under the list, which is the one part that is not the
+// same on both screens that use this: the report goes to the owners and back to
+// whoever wrote it, and the week's hours go to whoever does the payroll. The
+// rest, the chips, the adding, the taking off, is the same job twice.
+export default function Recipients({
+    owners = [], extras = [], canEdit, onChange, busy, title = 'Who gets it', note,
+}) {
     const [open, setOpen] = useState(false)
     const [typed, setTyped] = useState('')
     const [problem, setProblem] = useState('')
@@ -34,7 +40,7 @@ export default function Recipients({ owners = [], extras = [], canEdit, onChange
     return (
         <div className={`${card} p-4`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-                <p className="text-xs font-bold text-muted uppercase tracking-wider">Who gets it</p>
+                <p className="text-xs font-bold text-muted uppercase tracking-wider">{title}</p>
                 <p className="text-xs text-muted">{recipientSummary({ owners, extras })}</p>
             </div>
 
@@ -73,10 +79,14 @@ export default function Recipients({ owners = [], extras = [], canEdit, onChange
             </div>
 
             <p className="text-xs text-muted mt-3">
-                Whoever publishes it gets a copy too, so you can see it arrive. Replies come back
-                to them with everyone else copied.
-                {owners.length === 0 && ' Nobody here has an owner account, so apart from that it '
-                    + 'will only go to the addresses added below.'}
+                {note || (
+                    <>
+                        Whoever publishes it gets a copy too, so you can see it arrive. Replies come
+                        back to them with everyone else copied.
+                        {owners.length === 0 && ' Nobody here has an owner account, so apart from that it '
+                            + 'will only go to the addresses added below.'}
+                    </>
+                )}
             </p>
 
             {canEdit && (open ? (

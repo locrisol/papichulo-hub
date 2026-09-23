@@ -18,6 +18,7 @@ import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
 import { extraLabel, whatIsOn } from '@/lib/dayExtras'
 import { rowsOn, chipWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
+import { bankHolidayFor, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 
 // A day somebody is not there, as it goes out.
 //
@@ -68,10 +69,14 @@ export function weekTable({
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const hoursFor = d => hoursForDate(openingHours, noteFor(d), d)
 
+    // The bank holiday goes on the sheet as well as on the screen, because the
+    // sheet is what is printed and put on the wall. Staff reading it should not
+    // be looking at a different week to the one that was planned.
     const head = (dates || []).map((d, i) => ({
         date: d,
         day: DAY_NAMES[i],
         label: fullDate(d),
+        holiday: bankHolidayFor(d, noteFor(d)) ? BANK_HOLIDAY_LABEL : '',
     }))
 
     const storeHours = (dates || []).map(d => {
@@ -325,7 +330,10 @@ export function sheetLayout(table, {
     const dayCol = (width - pad * 2 - nameCol - hoursCol - holidayCol) / 7
 
     const titleH = 62
-    const headH = 44
+    // One line taller in a week with a bank holiday in it, and not otherwise,
+    // the same rule the holiday column follows: an ordinary week keeps every
+    // pixel it had.
+    const headH = (table.head || []).some(h => h.holiday) ? 58 : 44
     const metaH = 32
     // Each band as tall as its own words need, and nothing at all when the
     // week has none.
