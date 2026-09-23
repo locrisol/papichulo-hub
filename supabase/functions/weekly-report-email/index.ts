@@ -43,7 +43,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
-import { timesheetEmail, personWeeks } from './timesheet.js'
+import { timesheetEmail, personPeriod, addDays } from './timesheet.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
 
     try {
         const {
-            reportId, kind, weekStart, restaurantId, comment,
+            reportId, kind, periodStart, restaurantId, comment,
             test = false, origin, figures: posted, charts: postedCharts,
         } = await req.json()
         if (!reportId && kind !== 'timesheet') return json({ error: 'Which report?' }, 400)
@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
         if (kind === 'timesheet') {
             return await sendTimesheet({
                 admin, account, caller, send, from,
-                weekStart, restaurantId, comment, test,
+                periodStart, restaurantId, comment, test,
             })
         }
 
@@ -524,33 +524,36 @@ Deno.serve(async (req) => {
 // list for one job, and the person who does that job is the only one who
 // should be on it.
 async function sendTimesheet({
-    admin, account, caller, send, from, weekStart, restaurantId, comment, test,
+    admin, account, caller, send, from, periodStart, restaurantId, comment, test,
 }: {
     admin: ReturnType<typeof createClient>,
     account: { id: string, role: string, restaurant_id: string | null, full_name?: string | null },
     caller: { email?: string | null },
     send: (mail: Mail) => Promise<unknown>,
     from: (name?: string, address?: string | null) => string,
-    weekStart?: string,
+    periodStart?: string,
     restaurantId?: string,
     comment?: string,
     test?: boolean,
 }) {
-    const week = String(weekStart || '').slice(0, 10)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return json({ error: 'Which week?' }, 400)
+    const period = String(periodStart || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
 
     const forRestaurant = restaurantId || account.restaurant_id
     if (!forRestaurant) return json({ error: 'Which restaurant?' }, 400)
     if (account.role !== 'super_admin' && forRestaurant !== account.restaurant_id) {
-        return json({ error: 'That week belongs to another restaurant.' }, 403)
+        return json({ error: 'That pay period belongs to another restaurant.' }, 403)
     }
 
-    const dates = Array.from({ length: 7 }, (_, i) => {
-        const day = new Date(`${week}T00:00:00Z`)
-        day.setUTCDate(day.getUTCDate() + i)
-        return day.toISOString().slice(0, 10)
-    })
-    const weekEnd = dates[6]
+    // **A pay period is always a fortnight.** His, 23 September 2026, and the
+    // reason the hours leave the building two weeks at a time rather than one:
+    // a weekly mail leaves whoever runs the payroll adding two of them together
+    // before they can run anything.
+    const dates = Array.from({ length: 14 }, (_, i) => addDays(period, i))
+    const periodEnd = dates[13]
+    // The two Hub weeks it is made of. Everything else in the app still works
+    // a week at a time, and these are what it is handed.
+    const weeks = [period, addDays(period, 7)]
 
     // timesheet_recipients arrived in migration 007 and a function can be
     // deployed before a migration is run. Asking for a column that is not
@@ -576,18 +579,18 @@ async function sendTimesheet({
         admin.from('timesheet_entries')
             .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
             .eq('restaurant_id', forRestaurant)
-            .gte('work_date', week).lte('work_date', weekEnd),
+            .gte('work_date', period).lte('work_date', periodEnd),
         admin.from('absences')
             .select('employee_id, kind, status, starts_on, ends_on, hours')
             .eq('restaurant_id', forRestaurant)
-            .lte('starts_on', weekEnd).gte('ends_on', week),
+            .lte('starts_on', periodEnd).gte('ends_on', period),
     ])
 
     // Somebody who left before the week, or had not started, is not on it. The
     // same rule the screen uses, so the mail and the screen hold the same
     // people.
     const people = (team || []).filter(p => (
-        (!p.ended_on || p.ended_on >= week) && (!p.started_on || p.started_on <= weekEnd)
+        (!p.ended_on || p.ended_on >= period) && (!p.started_on || p.started_on <= periodEnd)
     ))
 
     const skipped: string[] = []
@@ -617,8 +620,8 @@ async function sendTimesheet({
 
     let mail = timesheetEmail({
         restaurantName: restaurant?.name,
-        weekStart: week,
-        people: personWeeks({ people, entries: worked || [], absences: away || [], dates }),
+        periodStart: period,
+        people: personPeriod({ people, entries: worked || [], absences: away || [], dates }),
         comment: String(comment || '').trim(),
         test: Boolean(test),
     })
@@ -640,13 +643,20 @@ async function sendTimesheet({
     // a week had gone to the accountant would be worse than no mark at all.
     // It moves on a second send, because a week can be corrected and sent
     // again and what matters is when the figures she has were sent.
+    // **Both weeks, because the period is what went.** The mark is per week,
+    // which is right: every screen reads a week at a time, and a week left
+    // unmarked would sit there looking like it had never been sent.
     if (!test) {
-        await admin.from('timesheet_weeks').upsert({
-            restaurant_id: forRestaurant,
-            week_start: week,
-            filed_at: new Date().toISOString(),
-            filed_by: account.id,
-        }, { onConflict: 'restaurant_id,week_start' })
+        const at = new Date().toISOString()
+        await admin.from('timesheet_weeks').upsert(
+            weeks.map(week_start => ({
+                restaurant_id: forRestaurant,
+                week_start,
+                filed_at: at,
+                filed_by: account.id,
+            })),
+            { onConflict: 'restaurant_id,week_start' },
+        )
     }
 
     return json({

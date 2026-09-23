@@ -8,19 +8,19 @@ const { sendTimesheet, sentWords } = await import('@/lib/timesheetMail')
 beforeEach(() => invoke.mockReset())
 
 describe('what the browser is allowed to post', () => {
-    // Which week, and a sentence to put at the top. Every figure in the mail is
+    // Which pay period, and a sentence to put at the top. Every figure in the mail is
     // read out of the database by the function, so nothing here can send a set
     // of hours of its own under our name.
-    it('posts the week and nothing that could become a figure', async () => {
+    it('posts the period and nothing that could become a figure', async () => {
         invoke.mockResolvedValue({ data: { sent: 2 }, error: null })
 
-        await sendTimesheet({ weekStart: '2026-10-25', restaurantId: 'r1', comment: 'Two corrections' })
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', comment: 'Two corrections' })
 
         const [name, options] = invoke.mock.calls[0]
         expect(name).toBe('weekly-report-email')
         expect(options.body).toEqual({
             kind: 'timesheet',
-            weekStart: '2026-10-25',
+            periodStart: '2026-10-25',
             restaurantId: 'r1',
             comment: 'Two corrections',
             test: false,
@@ -29,13 +29,13 @@ describe('what the browser is allowed to post', () => {
 
     it('says when it is a rehearsal', async () => {
         invoke.mockResolvedValue({ data: { sent: 1 }, error: null })
-        await sendTimesheet({ weekStart: '2026-10-25', restaurantId: 'r1', test: true })
+        await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1', test: true })
         expect(invoke.mock.calls[0][1].body.test).toBe(true)
     })
 
     it('hands back what the function said', async () => {
         invoke.mockResolvedValue({ data: { sent: 3, to: ['a@b.ie'] }, error: null })
-        const out = await sendTimesheet({ weekStart: '2026-10-25', restaurantId: 'r1' })
+        const out = await sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1' })
         expect(out).toEqual({ sent: 3, to: ['a@b.ie'] })
     })
 
@@ -46,12 +46,12 @@ describe('what the browser is allowed to post', () => {
             data: null,
             error: {
                 message: 'Edge Function returned a non-2xx status code',
-                context: { json: async () => ({ error: 'That week belongs to another restaurant.' }) },
+                context: { json: async () => ({ error: 'That pay period belongs to another restaurant.' }) },
             },
         })
 
-        await expect(sendTimesheet({ weekStart: '2026-10-25', restaurantId: 'r1' }))
-            .rejects.toThrow('That week belongs to another restaurant.')
+        await expect(sendTimesheet({ periodStart: '2026-10-25', restaurantId: 'r1' }))
+            .rejects.toThrow('That pay period belongs to another restaurant.')
     })
 })
 

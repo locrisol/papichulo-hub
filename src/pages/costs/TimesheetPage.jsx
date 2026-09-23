@@ -5,6 +5,7 @@ import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
+import { periodOf } from '@/lib/payPeriod'
 import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
 import {
@@ -142,6 +143,15 @@ export default function TimesheetPage() {
     const restaurantId = activeRestaurant?.id
     const dates = weekDates(weekStart)
     const weekEnd = addDays(weekStart, 6)
+
+    // The pay period this week falls in. Null until somebody sets the date it
+    // counts from, which the send dialog says rather than leaving a dead
+    // button. The grid itself never changes: the Hub works in weeks and only
+    // what leaves the building is a fortnight.
+    const period = useMemo(
+        () => periodOf(weekStart, activeRestaurant?.pay_period_start),
+        [weekStart, activeRestaurant?.pay_period_start],
+    )
     const restaurantRate = Number(activeRestaurant?.hourly_rate ?? 0)
 
     useEffect(() => {
@@ -903,10 +913,8 @@ export default function TimesheetPage() {
 
             {sending && (
                 <SendDialog
-                    weekStart={weekStart}
-                    weekEnd={weekEnd}
+                    period={period}
                     restaurant={activeRestaurant}
-                    waiting={waiting}
                     filedAt={filedAt}
                     onClose={() => setSending(false)}
                     onKeepList={keepRecipients}

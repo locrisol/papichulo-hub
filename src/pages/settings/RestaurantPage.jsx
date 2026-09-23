@@ -9,13 +9,14 @@ import OpeningHoursModal from '@/components/settings/OpeningHoursModal'
 import PlacesNearUsModal from '@/components/settings/PlacesNearUsModal'
 import BreakRulesModal from '@/components/settings/BreakRulesModal'
 import RosterRulesModal from '@/components/settings/RosterRulesModal'
-import { todayISO, weekStartOf, shortDate, stampDateTime } from '@/lib/dates'
+import { todayISO, weekStartOf, shortDate, stampDateTime, fullDate } from '@/lib/dates'
+import { anchorOf, periodOf, periodWords } from '@/lib/payPeriod'
 import { resolveTarget, describeTargets } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import { DEFAULT_BREAK_RULES, BANK_HOLIDAY } from '@/lib/roster'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import { numberField } from '@/lib/numberInput'
-import { card, rowButton, labelClass, pageTitle } from '@/lib/controlStyles'
+import { card, rowButton, labelClass, pageTitle, dateField } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import LockedField from '@/components/ui/LockedField'
 
@@ -44,6 +45,7 @@ export default function RestaurantPage() {
         hourly_rate: '',
         mail_from: '',
         google_calendar_id: '',
+        pay_period_start: '',
     })
 
     const [loading, setLoading] = useState(false)
@@ -78,6 +80,7 @@ export default function RestaurantPage() {
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
             mail_from: activeRestaurant.mail_from || '',
             google_calendar_id: activeRestaurant.google_calendar_id || '',
+            pay_period_start: activeRestaurant.pay_period_start || '',
         })
     }, [activeRestaurant])
 
@@ -116,6 +119,10 @@ export default function RestaurantPage() {
                 // blank.
                 mail_from: formData.mail_from.trim() || null,
                 google_calendar_id: formData.google_calendar_id.trim() || null,
+                // Read back as the Sunday of its own week. A period that began
+                // mid week would put its boundary inside a Hub week and leave
+                // the two halves belonging to different weeks.
+                pay_period_start: anchorOf(formData.pay_period_start) || null,
             })
             .eq('id', activeRestaurant.id)
             .select()
@@ -284,6 +291,41 @@ export default function RestaurantPage() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Pay period</h3>
+                            <label className={labelClass} htmlFor="pay-period-start">
+                                A day the pay period started on
+                            </label>
+                            {/* One date, and it never has to be touched again.
+                                The pay run is always a fortnight, so every other
+                                period is worked out from this by counting in
+                                fourteens, forwards or backwards. Pick any period
+                                start anybody can name, however long ago. */}
+                            <input
+                                id="pay-period-start"
+                                type="date"
+                                className={`${dateField} w-full sm:w-auto`}
+                                value={formData.pay_period_start}
+                                onChange={e => setFormData({ ...formData, pay_period_start: e.target.value })}
+                            />
+                            <p className="text-xs text-muted mt-1">
+                                {formData.pay_period_start ? (
+                                    <>
+                                        Saved as {fullDate(anchorOf(formData.pay_period_start))}, the Sunday of
+                                        that week. The period covering today is{' '}
+                                        <strong className="font-semibold text-gray-900">
+                                            {periodWords(periodOf(todayISO(), formData.pay_period_start)?.start)}
+                                        </strong>.
+                                    </>
+                                ) : (
+                                    <>
+                                        The Timesheet sends its hours a pay period at a time, so it cannot send
+                                        anything until this is set. Any period start will do, however long ago.
+                                    </>
+                                )}
+                            </p>
                         </div>
 
                         <div className={`${card} p-6 mb-4`}>

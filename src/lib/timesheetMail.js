@@ -1,8 +1,10 @@
 // Sending the week's hours.
 //
-// **Which week, and nothing else.** Every figure in that mail is read out of
+// **Which pay period, and nothing else.** Every figure in that mail is read out of
 // the database by the function, so a browser cannot post a set of hours and
-// have them arrive under our name. The one thing the screen may add is a
+// have them arrive under our name. A period is always a fortnight, and the
+// function works out its fourteen days for itself. The one thing the screen may
+// add is a
 // sentence at the top, which is the manager's own words about the week and is
 // escaped before it is drawn.
 //
@@ -13,9 +15,9 @@
 import { supabase } from '@/lib/supabase'
 import { functionError } from '@/lib/errors'
 
-export async function sendTimesheet({ weekStart, restaurantId, comment = '', test = false }) {
+export async function sendTimesheet({ periodStart, restaurantId, comment = '', test = false }) {
     const { data, error } = await supabase.functions.invoke('weekly-report-email', {
-        body: { kind: 'timesheet', weekStart, restaurantId, comment, test },
+        body: { kind: 'timesheet', periodStart, restaurantId, comment, test },
     })
 
     if (error) throw new Error(await functionError(error))

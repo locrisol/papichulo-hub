@@ -1,6 +1,11 @@
-import { useState } from 'react'
-import { shortDate, stampDateTime } from '@/lib/dates'
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
+import { todayISO, addDays, shortDate, stampDateTime } from '@/lib/dates'
+import { periodWords, periodIsOver } from '@/lib/payPeriod'
+import { personWeek, unanswered } from '@/lib/timesheet'
 import { sendTimesheet, sentWords } from '@/lib/timesheetMail'
+import { friendlyError } from '@/lib/errors'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import AutoTextarea from '@/components/ui/AutoTextarea'
@@ -9,19 +14,24 @@ import {
     modalFooter, secondaryButton, primaryButton, labelClass, fieldClass,
 } from '@/lib/controlStyles'
 
-// Sending the week's hours to whoever does the payroll.
+// Sending the hours to whoever does the payroll.
+//
+// **A pay period, not a week.** His, 23 September 2026: the payroll runs every
+// two weeks and always has, so a weekly mail left her adding two of them
+// together before she could run anything. The Hub still works in weeks
+// everywhere else, because a roster and a report and a week's takings are
+// weeks. Only what leaves the building changed.
 //
 // **Hours and comments. No money, and nothing about the roster.** The rate on
 // an employee is what they cost the company, not what they are paid, and the
-// accountant has no use for a plan she cannot check. Both of those are enforced
-// where the mail is built, and said here so somebody pressing the button knows
-// what they are sending.
+// accountant has no use for a plan she cannot check. Both are enforced where
+// the mail is built, and said here so somebody pressing the button knows what
+// they are sending.
 //
 // The list is the restaurant's own and nobody is on it by role. It is not the
 // report's list: that one carries the week's takings and goes to the owners.
 export default function SendDialog({
-    weekStart, weekEnd, restaurant, waiting = [], filedAt, canEdit = true,
-    onClose, onKeepList, onSent,
+    period, restaurant, filedAt, canEdit = true, onClose, onKeepList, onSent,
 }) {
     const [extras, setExtras] = useState(restaurant?.timesheet_recipients || [])
     const [comment, setComment] = useState('')
@@ -29,10 +39,84 @@ export default function SendDialog({
     const [error, setError] = useState('')
     const [said, setSaid] = useState('')
 
-    // A week with a shift nobody has accounted for is a week with the wrong
-    // hours on it, and the wrong hours are worse than late ones. The same
-    // question the report is blocked on.
+    // **The block has to cover both weeks, so both weeks are read here.**
+    //
+    // The screen behind this one shows one week and knows only about that one.
+    // A period that went out with a day nobody accounted for in its other half
+    // would be exactly the thing the block exists to stop, so the dialog asks
+    // for the whole fourteen days itself rather than trusting what is on
+    // screen.
+    const [loading, setLoading] = useState(true)
+    const [waiting, setWaiting] = useState([])
+
+    useEffect(() => {
+        if (!period || !restaurant?.id) return
+        let alive = true
+
+        async function look() {
+            const start = period.start
+            const end = period.end
+
+            const [team, worked, away, planned, marks] = await Promise.all([
+                supabase.from('employees')
+                    .select('id, full_name, sort_order, started_on, ended_on')
+                    .eq('restaurant_id', restaurant.id).order('sort_order'),
+                supabase.from('timesheet_entries')
+                    .select('*').eq('restaurant_id', restaurant.id)
+                    .gte('work_date', start).lte('work_date', end),
+                supabase.from('absences')
+                    .select('*').eq('restaurant_id', restaurant.id)
+                    .lte('starts_on', end).gte('ends_on', start),
+                supabase.from('roster_shifts')
+                    .select('*').eq('restaurant_id', restaurant.id)
+                    .gte('shift_date', start).lte('shift_date', end),
+                supabase.from('timesheet_weeks')
+                    .select('week_start, imported_at').eq('restaurant_id', restaurant.id)
+                    .in('week_start', period.weeks),
+            ])
+
+            if (!alive) return
+
+            const failed = team.error || worked.error || away.error || planned.error
+            if (failed) { setError(friendlyError(failed)); setLoading(false); return }
+
+            const imported = new Set(
+                (marks.data || []).filter(m => m.imported_at).map(m => m.week_start),
+            )
+
+            // One week at a time, because personWeek is what the screen uses
+            // and a second way of deciding whether a day is answered is a
+            // second way for the two to disagree.
+            const open = period.weeks.flatMap(weekStart => {
+                const people = (team.data || []).filter(p => (
+                    (!p.ended_on || p.ended_on >= weekStart)
+                    && (!p.started_on || p.started_on <= addDays(weekStart, 6))
+                ))
+                const rows = people.map(person => personWeek({
+                    person,
+                    weekStart,
+                    entries: worked.data || [],
+                    absences: away.data || [],
+                    shifts: planned.data || [],
+                    imported: imported.has(weekStart),
+                }))
+                return unanswered(rows).map(one => ({ ...one, weekStart }))
+            })
+
+            setWaiting(open)
+            setLoading(false)
+        }
+
+        look()
+        return () => { alive = false }
+    }, [period, restaurant?.id])
+
+    // A period with a day nobody has accounted for is a period with the wrong
+    // hours on it, and the wrong hours are worse than late ones.
     const blocked = waiting.length > 0
+    // Nothing goes out for a fortnight that has not finished, the same rule the
+    // grid follows about a week.
+    const unfinished = period ? !periodIsOver(period.start, todayISO()) : false
 
     async function keep(list) {
         setExtras(list)
@@ -47,7 +131,7 @@ export default function SendDialog({
         setSaid('')
         try {
             const result = await sendTimesheet({
-                weekStart,
+                periodStart: period.start,
                 restaurantId: restaurant?.id,
                 comment,
                 test,
@@ -60,35 +144,74 @@ export default function SendDialog({
         setBusy(false)
     }
 
+    // Nobody has said when the pay runs, so there is no period to send. The way
+    // out is one date in settings, said here rather than left as a dead button.
+    if (!period) {
+        return (
+            <Modal title="Send the hours" onClose={onClose} width="max-w-lg">
+                <div className="px-6 py-4">
+                    <p className="text-sm text-gray-900 font-semibold mb-2">
+                        Nobody has said when the pay period starts.
+                    </p>
+                    <p className="text-sm text-muted">
+                        The hours go out a pay period at a time, which is always a fortnight, so the
+                        Hub needs one date to count from. Any period start will do, however long
+                        ago, and it never has to be touched again.
+                    </p>
+                </div>
+                <div className={modalFooter}>
+                    <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
+                    <Link to="/settings/restaurant" className={primaryButton('md', 'good')}>
+                        Set it in settings
+                    </Link>
+                </div>
+            </Modal>
+        )
+    }
+
     return (
-        <Modal title="Send the week's hours" onClose={onClose} width="max-w-lg">
+        <Modal title="Send the hours" onClose={onClose} width="max-w-lg">
             <div className="px-6 py-4">
                 {error && <ErrorBanner className="mb-3">{error}</ErrorBanner>}
 
                 <p className="text-sm font-semibold text-gray-900">
-                    {shortDate(weekStart)} to {shortDate(weekEnd)}
+                    {periodWords(period.start)}
                 </p>
                 <p className="text-sm text-muted mb-4">
-                    Clock in and clock out as the till recorded them, to the second, with anything
-                    you wrote about a day. No money, and nothing about what anybody was rostered
-                    for.
+                    A pay period, which is two weeks: {shortDate(period.weeks[0])} to{' '}
+                    {shortDate(addDays(period.weeks[0], 6))} and {shortDate(period.weeks[1])} to{' '}
+                    {shortDate(period.end)}. Clock in and clock out as the till recorded them, to
+                    the second, with anything you wrote about a day. No money, and nothing about
+                    what anybody was rostered for.
                 </p>
 
                 {filedAt && !said && (
                     <p className="text-xs text-muted mb-4">
                         Last sent {stampDateTime(filedAt)}. Sending again replaces nothing; it is a
-                        second mail with whatever the week says now.
+                        second mail with whatever the period says now.
                     </p>
+                )}
+
+                {unfinished && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
+                        <strong className="font-bold">This period has not finished yet.</strong>{' '}
+                        It runs to {shortDate(period.end)}. You can still send it, and a test is
+                        always safe, but the days after today have nothing on them.
+                    </div>
+                )}
+
+                {loading && (
+                    <p className="text-xs text-muted mb-4">Checking both weeks...</p>
                 )}
 
                 {blocked && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
                         <strong className="font-bold">
                             {waiting.length === 1 ? 'One person has' : `${waiting.length} people have`} a
-                            day on this week with nothing said about it.
+                            day in this period with nothing said about it.
                         </strong>{' '}
-                        The week cannot go out until each one has times, time off, or a comment.
-                        A test can still be sent.
+                        {names(waiting)}. The period cannot go out until each one has times, time
+                        off, or a comment. A test can still be sent.
                     </div>
                 )}
 
@@ -116,7 +239,7 @@ export default function SendDialog({
                         minRows={2}
                         disabled={busy}
                         className={fieldClass}
-                        placeholder="Two corrections on Thursday, both explained on the day..."
+                        placeholder="Two corrections in week two, both explained on the day..."
                         value={comment}
                         onChange={e => setComment(e.target.value)}
                     />
@@ -131,9 +254,9 @@ export default function SendDialog({
                 <button type="button" onClick={onClose} className={secondaryButton}>
                     {said ? 'Done' : 'Cancel'}
                 </button>
-                {/* A test goes to the same list, with the week on it and a band
-                    saying it is a rehearsal, because a test that goes somewhere
-                    else tests nothing about the list. */}
+                {/* A test goes to the same list, with the period on it and a
+                    band saying it is a rehearsal, because a test that goes
+                    somewhere else tests nothing about the list. */}
                 <button
                     type="button"
                     disabled={busy || !canEdit}
@@ -144,14 +267,22 @@ export default function SendDialog({
                 </button>
                 <button
                     type="button"
-                    disabled={busy || blocked || !canEdit}
+                    disabled={busy || loading || blocked || !canEdit}
                     onClick={() => go(false)}
                     className={`${primaryButton('md', 'good')} disabled:opacity-50`}
-                    title={blocked ? 'The week has a day nobody has accounted for' : undefined}
+                    title={blocked ? 'The period has a day nobody has accounted for' : undefined}
                 >
                     {busy ? 'Sending...' : 'Send it'}
                 </button>
             </div>
         </Modal>
     )
+}
+
+// Who is holding it up, in the order they appear, and never a list so long it
+// stops being read.
+function names(waiting) {
+    const all = [...new Set(waiting.map(w => w.person.full_name))]
+    if (all.length <= 3) return all.join(', ')
+    return `${all.slice(0, 3).join(', ')} and ${all.length - 3} more`
 }
