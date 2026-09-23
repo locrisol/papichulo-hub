@@ -40,6 +40,7 @@ const LOGO_HEIGHT = (LOGO_WIDTH * 249) / 400
 // on a printed page that two of them have run into each other.
 export const COL_WIDTH = 24
 export const SUMMARY_HEADS = ['WEEK 1', 'WEEK 2', 'HOURS WORKED', 'BANK HOLIDAY', 'HOLIDAY']
+export const NAME_HEAD = 'NAME'
 export const HEAD_SIZE = 6
 // Tighter than the 0.4 the other small capitals use. At 0.4, HOURS WORKED
 // comes to 22.5mm inside a 24mm column, which is how three of these ran into
@@ -223,6 +224,11 @@ export async function timesheetPdf({
         right - COL * 2, right - COL, right,
     ]
 
+    // The middle of the nth figure column. Everything in the summary is centred
+    // in its own column except the name, which stays left where a list of names
+    // belongs.
+    const mid = i => (cols[i] + cols[i + 1]) / 2
+
     // **Three zones, said in colour rather than in a rule.**
     //
     // A name on the left and a figure 160mm away on the right is a long way for
@@ -249,9 +255,9 @@ export async function timesheetPdf({
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(HEAD_SIZE)
         pdf.setTextColor(255)
-        pdf.text('WHO', marginX + 2, y, { charSpace: HEAD_SPACING })
+        pdf.text(NAME_HEAD, marginX + 2, y, { charSpace: HEAD_SPACING })
         SUMMARY_HEADS.forEach((label, i) => {
-            pdf.text(label, cols[i + 1] - 2, y, { align: 'right', charSpace: HEAD_SPACING })
+            pdf.text(label, mid(i), y, { align: 'center', charSpace: HEAD_SPACING })
         })
         y += 6
     }
@@ -285,10 +291,10 @@ export async function timesheetPdf({
         ]
         figures.forEach((value, i) => {
             if (value === null) return
-            pdf.text(value, cols[i + 1] - 2, y, { align: 'right' })
+            pdf.text(value, mid(i), y, { align: 'center' })
         })
         pdf.setFont('helvetica', 'bold')
-        pdf.text(h(person.worked), cols[3] - 2, y, { align: 'right' })
+        pdf.text(h(person.worked), mid(2), y, { align: 'center' })
 
         if (marks.length) {
             let x = marginX + 2
@@ -314,7 +320,7 @@ export async function timesheetPdf({
     pdf.setTextColor(...INK)
     pdf.text('Everybody', marginX + 2, y)
     ;[h(T.week[0]), h(T.week[1]), h(T.worked), h(T.bankHoliday), h(T.holiday)]
-        .forEach((value, i) => pdf.text(value, cols[i + 1] - 2, y, { align: 'right' }))
+        .forEach((value, i) => pdf.text(value, mid(i), y, { align: 'center' }))
     y += 8
 
     // ---- what is inside what ----------------------------------------------

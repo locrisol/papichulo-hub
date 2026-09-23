@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-    timesheetPdf, COL_WIDTH, SUMMARY_HEADS, HEAD_SIZE, HEAD_SPACING,
+    timesheetPdf, COL_WIDTH, SUMMARY_HEADS, NAME_HEAD, HEAD_SIZE, HEAD_SPACING,
 } from '@/lib/timesheetPdf'
 import { personPeriod } from '@/lib/timesheet'
 import { periodDates } from '@/lib/payPeriod'
@@ -97,6 +97,12 @@ function drawnOn(doc, page) {
 // because the columns were 24, 24, 28, 22 and 18 while the headings are all
 // about the same length. Measured here rather than found again.
 describe('the summary headings fit their own columns', () => {
+    // The one column that is not a figure, and not centred either: a list of
+    // names reads down the left, not down the middle.
+    it('calls the first column what it holds', () => {
+        expect(NAME_HEAD).toBe('NAME')
+    })
+
     it.each(SUMMARY_HEADS)('%s', async label => {
         const JsPDF = (await import('jspdf')).default
         const pdf = new JsPDF({ unit: 'mm', format: 'a4' })
