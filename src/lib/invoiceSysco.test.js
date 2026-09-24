@@ -1,24 +1,603 @@
 import { describe, it, expect } from 'vitest'
 import {
     rowsOf, cellsOf, findHeading, columnsFrom, bucket, readPackSize,
-    looksLikePackSize, paperDate, money, headField, recognisesSysco,
-    readSyscoInvoice, LINE_COLUMNS,
+    looksLikePackSize, paperDate, money, headField, footField, recognisesSysco,
+    readSyscoInvoice, depositBox, LINE_COLUMNS,
 } from '@/lib/invoiceSysco'
 
-// A document built to the shape of a real one, with everything that identifies
-// the company taken out.
+// **The two real documents, as the reader actually sees them.**
 //
-// **No real invoice goes in the repository.** One carries the company address,
-// the VAT number and the account number, and a fixture is not the place for
-// any of them. The account number here is invented and the document numbers,
-// dates, pack sizes and totals are the real ones, because the arithmetic is
-// what is being pinned: the values add up to the goods total and the case
-// counts add up to the header count, which are the two checks the import
-// refuses without.
+// The first version of this file was a document built to the shape of theirs,
+// and the reader it tested refused the first real invoice it was given: the
+// real page puts its column headings on three baselines, centres a wrapped
+// description on its line so half of it comes before the code, keeps the goods
+// total at the foot, and prints a VAT code close enough to each value to be
+// read as part of it. None of that was in the made up one.
 //
-// Items are placed rather than written out as text, because a PDF has no rows
-// and no columns and the whole reader is built on that.
+// So these rows are the real coordinates, read out of the real PDFs by the same
+// engine the app uses: y down the page, x across it, the width, and the text.
+//
+// **Nothing that identifies the business is in here.** No address, no VAT
+// number, and the account number is invented. Product codes, descriptions,
+// prices and totals are kept, because the arithmetic is what is being pinned:
+// the values add up to the goods total and the case counts add up to the header
+// count, which are the two checks the import refuses without.
 
+const INVOICE_ROWS = [
+    [204.8, 40.5, 39.1, "ACCT No."],
+    [204.8, 109.9, 14.7, "TSO"],
+    [204.8, 151.1, 23.2, "LOAD"],
+    [204.8, 190.9, 23.1, "DROP"],
+    [204.8, 229.9, 21.3, "CASE"],
+    [204.8, 264.8, 16.8, "UNIT"],
+    [204.8, 298.9, 34.3, "ORD No."],
+    [204.8, 356.6, 38.4, "INV. DATE"],
+    [204.8, 418.1, 32.1, "INV. No."],
+    [204.8, 471.8, 17.6, "TYPE"],
+    [204.8, 514.5, 38.6, "PAGE No."],
+    [216.0, 46.9, 26.1, "9900001"],
+    [216.0, 102.0, 30.5, "AXAdmin"],
+    [216.0, 155.3, 14.9, "7952"],
+    [216.0, 200.6, 3.7, "0"],
+    [216.0, 238.5, 3.7, "6"],
+    [216.0, 271.1, 3.7, "0"],
+    [216.0, 309.4, 12.9, "N/A"],
+    [216.0, 357.8, 35.8, "23/08/2026"],
+    [216.0, 418.9, 29.9, "45448455"],
+    [216.0, 468.8, 23.9, "Invoice"],
+    [216.0, 525.0, 17.7, "1 of 1"],
+    [238.5, 339.8, 47.8, "30 Days End of"],
+    [247.5, 39.8, 44.9, "TOTAL WGT"],
+    [247.5, 105.8, 16.8, "50.08"],
+    [247.5, 157.1, 44.2, "CURRENCY"],
+    [247.5, 222.8, 12.1, "EUR"],
+    [247.5, 283.9, 24.6, "TERMS"],
+    [247.5, 339.8, 21.1, "Month"],
+    [270.0, 350.6, 28.0, "QUANTITY"],
+    [270.0, 545.6, 12.6, "VAT"],
+    [275.3, 34.9, 24.4, "CODE"],
+    [275.3, 145.9, 51.7, "DESCRIPTION"],
+    [275.3, 290.6, 39.1, "PACK SIZE"],
+    [275.3, 409.9, 22.8, "PRICE"],
+    [275.3, 460.9, 30.5, "WEIGHT"],
+    [275.3, 504.8, 25.5, "VALUE"],
+    [279.0, 541.9, 20.0, "CODE"],
+    [279.8, 346.1, 15.5, "CASE"],
+    [279.8, 369.8, 12.2, "UNIT"],
+    [297.0, 36.0, 34.3, "AMBIENT"],
+    [315.8, 74.3, 182.1, "SANTA MARIA FLOUR TORTILLA WRAP LONG LIFE 12 INCH"],
+    [320.3, 36.0, 22.4, "497870"],
+    [320.3, 285.0, 29.5, "10X10 EA"],
+    [320.3, 351.0, 3.7, "2"],
+    [320.3, 372.8, 3.7, "0"],
+    [320.3, 433.5, 16.8, "30.30"],
+    [320.3, 516.0, 16.8, "60.60"],
+    [320.3, 546.0, 3.7, "1"],
+    [324.8, 74.3, 29.5, "10X10 EA"],
+    [345.0, 36.0, 32.3, "CHILLED"],
+    [362.3, 36.0, 22.4, "485073"],
+    [362.3, 74.3, 88.1, "CHORIZO CUBES 1X500 GM"],
+    [362.3, 285.0, 33.0, "4X500 GM"],
+    [362.3, 351.0, 3.7, "1"],
+    [362.3, 372.8, 3.7, "0"],
+    [362.3, 433.5, 16.8, "27.99"],
+    [362.3, 516.0, 16.8, "27.99"],
+    [362.3, 546.0, 3.7, "1"],
+    [381.0, 36.0, 30.6, "FROZEN"],
+    [404.3, 36.0, 22.4, "492715"],
+    [404.3, 74.3, 199.5, "MCCAIN SURECRISP SKIN ON 9X9MM THIN CUT FRIES 4X2.27KG"],
+    [404.3, 285.0, 32.6, "4X2.27 KG"],
+    [404.3, 351.0, 3.7, "2"],
+    [404.3, 372.8, 3.7, "0"],
+    [404.3, 433.5, 16.8, "18.42"],
+    [404.3, 516.0, 16.8, "36.84"],
+    [404.3, 546.0, 3.7, "1"],
+    [422.3, 36.0, 25.0, "VG958Z"],
+    [422.3, 74.3, 149.7, "SYSCO CLASSIC SWEET POTATO FRIES 4X2.5 KG"],
+    [422.3, 285.0, 28.9, "4X2.5 KG"],
+    [422.3, 351.0, 3.7, "1"],
+    [422.3, 372.8, 3.7, "0"],
+    [422.3, 433.5, 16.8, "37.60"],
+    [422.3, 516.0, 16.8, "37.60"],
+    [422.3, 546.0, 3.7, "1"],
+    [606.0, 113.3, 86.5, "30 Days End of Month"],
+    [640.5, 29.3, 34.4, "VAT CODE"],
+    [641.3, 86.3, 36.7, "VAT RATE"],
+    [641.3, 170.6, 67.7, "TAXABLE GOODS"],
+    [641.3, 279.0, 15.4, "VAT"],
+    [641.3, 333.4, 58.1, "GOODS TOTAL"],
+    [641.3, 418.5, 15.4, "VAT"],
+    [641.3, 465.8, 73.0, "AMOUNT PAYABLE"],
+    [652.5, 385.5, 20.5, "163.03"],
+    [652.5, 426.8, 13.1, "0.00"],
+    [652.5, 537.8, 20.5, "163.03"],
+    [653.3, 59.3, 4.5, "1"],
+    [653.3, 122.3, 16.0, "0.00"],
+    [653.3, 237.8, 25.1, "163.03"],
+    [653.3, 287.3, 16.0, "0.00"],
+    [666.0, 317.3, 232.6, "ALL GOODS SUPPLIED AND ACCEPTED SUBJECT TO OUR CURRENT TERMS"],
+    [675.0, 317.3, 181.6, "AND CONDITIONS OF TRADING AVAILABLE ON REQUEST."],
+]
+
+const CREDIT_ROWS = [
+    [204.8, 42.4, 39.1, "ACCT No."],
+    [204.8, 102.0, 14.7, "TSO"],
+    [204.8, 132.4, 23.2, "LOAD"],
+    [204.8, 173.6, 23.1, "DROP"],
+    [204.8, 214.1, 21.3, "CASE"],
+    [204.8, 250.5, 16.8, "UNIT"],
+    [204.8, 286.9, 34.3, "ORD No."],
+    [204.8, 347.6, 38.4, "INV. DATE"],
+    [204.8, 415.1, 32.1, "INV. No."],
+    [204.8, 471.0, 17.6, "TYPE"],
+    [204.8, 513.0, 38.6, "PAGE No."],
+    [216.0, 48.8, 26.1, "9900001"],
+    [216.0, 136.9, 14.5, "S138"],
+    [216.0, 183.4, 3.7, "0"],
+    [216.0, 221.6, 6.0, "-2"],
+    [216.0, 256.9, 3.7, "0"],
+    [216.0, 288.8, 29.9, "45480809"],
+    [216.0, 348.8, 35.8, "27/08/2026"],
+    [216.0, 413.3, 35.4, "C45485340"],
+    [216.0, 469.9, 20.1, "Credit"],
+    [216.0, 523.5, 17.7, "1 of 1"],
+    [238.5, 339.8, 47.8, "30 Days End of"],
+    [247.5, 39.8, 44.9, "TOTAL WGT"],
+    [247.5, 105.8, 3.7, "2"],
+    [247.5, 157.1, 44.2, "CURRENCY"],
+    [247.5, 222.8, 12.1, "EUR"],
+    [247.5, 283.9, 24.6, "TERMS"],
+    [247.5, 339.8, 21.1, "Month"],
+    [270.0, 350.6, 28.0, "QUANTITY"],
+    [270.0, 545.6, 12.6, "VAT"],
+    [275.3, 34.9, 24.4, "CODE"],
+    [275.3, 145.9, 51.7, "DESCRIPTION"],
+    [275.3, 290.6, 39.1, "PACK SIZE"],
+    [275.3, 409.9, 22.8, "PRICE"],
+    [275.3, 460.9, 30.5, "WEIGHT"],
+    [275.3, 504.8, 25.5, "VALUE"],
+    [279.0, 541.9, 20.0, "CODE"],
+    [279.8, 346.1, 15.5, "CASE"],
+    [279.8, 369.8, 12.2, "UNIT"],
+    [297.0, 36.0, 34.3, "AMBIENT"],
+    [314.3, 36.0, 22.4, "497365"],
+    [314.3, 74.3, 63.2, "BAY LEAVES 1X1 KG"],
+    [314.3, 285.0, 23.3, "1X1 KG"],
+    [314.3, 351.0, 6.0, "-2"],
+    [314.3, 372.8, 3.7, "0"],
+    [314.3, 433.5, 16.8, "37.13"],
+    [314.3, 513.8, 19.0, "-74.26"],
+    [314.3, 546.0, 3.7, "1"],
+    [606.0, 113.3, 86.5, "30 Days End of Month"],
+    [640.5, 29.3, 34.4, "VAT CODE"],
+    [641.3, 86.3, 36.7, "VAT RATE"],
+    [641.3, 170.6, 67.7, "TAXABLE GOODS"],
+    [641.3, 279.0, 15.4, "VAT"],
+    [641.3, 333.4, 58.1, "GOODS TOTAL"],
+    [641.3, 418.5, 15.4, "VAT"],
+    [641.3, 465.8, 73.0, "AMOUNT PAYABLE"],
+    [652.5, 387.0, 19.0, "-74.26"],
+    [652.5, 426.8, 13.1, "0.00"],
+    [652.5, 539.3, 19.0, "-74.26"],
+    [653.3, 59.3, 4.5, "1"],
+    [653.3, 122.3, 16.0, "0.00"],
+    [653.3, 240.0, 23.3, "-74.26"],
+    [653.3, 287.3, 16.0, "0.00"],
+    [666.0, 317.3, 232.6, "ALL GOODS SUPPLIED AND ACCEPTED SUBJECT TO OUR CURRENT TERMS"],
+    [675.0, 317.3, 181.6, "AND CONDITIONS OF TRADING AVAILABLE ON REQUEST."],
+]
+
+// **An invoice with drinks on it**, which is most of them. Drinks under the
+// deposit return scheme put a box of totals over the foot of the line table,
+// with the container deposit in it, and the goods total at the foot includes
+// that deposit while no line does. On a full page the box is printed on top of
+// the last four lines, and the FROZEN band above the last one shares a baseline
+// with a row of the box. Same rules as the two above: real coordinates, an
+// invented account number, no address and no VAT number.
+const DRS_INVOICE_ROWS = [
+    [204.8, 40.5, 39.1, "ACCT No."],
+    [204.8, 109.9, 14.7, "TSO"],
+    [204.8, 151.1, 23.2, "LOAD"],
+    [204.8, 190.9, 23.1, "DROP"],
+    [204.8, 229.9, 21.3, "CASE"],
+    [204.8, 264.8, 16.8, "UNIT"],
+    [204.8, 298.9, 34.3, "ORD No."],
+    [204.8, 356.6, 38.4, "INV. DATE"],
+    [204.8, 418.1, 32.1, "INV. No."],
+    [204.8, 471.8, 17.6, "TYPE"],
+    [204.8, 514.5, 38.6, "PAGE No."],
+    [216.0, 46.9, 26.1, "9900001"],
+    [216.0, 102.0, 30.5, "AXAdmin"],
+    [216.0, 155.3, 14.9, "4970"],
+    [216.0, 200.6, 3.7, "0"],
+    [216.0, 236.6, 7.5, "17"],
+    [216.0, 269.3, 7.5, "20"],
+    [216.0, 309.4, 12.9, "N/A"],
+    [216.0, 357.8, 35.8, "24/09/2026"],
+    [216.0, 418.9, 29.9, "45690932"],
+    [216.0, 468.8, 23.9, "Invoice"],
+    [216.0, 525.0, 17.7, "1 of 1"],
+    [238.5, 339.8, 47.8, "30 Days End of"],
+    [247.5, 39.8, 44.9, "TOTAL WGT"],
+    [247.5, 105.8, 16.8, "126.1"],
+    [247.5, 157.1, 44.2, "CURRENCY"],
+    [247.5, 222.8, 12.1, "EUR"],
+    [247.5, 283.9, 24.6, "TERMS"],
+    [247.5, 339.8, 21.1, "Month"],
+    [270.0, 350.6, 28.0, "QUANTITY"],
+    [270.0, 545.6, 12.6, "VAT"],
+    [275.3, 34.9, 24.4, "CODE"],
+    [275.3, 145.9, 51.7, "DESCRIPTION"],
+    [275.3, 290.6, 39.1, "PACK SIZE"],
+    [275.3, 409.9, 22.8, "PRICE"],
+    [275.3, 460.9, 30.5, "WEIGHT"],
+    [275.3, 504.8, 25.5, "VALUE"],
+    [279.0, 541.9, 20.0, "CODE"],
+    [279.8, 346.1, 15.5, "CASE"],
+    [279.8, 369.8, 12.2, "UNIT"],
+    [297.0, 36.0, 32.3, "CHILLED"],
+    [314.3, 36.0, 22.4, "483508"],
+    [314.3, 74.3, 75.8, "GREEN PEPPERS 1X5 KG"],
+    [314.3, 285.0, 23.3, "1X5 KG"],
+    [314.3, 351.0, 3.7, "1"],
+    [314.3, 372.8, 3.7, "0"],
+    [314.3, 433.5, 16.8, "11.52"],
+    [314.3, 516.0, 16.8, "11.52"],
+    [314.3, 546.0, 3.7, "1"],
+    [326.3, 36.0, 22.4, "483827"],
+    [326.3, 74.3, 132.7, "HELLMANNS VEGAN MAYONNAISE 1X2 LT"],
+    [326.3, 285.0, 19.4, "1X2 LT"],
+    [326.3, 351.0, 3.7, "4"],
+    [326.3, 372.8, 3.7, "0"],
+    [326.3, 433.5, 16.8, "11.49"],
+    [326.3, 516.0, 16.8, "45.96"],
+    [326.3, 546.0, 3.7, "1"],
+    [338.3, 36.0, 22.4, "494780"],
+    [338.3, 74.3, 189.5, "BLOCK & BARREL PREMIUM GRATED RED CHEDDAR 1X2 KG"],
+    [338.3, 285.0, 23.3, "1X2 KG"],
+    [338.3, 351.0, 3.7, "0"],
+    [338.3, 372.8, 3.7, "2"],
+    [338.3, 433.5, 16.8, "13.25"],
+    [338.3, 516.0, 16.8, "26.50"],
+    [338.3, 546.0, 3.7, "1"],
+    [350.3, 36.0, 22.4, "494786"],
+    [350.3, 74.3, 196.9, "BLOCK & BARREL PREMIUM MONTEREY JACK GRATED 1X2 KG"],
+    [350.3, 285.0, 23.3, "1X2 KG"],
+    [350.3, 351.0, 3.7, "0"],
+    [350.3, 372.8, 3.7, "2"],
+    [350.3, 433.5, 16.8, "14.33"],
+    [350.3, 516.0, 16.8, "28.66"],
+    [350.3, 546.0, 3.7, "1"],
+    [362.3, 36.0, 22.4, "494790"],
+    [362.3, 74.3, 184.6, "BLOCK & BARREL PREMIUM MOZZARELLA GRATED 1X2 KG"],
+    [362.3, 285.0, 23.3, "1X2 KG"],
+    [362.3, 351.0, 3.7, "0"],
+    [362.3, 372.8, 3.7, "2"],
+    [362.3, 433.5, 16.8, "13.34"],
+    [362.3, 516.0, 16.8, "26.68"],
+    [362.3, 546.0, 3.7, "1"],
+    [374.3, 36.0, 26.1, "5017388"],
+    [374.3, 74.3, 108.6, "CORIANDER (FRESH HERB) 1X1 KG"],
+    [374.3, 285.0, 23.3, "1X1 KG"],
+    [374.3, 351.0, 3.7, "1"],
+    [374.3, 372.8, 3.7, "0"],
+    [374.3, 437.3, 13.1, "9.88"],
+    [374.3, 519.8, 13.1, "9.88"],
+    [374.3, 546.0, 3.7, "1"],
+    [386.3, 36.0, 26.1, "5018533"],
+    [386.3, 74.3, 125.3, "PARIS BROWN MUSHROOMS 1X2.27 KG"],
+    [386.3, 285.0, 32.6, "1X2.27 KG"],
+    [386.3, 351.0, 3.7, "1"],
+    [386.3, 372.8, 3.7, "0"],
+    [386.3, 437.3, 13.1, "8.39"],
+    [386.3, 519.8, 13.1, "8.39"],
+    [386.3, 546.0, 3.7, "1"],
+    [398.3, 36.0, 26.1, "5018687"],
+    [398.3, 74.3, 77.5, "WHITE CABBAGE 1X1 EA"],
+    [398.3, 285.0, 22.0, "1X1 EA"],
+    [398.3, 351.0, 3.7, "0"],
+    [398.3, 372.8, 3.7, "4"],
+    [398.3, 437.3, 13.1, "1.43"],
+    [398.3, 519.8, 13.1, "5.72"],
+    [398.3, 546.0, 3.7, "1"],
+    [410.3, 36.0, 26.1, "5018756"],
+    [410.3, 74.3, 66.3, "RED ONIONS 1X1 KG"],
+    [410.3, 285.0, 27.0, "10X1 KG"],
+    [410.3, 351.0, 3.7, "1"],
+    [410.3, 372.8, 3.7, "0"],
+    [410.3, 437.3, 13.1, "9.27"],
+    [410.3, 519.8, 13.1, "9.27"],
+    [410.3, 546.0, 3.7, "1"],
+    [422.3, 36.0, 26.1, "5018776"],
+    [422.3, 74.3, 117.9, "PORTABELLO MUSHROOMS 1X1.5 KG"],
+    [422.3, 285.0, 28.9, "1X1.5 KG"],
+    [422.3, 351.0, 3.7, "1"],
+    [422.3, 372.8, 3.7, "0"],
+    [422.3, 437.3, 13.1, "6.62"],
+    [422.3, 519.8, 13.1, "6.62"],
+    [422.3, 546.0, 3.7, "1"],
+    [441.0, 36.0, 34.3, "AMBIENT"],
+    [458.3, 36.0, 18.7, "33581"],
+    [458.3, 74.3, 159.0, "SYSCO CLASSIC GROUND CINNAMON 1X450 GM"],
+    [458.3, 285.0, 33.0, "1X450 GM"],
+    [458.3, 351.0, 3.7, "0"],
+    [458.3, 372.8, 3.7, "1"],
+    [458.3, 437.3, 13.1, "6.11"],
+    [458.3, 519.8, 13.1, "6.11"],
+    [458.3, 546.0, 3.7, "1"],
+    [470.3, 36.0, 18.7, "33585"],
+    [470.3, 74.3, 140.6, "SYSCO CLASSIC PAPRIKA PEPPER 1X480 GM"],
+    [470.3, 285.0, 33.0, "1X480 GM"],
+    [470.3, 351.0, 3.7, "0"],
+    [470.3, 372.8, 3.7, "4"],
+    [470.3, 437.3, 13.1, "5.35"],
+    [470.3, 516.0, 16.8, "21.40"],
+    [470.3, 546.0, 3.7, "1"],
+    [482.3, 36.0, 22.4, "483033"],
+    [482.3, 74.3, 153.3, "DRS 15C MONSTER ULTRA ZERO CAN 24X500 ML"],
+    [482.3, 285.0, 33.9, "24X500 ML"],
+    [482.3, 351.0, 3.7, "1"],
+    [482.3, 372.8, 3.7, "0"],
+    [482.3, 433.5, 16.8, "30.00"],
+    [482.3, 516.0, 16.8, "30.00"],
+    [482.3, 546.0, 3.7, "5"],
+    [494.3, 36.0, 22.4, "483149"],
+    [494.3, 74.3, 125.8, "DRS 15C COCA-COLA CAN 24X330 ML"],
+    [494.3, 285.0, 33.9, "24X330 ML"],
+    [494.3, 351.0, 3.7, "2"],
+    [494.3, 372.8, 3.7, "0"],
+    [494.3, 433.5, 16.8, "17.61"],
+    [494.3, 516.0, 16.8, "35.22"],
+    [494.3, 546.0, 3.7, "5"],
+    [506.3, 36.0, 22.4, "483157"],
+    [506.3, 74.3, 119.9, "DRS 15C COKE ZERO CAN 24X330 ML"],
+    [506.3, 285.0, 33.9, "24X330 ML"],
+    [506.3, 351.0, 3.7, "2"],
+    [506.3, 372.8, 3.7, "0"],
+    [506.3, 433.5, 16.8, "15.23"],
+    [506.3, 516.0, 16.8, "30.46"],
+    [506.3, 546.0, 3.7, "5"],
+    [524.3, 36.0, 22.4, "483172"],
+    [524.3, 74.3, 193.4, "DRS 15C RIVERROCK STILL WATER PLASTIC BOTTLE 24X500 ML"],
+    [524.3, 285.0, 33.9, "24X500 ML"],
+    [524.3, 351.0, 3.7, "1"],
+    [524.3, 372.8, 3.7, "0"],
+    [524.3, 437.3, 13.1, "9.66"],
+    [524.3, 519.8, 13.1, "9.66"],
+    [524.3, 546.0, 3.7, "5"],
+    [542.3, 36.0, 26.1, "5015842"],
+    [542.3, 74.3, 80.3, "AVOCADOS RTE 1X18 EA"],
+    [542.3, 285.0, 25.7, "1X18 EA"],
+    [542.3, 351.0, 3.7, "2"],
+    [542.3, 372.8, 3.7, "0"],
+    [542.3, 433.5, 16.8, "23.29"],
+    [542.3, 516.0, 16.8, "46.58"],
+    [542.3, 546.0, 3.7, "1"],
+    [549.8, 428.3, 22.8, "396.63"],
+    [550.5, 289.5, 114.3, "SubTotal Goods Value Excl. DRS"],
+    [554.3, 36.0, 26.1, "5017545"],
+    [554.3, 74.3, 72.8, "SUNFLOWER OIL 1X5 LT"],
+    [554.3, 285.0, 19.4, "1X5 LT"],
+    [554.3, 351.0, 3.7, "0"],
+    [554.3, 372.8, 3.7, "1"],
+    [554.3, 433.5, 16.8, "11.64"],
+    [554.3, 516.0, 16.8, "11.64"],
+    [554.3, 546.0, 3.7, "1"],
+    [562.5, 114.0, 55.3, "Return Deposits"],
+    [562.5, 215.3, 60.5, "No of Containers"],
+    [562.5, 289.5, 79.2, "Deposit per Container"],
+    [562.5, 428.3, 49.4, "Total Deposits"],
+    [566.3, 36.0, 26.1, "5018194"],
+    [566.3, 74.3, 168.4, "SANTA MARIA HABANERO CHEESE SAUCE 1X970 GM"],
+    [566.3, 285.0, 33.0, "1X970 GM"],
+    [566.3, 351.0, 3.7, "0"],
+    [566.3, 372.8, 3.7, "2"],
+    [566.3, 433.5, 16.8, "10.53"],
+    [566.3, 516.0, 16.8, "21.06"],
+    [566.3, 546.0, 3.7, "1"],
+    [573.8, 114.0, 77.5, "Deposit 150ML-500ML"],
+    [573.8, 215.3, 22.8, "144.00"],
+    [573.8, 289.5, 14.5, "0.15"],
+    [573.8, 428.3, 18.6, "21.60"],
+    [585.0, 36.0, 30.6, "FROZEN"],
+    [585.0, 215.3, 22.8, "144.00"],
+    [585.0, 428.3, 18.6, "21.60"],
+    [585.8, 114.0, 83.0, "Total Return Containers"],
+    [585.8, 289.5, 74.3, "Total Return Deposits"],
+    [602.3, 36.0, 18.7, "33385"],
+    [602.3, 74.3, 75.6, "DICED MANGO 1X1 KG"],
+    [602.3, 285.0, 23.3, "1X1 KG"],
+    [602.3, 351.0, 3.7, "0"],
+    [602.3, 372.8, 3.7, "2"],
+    [602.3, 437.3, 13.1, "2.65"],
+    [602.3, 519.8, 13.1, "5.30"],
+    [602.3, 546.0, 3.7, "1"],
+    [606.0, 113.3, 86.5, "30 Days End of Month"],
+    [640.5, 29.3, 34.4, "VAT CODE"],
+    [641.3, 85.1, 36.7, "VAT RATE"],
+    [641.3, 166.5, 67.7, "TAXABLE GOODS"],
+    [641.3, 276.0, 15.4, "VAT"],
+    [641.3, 333.4, 58.1, "GOODS TOTAL"],
+    [641.3, 418.9, 15.4, "VAT"],
+    [641.3, 466.1, 73.0, "AMOUNT PAYABLE"],
+    [652.5, 385.5, 20.5, "418.23"],
+    [652.5, 423.8, 16.8, "24.23"],
+    [652.5, 537.8, 20.5, "442.46"],
+    [653.3, 59.3, 4.5, "1"],
+    [653.3, 120.0, 16.0, "0.00"],
+    [653.3, 231.8, 25.1, "291.29"],
+    [653.3, 287.3, 16.0, "0.00"],
+    [665.3, 59.3, 4.5, "5"],
+    [665.3, 115.5, 20.5, "23.00"],
+    [665.3, 231.8, 25.1, "105.34"],
+    [665.3, 282.8, 20.5, "24.23"],
+    [666.0, 317.3, 232.6, "ALL GOODS SUPPLIED AND ACCEPTED SUBJECT TO OUR CURRENT TERMS"],
+    [675.0, 317.3, 181.6, "AND CONDITIONS OF TRADING AVAILABLE ON REQUEST."],
+]
+
+// A credit note for an invoice with a drink on it. Its box prints the deposit
+// with no minus sign, under a goods total that has one.
+const DRS_CREDIT_ROWS = [
+    [204.8, 42.4, 39.1, "ACCT No."],
+    [204.8, 102.0, 14.7, "TSO"],
+    [204.8, 132.4, 23.2, "LOAD"],
+    [204.8, 173.6, 23.1, "DROP"],
+    [204.8, 214.1, 21.3, "CASE"],
+    [204.8, 250.5, 16.8, "UNIT"],
+    [204.8, 286.9, 34.3, "ORD No."],
+    [204.8, 347.6, 38.4, "INV. DATE"],
+    [204.8, 415.1, 32.1, "INV. No."],
+    [204.8, 471.0, 17.6, "TYPE"],
+    [204.8, 513.0, 38.6, "PAGE No."],
+    [216.0, 48.8, 26.1, "9900001"],
+    [216.0, 136.9, 14.5, "S131"],
+    [216.0, 183.4, 3.7, "0"],
+    [216.0, 221.6, 6.0, "-7"],
+    [216.0, 255.8, 6.0, "-1"],
+    [216.0, 288.8, 29.9, "45612570"],
+    [216.0, 348.8, 35.8, "15/09/2026"],
+    [216.0, 413.3, 35.4, "C45627507"],
+    [216.0, 469.9, 20.1, "Credit"],
+    [216.0, 523.5, 17.7, "1 of 1"],
+    [238.5, 339.8, 47.8, "30 Days End of"],
+    [247.5, 39.8, 44.9, "TOTAL WGT"],
+    [247.5, 105.8, 16.8, "68.38"],
+    [247.5, 157.1, 44.2, "CURRENCY"],
+    [247.5, 222.8, 12.1, "EUR"],
+    [247.5, 283.9, 24.6, "TERMS"],
+    [247.5, 339.8, 21.1, "Month"],
+    [270.0, 350.6, 28.0, "QUANTITY"],
+    [270.0, 545.6, 12.6, "VAT"],
+    [275.3, 34.9, 24.4, "CODE"],
+    [275.3, 145.9, 51.7, "DESCRIPTION"],
+    [275.3, 290.6, 39.1, "PACK SIZE"],
+    [275.3, 409.9, 22.8, "PRICE"],
+    [275.3, 460.9, 30.5, "WEIGHT"],
+    [275.3, 504.8, 25.5, "VALUE"],
+    [279.0, 541.9, 20.0, "CODE"],
+    [279.8, 346.1, 15.5, "CASE"],
+    [279.8, 369.8, 12.2, "UNIT"],
+    [297.0, 36.0, 34.3, "AMBIENT"],
+    [314.3, 36.0, 22.4, "483156"],
+    [314.3, 74.3, 153.8, "DRS 15C COKE ZERO PLASTIC BOTTLE 24X500 ML"],
+    [314.3, 285.0, 33.9, "24X500 ML"],
+    [314.3, 351.0, 6.0, "-1"],
+    [314.3, 372.8, 3.7, "0"],
+    [314.3, 433.5, 16.8, "24.40"],
+    [314.3, 513.8, 19.0, "-24.40"],
+    [314.3, 546.0, 3.7, "5"],
+    [333.0, 36.0, 32.3, "CHILLED"],
+    [350.3, 36.0, 26.1, "5015724"],
+    [350.3, 74.3, 148.9, "BALLYGARVEY EGGS MIXED GRADE A 1X15 DZ"],
+    [350.3, 225.0, 36.8, "(180 EGGS)"],
+    [350.3, 285.0, 25.4, "1X15 DZ"],
+    [350.3, 351.0, 6.0, "-1"],
+    [350.3, 372.8, 3.7, "0"],
+    [350.3, 433.5, 16.8, "41.12"],
+    [350.3, 513.8, 19.0, "-41.12"],
+    [350.3, 546.0, 3.7, "1"],
+    [362.3, 36.0, 26.1, "5016504"],
+    [362.3, 74.3, 80.9, "MEDIUM ONION 1X19 KG"],
+    [362.3, 285.0, 27.0, "1X19 KG"],
+    [362.3, 351.0, 6.0, "-1"],
+    [362.3, 372.8, 3.7, "0"],
+    [362.3, 433.5, 16.8, "11.00"],
+    [362.3, 513.8, 19.0, "-11.00"],
+    [362.3, 546.0, 3.7, "1"],
+    [374.3, 36.0, 26.1, "5018533"],
+    [374.3, 74.3, 125.3, "PARIS BROWN MUSHROOMS 1X2.27 KG"],
+    [374.3, 285.0, 32.6, "1X2.27 KG"],
+    [374.3, 351.0, 6.0, "-1"],
+    [374.3, 372.8, 3.7, "0"],
+    [374.3, 437.3, 13.1, "8.39"],
+    [374.3, 517.5, 15.3, "-8.39"],
+    [374.3, 546.0, 3.7, "1"],
+    [386.3, 36.0, 26.1, "5018754"],
+    [386.3, 74.3, 70.0, "RED ONIONS 1X10 KG"],
+    [386.3, 285.0, 27.0, "1X10 KG"],
+    [386.3, 351.0, 6.0, "-1"],
+    [386.3, 372.8, 3.7, "0"],
+    [386.3, 437.3, 13.1, "8.00"],
+    [386.3, 517.5, 15.3, "-8.00"],
+    [386.3, 546.0, 3.7, "1"],
+    [398.3, 36.0, 26.1, "5018758"],
+    [398.3, 74.3, 75.8, "GREEN PEPPERS 1X5 KG"],
+    [398.3, 285.0, 23.3, "1X5 KG"],
+    [398.3, 351.0, 6.0, "-1"],
+    [398.3, 372.8, 3.7, "0"],
+    [398.3, 433.5, 16.8, "12.50"],
+    [398.3, 513.8, 19.0, "-12.50"],
+    [398.3, 546.0, 3.7, "1"],
+    [410.3, 36.0, 26.1, "5018776"],
+    [410.3, 74.3, 117.9, "PORTABELLO MUSHROOMS 1X1.5 KG"],
+    [410.3, 285.0, 28.9, "1X1.5 KG"],
+    [410.3, 351.0, 6.0, "-1"],
+    [410.3, 372.8, 3.7, "0"],
+    [410.3, 437.3, 13.1, "6.62"],
+    [410.3, 517.5, 15.3, "-6.62"],
+    [410.3, 546.0, 3.7, "1"],
+    [422.3, 36.0, 26.1, "5018831"],
+    [422.3, 74.3, 93.1, "HABANERO CHILLI 1X500 GM"],
+    [422.3, 285.0, 33.0, "1X500 GM"],
+    [422.3, 351.0, 3.7, "0"],
+    [422.3, 372.8, 6.0, "-1"],
+    [422.3, 437.3, 13.1, "7.93"],
+    [422.3, 517.5, 15.3, "-7.93"],
+    [422.3, 546.0, 3.7, "1"],
+    [549.8, 428.3, 25.3, "-119.96"],
+    [550.5, 289.5, 114.3, "SubTotal Goods Value Excl. DRS"],
+    [562.5, 114.0, 55.3, "Return Deposits"],
+    [562.5, 215.3, 60.5, "No of Containers"],
+    [562.5, 289.5, 79.2, "Deposit per Container"],
+    [562.5, 428.3, 49.4, "Total Deposits"],
+    [573.8, 114.0, 77.5, "Deposit 150ML-500ML"],
+    [573.8, 215.3, 18.6, "24.00"],
+    [573.8, 289.5, 14.5, "0.15"],
+    [573.8, 428.3, 14.5, "3.60"],
+    [585.0, 215.3, 18.6, "24.00"],
+    [585.0, 428.3, 14.5, "3.60"],
+    [585.8, 114.0, 83.0, "Total Return Containers"],
+    [585.8, 289.5, 74.3, "Total Return Deposits"],
+    [606.0, 113.3, 86.5, "30 Days End of Month"],
+    [640.5, 29.3, 34.4, "VAT CODE"],
+    [641.3, 86.3, 36.7, "VAT RATE"],
+    [641.3, 170.6, 67.7, "TAXABLE GOODS"],
+    [641.3, 279.0, 15.4, "VAT"],
+    [641.3, 333.4, 58.1, "GOODS TOTAL"],
+    [641.3, 418.5, 15.4, "VAT"],
+    [641.3, 465.8, 73.0, "AMOUNT PAYABLE"],
+    [652.5, 383.3, 22.8, "-123.56"],
+    [652.5, 424.5, 15.3, "-5.61"],
+    [652.5, 535.5, 22.8, "-129.17"],
+    [653.3, 59.3, 4.5, "5"],
+    [653.3, 117.8, 20.5, "23.00"],
+    [653.3, 240.0, 23.3, "-24.40"],
+    [653.3, 287.3, 16.0, "5.61"],
+    [665.3, 59.3, 4.5, "1"],
+    [665.3, 122.3, 16.0, "0.00"],
+    [665.3, 240.0, 23.3, "-95.56"],
+    [665.3, 287.3, 16.0, "0.00"],
+    [666.0, 317.3, 232.6, "ALL GOODS SUPPLIED AND ACCEPTED SUBJECT TO OUR CURRENT TERMS"],
+    [675.0, 317.3, 181.6, "AND CONDITIONS OF TRADING AVAILABLE ON REQUEST."],
+]
+
+function fromRows(rows, page = 1) {
+    return rows.map(([y, x, width, str]) => ({ page, str, x, y, width, height: 8 }))
+}
+
+const REAL_INVOICE = fromRows(INVOICE_ROWS)
+const REAL_CREDIT = fromRows(CREDIT_ROWS)
+const DRS_INVOICE = fromRows(DRS_INVOICE_ROWS)
+const DRS_CREDIT = fromRows(DRS_CREDIT_ROWS)
+
+// The same document with its rows changed, for the cases one real invoice does
+// not happen to contain.
+function edited(rows, change) {
+    return fromRows(change(rows.map(r => [...r])))
+}
+
+// A made up page for the tests further down, where what matters is one idea at
+// a time rather than the whole layout.
 const CHAR = 5.2
 
 function at(x, text, y, page = 1) {
@@ -58,8 +637,9 @@ function lineRow(y, { code, description, pack, cases, units, price, value }, pag
     ]
 }
 
-// The block at the top: a row of titles and a row of values under it.
-function topBlock({ number, date, account, type, order, cases, total }) {
+// The block at the top of a made up page, and the total at its foot with the
+// figure under the words, the way the real one prints it.
+function topBlock({ number, date, account, type, order, cases }) {
     const spots = [
         [40, 'INV. No.', number],
         [110, 'INV. DATE', date],
@@ -67,7 +647,6 @@ function topBlock({ number, date, account, type, order, cases, total }) {
         [260, 'TYPE', type],
         [320, 'ORD No.', order],
         [390, 'CASE', cases],
-        [440, 'GOODS TOTAL', total],
     ]
     return [
         ...spots.map(([x, label]) => at(x, label, 100)),
@@ -75,58 +654,9 @@ function topBlock({ number, date, account, type, order, cases, total }) {
     ]
 }
 
-// Invoice 45448455: four lines, six cases, 163.03.
-const INVOICE = [
-    ...topBlock({
-        number: '45448455',
-        date: '23/08/2026',
-        account: '9900001',
-        type: 'Invoice',
-        order: 'N/A',
-        cases: '6',
-        total: '163.03',
-    }),
-    ...headingRow(200),
-    at(COL.description, 'AMBIENT', 214),
-    ...lineRow(228, {
-        code: '497870', description: 'FLOUR TORTILLA 12IN', pack: '4X2.5 KG',
-        cases: '2', units: '0', price: '30.30', value: '60.60',
-    }),
-    ...lineRow(240, {
-        code: '512004', description: 'RICE LONG GRAIN', pack: '1X10 KG',
-        cases: '1', units: '0', price: '18.45', value: '18.45',
-    }),
-    at(COL.description, 'CHILLED', 254),
-    ...lineRow(268, {
-        code: '330112', description: 'CHICKEN BREAST DICED', pack: '2X5 KG',
-        cases: '2', units: '0', price: '34.99', value: '69.98',
-    }),
-    at(COL.description, 'FROZEN', 282),
-    ...lineRow(296, {
-        code: '448921', description: 'FRIES 7MM', pack: '4X2.5 KG',
-        cases: '1', units: '0', price: '14.00', value: '14.00',
-    }),
-    at(400, 'GOODS TOTAL', 320),
-    rightAt(COL.value, '163.03', 320),
-]
-
-// Credit note C45485340, against invoice 45480809. One line, minus two cases.
-const CREDIT = [
-    ...topBlock({
-        number: 'C45485340',
-        date: '27/08/2026',
-        account: '9900001',
-        type: 'Credit',
-        order: '45480809',
-        cases: '-2',
-        total: '-74.26',
-    }),
-    ...headingRow(200),
-    ...lineRow(214, {
-        code: '330112', description: 'CHICKEN BREAST DICED', pack: '2X5 KG',
-        cases: '-2', units: '0', price: '37.13', value: '-74.26',
-    }),
-]
+function foot(y, total, page = 1) {
+    return [at(400, 'GOODS TOTAL', y, page), at(400, total, y + 11, page)]
+}
 
 describe('putting a page back into rows', () => {
     it('groups whatever sits on the same baseline', () => {
@@ -257,72 +787,92 @@ describe('dates and money on the paper', () => {
     })
 })
 
-describe('the block at the top', () => {
-    const rows = rowsOf(INVOICE)
+describe('the block at the top of the real invoice', () => {
+    const rows = rowsOf(REAL_INVOICE)
 
     // Printed as a little table, titles on one line and values under them, so
     // looking beside a title first would find the next title along.
-    it('takes the value from under the title', () => {
+    it('takes each value from under its title', () => {
         expect(headField(rows, 'INV. No.')).toBe('45448455')
         expect(headField(rows, 'ACCT No.')).toBe('9900001')
+        expect(headField(rows, 'INV. DATE')).toBe('23/08/2026')
+        expect(headField(rows, 'TYPE')).toBe('Invoice')
     })
 
     // CASE is a title in both the block at the top and the table below it, and
     // they mean different things.
     it('stops above the line table so the two CASE columns cannot be confused', () => {
-        expect(headField(rows, 'CASE', 200)).toBe('6')
+        expect(headField(rows, 'CASE', 270)).toBe('6')
+    })
+
+    // The first version looked for it at the top, where it is not.
+    it('finds the goods total at the foot, under its title', () => {
+        expect(footField(rows, 'GOODS TOTAL')).toBe('163.03')
     })
 })
 
-describe('reading a whole invoice', () => {
-    const read = readSyscoInvoice(INVOICE)
+describe('reading the real invoice', () => {
+    const read = readSyscoInvoice(REAL_INVOICE)
 
+    // What the import said about it before: not a document the Hub can read.
+    // The headings are on three baselines and the reader wanted them on one.
     it('knows it is one of theirs', () => {
-        expect(recognisesSysco(INVOICE)).toBe(true)
-        expect(recognisesSysco([at(40, 'Some other paperwork', 100)])).toBe(false)
+        expect(recognisesSysco(REAL_INVOICE)).toBe(true)
     })
 
     it('reads the header', () => {
-        expect(read.kind).toBe('invoice')
-        expect(read.number).toBe('45448455')
-        expect(read.date).toBe('2026-08-23')
-        expect(read.accountNo).toBe('9900001')
-        expect(read.headCases).toBe(6)
-        expect(read.goodsTotal).toBe(163.03)
-    })
-
-    it('reads N/A as no order reference rather than as one', () => {
-        expect(read.orderReference).toBeNull()
-    })
-
-    it('reads every line', () => {
-        expect(read.lines).toHaveLength(4)
-        expect(read.lines.map(l => l.code)).toEqual(['497870', '512004', '330112', '448921'])
-        expect(read.lines.map(l => l.line_no)).toEqual([1, 2, 3, 4])
-    })
-
-    it('reads a line whole', () => {
-        expect(read.lines[0]).toMatchObject({
-            code: '497870',
-            description: 'FLOUR TORTILLA 12IN',
-            pack_size: '4X2.5 KG',
-            cases: 2,
-            units: 0,
-            price_per_case: 30.3,
-            value: 60.6,
-            storage: 'ambient',
+        expect(read).toMatchObject({
+            kind: 'invoice',
+            number: '45448455',
+            date: '2026-08-23',
+            accountNo: '9900001',
+            orderReference: null,
+            headCases: 6,
+            goodsTotal: 163.03,
         })
     })
 
-    // The band a line sits under is free and it is worth keeping: a line that
-    // turns out to be a product nobody has entered already says where it goes.
-    it('carries the band down the lines under it', () => {
-        expect(read.lines.map(l => l.storage))
-            .toEqual(['ambient', 'ambient', 'chilled', 'frozen'])
+    it('reads every line, in order', () => {
+        expect(read.lines.map(l => l.code)).toEqual(['497870', '485073', '492715', 'VG958Z'])
+        expect(read.lines.map(l => l.line_no)).toEqual([1, 2, 3, 4])
     })
 
-    it('does not read a band as a line', () => {
-        expect(read.lines.some(l => l.description.includes('AMBIENT'))).toBe(false)
+    // Half of it is above the code and half below, on rows with nothing else on
+    // them. Read top to bottom, the first half was dropped and the description
+    // came out as "10X10 EA".
+    it('keeps both halves of a description that wraps round its code', () => {
+        expect(read.lines[0].description)
+            .toBe('SANTA MARIA FLOUR TORTILLA WRAP LONG LIFE 12 INCH 10X10 EA')
+    })
+
+    it('reads each line whole', () => {
+        expect(read.lines[1]).toMatchObject({
+            code: '485073',
+            description: 'CHORIZO CUBES 1X500 GM',
+            pack_size: '4X500 GM',
+            cases: 1,
+            units: 0,
+            price_per_case: 27.99,
+            value: 27.99,
+            storage: 'chilled',
+        })
+    })
+
+    // The VAT code sits a few points to the right of each value. Without a
+    // column of its own it was read as part of the value, and 60.60 with a 1
+    // after it is 60.601.
+    it('keeps the VAT code out of the value', () => {
+        expect(read.lines.map(l => l.value)).toEqual([60.6, 27.99, 36.84, 37.6])
+    })
+
+    it('carries each band down the lines under it', () => {
+        expect(read.lines.map(l => l.storage)).toEqual(['ambient', 'chilled', 'frozen', 'frozen'])
+    })
+
+    it('reads the pack sizes it prints', () => {
+        expect(read.lines.map(l => l.pack?.total)).toEqual([100, 2, 9.08, 10])
+        // Ten packs of ten, counted rather than weighed.
+        expect(read.lines[0].pack).toMatchObject({ count: 10, size: 10, unit: 'Units' })
     })
 
     // The two checks, which are the whole reason this can be trusted without
@@ -339,10 +889,15 @@ describe('reading a whole invoice', () => {
         expect(read.checks.ok).toBe(true)
         expect(read.problems).toEqual([])
     })
+
+    // The box sits inside the table's frame on every page and is not a line.
+    it('does not attach the payment terms box to a line', () => {
+        expect(read.lines.some(l => l.description.includes('30 Days'))).toBe(false)
+    })
 })
 
-describe('reading a credit note', () => {
-    const read = readSyscoInvoice(CREDIT)
+describe('reading the real credit note', () => {
+    const read = readSyscoInvoice(REAL_CREDIT)
 
     // The same reader. The layout is identical and the only difference is that
     // everything is negative, so a second flow would be two ways to be wrong.
@@ -360,8 +915,12 @@ describe('reading a credit note', () => {
     it('is negative all the way down', () => {
         expect(read.goodsTotal).toBe(-74.26)
         expect(read.headCases).toBe(-2)
-        expect(read.lines[0].cases).toBe(-2)
-        expect(read.lines[0].value).toBe(-74.26)
+        expect(read.lines).toEqual([
+            expect.objectContaining({
+                code: '497365', description: 'BAY LEAVES 1X1 KG', pack_size: '1X1 KG',
+                cases: -2, price_per_case: 37.13, value: -74.26, storage: 'ambient',
+            }),
+        ])
     })
 
     it('passes both checks with the signs on', () => {
@@ -369,13 +928,92 @@ describe('reading a credit note', () => {
     })
 })
 
-describe('when something does not add up', () => {
-    // A parser that half works is worse than one that stops: half a document
-    // lands in the food cost and nothing says so.
+describe('the deposit box over a full page', () => {
+    const read = readSyscoInvoice(DRS_INVOICE)
+
+    // Twelve of the first thirty seven real documents were refused before
+    // this, every one of them with drinks on it.
+    it('adds the lines up against the goods less the container deposit', () => {
+        expect(read.goodsTotal).toBe(418.23)
+        expect(read.deposits).toBe(21.6)
+        expect(read.checks.values).toEqual({ expected: 396.63, got: 396.63, ok: true })
+        expect(read.checks.ok).toBe(true)
+        expect(read.lines).toHaveLength(20)
+    })
+
+    // What it did before: "Return Deposits SANTA MARIA HABANERO CHEESE SAUCE"
+    // and "DICED MANGO 1X1 KG 30 Days End of Month".
+    it('keeps the words in the box out of the descriptions under it', () => {
+        expect(read.lines.slice(-2).map(l => l.description)).toEqual([
+            'SANTA MARIA HABANERO CHEESE SAUCE 1X970 GM',
+            'DICED MANGO 1X1 KG',
+        ])
+        expect(read.lines.some(l => /deposit|days/i.test(l.description))).toBe(false)
+    })
+
+    // FROZEN is printed on exactly the same baseline as a row of the box, and
+    // the mango under it was filed as ambient.
+    it('finds the band that shares a line with the box', () => {
+        expect(read.lines.slice(-2).map(l => l.storage)).toEqual(['ambient', 'frozen'])
+    })
+
+    // The box's own figures sit in the price and pack size columns, right
+    // between the lines. None of them may end up on one.
+    it('leaves the figures of the lines under the box as printed', () => {
+        expect(read.lines.slice(-4).map(l => [l.pack_size, l.cases, l.units, l.price_per_case, l.value])).toEqual([
+            ['1X18 EA', 2, 0, 23.29, 46.58],
+            ['1X5 LT', 0, 1, 11.64, 11.64],
+            ['1X970 GM', 0, 2, 10.53, 21.06],
+            ['1X1 KG', 0, 2, 2.65, 5.3],
+        ])
+    })
+
+    it('knows where the box is and what the deposit came to', () => {
+        expect(depositBox(DRS_INVOICE)).toMatchObject({ page: 1, left: 114, deposits: 21.6 })
+        expect(depositBox(REAL_INVOICE)).toBeNull()
+    })
+
+    // A box whose total cannot be read is refused rather than taken as no
+    // deposit, which would have closed the sum wrongly on a different invoice.
+    it('refuses it when the deposit total cannot be read', () => {
+        const blank = edited(DRS_INVOICE_ROWS, rows => rows.filter(r => !(r[0] === 585.0 && r[3] === '21.60')))
+        const refused = readSyscoInvoice(blank)
+
+        expect(refused.deposits).toBeNull()
+        expect(refused.checks.values.ok).toBe(false)
+    })
+
+    it('does not change a document with no box on it', () => {
+        expect(readSyscoInvoice(REAL_INVOICE).deposits).toBe(0)
+    })
+})
+
+describe('a credit note with a deposit on it', () => {
+    const read = readSyscoInvoice(DRS_CREDIT)
+
+    // Printed as 3.60 under a goods total of -123.56. The containers come back
+    // with everything else.
+    it('takes the deposit as money coming back', () => {
+        expect(read.kind).toBe('credit')
+        expect(read.orderReference).toBe('45612570')
+        expect(read.goodsTotal).toBe(-123.56)
+        expect(read.deposits).toBe(-3.6)
+        expect(read.checks.values).toEqual({ expected: -119.96, got: -119.96, ok: true })
+        expect(read.checks.ok).toBe(true)
+    })
+
+    it('reads a description that arrives in two pieces on one line', () => {
+        expect(read.lines[1].description).toBe('BALLYGARVEY EGGS MIXED GRADE A 1X15 DZ (180 EGGS)')
+    })
+})
+
+describe('when the real invoice does not add up', () => {
+    // A parser that half works is worse than one that stops: half a document in
+    // the food cost looks exactly like a quiet week.
     it('fails the value check and says both figures', () => {
-        const wrong = INVOICE.map(i => (
-            i.str === '163.03' && i.y === 112 ? { ...i, str: '170.00' } : i
-        ))
+        const wrong = edited(INVOICE_ROWS, rows => rows.map(r => (
+            r[3] === '163.03' && r[0] > 640 && r[1] > 380 && r[1] < 400 ? [r[0], r[1], r[2], '170.00'] : r
+        )))
         const read = readSyscoInvoice(wrong)
 
         expect(read.checks.values).toEqual({ expected: 170, got: 163.03, ok: false })
@@ -386,30 +1024,58 @@ describe('when something does not add up', () => {
     })
 
     it('fails the case check on its own', () => {
-        const wrong = INVOICE.map(i => (
-            i.str === '6' && i.y === 112 ? { ...i, str: '7' } : i
-        ))
+        const wrong = edited(INVOICE_ROWS, rows => rows.map(r => (
+            r[3] === '6' && r[0] < 220 ? [r[0], r[1], r[2], '7'] : r
+        )))
         const read = readSyscoInvoice(wrong)
 
         expect(read.checks.cases.ok).toBe(false)
         expect(read.checks.values.ok).toBe(true)
         expect(read.checks.ok).toBe(false)
     })
+
+    // A line the reader dropped is exactly the case the two checks exist for.
+    it('refuses it when a line goes missing', () => {
+        const short = edited(INVOICE_ROWS, rows => rows.filter(r => r[0] !== 362.3))
+        expect(readSyscoInvoice(short).checks.ok).toBe(false)
+    })
 })
 
-describe('the awkward parts of a real page', () => {
-    // A description too long for its own line carries on underneath with
-    // nothing else on the row.
-    it('joins a description that ran onto a second line', () => {
-        const wrapped = [
-            ...INVOICE,
-            at(COL.description, 'IN A BOX OF FOUR', 308),
-        ]
+describe('the awkward parts a real page can have', () => {
+    // DESCRIPTION is centred over a wide column and CODE sits at the far left,
+    // so halfway between the two headings is well to the right of where a
+    // description starts. A short one sat entirely on the code's side.
+    it('keeps a short description as a description, not a code', () => {
+        const eggs = edited(INVOICE_ROWS, rows => rows.map(r => (
+            r[3] === 'CHORIZO CUBES 1X500 GM' ? [r[0], r[1], 20, 'EGGS'] : r
+        )))
+        const read = readSyscoInvoice(eggs)
+        expect(read.lines[1]).toMatchObject({ code: '485073', description: 'EGGS' })
+    })
+
+    // A single word wrapped onto its own row looks exactly like a code.
+    it('keeps a one word second line with its description', () => {
+        const wrapped = edited(INVOICE_ROWS, rows => [...rows, [366.8, 74.3, 30, 'DICED']])
         const read = readSyscoInvoice(wrapped)
-        expect(read.lines[3].description).toBe('FRIES 7MM IN A BOX OF FOUR')
+        expect(read.lines[1].description).toBe('CHORIZO CUBES 1X500 GM DICED')
         expect(read.lines).toHaveLength(4)
     })
 
+    // The amendment box is printed on every page with an empty square beside
+    // it. Whether it is ticked is not in the text, so it is not read at all.
+    it('pays no attention to the amendment box', () => {
+        const read = readSyscoInvoice([...REAL_INVOICE, ...fromRows([[790, 480, 50, 'AMENDMENT']])])
+        expect(read.checks.ok).toBe(true)
+        expect(read).not.toHaveProperty('amended')
+    })
+
+    it('is nothing at all for a file that is not one of theirs', () => {
+        expect(readSyscoInvoice(fromRows([[100, 40, 90, 'A letter from the bank']]))).toBeNull()
+        expect(recognisesSysco(fromRows([[100, 40, 90, 'Some other paperwork']]))).toBe(false)
+    })
+})
+
+describe('the awkward parts, one at a time', () => {
     // A long description finishing a point or two short of the pack size beside
     // it, which is closer than two words of the description are to each other.
     // Merged on the gap alone the two become one cell, the pack size stops
@@ -418,7 +1084,7 @@ describe('the awkward parts of a real page', () => {
         const tight = [
             ...topBlock({
                 number: '45448455', date: '23/08/2026', account: '9900001',
-                type: 'Invoice', order: 'N/A', cases: '1', total: '10.00',
+                type: 'Invoice', order: 'N/A', cases: '1',
             }),
             ...headingRow(200),
             at(COL.code, '497870', 228),
@@ -428,6 +1094,7 @@ describe('the awkward parts of a real page', () => {
             rightAt(COL.units, '0', 228),
             rightAt(COL.price, '10.00', 228),
             rightAt(COL.value, '10.00', 228),
+            ...foot(320, '10.00'),
         ]
         const read = readSyscoInvoice(tight)
 
@@ -443,7 +1110,7 @@ describe('the awkward parts of a real page', () => {
         const worded = [
             ...topBlock({
                 number: '45448455', date: '23/08/2026', account: '9900001',
-                type: 'Invoice', order: 'N/A', cases: '1', total: '10.00',
+                type: 'Invoice', order: 'N/A', cases: '1',
             }),
             ...headingRow(200),
             at(COL.code, '497870', 228),
@@ -453,6 +1120,7 @@ describe('the awkward parts of a real page', () => {
             rightAt(COL.units, 'EA', 228),
             rightAt(COL.price, '10.00', 228),
             rightAt(COL.value, '10.00', 228),
+            ...foot(320, '10.00'),
         ]
         const read = readSyscoInvoice(worded)
 
@@ -461,50 +1129,71 @@ describe('the awkward parts of a real page', () => {
         expect(read.lines[0].description).toBe('CHICKEN EA')
     })
 
+    // The headings repeat on every page and the total is only on the last.
     it('reads a second page and keeps counting the lines', () => {
         const twoPages = [
             ...topBlock({
                 number: '45448455', date: '23/08/2026', account: '9900001',
-                type: 'Invoice', order: 'N/A', cases: '7', total: '183.03',
+                type: 'Invoice', order: 'N/A', cases: '3',
             }),
             ...headingRow(200),
-            at(COL.description, 'AMBIENT', 214),
+            at(COL.code, 'AMBIENT', 214),
             ...lineRow(228, {
                 code: '497870', description: 'FLOUR TORTILLA 12IN', pack: '4X2.5 KG',
                 cases: '2', units: '0', price: '30.30', value: '60.60',
-            }),
-            ...lineRow(240, {
-                code: '512004', description: 'RICE LONG GRAIN', pack: '1X10 KG',
-                cases: '1', units: '0', price: '18.45', value: '18.45',
-            }),
-            ...lineRow(268, {
-                code: '330112', description: 'CHICKEN BREAST DICED', pack: '2X5 KG',
-                cases: '2', units: '0', price: '34.99', value: '69.98',
             }),
             ...headingRow(200, 2),
             ...lineRow(228, {
                 code: '448921', description: 'FRIES 7MM', pack: '4X2.5 KG',
                 cases: '1', units: '0', price: '14.00', value: '14.00',
             }, 2),
-            ...lineRow(240, {
-                code: '448922', description: 'ONION RINGS', pack: '4X1 KG',
-                cases: '1', units: '0', price: '20.00', value: '20.00',
-            }, 2),
+            ...foot(320, '74.60', 2),
         ]
         const read = readSyscoInvoice(twoPages)
 
         expect(read.pages).toBe(2)
-        expect(read.lines).toHaveLength(5)
-        expect(read.lines.map(l => l.line_no)).toEqual([1, 2, 3, 4, 5])
+        expect(read.lines.map(l => l.line_no)).toEqual([1, 2])
+        // The band carries across the page break with the lines under it.
+        expect(read.lines.map(l => l.storage)).toEqual(['ambient', 'ambient'])
         expect(read.checks.ok).toBe(true)
     })
 
-    it('says when the document carries an amendment box', () => {
-        expect(readSyscoInvoice(INVOICE).amended).toBe(false)
-        expect(readSyscoInvoice([...INVOICE, at(40, 'AMENDMENT', 340)]).amended).toBe(true)
-    })
+    // Both are on the second page of a real two page invoice. Baking parchment
+    // was filed as frozen, because NON FOOD was not a band the reader knew and
+    // FROZEN from the page before carried on.
+    it('knows a band carried over a page, and that NON FOOD is not somewhere to keep things', () => {
+        const twoPages = [
+            ...topBlock({
+                number: '45607444', date: '13/09/2026', account: '9900001',
+                type: 'Invoice', order: 'N/A', cases: '1',
+            }),
+            ...headingRow(200),
+            at(COL.code, 'FROZEN', 214),
+            ...lineRow(228, {
+                code: '492397', description: 'CORN CHIPS FOR FRYING WHITE 3X1 KG', pack: '3X1 KG',
+                cases: '1', units: '0', price: '19.82', value: '19.82',
+            }),
+            ...headingRow(200, 2),
+            at(COL.code, 'FROZEN continued...', 214, 2),
+            ...lineRow(228, {
+                code: '5019667', description: 'SANTA MARIA GUACAMOLE 1X1 KG', pack: '6X1 KG',
+                cases: '0', units: '1', price: '56.22', value: '56.22',
+            }, 2),
+            at(COL.code, 'NON FOOD', 246, 2),
+            ...lineRow(260, {
+                code: '497193', description: 'PREMIER BAKING PARCHMENT 450MMX50M 1X1 EA', pack: '1X1 EA',
+                cases: '0', units: '1', price: '8.34', value: '8.34',
+            }, 2),
+            ...foot(320, '84.38', 2),
+        ]
+        const read = readSyscoInvoice(twoPages)
 
-    it('is nothing at all for a file that is not one of theirs', () => {
-        expect(readSyscoInvoice([at(40, 'A letter from the bank', 100)])).toBeNull()
+        expect(read.lines.map(l => l.storage)).toEqual(['frozen', 'frozen', null])
+        expect(read.lines.map(l => l.description)).toEqual([
+            'CORN CHIPS FOR FRYING WHITE 3X1 KG',
+            'SANTA MARIA GUACAMOLE 1X1 KG',
+            'PREMIER BAKING PARCHMENT 450MMX50M 1X1 EA',
+        ])
+        expect(read.checks.ok).toBe(true)
     })
 })

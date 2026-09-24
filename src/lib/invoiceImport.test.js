@@ -442,6 +442,27 @@ describe('what stops a document being written', () => {
         expect(out[0]).toContain('170.00')
     })
 
+    // The goods total includes the deposit and the lines never do, so the
+    // figure the lines are measured against is said with the deposit beside it.
+    it('says the deposit when there is one', () => {
+        const out = documentBlocks({
+            ...good,
+            deposits: 21.6,
+            checks: { values: { ok: false, got: 390, expected: 396.63 }, cases: { ok: true } },
+        })
+        expect(out[0]).toBe('The lines come to 390.00 and the goods come to 396.63 before the '
+            + '21.60 container deposit, so something on it was not read.')
+    })
+
+    it('says so when the deposit box could not be read', () => {
+        const out = documentBlocks({
+            ...good,
+            deposits: null,
+            checks: { values: { ok: false, got: 396.63, expected: null }, cases: { ok: true } },
+        })
+        expect(out[0]).toContain('container deposit on it could not be read')
+    })
+
     it('says so when the case counts do not add up', () => {
         const out = documentBlocks({
             ...good,

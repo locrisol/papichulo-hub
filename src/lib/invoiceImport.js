@@ -418,9 +418,17 @@ export function documentBlocks(doc) {
     if (!doc.date) out.push('There is no date on it.')
     if (!doc.lines?.length) out.push('No lines could be read off it.')
 
+    // A deposit of null is a box whose total could not be read. No deposit at
+    // all is zero, or not there, for a reader that has never met one.
     if (!doc.checks?.values?.ok) {
-        out.push(`The lines come to ${fixed(doc.checks?.values?.got)} and the goods total says `
-            + `${fixed(doc.checks?.values?.expected)}, so something on it was not read.`)
+        const said = doc.deposits === null
+            ? `the container deposit on it could not be read`
+            : doc.deposits
+                ? `the goods come to ${fixed(doc.checks?.values?.expected)} before the `
+                    + `${fixed(doc.deposits)} container deposit`
+                : `the goods total says ${fixed(doc.checks?.values?.expected)}`
+        out.push(`The lines come to ${fixed(doc.checks?.values?.got)} and ${said}, `
+            + `so something on it was not read.`)
     }
     if (!doc.checks?.cases?.ok) {
         out.push(`The lines come to ${fixed(doc.checks?.cases?.got)} cases and the header says `

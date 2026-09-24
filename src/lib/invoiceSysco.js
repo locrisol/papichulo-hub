@@ -12,7 +12,8 @@
 //
 // **Two free self checks, and the import refuses unless both pass.**
 //
-//   1. the line values add up to the GOODS TOTAL printed at the top
+//   1. the line values, plus any container deposit, add up to the GOODS TOTAL
+//      printed at the foot
 //   2. the line case counts add up to the CASE printed at the top
 //
 // Both were confirmed against real documents before a line of this was written.
@@ -23,6 +24,18 @@
 // It is driven by the x position of each column heading rather than by fixed
 // offsets. A flattened page and a regular expression is quietly wrong the first
 // time a description contains a number.
+//
+// **What a real page does that a made up one did not.** The first version was
+// written against a document built to the shape of theirs, and it refused the
+// first real invoice it was given. Three things about the real page, all of
+// them now pinned by a test built from its actual coordinates:
+//
+//   - The column headings are on three baselines, not one. QUANTITY and VAT sit
+//     above the rest, and CASE, UNIT and the second half of VAT CODE sit below.
+//   - A description that wraps is centred on its line, so half of it is above
+//     the code and half below, on rows that carry nothing else.
+//   - There are two more columns, WEIGHT and VAT CODE, and the VAT code sits
+//     close enough to the value to be read as part of it.
 
 import { num } from '@/lib/format'
 
@@ -35,15 +48,75 @@ const ROW_TOLERANCE = 2.2
 // wide on every document seen, well alone.
 const CELL_GAP = 3
 
-// The columns of the line table, in the order they are printed.
+// How far above and below the row that says DESCRIPTION the rest of the column
+// headings can sit. On the real page QUANTITY is five points above it and CASE
+// and UNIT four and a half below.
+const HEAD_BAND = 10
+
+// How far from its line a wrapped piece of description can be and still belong
+// to it. The real page puts the two halves of a wrapped description four and a
+// half points either side of the line, and lines are about forty points apart,
+// so twelve is generous one way and nowhere near the next line the other.
+const WRAP_REACH = 12
+
+// The columns of the line table, left to right. The first seven have to be
+// there or it is not a table this reader understands.
 export const LINE_COLUMNS = ['CODE', 'DESCRIPTION', 'PACK SIZE', 'CASE', 'UNIT', 'PRICE', 'VALUE']
 
 // The bands the lines are grouped under, which are worth keeping: a line that
 // turns out to be a product nobody has entered yet already says where it lives.
-const BANDS = { AMBIENT: 'ambient', CHILLED: 'chilled', FROZEN: 'frozen' }
+//
+// NON FOOD is a band and not a place anything is kept, so a line under it has
+// no storage rather than the storage of the band before it. Baking parchment
+// was filed as frozen until it was in here.
+const BANDS = { AMBIENT: 'ambient', CHILLED: 'chilled', FROZEN: 'frozen', 'NON FOOD': null }
+
+// A band carried over a page break is printed again with "continued..." on the
+// end, and it is the same band.
+function bandOf(said) {
+    const name = said.replace(/\s+CONTINUED\W*$/, '')
+    return Object.hasOwn(BANDS, name) ? name : null
+}
+
+// The box of totals printed over the foot of the table on an invoice with
+// drinks under the deposit return scheme: the goods before the deposit, then the
+// containers and what they cost.
+//
+// **It is drawn on top of the lines, not under them.** On a full page its words
+// sit between the last few lines, and the first time that happened they were
+// read as the second halves of two descriptions, and the FROZEN band above the
+// last line was missed because it shares a baseline with one of the box's own
+// rows. So the box is found by its labels and lifted off the page before
+// anything else is read.
+const BOX_LABELS = [
+    /^SUBTOTAL GOODS VALUE/,
+    /^RETURN DEPOSITS$/,
+    /^NO OF CONTAINERS$/,
+    /^DEPOSIT PER CONTAINER$/,
+    /^TOTAL DEPOSITS$/,
+    /^DEPOSIT \d/,
+    /^TOTAL RETURN (CONTAINERS|DEPOSITS)$/,
+]
+
+// How far from a label something can be and still be on its line of the box.
+// The labels are bold and sit three quarters of a point below the figures
+// beside them. The lines of the table sit on a six point grid that never comes
+// nearer than a point and a half to a label, so one point takes the whole box
+// and nothing else. If a line ever did land on one, its figures would go with
+// the box, the values would stop adding up and the import would refuse, which
+// is the safe way round.
+const SAME_LINE = 1
+
+// Where the line table stops. Everything below one of these is totals and small
+// print, and nothing on it is a line.
+const FOOTER_WORDS = ['GOODS TOTAL', 'AMOUNT PAYABLE', 'TAXABLE GOODS', 'VAT RATE']
 
 const tidy = text => String(text ?? '').replace(/\s+/g, ' ').trim()
 const shout = text => tidy(text).toUpperCase()
+
+// A supplier's product code. Numbers mostly, and sometimes letters too: VG958Z
+// is on the first real invoice.
+const CODE = /^[A-Z0-9][A-Z0-9-]{2,}$/i
 
 // ---------------------------------------------------------------------------
 // Turning positions back into rows and columns
@@ -98,7 +171,7 @@ export function cellsOf(row, columns = null) {
             last.width = (item.x + item.width) - last.x
             continue
         }
-        cells.push({ text: item.str, x: item.x, width: item.width })
+        cells.push({ text: item.str, x: item.x, width: item.width, y: row.y })
     }
     return cells.map(c => ({ ...c, text: tidy(c.text), right: c.x + c.width, mid: c.x + c.width / 2 }))
 }
@@ -106,12 +179,14 @@ export function cellsOf(row, columns = null) {
 // Where a heading sits, allowing for it having been written in pieces.
 //
 // "PACK SIZE" can arrive as one cell or as two, and which it is depends on the
-// file rather than on the supplier, so both have to work.
+// file rather than on the supplier, so both have to work. Only cells on the
+// same baseline are joined: a word above and a word below are two headings.
 export function findHeading(cells, name, from = 0) {
     const wanted = shout(name)
     for (let i = from; i < cells.length; i++) {
         let joined = ''
         for (let j = i; j < Math.min(cells.length, i + 3); j++) {
+            if (j > i && cells[j].y !== undefined && cells[j].y !== cells[i].y) break
             joined = joined ? `${joined} ${shout(cells[j].text)}` : shout(cells[j].text)
             if (joined === wanted) {
                 return { left: cells[i].x, right: cells[j].right, endIndex: j }
@@ -122,25 +197,63 @@ export function findHeading(cells, name, from = 0) {
     return null
 }
 
+// Every place a heading appears in a set of cells.
+function spotsOf(cells, name) {
+    const out = []
+    for (let i = 0; i < cells.length; i++) {
+        const spot = findHeading(cells, name, i)
+        if (!spot) break
+        out.push(spot)
+        i = spot.endIndex
+    }
+    return out
+}
+
 // The spans each column owns, from where its heading is printed.
+//
+// The headings can be on several baselines, so they are looked for by what
+// they say rather than in the order they come. CODE appears twice on the real
+// page, once over the product code and once as the bottom half of VAT CODE, and
+// the leftmost is the one that matters.
 //
 // The boundary between two columns is halfway across the gutter between their
 // headings, and the first and last run off to the edges of the page. A cell
 // belongs to whichever span its middle falls in.
-export function columnsFrom(cells, names = LINE_COLUMNS) {
-    const spots = []
-    let at = 0
-    for (const name of names) {
-        const spot = findHeading(cells, name, at)
-        if (!spot) return null
-        spots.push({ name, ...spot })
-        at = spot.endIndex + 1
+export function columnsFrom(cells) {
+    const pool = [...(cells || [])].sort((a, b) => a.x - b.x || (a.y ?? 0) - (b.y ?? 0))
+    const found = []
+
+    for (const name of LINE_COLUMNS) {
+        const spots = spotsOf(pool, name)
+        if (!spots.length) return null
+        found.push({ name, ...spots.reduce((a, b) => (a.left <= b.left ? a : b)) })
     }
 
-    return spots.map((spot, i) => ({
+    const value = found.find(f => f.name === 'VALUE')
+    const weight = spotsOf(pool, 'WEIGHT')[0]
+    if (weight) found.push({ name: 'WEIGHT', ...weight })
+
+    // WEIGHT and VAT CODE are read only so they have a column of their own.
+    // Without one, the VAT code printed beside each value was read as part of
+    // it, and 60.60 with a 1 after it is 60.601. VAT CODE is on one line or
+    // two, and always to the right of the value.
+    const vat = [...spotsOf(pool, 'VAT CODE'), ...spotsOf(pool, 'VAT'), ...spotsOf(pool, 'CODE')]
+        .filter(s => s.left > value.right)
+    if (vat.length) {
+        found.push({
+            name: 'VAT CODE',
+            left: Math.min(...vat.map(s => s.left)),
+            right: Math.max(...vat.map(s => s.right)),
+        })
+    }
+
+    found.sort((a, b) => a.left - b.left)
+    return found.map((spot, i) => ({
         name: spot.name,
-        from: i === 0 ? -Infinity : (spots[i - 1].right + spot.left) / 2,
-        to: i === spots.length - 1 ? Infinity : (spot.right + spots[i + 1].left) / 2,
+        left: spot.left,
+        right: spot.right,
+        from: i === 0 ? -Infinity : (found[i - 1].right + spot.left) / 2,
+        to: i === found.length - 1 ? Infinity : (spot.right + found[i + 1].left) / 2,
     }))
 }
 
@@ -164,6 +277,8 @@ const UNIT_WORDS = {
     KG: { unit: 'KG', factor: 1 },
     KGS: { unit: 'KG', factor: 1 },
     G: { unit: 'KG', factor: 0.001 },
+    GM: { unit: 'KG', factor: 0.001 },
+    GMS: { unit: 'KG', factor: 0.001 },
     GR: { unit: 'KG', factor: 0.001 },
     GRM: { unit: 'KG', factor: 0.001 },
     L: { unit: 'Litre', factor: 1 },
@@ -172,6 +287,13 @@ const UNIT_WORDS = {
     LTRS: { unit: 'Litre', factor: 1 },
     ML: { unit: 'Litre', factor: 0.001 },
     CL: { unit: 'Litre', factor: 0.01 },
+    // Counted rather than weighed. "10X10 EA" on the first real invoice is ten
+    // packs of ten tortillas, a hundred in the case.
+    EA: { unit: 'Units', factor: 1 },
+    EACH: { unit: 'Units', factor: 1 },
+    PC: { unit: 'Units', factor: 1 },
+    PCS: { unit: 'Units', factor: 1 },
+    PCE: { unit: 'Units', factor: 1 },
 }
 
 // "4X2.5 KG" is four packs of two and a half kilos.
@@ -256,112 +378,233 @@ export function money(text) {
     return m[1] === '-' ? -Number(m[2]) : Number(m[2])
 }
 
-// A label at the top of the page and the value that belongs to it.
+// The value that belongs to a label: underneath first, then beside.
 //
-// Underneath first, then beside, because the top block is printed as a little
-// table with the titles on one line and the values on the next. Looking beside
-// first would find the next title along.
+// Underneath first, because both blocks that carry values on the real page are
+// little tables with the titles on one line and the values on the next. Looking
+// beside first would find the next title along.
+function valueFor(rows, i, spot, cells) {
+    const next = rows[i + 1]
+    if (next && next.page === rows[i].page) {
+        const under = cellsOf(next).find(c => c.right > spot.left && c.x < spot.right)
+        if (under) return under.text
+    }
+    const beside = cells[spot.endIndex + 1]
+    return beside ? beside.text : null
+}
+
+// A label in the block at the top of the first page.
+//
+// Only above the line table. The table has a CASE heading of its own and so
+// does the block at the top, and they mean different things.
 export function headField(rows, label, before = Infinity) {
-    const wanted = shout(label)
-
     for (let i = 0; i < rows.length; i++) {
-        // The first page, above the line table. The table has a CASE heading of
-        // its own and the block at the top has one too, and they mean different
-        // things.
         if (rows[i].page !== 1 || rows[i].y >= before) continue
-
         const cells = cellsOf(rows[i])
         const spot = findHeading(cells, label)
-        if (!spot) continue
-
-        const under = rows[i + 1] && rows[i + 1].page === rows[i].page
-            ? cellsOf(rows[i + 1]).find(c => c.right > spot.left && c.x < spot.right)
-            : null
-        if (under && shout(under.text) !== wanted) return under.text
-
-        const beside = cells[spot.endIndex + 1]
-        if (beside) return beside.text
+        if (spot) return valueFor(rows, i, spot, cells)
     }
     return null
 }
 
-// Is this one of theirs?
+// A label at the foot of the document, looked for from the bottom up.
 //
-// The line table's own heading row is the test, because it is the part of the
-// document this reader actually depends on. A file that has it can be read; a
-// file that does not is somebody else's paperwork and belongs to another reader.
-export function recognisesSysco(items) {
-    return headingRows(rowsOf(items)).length > 0
+// The goods total is printed once, under the line table on the last page, and
+// never in the block at the top.
+export function footField(rows, label) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const cells = cellsOf(rows[i])
+        const spot = findHeading(cells, label)
+        if (spot) return valueFor(rows, i, spot, cells)
+    }
+    return null
 }
 
-function headingRows(rows) {
+// The deposit box, if there is one: where it is and what it says the
+// containers came to.
+//
+// Its figures are read beside their labels rather than under them, because the
+// box has lines of the table running under it and "under" finds a pack size.
+export function depositBox(items) {
+    const labels = (items || []).filter(i => BOX_LABELS.some(l => l.test(shout(i.str))))
+    if (!labels.length) return null
+
+    const page = labels[labels.length - 1].page
+    const own = labels.filter(l => l.page === page)
+    const beside = pattern => {
+        const label = own.find(l => pattern.test(shout(l.str)))
+        if (!label) return null
+        const next = items
+            .filter(i => i.page === page && Math.abs(i.y - label.y) <= SAME_LINE && i.x >= label.x + label.width)
+            .sort((a, b) => a.x - b.x)[0]
+        return next ? money(next.str) : null
+    }
+
+    return {
+        page,
+        left: Math.min(...own.map(l => l.x)),
+        lines: [...new Set(own.map(l => l.y))],
+        deposits: beside(/^TOTAL RETURN DEPOSITS$/),
+    }
+}
+
+// The page with the box taken off it. Anything left of the box stays, which is
+// the band names and the start of every description.
+export function withoutBox(items, box) {
+    if (!box) return items || []
+    return (items || []).filter(i => !(
+        i.page === box.page
+        && i.x >= box.left - SAME_LINE
+        && box.lines.some(y => Math.abs(i.y - y) <= SAME_LINE)
+    ))
+}
+
+// Where the line table's headings are, page by page.
+//
+// Found by the row that says DESCRIPTION and PACK SIZE, which nothing else on
+// the page does, and then everything within a few points above and below it,
+// because the real page spreads its headings over three baselines.
+function headingBands(rows) {
     const out = []
     for (const row of rows) {
-        const columns = columnsFrom(cellsOf(row))
-        if (columns) out.push({ row, columns })
+        const said = shout(cellsOf(row).map(c => c.text).join(' '))
+        if (!said.includes('DESCRIPTION') || !said.includes('PACK SIZE')) continue
+
+        const band = rows.filter(r => r.page === row.page && Math.abs(r.y - row.y) <= HEAD_BAND)
+        const columns = columnsFrom(band.flatMap(r => cellsOf(r)))
+        if (!columns) continue
+        out.push({
+            page: row.page,
+            top: Math.min(...band.map(r => r.y)),
+            bottom: Math.max(...band.map(r => r.y)),
+            columns,
+        })
     }
     return out
 }
 
-export function readSyscoInvoice(items) {
-    const rows = rowsOf(items)
-    const heads = headingRows(rows)
-    if (!heads.length) return null
+// Is this one of theirs?
+//
+// The line table's own headings are the test, because they are the part of the
+// document this reader actually depends on. A file that has them can be read; a
+// file that does not is somebody else's paperwork and belongs to another reader.
+export function recognisesSysco(items) {
+    return headingBands(rowsOf(items)).length > 0
+}
 
-    const firstTable = heads[0].row
+export function readSyscoInvoice(items) {
+    const box = depositBox(items)
+    const rows = rowsOf(withoutBox(items, box))
+    const bands = headingBands(rows)
+    if (!bands.length) return null
+
+    const first = bands[0]
     const problems = []
 
-    // ---- the block at the top of the page --------------------------------
-    const number = tidy(headField(rows, 'INV. No.', firstTable.y))
-    const date = paperDate(headField(rows, 'INV. DATE', firstTable.y))
-    const accountNo = tidy(headField(rows, 'ACCT No.', firstTable.y))
-    const typeSaid = shout(headField(rows, 'TYPE', firstTable.y))
-    const orderSaid = tidy(headField(rows, 'ORD No.', firstTable.y))
-    const headCases = money(headField(rows, 'CASE', firstTable.y))
-    const goodsTotal = money(headField(rows, 'GOODS TOTAL', firstTable.y))
-        ?? money(footerTotal(rows))
+    // ---- the block at the top of the first page --------------------------
+    const number = tidy(headField(rows, 'INV. No.', first.top))
+    const date = paperDate(headField(rows, 'INV. DATE', first.top))
+    const accountNo = tidy(headField(rows, 'ACCT No.', first.top))
+    const typeSaid = shout(headField(rows, 'TYPE', first.top))
+    const orderSaid = tidy(headField(rows, 'ORD No.', first.top))
+    const headCases = money(headField(rows, 'CASE', first.top))
+    const goodsTotal = money(footField(rows, 'GOODS TOTAL'))
 
     const kind = typeSaid.startsWith('CREDIT') ? 'credit' : 'invoice'
 
-    // ---- the lines -------------------------------------------------------
-    const lines = []
-    let storage = null
-    let columns = heads[0].columns
-    let inTable = false
+    // ---- every row inside the table, sorted into what it is -------------
+    //
+    // Two passes, because a wrapped description is centred on its line: half
+    // of it comes before the row with the code on it. Reading top to bottom and
+    // carrying words onto the line above lost the first half of every wrapped
+    // description on the first real invoice, and kept only "10X10 EA".
+    const anchors = []
+    const pieces = []
+    const markers = []
 
-    for (const row of rows) {
-        const table = heads.find(h => h.row === row)
-        if (table) { columns = table.columns; inTable = true; continue }
-        if (!inTable) continue
+    for (const band of bands) {
+        const pageRows = rows.filter(r => r.page === band.page && r.y > band.bottom)
+        const foot = pageRows.find(r => {
+            const said = shout(cellsOf(r).map(c => c.text).join(' '))
+            return FOOTER_WORDS.some(w => said.includes(w))
+        })
 
-        const cells = cellsOf(row, columns)
-        if (!cells.length) continue
+        for (const row of pageRows) {
+            if (foot && row.y >= foot.y) break
+            const cells = cellsOf(row, band.columns)
+            if (!cells.length) continue
 
-        const said = shout(cells.map(c => c.text).join(' '))
-        const band = Object.keys(BANDS).find(b => said === b || said.startsWith(`${b} `))
-        if (band) { storage = BANDS[band]; continue }
-        // The foot of the table. Everything after it on the page is totals and
-        // small print, and a line cannot appear below it.
-        if (said.startsWith('GOODS TOTAL')) { inTable = false; continue }
+            const said = shout(cells.map(c => c.text).join(' '))
+            const section = bandOf(said)
+            if (section) { markers.push({ page: row.page, y: row.y, storage: BANDS[section] }); continue }
 
-        const line = readLine(cells, columns, storage)
-        if (line) { lines.push({ ...line, line_no: lines.length + 1 }); continue }
+            const line = readLine(cells, band.columns)
+            if (line) {
+                const startsAt = leftOf(cells, band.columns)[1]?.x ?? null
+                anchors.push({ page: row.page, y: row.y, line, words: [], startsAt })
+                continue
+            }
 
-        // A description too long for its own line carries on underneath with
-        // nothing else on the row.
-        const carried = carriedDescription(cells, columns)
-        if (carried && lines.length) {
-            const last = lines[lines.length - 1]
-            last.description = tidy(`${last.description} ${carried}`)
+            const piece = wrappedPiece(cells, band.columns)
+            if (piece) pieces.push({ page: row.page, y: row.y, words: piece.text, startsAt: piece.x })
         }
     }
 
+    // **A wrapped half starts where every description starts.** The payment
+    // terms are printed inside the table under the last line, clear of any
+    // column, and on a full page they were near enough to the last line to be
+    // read as the rest of its name. They start well to the right of where a
+    // description does, and that is the difference. Measured off the lines on
+    // this document rather than assumed, and left alone if every line on it
+    // wrapped and there is nothing to measure.
+    const starts = anchors.map(a => a.startsAt).filter(x => x != null)
+    const descriptionsStart = starts.length ? Math.min(...starts) : null
+
+    // Each piece of a wrapped description goes to the line it is nearest.
+    for (const piece of pieces) {
+        if (descriptionsStart != null && Math.abs(piece.startsAt - descriptionsStart) > CELL_GAP) continue
+        let best = null
+        for (const anchor of anchors) {
+            if (anchor.page !== piece.page) continue
+            const gap = Math.abs(anchor.y - piece.y)
+            if (gap <= WRAP_REACH && (!best || gap < best.gap)) best = { anchor, gap }
+        }
+        if (best) best.anchor.words.push({ y: piece.y, text: piece.words })
+    }
+
+    const lines = anchors.map((anchor, i) => {
+        const parts = [...anchor.words, { y: anchor.y, text: anchor.line.description }]
+            .filter(p => p.text)
+            .sort((a, b) => a.y - b.y)
+        // The band a line sits under, which can be on the page before.
+        const marker = [...markers]
+            .filter(m => m.page < anchor.page || (m.page === anchor.page && m.y < anchor.y))
+            .pop()
+        return {
+            ...anchor.line,
+            description: tidy(parts.map(p => p.text).join(' ')),
+            storage: marker?.storage || null,
+            line_no: i + 1,
+        }
+    })
+
     // ---- the two checks --------------------------------------------------
+    //
+    // The goods total includes the container deposit and no line does, so the
+    // lines are held up against the goods less the deposit. Twelve of the first
+    // thirty seven real documents were refused for it before this.
+    //
+    // A credit note prints its deposit without a minus sign, under a negative
+    // goods total, and it is money coming back like everything else on it.
+    const deposits = !box ? 0
+        : box.deposits == null ? null
+            : kind === 'credit' ? -Math.abs(box.deposits) : box.deposits
+    const goods = goodsTotal == null || deposits == null ? null : round2(goodsTotal - deposits)
     const valuesGot = round2(lines.reduce((t, l) => t + num(l.value), 0))
     const casesGot = round2(lines.reduce((t, l) => t + num(l.cases), 0))
 
     const checks = {
-        values: { expected: goodsTotal, got: valuesGot, ok: goodsTotal != null && round2(goodsTotal) === valuesGot },
+        values: { expected: goods, got: valuesGot, ok: goods != null && goods === valuesGot },
         cases: { expected: headCases, got: casesGot, ok: headCases != null && round2(headCases) === casesGot },
     }
     checks.ok = checks.values.ok && checks.cases.ok
@@ -384,9 +627,7 @@ export function readSyscoInvoice(items) {
         orderReference: orderSaid && shout(orderSaid) !== 'N/A' ? orderSaid : null,
         headCases,
         goodsTotal,
-        // The supplier prints a box on an amended order. It is worth saying on
-        // screen and it is not worth trying to read.
-        amended: rows.some(r => shout(cellsOf(r).map(c => c.text).join(' ')).includes('AMENDMENT')),
+        deposits,
         pages: Math.max(...rows.map(r => r.page), 0),
         lines,
         checks,
@@ -398,29 +639,32 @@ function round2(n) {
     return Math.round(num(n) * 100) / 100
 }
 
-function footerTotal(rows) {
-    for (let i = rows.length - 1; i >= 0; i--) {
-        const cells = cellsOf(rows[i])
-        const spot = findHeading(cells, 'GOODS TOTAL')
-        if (!spot) continue
-        const after = cells.slice(spot.endIndex + 1).map(c => c.text).find(t => money(t) != null)
-        if (after) return after
-    }
-    return null
+// The part of the row left of the pack size: the code and the description.
+function leftOf(cells, columns) {
+    const pack = columns.find(c => c.name === 'PACK SIZE')
+    return cells.filter(c => c.mid <= pack.from)
 }
 
-// One row of the table, or nothing if it is not a line at all.
+// One row of the table, or nothing if it is not a line.
 //
 // A code and a value together is the test. Either on its own turns up on rows
-// that are not lines: a page footer carries figures, and the small print at the
-// bottom carries words that could pass for a code.
-function readLine(cells, columns, storage) {
+// that are not lines: a page footer carries figures, and the small print carries
+// words that could pass for a code.
+//
+// **The code is the first thing on the row, not whatever sits under the CODE
+// heading.** That heading is printed at the far left and DESCRIPTION is centred
+// over a much wider column, so halfway between the two is well to the right of
+// where a description starts. A short one, EGGS or the second half of a wrapped
+// one, sat entirely on the code's side of that line.
+function readLine(cells, columns) {
     const held = bucket(cells, columns)
-    const code = tidy((held.CODE || []).map(c => c.text).join(''))
-    if (!/^[A-Z0-9][A-Z0-9-]{2,}$/i.test(code)) return null
-
     const value = money((held.VALUE || []).map(c => c.text).join(''))
     if (value == null) return null
+
+    const left = leftOf(cells, columns)
+    const description = columns.find(c => c.name === 'DESCRIPTION')
+    const codeCell = left[0]
+    if (!codeCell || codeCell.right > description.left || !CODE.test(codeCell.text)) return null
 
     // Anything that is not a number sitting in a number's column ran over from
     // the description, so it goes back where it came from.
@@ -456,34 +700,34 @@ function readLine(cells, columns, storage) {
         spilt.push(...packCells.filter(c => !looksLikePackSize(c.text)))
     }
 
-    const description = tidy([
-        ...(held.DESCRIPTION || []).map(c => c.text),
+    const words = tidy([
+        ...left.slice(1).map(c => c.text),
         ...spilt.sort((a, b) => a.x - b.x).map(c => c.text),
     ].join(' '))
 
-    const pack = packSaid ? readPackSize(packSaid) : null
-
     return {
-        code,
-        description,
-        pack_size: packSaid,
-        pack,
+        code: codeCell.text,
+        description: words,
+        pack_size: packSaid || null,
+        pack: packSaid ? readPackSize(packSaid) : null,
         cases: cases ?? 0,
         units: units ?? 0,
         price_per_case: pricePerCase,
         value,
-        storage,
     }
 }
 
-// The second line of a description, which has nothing else on the row.
-function carriedDescription(cells, columns) {
+// Part of a wrapped description, on a row with nothing else on it.
+//
+// Only the first run of words. Half a description is one piece of lettering,
+// and anything further along the same row is something else that happens to
+// share its baseline.
+function wrappedPiece(cells, columns) {
     const held = bucket(cells, columns)
     const hasFigures = ['CASE', 'UNIT', 'PRICE', 'VALUE']
         .some(name => (held[name] || []).some(c => money(c.text) != null))
     if (hasFigures) return null
-    if ((held.CODE || []).length) return null
 
-    const said = tidy((held.DESCRIPTION || []).map(c => c.text).join(' '))
-    return said || null
+    const first = leftOf(cells, columns)[0]
+    return first?.text ? first : null
 }

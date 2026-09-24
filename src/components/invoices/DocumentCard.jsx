@@ -102,13 +102,6 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn }
                 </ul>
             )}
 
-            {doc?.amended && (
-                <p className="text-xs text-amber-800 mb-3">
-                    The supplier has printed an amendment box on this one, so check it against the
-                    order before it goes in.
-                </p>
-            )}
-
             {totals?.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
                     {totals.map(t => {
@@ -126,6 +119,10 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn }
                 <p className="text-xs text-muted">
                     {doc.lines.length} {doc.lines.length === 1 ? 'line' : 'lines'},{' '}
                     {fmtMoney(doc.goodsTotal)}
+                    {/* The goods total includes it and the totals above do
+                        not, so without this the two never agree on a
+                        delivery with drinks on it. */}
+                    {doc.deposits ? ` with a ${fmtMoney(Math.abs(doc.deposits))} container deposit` : ''}
                     {piles && (
                         <>
                             {': '}
