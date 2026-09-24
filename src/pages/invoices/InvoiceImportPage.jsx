@@ -21,6 +21,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 import DocumentCard from '@/components/invoices/DocumentCard'
 import LinkAccountModal from '@/components/invoices/LinkAccountModal'
 import FillInModal from '@/components/invoices/FillInModal'
+import StillMissing from '@/components/invoices/StillMissing'
 
 // Reading a week of invoices in one go.
 //
@@ -49,6 +50,9 @@ export default function InvoiceImportPage() {
     const [fillingIn, setFillingIn] = useState(null)
     // Credits somebody has said were not taken off by hand, so they go in.
     const [allowed, setAllowed] = useState(() => new Set())
+    // Bumped after anything goes in, so the list of what is still to
+    // download is read again and the documents just imported drop off it.
+    const [checked, setChecked] = useState(0)
     const picker = useRef(null)
 
     // Everything the matching needs, read once. A batch of twenty files asking
@@ -246,6 +250,7 @@ export default function InvoiceImportPage() {
         setSaving(false)
         if (failedCodes) { setError(failedCodes); return }
         if (done) setSaid(`${done} ${done === 1 ? 'document' : 'documents'} imported.`)
+        setChecked(n => n + 1)
     }
 
     async function writeCodes(seen) {
@@ -417,6 +422,7 @@ export default function InvoiceImportPage() {
         }
 
         setFillingIn(null)
+        setChecked(n => n + 1)
         setFiles(all => all.filter(f => f.key !== file.key))
         // The typed row is that document now, number and all, so a credit
         // against it in the same batch stops waiting and settles the claim.
@@ -548,6 +554,10 @@ export default function InvoiceImportPage() {
                     </div>
                 </>
             )}
+
+            {/* Straight after a batch is exactly when the question is asked:
+                did that cover everything the supplier says it sent? */}
+            <StillMissing restaurantId={restaurantId} refresh={checked} pasteLink />
         </>
     )
 }

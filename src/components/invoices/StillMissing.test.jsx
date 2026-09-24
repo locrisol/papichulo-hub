@@ -1,0 +1,70 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen } from '@testing-library/react'
+import { mockSupabase, renderWithRouter } from '@/test/helpers'
+
+// What the lists say exists and the Hub does not have, as it reads on screen.
+//
+// Asked for after the first real paste, where every document said not
+// downloaded: somewhere to see, straight after uploading a batch, whether
+// anything the supplier sent is still missing.
+
+let db = mockSupabase({})
+vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+
+const { default: StillMissing } = await import('./StillMissing')
+
+const SUPPLIER = { id: 's1', name: 'Test Supplier' }
+
+const RECORDED = [
+    { supplier_id: 's1', document_id: '45448455', order_reference: null, document_date: '2026-08-23', document_type: 'invoice', value: '163.03' },
+    { supplier_id: 's1', document_id: '45612214', order_reference: null, document_date: '2026-09-14', document_type: 'invoice', value: '102.43' },
+    { supplier_id: 's1', document_id: 'C45620001', order_reference: '45612214', document_date: '2026-09-15', document_type: 'credit', value: '-102.43' },
+]
+
+function answers({ recorded = RECORDED, held = [] } = {}) {
+    db = mockSupabase({
+        supplier_documents: { data: recorded, error: null },
+        invoices: { data: held, error: null },
+        suppliers: { data: [SUPPLIER], error: null },
+    })
+}
+
+beforeEach(() => answers())
+
+describe('still to download', () => {
+    it('lists what the Hub does not have, with who sent it and when', async () => {
+        answers({ held: [{ id: 'a', supplier_id: 's1', invoice_number: '45448455' }] })
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+
+        expect(await screen.findByText('45612214')).toBeInTheDocument()
+        expect(screen.getByText('C45620001')).toBeInTheDocument()
+        expect(screen.queryByText('45448455')).toBeNull()
+        expect(screen.getByText(/credits 45612214/)).toBeInTheDocument()
+    })
+
+    // Typed in by hand is in the Hub already, just without a document behind
+    // it. Listing eight months of those as missing is the thing that prompted
+    // this.
+    it('leaves out what was typed in by hand', async () => {
+        answers({
+            held: [
+                { id: 'a', supplier_id: 's1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 163.03 },
+                { id: 'b', supplier_id: 's1', invoice_number: '45612214' },
+                { id: 'c', supplier_id: 's1', invoice_number: 'C45620001' },
+            ],
+        })
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+
+        expect(await screen.findByText('Everything on the lists you have recorded is in the Hub.'))
+            .toBeInTheDocument()
+    })
+
+    it('says what to do when nothing has been recorded yet', async () => {
+        answers({ recorded: [] })
+        renderWithRouter(<StillMissing restaurantId="r1" pasteLink />)
+
+        expect(await screen.findByText(/Nothing to check against yet/)).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Paste a list' })).toHaveAttribute('href', '/invoices/documents')
+    })
+})

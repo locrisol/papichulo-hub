@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     portalFields, portalValue, portalDate, portalRow, readPortalList,
-    portalSummary, compareDocuments, pairCredits, creditDelays,
+    portalSummary, compareDocuments, pairCredits, creditDelays, stillMissing,
 } from '@/lib/supplierDocuments'
 
 // The shape of a real paste, with the account number changed.
@@ -286,5 +286,47 @@ describe('what was typed in by hand', () => {
         const { byHand, missing } = compareDocuments(rows, held)
         expect(byHand.map(r => r.document_id)).toEqual(['45448455'])
         expect(missing.map(r => r.document_id)).not.toContain('45448455')
+    })
+})
+
+describe('what is still to download', () => {
+    // Rows as they come back from supplier_documents: the value as a string,
+    // the way a numeric column arrives, and one supplier or another.
+    const recorded = [
+        { supplier_id: 's1', document_id: '45448455', order_reference: null, document_date: '2026-08-23', document_type: 'invoice', value: '163.03' },
+        { supplier_id: 's1', document_id: '45480809', order_reference: null, document_date: '2026-08-27', document_type: 'invoice', value: '325.95' },
+        { supplier_id: 's1', document_id: 'C45485340', order_reference: '45480809', document_date: '2026-08-27', document_type: 'credit', value: '-74.26' },
+        { supplier_id: 's1', document_id: '45612214', order_reference: null, document_date: '2026-09-14', document_type: 'invoice', value: '102.43' },
+        { supplier_id: 's2', document_id: 'X1', order_reference: null, document_date: '2026-09-01', document_type: 'invoice', value: '40.00' },
+    ]
+
+    const held = [
+        // Imported, by its number.
+        { id: 'a', supplier_id: 's1', invoice_number: '45448455', invoice_date: '2026-08-23', total_amount: 163.03 },
+        // Typed in by hand net of its credit, so the credit is not missing
+        // either.
+        { id: 'b', supplier_id: 's1', invoice_number: null, invoice_date: '2026-08-27', total_amount: 251.69 },
+    ]
+
+    it('lists only what is nowhere in the Hub, oldest first', () => {
+        expect(stillMissing(recorded, held).map(r => r.document_id)).toEqual(['X1', '45612214'])
+    })
+
+    // A list belongs to one supplier, and another supplier's invoice on the
+    // same day for the same money is a different document.
+    it('never lets one supplier stand in for another', () => {
+        const other = [{ id: 'c', supplier_id: 's2', invoice_number: null, invoice_date: '2026-09-14', total_amount: 102.43 }]
+        expect(stillMissing(recorded, [...held, ...other]).map(r => r.document_id)).toContain('45612214')
+    })
+
+    it('is empty when everything is accounted for', () => {
+        const all = [...held,
+            { id: 'd', supplier_id: 's1', invoice_number: '45612214' },
+            { id: 'e', supplier_id: 's2', invoice_number: 'X1' }]
+        expect(stillMissing(recorded, all)).toEqual([])
+    })
+
+    it('copes with nothing recorded', () => {
+        expect(stillMissing(null, held)).toEqual([])
     })
 })

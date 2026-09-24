@@ -15,6 +15,7 @@ import {
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import AutoTextarea from '@/components/ui/AutoTextarea'
+import StillMissing from '@/components/invoices/StillMissing'
 
 // What the supplier says it sent us, against what we actually hold.
 //
@@ -24,9 +25,14 @@ import AutoTextarea from '@/components/ui/AutoTextarea'
 // whole feature: comparing the documents we hold against the documents we hold
 // can never find one that was never downloaded at all.
 //
-// Two other things fall out of it for nothing. The value on each row is a third
-// cross check on a parsed document, and pasting a fresh list can close an open
-// claim by showing the credit has been issued.
+// Recorded, it keeps working after the box is cleared. Still to download, at
+// the foot of this page and of the import screen, is every recorded document
+// the Hub does not have. And the import reads it to know for certain whether a
+// credit note was already taken off a total typed in by hand, where without it
+// all it has is the date to go on.
+//
+// It does not close a claim when it shows a credit has been issued. Only
+// importing the credit note does that.
 
 export default function SupplierDocumentsPage() {
     const { activeRestaurant } = useRestaurant()
@@ -301,6 +307,10 @@ export default function SupplierDocumentsPage() {
                     </div>
                 </>
             )}
+
+            {/* Everything ever recorded, not only what is in the box, so the
+                check is here without pasting anything. */}
+            <StillMissing restaurantId={restaurantId} refresh={refresh} />
         </>
     )
 }

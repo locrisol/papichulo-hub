@@ -331,3 +331,34 @@ export function creditDelays(pairs) {
         ),
     }))
 }
+
+// What the recorded lists say exists and the Hub still does not have.
+//
+// The same test the paste page runs, over everything ever recorded rather than
+// over the box, and supplier by supplier because a list belongs to one of them.
+// Typed in by hand is not missing and neither is a credit already inside a
+// typed total, so what is left is the list of things still to go and download.
+//
+// Oldest first, because the one that has been missing longest is the one most
+// likely to have been forgotten rather than still on its way.
+export function stillMissing(recorded, held) {
+    const bySupplier = new Map()
+    for (const row of recorded || []) {
+        if (!bySupplier.has(row.supplier_id)) bySupplier.set(row.supplier_id, [])
+        bySupplier.get(row.supplier_id).push({ ...row, value: num(row.value) })
+    }
+
+    const out = []
+    for (const [supplierId, rows] of bySupplier) {
+        const mine = (held || []).filter(h => h.supplier_id === supplierId)
+        const status = documentStatus(rows, mine)
+        for (const row of rows) {
+            if (status.get(row.document_id)?.status === 'missing') out.push(row)
+        }
+    }
+
+    return out.sort((a, b) => (
+        String(a.document_date).localeCompare(String(b.document_date))
+        || String(a.document_id).localeCompare(String(b.document_id))
+    ))
+}
