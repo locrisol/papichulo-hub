@@ -55,6 +55,9 @@ export default function InvoiceImportPage() {
         let alive = true
 
         async function load() {
+            // See the comment on the same line in ClaimsPage: a banner that is
+            // never cleared outlives the thing it was about.
+            setError('')
             const [accounts, suppliers, prices, codes, held] = await Promise.all([
                 supabase.from('supplier_accounts').select('*'),
                 supabase.from('suppliers').select('id, name, category'),

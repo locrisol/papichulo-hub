@@ -37,6 +37,7 @@ export default function InvoiceWeek({
         let alive = true
 
         async function load() {
+            setError('')
             const [events, refused, claims, credits] = await Promise.all([
                 supabase.from('product_price_events')
                     .select('*, products(id, name, unit)')

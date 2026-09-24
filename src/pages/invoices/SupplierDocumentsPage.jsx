@@ -45,6 +45,7 @@ export default function SupplierDocumentsPage() {
         let alive = true
 
         async function load() {
+            setError('')
             const [sup, inv] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true).order('name'),
                 supabase.from('invoices')

@@ -76,6 +76,7 @@ export default function InvoiceReviewPage() {
         let alive = true
 
         async function load() {
+            setError('')
             const [lines, prices, codes, suppliers, products] = await Promise.all([
                 supabase.from('invoice_lines')
                     .select('*, invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, restaurant_id)')

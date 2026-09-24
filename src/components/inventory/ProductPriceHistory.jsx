@@ -27,6 +27,7 @@ export default function ProductPriceHistory({ productId, restaurantId, product, 
         let alive = true
 
         async function load() {
+            setError('')
             const [lines, events, credits] = await Promise.all([
                 supabase.from('invoice_lines')
                     .select('unit_price, invoices!inner(id, invoice_date, invoice_number, supplier_id, document_type, restaurant_id, total_amount)')

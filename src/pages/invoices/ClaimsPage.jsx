@@ -59,6 +59,11 @@ export default function ClaimsPage() {
 
         async function load() {
             setLoading(true)
+            // Cleared here rather than only on the way out. A banner that is
+            // set once and never unset outlives the thing it was about: fix the
+            // database, come back, and the page is still complaining about a
+            // read that now works perfectly well.
+            setError('')
             const from = addDays(todayISO(), -LOOK_BACK_DAYS)
 
             const [sup, cl, inv] = await Promise.all([
