@@ -175,6 +175,9 @@ alter table public.invoice_lines drop constraint if exists invoice_lines_decided
 alter table public.invoice_lines add constraint invoice_lines_decided_by_fkey
     foreign key (decided_by) references public.users(id) on delete set null;
 
+comment on column public.invoice_lines.decision is
+    'Whether somebody has looked at this line yet and what they said. The review works out what needs a decision by comparing the line against the price row, which answers itself once a price is accepted. Rejecting does not: the difference is still there next week, so saying no once has to stick.';
+
 create index if not exists idx_invoice_lines_waiting
     on public.invoice_lines (invoice_id) where decision is null;
 
@@ -379,6 +382,9 @@ create index if not exists idx_claims_line
 create index if not exists idx_claims_docket
     on public.invoice_line_claims (restaurant_id, docket_number) where docket_number is not null;
 
+comment on column public.invoice_line_claims.counted_week is
+    'The week this comes off, which is the week it happened in and not always the week the credit lands in. A week is open until its report is published; after that everything later belongs to the week it happened.';
+
 comment on table public.invoice_line_claims is
     'What was wrong with a delivery, and how much of it has come back. Raised at the door before any document exists, or against a line when a credit note turns up and the Hub asks why. The balance is amount less credited_amount, because a credit can partly settle an ask.';
 
@@ -414,6 +420,9 @@ create unique index if not exists supplier_documents_once
     on public.supplier_documents (supplier_id, restaurant_id, document_id);
 create index if not exists idx_supplier_documents_date
     on public.supplier_documents (restaurant_id, document_date);
+
+comment on column public.supplier_documents.order_reference is
+    'On a credit this is the invoice it credits. On an invoice it is empty, which is how the two halves of a pair find each other.';
 
 comment on table public.supplier_documents is
     'The supplier portal list, pasted in. What exists, against what we hold. Document numbers do not run in date order, so never sort or page on one.';

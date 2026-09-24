@@ -74,9 +74,6 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "packaging_cost_target" numeric(5,2) DEFAULT 2.50,
     "hourly_rate" numeric(6,2) DEFAULT 15.00,
     "report_recipients" "text"[],
-    -- The payroll list, and nobody is on it by role. See the comment below.
-    "timesheet_recipients" "text"[],
-    "pay_period_start" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "slug" character varying(100) NOT NULL,
@@ -92,6 +89,9 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "watch_city_events" boolean DEFAULT true NOT NULL,
     "latitude" numeric(9,6),
     "longitude" numeric(9,6),
+    "timesheet_recipients" "text"[],
+    "pay_period_start" "date",
+    -- The payroll list, and nobody is on it by role. See the comment below.,
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
@@ -587,12 +587,12 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "file_url" "text",
     "week_start" "date",
     "notes" "text",
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
     "invoice_number" "text",
     "document_type" "text" DEFAULT 'invoice'::"text" NOT NULL,
     "credit_of_invoice_id" "uuid",
     "counts_in_cost" boolean DEFAULT true NOT NULL,
-    "created_by" "uuid",
-    "created_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "invoices_category_check" CHECK (("category" IN ('food', 'packaging', 'cleaning', 'other'))),
     CONSTRAINT "invoices_document_type_check" CHECK (("document_type" IN ('invoice', 'credit'))),
     CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted', 'parsed')))
@@ -603,8 +603,6 @@ COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."invoices"
-    ADD CONSTRAINT "invoices_credit_of_fkey" FOREIGN KEY ("credit_of_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_invoices_restaurant_date" ON "public"."invoices" USING "btree" ("restaurant_id", "invoice_date");
 CREATE INDEX "idx_invoices_supplier" ON "public"."invoices" USING "btree" ("supplier_id");
 CREATE INDEX "idx_invoices_credit_of" ON "public"."invoices" USING "btree" ("credit_of_invoice_id") WHERE ("credit_of_invoice_id" IS NOT NULL);
@@ -627,20 +625,20 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "invoice_id" "uuid" NOT NULL,
     "product_id" "uuid",
-    "price_id" "uuid",
-    "line_no" integer,
-    "supplier_code" "text",
     "raw_description" character varying(255),
-    "pack_size" "text",
-    "units_per_case" numeric(10,3),
-    "cases" numeric(10,3),
-    "units" numeric(10,3),
     "quantity" numeric(10,3),
-    "price_per_case" numeric(10,4),
     "unit_price" numeric(10,4),
     "line_total" numeric(10,2),
+    "supplier_code" "text",
+    "line_no" integer,
+    "cases" numeric(10,3),
+    "units" numeric(10,3),
+    "pack_size" "text",
+    "units_per_case" numeric(10,3),
+    "price_per_case" numeric(10,4),
     "storage" "text",
     "category" "text",
+    "price_id" "uuid",
     "decision" "text",
     "decided_at" timestamp with time zone,
     "decided_by" "uuid",
@@ -653,14 +651,6 @@ COMMENT ON COLUMN "public"."invoice_lines"."decision" IS 'Whether somebody has l
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_decided_by_fkey" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btree" ("invoice_id");
 CREATE INDEX "idx_invoice_lines_code" ON "public"."invoice_lines" USING "btree" ("supplier_code") WHERE ("supplier_code" IS NOT NULL);
 CREATE INDEX "idx_invoice_lines_product" ON "public"."invoice_lines" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
@@ -689,10 +679,6 @@ COMMENT ON TABLE "public"."supplier_accounts" IS 'The account number a supplier 
 
 ALTER TABLE ONLY "public"."supplier_accounts"
     ADD CONSTRAINT "supplier_accounts_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."supplier_accounts"
-    ADD CONSTRAINT "supplier_accounts_supplier_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."supplier_accounts"
-    ADD CONSTRAINT "supplier_accounts_restaurant_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
 CREATE UNIQUE INDEX "supplier_accounts_once" ON "public"."supplier_accounts" USING "btree" ("supplier_id", "account_no");
 CREATE INDEX "idx_supplier_accounts_lookup" ON "public"."supplier_accounts" USING "btree" ("account_no");
 
@@ -730,12 +716,6 @@ COMMENT ON TABLE "public"."supplier_codes" IS 'Every code a supplier has ever pr
 
 ALTER TABLE ONLY "public"."supplier_codes"
     ADD CONSTRAINT "supplier_codes_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."supplier_codes"
-    ADD CONSTRAINT "supplier_codes_supplier_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."supplier_codes"
-    ADD CONSTRAINT "supplier_codes_restaurant_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."supplier_codes"
-    ADD CONSTRAINT "supplier_codes_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
 CREATE UNIQUE INDEX "supplier_codes_once" ON "public"."supplier_codes" USING "btree" ("supplier_id", "restaurant_id", "supplier_code");
 CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
 
@@ -770,16 +750,6 @@ COMMENT ON TABLE "public"."product_price_events" IS 'What a product cost per uni
 
 ALTER TABLE ONLY "public"."product_price_events"
     ADD CONSTRAINT "product_price_events_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."product_price_events"
-    ADD CONSTRAINT "product_price_events_restaurant_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."product_price_events"
-    ADD CONSTRAINT "product_price_events_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."product_price_events"
-    ADD CONSTRAINT "product_price_events_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."product_price_events"
-    ADD CONSTRAINT "product_price_events_line_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."product_price_events"
-    ADD CONSTRAINT "product_price_events_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_price_events_product" ON "public"."product_price_events" USING "btree" ("restaurant_id", "product_id", "at");
 
 -- What was wrong with the delivery.
@@ -831,18 +801,6 @@ COMMENT ON COLUMN "public"."invoice_line_claims"."counted_week" IS 'The week thi
 
 ALTER TABLE ONLY "public"."invoice_line_claims"
     ADD CONSTRAINT "invoice_line_claims_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_restaurant_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_supplier_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_line_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_credit_fkey" FOREIGN KEY ("credit_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
-ALTER TABLE ONLY "public"."invoice_line_claims"
-    ADD CONSTRAINT "invoice_line_claims_raised_by_fkey" FOREIGN KEY ("raised_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_claims_open" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "status", "raised_on");
 CREATE INDEX "idx_claims_line" ON "public"."invoice_line_claims" USING "btree" ("invoice_line_id") WHERE ("invoice_line_id" IS NOT NULL);
 CREATE INDEX "idx_claims_docket" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "docket_number") WHERE ("docket_number" IS NOT NULL);
@@ -874,12 +832,6 @@ COMMENT ON COLUMN "public"."supplier_documents"."order_reference" IS 'On a credi
 
 ALTER TABLE ONLY "public"."supplier_documents"
     ADD CONSTRAINT "supplier_documents_pkey" PRIMARY KEY ("id");
-ALTER TABLE ONLY "public"."supplier_documents"
-    ADD CONSTRAINT "supplier_documents_restaurant_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."supplier_documents"
-    ADD CONSTRAINT "supplier_documents_supplier_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
-ALTER TABLE ONLY "public"."supplier_documents"
-    ADD CONSTRAINT "supplier_documents_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
 CREATE UNIQUE INDEX "supplier_documents_once" ON "public"."supplier_documents" USING "btree" ("supplier_id", "restaurant_id", "document_id");
 CREATE INDEX "idx_supplier_documents_date" ON "public"."supplier_documents" USING "btree" ("restaurant_id", "document_date");
 
@@ -1004,15 +956,15 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
     "week_start" "date" NOT NULL,
-    -- When the till's report covering this week was last read in. While it is
-    -- set, a rostered shift with nothing against it is taken as not worked
-    -- rather than as an open question: the file answered it.
-    "imported_at" timestamp with time zone,
-    "imported_by" "uuid",
     "filed_at" timestamp with time zone,
     "filed_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
+    -- When the till's report covering this week was last read in. While it is,
+    -- set, a rostered shift with nothing against it is taken as not worked,
+    -- rather than as an open question: the file answered it.,
     CONSTRAINT "timesheet_weeks_starts_on_a_sunday" CHECK ((EXTRACT(dow FROM "week_start") = (0)::numeric))
 );
 
@@ -1726,15 +1678,59 @@ ALTER TABLE ONLY "public"."predictions"
 -- -- What it cost ------------------------------------------------------
 
 ALTER TABLE ONLY "public"."invoices"
-    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
-ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id");
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_credit_of_fkey" FOREIGN KEY ("credit_of_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id");
+    ADD CONSTRAINT "invoice_lines_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+    ADD CONSTRAINT "invoice_lines_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_decided_by_fkey" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_credit_invoice_id_fkey" FOREIGN KEY ("credit_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_raised_by_fkey" FOREIGN KEY ("raised_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."labour_entries"
