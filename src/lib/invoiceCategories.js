@@ -141,3 +141,53 @@ export function groupByDay(invoices) {
             total: rows.reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0),
         }))
 }
+
+// The one category a document is filed under, for everything that shows one
+// label per invoice: where most of its money went.
+//
+// It used to be the supplier's, and the supplier that is most of what they buy
+// is a food supplier, so every imported invoice said food on the History page,
+// including the ones that were all mops and foil. By size rather than sign, so
+// a credit note is filed where most of what it gave back went.
+export function mainCategory(totals, fallback = null) {
+    const best = [...(totals || [])]
+        .filter(t => t.category && Math.abs(num(t.amount)) > 0.004)
+        .sort((a, b) => Math.abs(num(b.amount)) - Math.abs(num(a.amount)))[0]
+    return best?.category || fallback
+}
+
+// The same totals from lines as they are stored, for the screens that read an
+// invoice after it has gone in.
+export function storedTotals(lines) {
+    const byCategory = new Map()
+    for (const l of lines || []) {
+        if (!l.category) continue
+        const cost = num(l.line_total) + num(l.vat_amount) + num(l.deposit_amount)
+        byCategory.set(l.category, num(byCategory.get(l.category)) + cost)
+    }
+    return [...byCategory.entries()]
+        .map(([category, amount]) => ({ category, amount: Math.round(amount * 100) / 100 }))
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+}
+
+// What an invoice was spent on, category by category, VAT and deposit included.
+//
+// An invoice read off a document knows the answer line by line, and one label
+// for the whole thing is wrong the day a delivery carries food and foil
+// together. One typed in off a total only has its own category, and that is
+// the answer for it. The History page and the Invoices list both read it from
+// here, so they say the same thing about the same invoice.
+export function invoiceSplit(invoice) {
+    const lines = (invoice?.invoice_lines || []).filter(l => l.category)
+    if (!lines.length) {
+        return [{ category: invoice?.category || 'other', amount: num(invoice?.total_amount) }]
+    }
+    return storedTotals(lines)
+}
+
+// How much of a list of invoices went on some categories, split that way.
+export function spentIn(invoices, cats) {
+    return (invoices || []).reduce((total, inv) => total + invoiceSplit(inv)
+        .filter(s => cats.includes(s.category))
+        .reduce((sum, s) => sum + num(s.amount), 0), 0)
+}

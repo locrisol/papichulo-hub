@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     INVOICE_CATEGORIES, invoiceCategory, groupByDay, spendOn, FOOD, PACKAGING,
+    mainCategory, storedTotals, invoiceSplit, spentIn,
 } from '@/lib/invoiceCategories'
 
 describe('invoiceCategory', () => {
@@ -110,5 +111,66 @@ describe('what a week cost', () => {
     it('is nought rather than NaN on nothing at all', () => {
         expect(spendOn(null, FOOD)).toBe(0)
         expect(spendOn([], FOOD)).toBe(0)
+    })
+})
+
+describe('the one label an invoice is filed under', () => {
+    // 45612582 on the first real week: oven cleaner and gloves, and a roll of
+    // foil. It said food on the History page.
+    it('is where most of its money went', () => {
+        expect(mainCategory([
+            { category: 'cleaning', amount: 130.59 }, { category: 'packaging', amount: 16.21 },
+        ])).toBe('cleaning')
+    })
+
+    it('goes by size on a credit note, not by sign', () => {
+        expect(mainCategory([
+            { category: 'packaging', amount: -16.21 }, { category: 'cleaning', amount: -130.59 },
+        ])).toBe('cleaning')
+    })
+
+    it('falls back when there are no lines to go by', () => {
+        expect(mainCategory([], 'food')).toBe('food')
+    })
+
+    it('adds up stored lines with their VAT and deposit', () => {
+        expect(storedTotals([
+            { category: 'food', line_total: 35.22, vat_amount: 8.1, deposit_amount: 7.2 },
+            { category: 'food', line_total: 46.58, vat_amount: 0, deposit_amount: 0 },
+            { category: 'packaging', line_total: 8.34, vat_amount: 1.92, deposit_amount: 0 },
+        ])).toEqual([
+            { category: 'food', amount: 97.1 },
+            { category: 'packaging', amount: 10.26 },
+        ])
+    })
+})
+
+describe('what an invoice was spent on', () => {
+    const typed = { category: 'packaging', total_amount: 44.23, invoice_lines: [] }
+    const read = {
+        category: 'food',
+        total_amount: 146.8,
+        invoice_lines: [
+            { category: 'cleaning', line_total: 87.25, vat_amount: 20.07, deposit_amount: 0 },
+            { category: 'packaging', line_total: 13.18, vat_amount: 3.03, deposit_amount: 0 },
+            { category: 'cleaning', line_total: 18.92, vat_amount: 4.35, deposit_amount: 0 },
+        ],
+    }
+
+    it('is its own category for one typed in off a total', () => {
+        expect(invoiceSplit(typed)).toEqual([{ category: 'packaging', amount: 44.23 }])
+    })
+
+    // 45612582 on the first real week, which said food on the History page.
+    it('is its lines for one read off a document, whatever it is filed under', () => {
+        expect(invoiceSplit(read)).toEqual([
+            { category: 'cleaning', amount: 130.59 },
+            { category: 'packaging', amount: 16.21 },
+        ])
+    })
+
+    it('adds a list of both kinds up by category', () => {
+        expect(spentIn([typed, read], ['packaging', 'cleaning'])).toBeCloseTo(191.03, 2)
+        expect(spentIn([typed, read], ['food'])).toBe(0)
     })
 })

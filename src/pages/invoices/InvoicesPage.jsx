@@ -12,7 +12,10 @@ import DateStepper from '@/components/ui/DateStepper'
 import InvoiceForm from '@/components/invoices/InvoiceForm'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
-import { INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay } from '@/lib/invoiceCategories'
+import {
+    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn,
+} from '@/lib/invoiceCategories'
+import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -166,7 +169,7 @@ export default function InvoicesPage() {
 
             const { data: inv, error: iErr } = await supabase
                 .from('invoices')
-                .select('*, suppliers(name)')
+                .select('*, suppliers(name), invoice_lines(category, line_total, vat_amount, deposit_amount)')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', weekStart)
                 .lte('invoice_date', end)
@@ -335,7 +338,7 @@ export default function InvoicesPage() {
         // sentence. Several invoices from the same supplier on the same day are
         // normal here, so the supplier's name on its own does not tell you which
         // one you are about to delete.
-        const cat = invoiceCategory(inv.category)
+        const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
         const ok = await confirm({
             title: 'Delete this invoice?',
             message: 'It will be taken off the week straight away and off the cost dashboard with it.',
@@ -356,11 +359,10 @@ export default function InvoicesPage() {
     }
 
     // Weekly totals. Packaging and cleaning are shown together because that is
-    // how the weekly report treats them, against a single 2.5% target.
+    // how the weekly report treats them, against a single 2.5% target. An
+    // invoice read off a document counts by what its lines went on.
     function totalFor(...cats) {
-        return invoices
-            .filter(i => cats.includes(i.category))
-            .reduce((sum, i) => sum + num(i.total_amount), 0)
+        return spentIn(invoices, cats)
     }
     const weekTotal = invoices.reduce((sum, i) => sum + num(i.total_amount), 0)
 
@@ -501,7 +503,7 @@ export default function InvoicesPage() {
                                     Packaging at a glance, so it stays. */}
                                 <div className="sm:hidden">
                                     {day.rows.map(inv => {
-                                        const cat = invoiceCategory(inv.category)
+                                        const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
                                         const isEditing = editingId === inv.id
                                         return (
                                             <div
@@ -516,8 +518,8 @@ export default function InvoicesPage() {
                                                         {fmtMoney(inv.total_amount)}
                                                     </span>
                                                 </div>
-                                                <span className={`inline-block mt-1 px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
-                                                    {cat.label}
+                                                <span className="block mt-1">
+                                                    <CategoryBadges invoice={inv} />
                                                 </span>
                                                 {inv.notes && (
                                                     <p className="text-xs text-muted mt-1">{inv.notes}</p>
@@ -542,7 +544,7 @@ export default function InvoicesPage() {
                                 <table className="w-full text-sm">
                                     <tbody>
                                         {day.rows.map(inv => {
-                                            const cat = invoiceCategory(inv.category)
+                                            const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
                                             const isEditing = editingId === inv.id
                                             return (
                                                 <Fragment key={inv.id}>
@@ -557,9 +559,7 @@ export default function InvoicesPage() {
                                                     </td>
                                                     <td className="px-3 py-2 w-32">
                                                         {/* Same colour as the button it was filed with */}
-                                                        <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
-                                                            {cat.label}
-                                                        </span>
+                                                        <CategoryBadges invoice={inv} />
                                                     </td>
                                                     <td className="px-3 py-2 text-right text-gray-900 font-medium w-28 whitespace-nowrap">
                                                         {fmtMoney(inv.total_amount)}

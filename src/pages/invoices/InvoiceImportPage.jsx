@@ -12,6 +12,7 @@ import {
     documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim, creditOnHandEntry,
     documentTotal,
 } from '@/lib/invoiceImport'
+import { mainCategory } from '@/lib/invoiceCategories'
 import { creditSettles } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
@@ -293,7 +294,10 @@ export default function InvoiceImportPage() {
                 supplierId: where.supplierId,
                 weekStart: weekStartOf(doc.date),
                 createdBy: user?.id,
-                category: supplier?.category,
+                // Where most of its money went, which is what History shows
+                // it as. The supplier's own category only when there are no
+                // lines to go by.
+                category: mainCategory(documentTotals(matched), supplier?.category),
             }))
             .select()
             .single()
