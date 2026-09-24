@@ -186,11 +186,41 @@ alter table public.invoice_lines drop constraint if exists invoice_lines_storage
 alter table public.invoice_lines add constraint invoice_lines_storage_check
     check (storage is null or storage in ('ambient', 'chilled', 'frozen'));
 
-alter table public.invoice_lines drop constraint if exists invoice_lines_invoice_fkey;
+-- **One foreign key per column, and only one.**
+--
+-- schema.sql never declared these two and the live database has always had
+-- them, under the names Postgres gives by default. Adding a second key on the
+-- same column under a different name leaves the column with two, and two
+-- relationships between the same pair of tables is something PostgREST cannot
+-- choose between: every screen that reads an invoice with its lines, or a line
+-- with its invoice, stops with "more than one relationship was found".
+--
+-- So anything already on these columns goes first, whatever it is called. Named
+-- by column rather than by name, because the name is exactly the thing that
+-- differs between a database built from the old migrations and one built from
+-- schema.sql.
+do $$
+declare
+    con record;
+begin
+    for con in
+        select distinct c.conname
+        from pg_constraint c
+        join pg_class t on t.oid = c.conrelid
+        join pg_namespace n on n.oid = t.relnamespace
+        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+        where c.contype = 'f'
+          and n.nspname = 'public'
+          and t.relname = 'invoice_lines'
+          and a.attname in ('invoice_id', 'product_id')
+    loop
+        execute format('alter table public.invoice_lines drop constraint %I', con.conname);
+    end loop;
+end $$;
+
 alter table public.invoice_lines add constraint invoice_lines_invoice_fkey
     foreign key (invoice_id) references public.invoices(id) on delete cascade;
 
-alter table public.invoice_lines drop constraint if exists invoice_lines_product_fkey;
 alter table public.invoice_lines add constraint invoice_lines_product_fkey
     foreign key (product_id) references public.products(id) on delete set null;
 
