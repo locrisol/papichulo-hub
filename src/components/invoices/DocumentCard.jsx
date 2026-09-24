@@ -1,0 +1,142 @@
+import { fmtMoney } from '@/lib/format'
+import { fullDate } from '@/lib/dates'
+import { card, badge, rowButton } from '@/lib/controlStyles'
+import { invoiceCategory } from '@/lib/invoiceCategories'
+import { PILES } from '@/lib/invoiceImport'
+
+// One file, read, before anybody presses anything.
+//
+// **Everything that decides where the money goes is on the card.** The number,
+// the day, the week it will be filed under, the restaurant, and the total split
+// by category. That last one is the whole reason this screen exists rather than
+// a button that says Import: filing a delivery of food against the cleaning
+// target is the mistake that actually costs something, and it is invisible
+// afterwards.
+
+const PILE_WORDS = {
+    new_to_us: 'never bought before',
+    new_code: 'code has moved',
+    price_changed: 'price changed',
+    unchanged: 'same as before',
+    ignored: 'not stock',
+}
+
+const STATE = {
+    ready: { words: 'Ready to import', tint: 'bg-green-50 text-green-800 border-green-200' },
+    already_here: { words: 'Already here', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
+    by_hand: { words: 'Entered by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
+    blocked: { words: 'Cannot be read', tint: 'bg-red-50 text-red-800 border-red-200' },
+    working: { words: 'Reading...', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
+}
+
+export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn }) {
+    const { name, state, doc, totals, piles, blocks, place, where, restaurantName } = file
+    const look = STATE[state] || STATE.working
+
+    return (
+        <div className={`${card} p-4`}>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-900 break-all">{name}</p>
+                    {doc && (
+                        <p className="text-xs text-muted mt-0.5">
+                            {doc.kind === 'credit' ? 'Credit note' : 'Invoice'} {doc.number}
+                            {doc.date ? `, ${fullDate(doc.date)}` : ''}
+                            {doc.pages > 1 ? `, ${doc.pages} pages` : ''}
+                        </p>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={`${badge} border ${look.tint}`}>{look.words}</span>
+                    <button type="button" onClick={onForget} className={rowButton()}>Take it off</button>
+                </div>
+            </div>
+
+            {/* Which restaurant's costs this lands in, which is the one thing on
+                the paper that cannot be worked out any other way. */}
+            {where?.what === 'unknown' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-900">
+                    <strong className="font-bold">Account {where.accountNo} is new.</strong>{' '}
+                    Nothing in the Hub says whose it is. Suppliers are shared between the two
+                    restaurants, so this is the only thing on the page that says where the money
+                    goes.
+                    <button type="button" onClick={onLinkAccount} className={`${rowButton('good')} mt-2 block`}>
+                        It is ours
+                    </button>
+                </div>
+            )}
+
+            {where?.what === 'elsewhere' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-800">
+                    <strong className="font-bold">This one is not ours.</strong>{' '}
+                    Account {where.accountNo} belongs to {restaurantName || 'the other restaurant'},
+                    so importing it here would put its cost on the wrong week in two places at once.
+                </div>
+            )}
+
+            {place?.what === 'already_here' && (
+                <p className="text-xs text-muted mb-3">
+                    This document is already in the Hub. Nothing to do.
+                </p>
+            )}
+
+            {place?.what === 'by_hand' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3 text-xs text-blue-900">
+                    <strong className="font-bold">There is one typed in for that day.</strong>{' '}
+                    {fmtMoney(place.candidates[0].total_amount)} with no document behind it. A hand
+                    entered total is net, because a shortage was taken off before it was typed, so
+                    filling it in restores the real total and turns the difference into a claim.
+                    <button
+                        type="button"
+                        onClick={() => onFillIn(place.candidates[0])}
+                        className={`${rowButton('edit')} mt-2 block`}
+                    >
+                        Fill that one in
+                    </button>
+                </div>
+            )}
+
+            {blocks?.length > 0 && (
+                <ul className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-800 space-y-1">
+                    {blocks.map(said => <li key={said}>{said}</li>)}
+                </ul>
+            )}
+
+            {doc?.amended && (
+                <p className="text-xs text-amber-800 mb-3">
+                    The supplier has printed an amendment box on this one, so check it against the
+                    order before it goes in.
+                </p>
+            )}
+
+            {totals?.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                    {totals.map(t => {
+                        const cat = invoiceCategory(t.category)
+                        return (
+                            <span key={t.category} className={`${badge} border ${cat.soft}`}>
+                                {cat.label} {fmtMoney(t.amount)}
+                            </span>
+                        )
+                    })}
+                </div>
+            )}
+
+            {doc?.lines?.length > 0 && (
+                <p className="text-xs text-muted">
+                    {doc.lines.length} {doc.lines.length === 1 ? 'line' : 'lines'},{' '}
+                    {fmtMoney(doc.goodsTotal)}
+                    {piles && (
+                        <>
+                            {': '}
+                            {PILES
+                                .filter(pile => piles[pile]?.length)
+                                .map(pile => `${piles[pile].length} ${PILE_WORDS[pile]}`)
+                                .join(', ')}
+                        </>
+                    )}
+                </p>
+            )}
+        </div>
+    )
+}

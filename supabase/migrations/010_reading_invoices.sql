@@ -156,6 +156,28 @@ alter table public.invoice_lines add column if not exists category text;
 -- is exactly what a product_supplier_prices row is.
 alter table public.invoice_lines add column if not exists price_id uuid;
 
+-- Whether somebody has looked at this line yet, and what they said.
+--
+-- The review works out what needs a decision by comparing the line against the
+-- price row, which answers itself once a price is accepted. **Rejecting does
+-- not.** He paid the new price whatever the Hub costs from, so the difference
+-- is still there next week and the week after, and the line would come back
+-- asking the same question forever. Saying no once has to stick.
+alter table public.invoice_lines add column if not exists decision text;
+alter table public.invoice_lines add column if not exists decided_at timestamptz;
+alter table public.invoice_lines add column if not exists decided_by uuid;
+
+alter table public.invoice_lines drop constraint if exists invoice_lines_decision_check;
+alter table public.invoice_lines add constraint invoice_lines_decision_check
+    check (decision is null or decision in ('accepted', 'rejected', 'ignored', 'matched'));
+
+alter table public.invoice_lines drop constraint if exists invoice_lines_decided_by_fkey;
+alter table public.invoice_lines add constraint invoice_lines_decided_by_fkey
+    foreign key (decided_by) references public.users(id) on delete set null;
+
+create index if not exists idx_invoice_lines_waiting
+    on public.invoice_lines (invoice_id) where decision is null;
+
 alter table public.invoice_lines drop constraint if exists invoice_lines_category_check;
 alter table public.invoice_lines add constraint invoice_lines_category_check
     check (category is null or category in ('food', 'packaging', 'cleaning', 'other'));

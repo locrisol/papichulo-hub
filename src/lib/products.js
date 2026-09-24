@@ -174,3 +174,63 @@ export function compareForCount(a, b) {
 export function inCountOrder(products) {
     return (products || []).slice().sort(compareForCount)
 }
+
+// Starting a product somewhere else and finishing it on the catalogue screen.
+//
+// The invoice review meets a supplier code nobody has ever bought under, and
+// the honest answer is a whole new product: a name, a section, a unit, what it
+// weighs, its allergens, maybe a recipe. That flow already exists, and it is
+// four hundred lines and well tested, so the review hands off to it rather than
+// growing a smaller copy that would slowly diverge.
+//
+// A link and not a store, because the catalogue screen is reached by URL from
+// the review and the thing carried is four fields, and because a link can be
+// looked at.
+export function prefillLink(base, { name, section, unit, supplierId, code, pricePerCase, unitsPerCase }) {
+    const bits = new URLSearchParams()
+    bits.set('new', '1')
+    if (name) bits.set('name', name)
+    if (section) bits.set('section', section)
+    if (unit) bits.set('unit', unit)
+    if (supplierId) bits.set('supplier', supplierId)
+    if (code) bits.set('code', code)
+    if (pricePerCase != null) bits.set('perCase', String(pricePerCase))
+    if (unitsPerCase != null) bits.set('perPack', String(unitsPerCase))
+    return `${base}?${bits.toString()}`
+}
+
+// The other end of it: what a link says to put in the form.
+//
+// Nothing at all unless the link asked for a new product by name, so an
+// ordinary visit to the catalogue is untouched.
+export function prefillFrom(params) {
+    const name = params?.get?.('name')
+    if (!params?.get?.('new') || !name) return null
+
+    const perCase = params.get('perCase')
+    const perPack = params.get('perPack')
+
+    return {
+        form: {
+            name,
+            // The band the line sat under on the invoice says where a thing is
+            // kept, and the dry store is where most of it goes.
+            section: SECTIONS.includes(params.get('section')) ? params.get('section') : 'Dry',
+            unit: UNITS.includes(params.get('unit')) ? params.get('unit') : 'KG',
+        },
+        price: {
+            supplier_id: params.get('supplier') || '',
+            supplier_code: params.get('code') || '',
+            purchase_type: 'case',
+            price_per_case: perCase || '',
+            units_per_case: perPack || '',
+            price_per_unit: '',
+        },
+    }
+}
+
+// Both lists are check constraints in the database, so anything outside them is
+// refused rather than saved as a typo, and a link carrying a stray word must
+// fall back rather than fill in something the form cannot save.
+const SECTIONS = ['Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning']
+const UNITS = ['KG', 'Units', 'Litre']

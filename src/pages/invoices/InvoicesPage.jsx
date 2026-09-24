@@ -373,12 +373,23 @@ export default function InvoicesPage() {
                 </div>
                 {/* This screen only shows the week you are working on. The history
                     is where you go when you are looking for something older. */}
-                <button
-                    onClick={() => navigate('/invoices/history')}
-                    className={secondaryButton}
-                >
-                    History
-                </button>
+                <div className="flex flex-wrap gap-2">
+                    {/* Reading the documents instead of typing a total off
+                        them. This screen is still where an invoice from
+                        somebody who sends a photograph of a docket goes in. */}
+                    <button
+                        onClick={() => navigate('/invoices/import')}
+                        className={secondaryButton}
+                    >
+                        Import from PDF
+                    </button>
+                    <button
+                        onClick={() => navigate('/invoices/history')}
+                        className={secondaryButton}
+                    >
+                        History
+                    </button>
+                </div>
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}

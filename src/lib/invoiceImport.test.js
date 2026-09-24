@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
-    linePayload, invoicePayload, documentBlocks,
+    linePayload, invoicePayload, documentBlocks, storedLine,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -335,7 +335,38 @@ describe('what gets written', () => {
             category: 'food',
             product_id: 'p1',
             price_id: 'pr1',
+            decision: 'matched',
         })
+    })
+
+    // On a twenty document week the review would otherwise open with two
+    // hundred lines on it, nearly all of them exactly like last week's.
+    it('settles the lines nobody needs to look at as it writes them', () => {
+        const same = matchLines({ lines: [line()], prices: [price()], supplier: SUPPLIER })
+        expect(linePayload(same[0], 'i1').decision).toBe('matched')
+
+        const moved = matchLines({
+            lines: [line({ price_per_case: 32.1 })], prices: [price()], supplier: SUPPLIER,
+        })
+        expect(linePayload(moved[0], 'i1').decision).toBeNull()
+
+        const fresh = matchLines({ lines: [line({ code: '999999' })], supplier: SUPPLIER })
+        expect(linePayload(fresh[0], 'i1').decision).toBeNull()
+    })
+
+    // The review runs over lines written days ago and has to reach exactly the
+    // same answer as the import did, or the two screens disagree about the same
+    // piece of paper.
+    it('reads a stored line back into the shape the matching works in', () => {
+        const [written] = matchLines({ lines: [line()], prices: [price()], supplier: SUPPLIER })
+        const stored = linePayload(written, 'i1')
+        const [again] = matchLines({
+            lines: [storedLine(stored)], prices: [price()], supplier: SUPPLIER,
+        })
+
+        expect(again.pile).toBe('unchanged')
+        expect(again.packMoved).toBe(false)
+        expect(again.price.id).toBe('pr1')
     })
 
     it('says nothing rather than guessing when the pack size could not be read', () => {

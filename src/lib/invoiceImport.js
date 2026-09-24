@@ -337,6 +337,39 @@ export function linePayload(row, invoiceId) {
         category: row.category || null,
         product_id: row.product?.id || null,
         price_id: row.price?.id || null,
+        // A line the same as last week's needs nobody, and a code somebody has
+        // already said is not stock needs nobody either. Settling that here
+        // means the review holds only what a person has to look at, which on a
+        // twenty document week is a handful of lines instead of two hundred.
+        decision: DECIDED_ON_IMPORT[row.pile] || null,
+    }
+}
+
+const DECIDED_ON_IMPORT = { unchanged: 'matched', ignored: 'ignored' }
+
+// A line read back out of the database, in the shape the matching works in.
+//
+// The review runs over lines that were written days ago, and it has to reach
+// exactly the same answer as the import did or the two screens would disagree
+// about the same piece of paper. So the stored row is turned back into a line
+// and put through the same matching rather than compared a second way.
+//
+// units_per_case was settled at import and is carried as a count with no unit
+// on it, which is what stops a pack that has not moved being read as one that
+// has.
+export function storedLine(stored) {
+    const units = stored.units_per_case == null ? null : num(stored.units_per_case)
+    return {
+        line_no: stored.line_no,
+        code: stored.supplier_code,
+        description: stored.raw_description,
+        pack_size: stored.pack_size,
+        pack: units == null ? null : { count: units, size: null, unit: null, total: units },
+        cases: num(stored.cases),
+        units: num(stored.units),
+        price_per_case: stored.price_per_case == null ? null : num(stored.price_per_case),
+        value: num(stored.line_total),
+        storage: stored.storage,
     }
 }
 

@@ -641,9 +641,15 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "line_total" numeric(10,2),
     "storage" "text",
     "category" "text",
+    "decision" "text",
+    "decided_at" timestamp with time zone,
+    "decided_by" "uuid",
     CONSTRAINT "invoice_lines_category_check" CHECK (("category" IS NULL OR "category" IN ('food', 'packaging', 'cleaning', 'other'))),
+    CONSTRAINT "invoice_lines_decision_check" CHECK (("decision" IS NULL OR "decision" IN ('accepted', 'rejected', 'ignored', 'matched'))),
     CONSTRAINT "invoice_lines_storage_check" CHECK (("storage" IS NULL OR "storage" IN ('ambient', 'chilled', 'frozen')))
 );
+
+COMMENT ON COLUMN "public"."invoice_lines"."decision" IS 'Whether somebody has looked at this line yet and what they said. The review works out what needs a decision by comparing the line against the price row, which answers itself once a price is accepted. Rejecting does not: the difference is still there next week, so saying no once has to stick.';
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
@@ -653,9 +659,12 @@ ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_decided_by_fkey" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btree" ("invoice_id");
 CREATE INDEX "idx_invoice_lines_code" ON "public"."invoice_lines" USING "btree" ("supplier_code") WHERE ("supplier_code" IS NOT NULL);
 CREATE INDEX "idx_invoice_lines_product" ON "public"."invoice_lines" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
+CREATE INDEX "idx_invoice_lines_waiting" ON "public"."invoice_lines" USING "btree" ("invoice_id") WHERE ("decision" IS NULL);
 
 -- The account number a supplier prints on a document, and which restaurant it
 -- means.

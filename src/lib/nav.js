@@ -32,6 +32,11 @@ export const navItems = [
     { path: '/sales/weekly', label: 'Weekly Sales', icon: 'weekly', section: 'Operations', roles: MANAGERS },
     { path: '/costs/timesheet', label: 'Timesheet', icon: 'costs', section: 'Operations', roles: MANAGERS },
     { path: '/invoices', label: 'Invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
+    { path: '/invoices/import', label: 'Import invoices', icon: 'invoice', section: 'Operations', roles: MANAGERS },
+    // Everybody, and that is the whole point. Whoever signs for a delivery
+    // knows what was wrong within a minute and has forgotten by Friday, and the
+    // supplier never credits anything that was not asked for at the door.
+    { path: '/invoices/claims', label: 'Delivery problems', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },
 

@@ -54,6 +54,10 @@ const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const WeeklySalesPage = lazy(() => import('@/pages/sales/WeeklySalesPage'))
 const InvoicesPage = lazy(() => import('@/pages/invoices/InvoicesPage'))
 const InvoiceHistoryPage = lazy(() => import('@/pages/invoices/InvoiceHistoryPage'))
+const InvoiceImportPage = lazy(() => import('@/pages/invoices/InvoiceImportPage'))
+const InvoiceReviewPage = lazy(() => import('@/pages/invoices/InvoiceReviewPage'))
+const SupplierDocumentsPage = lazy(() => import('@/pages/invoices/SupplierDocumentsPage'))
+const ClaimsPage = lazy(() => import('@/pages/invoices/ClaimsPage'))
 const TimesheetPage = lazy(() => import('@/pages/costs/TimesheetPage'))
 const WasteLogPage = lazy(() => import('@/pages/waste/WasteLogPage'))
 const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
@@ -89,6 +93,18 @@ export default function App() {
                 <Route path="/sales/weekly" element={<RequireRole allowed={MANAGERS}><WeeklySalesPage /></RequireRole>} />
                 <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
                 <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
+                {/* Reading the documents rather than typing a total off them.
+                    Managers and above, the same as the rest of the money. */}
+                <Route path="/invoices/import" element={<RequireRole allowed={MANAGERS}><InvoiceImportPage /></RequireRole>} />
+                <Route path="/invoices/review" element={<RequireRole allowed={MANAGERS}><InvoiceReviewPage /></RequireRole>} />
+                <Route path="/invoices/documents" element={<RequireRole allowed={MANAGERS}><SupplierDocumentsPage /></RequireRole>} />
+
+                {/* Everybody, and that is the point of it. The person signing
+                    for a delivery knows what was wrong within a minute and has
+                    forgotten by Friday, and a credit nobody asked for is never
+                    issued. What an employee sees is their own notes and nothing
+                    else, which the database insists on as well. */}
+                <Route path="/invoices/claims" element={<RequireRole allowed={ALL_ROLES}><ClaimsPage /></RequireRole>} />
                 <Route path="/costs/timesheet" element={<RequireRole allowed={MANAGERS}><TimesheetPage /></RequireRole>} />
                 {/* The Labour page is gone. Anyone with the old address
                     bookmarked, which includes his phone, lands on the
