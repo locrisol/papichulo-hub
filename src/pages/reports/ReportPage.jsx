@@ -24,6 +24,7 @@ import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
 import ReportCorporateSales from '@/components/reports/ReportCorporateSales'
 import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
+import InvoiceWeek from '@/components/reports/InvoiceWeek'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
@@ -743,6 +744,34 @@ export default function ReportPage() {
         }))
     }
 
+    // The claims that are still owed, onto the support list.
+    //
+    // An action already carries from week to week until somebody ticks it, so
+    // nothing new has to be built to make a claim stay in front of people: it
+    // is added once, keyed by the claim, and crossed off when the credit lands.
+    async function putClaimsOnList(jobs) {
+        const section = sections.find(s => s.key === 'support_actions')
+        if (!section) return 'This report has no support section to put them on.'
+
+        const at = section.items.filter(i => i.kind === 'action').length
+        if (jobs.add.length) {
+            const { error: e1 } = await supabase.from('report_items').insert(
+                jobs.add.map((job, i) => ({ ...job, section_id: section.id, sort_order: at + i })),
+            )
+            if (e1) return friendlyError(e1)
+        }
+
+        if (jobs.tick.length) {
+            const { error: e2 } = await supabase.from('report_items')
+                .update({ done_on: todayISO() })
+                .in('id', jobs.tick.map(item => item.id))
+            if (e2) return friendlyError(e2)
+        }
+
+        setRefresh(n => n + 1)
+        return null
+    }
+
     async function addRefund(platform) {
         const section = online()
         if (!section) return
@@ -967,6 +996,17 @@ export default function ReportPage() {
                                         />
                                         <PageChart spec={specs.delivery} rows={history} />
                                         <PageChart spec={specs.earnings} rows={history} />
+                                        {/* Under the food cost, because a food
+                                            cost that moved two points should
+                                            have its reason on the same page. */}
+                                        <InvoiceWeek
+                                            restaurantId={report?.restaurant_id}
+                                            weekStart={week}
+                                            weekEnd={addDays(week, 6)}
+                                            canEdit={canEdit}
+                                            supportSection={sections.find(s => s.key === 'support_actions')}
+                                            onAddActions={putClaimsOnList}
+                                        />
                                         </>
                                     )}
                                     {section.key === 'people_ops' && (
