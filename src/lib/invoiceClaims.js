@@ -24,7 +24,7 @@
 
 import { num } from '@/lib/format'
 import { weekStartOf } from '@/lib/dates'
-import { similarWords } from '@/lib/invoiceImport'
+import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
 
 // What can be wrong with a delivery.
 //
@@ -158,6 +158,12 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 // 20.00 a case, and pricing it at the whole line would take the bowls
 // themselves off the food cost as if they had never arrived. So it needs the
 // price that should have been charged, and says nothing without one.
+//
+// **Then the VAT and the deposit, in the same share as the line.** A line costs
+// what it charged, both included (see documentTotal), so a case of drinks sent
+// back has to take off its VAT and its deposit too, or the week keeps them. A
+// price query takes the VAT on the overcharge and no deposit, because the
+// containers were kept.
 export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     if (!line) return null
     const perCase = num(line.price_per_case)
@@ -165,15 +171,20 @@ export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     const cases = Math.abs(num(claim?.cases))
     const units = Math.abs(num(claim?.units))
 
+    const printed = num(line.line_total)
+    const vatShare = printed ? num(line.vat_amount) / printed : 0
+    const depositShare = printed ? num(line.deposit_amount) / printed : 0
+
     if (claim?.kind === 'price') {
         if (agreedPerCase == null || agreedPerCase === '') return null
         const over = perCase - num(agreedPerCase)
         if (over <= 0) return null
-        return round2(cases * over + units * (perPack > 0 ? over / perPack : 0))
+        const asked = cases * over + units * (perPack > 0 ? over / perPack : 0)
+        return round2(asked * (1 + vatShare))
     }
 
     const perUnit = perPack > 0 ? perCase / perPack : num(line.unit_price)
-    return round2(cases * perCase + units * perUnit)
+    return round2((cases * perCase + units * perUnit) * (1 + vatShare + depositShare))
 }
 
 // What is still being chased.
@@ -283,8 +294,10 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
         return round2(money - taken)
     }
 
-    const pots = (lines.length ? lines : [{ code: null, value: credit.goodsTotal ?? credit.total_amount }])
-        .map(l => ({ code: l.code || null, money: Math.abs(num(l.value)) }))
+    // What each credit line gives back is what it cost: its value, VAT and
+    // deposit, the same footing the claim was priced on.
+    const pots = (lines.length ? lines : [{ code: null, value: documentTotal(credit) || credit.total_amount }])
+        .map(l => ({ code: l.code || null, money: Math.abs(lineCost(l)) }))
 
     // Same product code first, then anything still open, oldest first.
     for (const pot of pots) {

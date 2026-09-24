@@ -2,7 +2,7 @@ import { fmtMoney } from '@/lib/format'
 import { fullDate } from '@/lib/dates'
 import { card, badge, rowButton } from '@/lib/controlStyles'
 import { invoiceCategory } from '@/lib/invoiceCategories'
-import { PILES } from '@/lib/invoiceImport'
+import { PILES, documentTotal } from '@/lib/invoiceImport'
 
 // One file, read, before anybody presses anything.
 //
@@ -148,11 +148,10 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, 
             {doc?.lines?.length > 0 && (
                 <p className="text-xs text-muted">
                     {doc.lines.length} {doc.lines.length === 1 ? 'line' : 'lines'},{' '}
-                    {fmtMoney(doc.goodsTotal)}
-                    {/* The goods total includes it and the totals above do
-                        not, so without this the two never agree on a
-                        delivery with drinks on it. */}
-                    {doc.deposits ? ` with a ${fmtMoney(Math.abs(doc.deposits))} container deposit` : ''}
+                    {fmtMoney(documentTotal(doc))}
+                    {/* What it costs, which is what it charges: said so
+                        nobody wonders why it is more than the goods. */}
+                    {extrasIn(doc)}
                     {piles && (
                         <>
                             {': '}
@@ -166,4 +165,14 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, 
             )}
         </div>
     )
+}
+
+// "including €24.23 VAT and a €21.60 container deposit", or nothing when there
+// is neither. Without the sign, because on a credit the total above already
+// has one.
+function extrasIn(doc) {
+    const said = []
+    if (doc?.vat) said.push(`${fmtMoney(Math.abs(doc.vat))} VAT`)
+    if (doc?.deposits) said.push(`a ${fmtMoney(Math.abs(doc.deposits))} container deposit`)
+    return said.length ? ` including ${said.join(' and ')}` : ''
 }

@@ -44,6 +44,9 @@ given a document number and a credit note, and `invoice_cost_by_category`.
 `011` is not run yet. It changes that view so a claim carries the money back in
 the week the delivery happened and a credit note that settles one does not count
 again, and it lets a claim made from a credit say nobody logged a reason.
+`012` is not run yet either and goes after `011`. It gives each invoice line its
+share of the VAT and the container deposit, and the view counts them, so an
+invoice costs what it charges, the way the typed ones always did.
 
 ## What was here before
 

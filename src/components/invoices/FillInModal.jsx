@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import { fmtMoney } from '@/lib/format'
 import { fullDate } from '@/lib/dates'
-import { fillInPlan } from '@/lib/invoiceImport'
+import { fillInPlan, documentTotal } from '@/lib/invoiceImport'
 import {
     modalFooter, secondaryButton, primaryButton, captionClass, hintClass,
 } from '@/lib/controlStyles'
@@ -41,7 +41,7 @@ export default function FillInModal({ doc, invoice, lines, onClose, onFillIn }) 
 
                 <p className={captionClass}>On the document</p>
                 <p className="text-sm text-gray-900 mt-1 mb-4">
-                    {doc.number}, {fmtMoney(doc.goodsTotal)}, {lines} lines.
+                    {doc.number}, {fmtMoney(documentTotal(doc))}, {lines} lines.
                 </p>
 
                 {plan.same && (

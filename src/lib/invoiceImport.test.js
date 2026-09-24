@@ -3,7 +3,7 @@ import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
-    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry,
+    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -117,6 +117,62 @@ describe('what kind of cost a line is', () => {
 
     it('is other when there is neither', () => {
         expect(lineCategory(null, null)).toBe('other')
+    })
+
+    // The first real week put foil, mops, bowls and lids on the food cost,
+    // because none of their codes were saved and the supplier is a food
+    // supplier. Food is zero rated; a taxed line with no deposit is not food.
+    it('does not call a taxed line food when the Hub does not know it yet', () => {
+        const foil = { value: 13.18, vat: 3.03, deposit: 0 }
+        expect(lineCategory(null, SUPPLIER, foil)).toBe('packaging')
+    })
+
+    it('still calls zero rated lines and drinks with a deposit food', () => {
+        expect(lineCategory(null, SUPPLIER, { value: 41.12, vat: 0, deposit: 0 })).toBe('food')
+        expect(lineCategory(null, SUPPLIER, { value: 18.54, vat: 4.26, deposit: 3.6 })).toBe('food')
+    })
+
+    it('works the same way round on a credit note', () => {
+        expect(lineCategory(null, SUPPLIER, { value: -13.18, vat: -3.03, deposit: 0 })).toBe('packaging')
+    })
+
+    // A product the Hub knows always decides, and a supplier who is not a food
+    // supplier keeps its own category, taxed or not.
+    it('lets a known product or a non food supplier decide', () => {
+        expect(lineCategory({ section: 'Cleaning' }, SUPPLIER, { vat: 3, deposit: 0 })).toBe('cleaning')
+        expect(lineCategory({ section: 'Dry' }, SUPPLIER, { vat: 3, deposit: 0 })).toBe('food')
+        expect(lineCategory(null, EQUIPMENT, { vat: 50, deposit: 0 })).toBe('other')
+    })
+
+    it('files the lines on a real non food invoice as packaging, not food', () => {
+        const matched = matchLines({
+            lines: [
+                line({ code: '497248', description: 'POP UP FOIL 30X27CM 1X200 EA', value: 13.18, vat: 3.03 }),
+                line({ line_no: 2, code: '5017616', description: 'ROUND KRAFT BOWL 750ML 1X300 EA', value: 29.61, vat: 6.81 }),
+            ],
+            supplier: SUPPLIER,
+        })
+        expect(matched.map(r => r.category)).toEqual(['packaging', 'packaging'])
+    })
+
+    // A new number for something already bought is the same kind of thing.
+    it('takes a moved code from the product under its old number', () => {
+        const oldBowl = price({
+            id: 'pr9', supplier_code: '5017616',
+            products: { id: 'p9', name: 'Burrito Bowl', section: 'Packaging', unit: 'Units' },
+        })
+        const matched = matchLines({
+            lines: [line({ code: '5034636', description: 'ROUND KRAFT BOWL 750ML 1X300 EA', vat: 0 })],
+            codes: [{
+                supplier_code: '5017616', last_description: 'ROUND KRAFT BOWL 750ML 1X300 EA',
+                price_id: 'pr9', last_seen_on: '2026-09-01',
+            }],
+            prices: [oldBowl],
+            supplier: SUPPLIER,
+            date: '2026-09-24',
+        })
+        expect(matched[0].pile).toBe('new_code')
+        expect(matched[0].category).toBe('packaging')
     })
 })
 
@@ -326,6 +382,46 @@ describe('what the document comes to', () => {
             { category: 'packaging', amount: 20 },
         ])
     })
+
+    // The VAT on the napkins belongs to packaging, not spread over the food.
+    it('counts each line with its own VAT and deposit on', () => {
+        const matched = matchLines({
+            lines: [
+                line({ code: '497870', value: 60.6 }),
+                line({ line_no: 2, code: '800001', value: 20, vat: 4.6, description: 'NAPKINS' }),
+            ],
+            prices: [
+                price(),
+                price({
+                    id: 'pr2', supplier_code: '800001',
+                    products: { id: 'p2', name: 'Napkins', section: 'Packaging', unit: 'Units' },
+                }),
+            ],
+            supplier: SUPPLIER,
+        })
+
+        expect(documentTotals(matched)).toEqual([
+            { category: 'food', amount: 60.6 },
+            { category: 'packaging', amount: 24.6 },
+        ])
+    })
+})
+
+describe('what a document costs', () => {
+    // Decided on 24 September: what it charges, VAT and deposit included, the
+    // way every invoice typed in by hand was entered.
+    it('is the amount payable', () => {
+        expect(documentTotal({ goodsTotal: 418.23, payable: 442.46 })).toBe(442.46)
+    })
+
+    it('is the goods total for a reader that has never met VAT', () => {
+        expect(documentTotal({ goodsTotal: 163.03 })).toBe(163.03)
+    })
+
+    it('puts a line at its value with its VAT and deposit on', () => {
+        expect(lineCost({ value: 35.22, vat: 8.1, deposit: 7.2 })).toBeCloseTo(50.52, 2)
+        expect(lineCost({ value: 60.6 })).toBe(60.6)
+    })
 })
 
 describe('what gets written', () => {
@@ -344,12 +440,25 @@ describe('what gets written', () => {
             price_per_case: 30.3,
             unit_price: 3.03,
             line_total: 60.6,
+            vat_amount: 0,
+            deposit_amount: 0,
             storage: 'ambient',
             category: 'food',
             product_id: 'p1',
             price_id: 'pr1',
             decision: 'matched',
         })
+    })
+
+    // The price stays as printed and the charges on it go beside it, so a
+    // price is still compared against a price.
+    it('keeps the VAT and deposit beside the printed value', () => {
+        const [row] = matchLines({
+            lines: [line({ value: 35.22, vat: 8.1, deposit: 7.2 })], prices: [price()], supplier: SUPPLIER,
+        })
+        const payload = linePayload(row, 'i1')
+        expect(payload).toMatchObject({ line_total: 35.22, vat_amount: 8.1, deposit_amount: 7.2 })
+        expect(storedLine(payload)).toMatchObject({ value: 35.22, vat: 8.1, deposit: 7.2 })
     })
 
     // On a twenty document week the review would otherwise open with two
@@ -407,6 +516,14 @@ describe('what gets written', () => {
     // The header is what the cost view falls back on when an invoice has no
     // lines at all, which is every invoice from somebody who sells equipment.
     // Food would put a new till against the food target.
+    it('writes the amount payable as the total', () => {
+        const payload = invoicePayload(
+            { number: '45690932', kind: 'invoice', date: '2026-09-24', goodsTotal: 418.23, payable: 442.46 },
+            { restaurantId: 'r1', supplierId: 's1', weekStart: '2026-09-20' },
+        )
+        expect(payload.total_amount).toBe(442.46)
+    })
+
     it('takes the header category from the supplier', () => {
         const payload = invoicePayload(
             { number: '1', kind: 'invoice', date: '2026-08-27', goodsTotal: 400 },
@@ -452,6 +569,27 @@ describe('what stops a document being written', () => {
         })
         expect(out[0]).toBe('The lines come to 390.00 and the goods come to 396.63 before the '
             + '21.60 container deposit, so something on it was not read.')
+    })
+
+    it('says which part of the charges did not add up', () => {
+        const unread = documentBlocks({
+            ...good,
+            checks: { values: { ok: true }, cases: { ok: true }, payable: { ok: false, expected: null, got: 10 } },
+        })
+        expect(unread[0]).toBe('The amount payable at the foot could not be read.')
+
+        const codes = documentBlocks({
+            ...good,
+            checks: { values: { ok: true }, cases: { ok: true }, payable: { ok: false, expected: 10, got: 10, codes: false } },
+        })
+        expect(codes[0]).toContain('VAT codes on the lines')
+
+        const short = documentBlocks({
+            ...good,
+            checks: { values: { ok: true }, cases: { ok: true }, payable: { ok: false, expected: 442.46, got: 418.23, codes: true } },
+        })
+        expect(short[0]).toContain('418.23')
+        expect(short[0]).toContain('442.46')
     })
 
     it('says so when the deposit box could not be read', () => {
@@ -523,6 +661,16 @@ describe('filling in an invoice somebody typed off a total', () => {
         expect(fillInPayload(doc, { createdBy: 'u1' })).toMatchObject({
             invoice_number: '45448455', total_amount: 163.03, entry_method: 'parsed',
         })
+    })
+
+    // Everything typed by hand was the amount payable, VAT included: 45612214
+    // was typed as 102.43 and its goods come to 83.28. Measured against the
+    // goods, the VAT would have looked like 19.15 nobody could account for.
+    it('measures a typed total against the amount payable, VAT and all', () => {
+        const drinks = { number: '45612214', kind: 'invoice', date: '2026-09-14', goodsTotal: 83.28, payable: 102.43 }
+        const plan = fillInPlan(drinks, { total_amount: 102.43 })
+        expect(plan.same).toBe(true)
+        expect(fillInPayload(drinks, {}).total_amount).toBe(102.43)
     })
 })
 

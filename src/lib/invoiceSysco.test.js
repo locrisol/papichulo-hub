@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     rowsOf, cellsOf, findHeading, columnsFrom, bucket, readPackSize,
-    looksLikePackSize, paperDate, money, headField, footField, recognisesSysco,
-    readSyscoInvoice, depositBox, LINE_COLUMNS,
+    looksLikePackSize, paperDate, money, headField, footBlock, recognisesSysco,
+    readSyscoInvoice, depositBox, shareOut, LINE_COLUMNS, mend,
 } from '@/lib/invoiceSysco'
 
 // **The two real documents, as the reader actually sees them.**
@@ -654,8 +654,24 @@ function topBlock({ number, date, account, type, order, cases }) {
     ]
 }
 
+// The whole foot, the way the real one is laid out: the VAT by code on the
+// left, then the goods, the VAT and the amount payable. Everything at a VAT
+// rate of nothing, so what is payable is the goods.
 function foot(y, total, page = 1) {
-    return [at(400, 'GOODS TOTAL', y, page), at(400, total, y + 11, page)]
+    const titles = [
+        [29, 'VAT CODE'], [86, 'VAT RATE'], [170, 'TAXABLE GOODS'], [279, 'VAT'],
+        [333, 'GOODS TOTAL'], [418, 'VAT'], [466, 'AMOUNT PAYABLE'],
+    ]
+    return [
+        ...titles.map(([x, title]) => at(x, title, y, page)),
+        at(59, '1', y + 11, page),
+        rightAt(137, '0.00', y + 11, page),
+        rightAt(262, total, y + 11, page),
+        rightAt(303, '0.00', y + 11, page),
+        rightAt(406, total, y + 11, page),
+        rightAt(440, '0.00', y + 11, page),
+        rightAt(558, total, y + 11, page),
+    ]
 }
 
 describe('putting a page back into rows', () => {
@@ -806,8 +822,13 @@ describe('the block at the top of the real invoice', () => {
     })
 
     // The first version looked for it at the top, where it is not.
-    it('finds the goods total at the foot, under its title', () => {
-        expect(footField(rows, 'GOODS TOTAL')).toBe('163.03')
+    it('finds the totals at the foot, under their titles', () => {
+        expect(footBlock(rows)).toEqual({
+            goodsTotal: 163.03,
+            vat: 0,
+            payable: 163.03,
+            codes: [{ code: '1', rate: 0, taxable: 163.03, vat: 0 }],
+        })
     })
 })
 
@@ -1005,6 +1026,88 @@ describe('a credit note with a deposit on it', () => {
     it('reads a description that arrives in two pieces on one line', () => {
         expect(read.lines[1].description).toBe('BALLYGARVEY EGGS MIXED GRADE A 1X15 DZ (180 EGGS)')
     })
+
+    // Its VAT is printed without a minus sign too, under taxable goods with
+    // one. What comes back is what the drink cost, VAT and deposit included.
+    it('gives back the VAT and the deposit on the drink it credits', () => {
+        expect(read.payable).toBe(-129.17)
+        expect(read.vat).toBe(-5.61)
+        expect(read.lines[0]).toMatchObject({ value: -24.4, vat: -5.61, deposit: -3.6 })
+        expect(read.lines.slice(1).every(l => l.vat === 0 && l.deposit === 0)).toBe(true)
+        expect(read.checks.payable.ok).toBe(true)
+    })
+})
+
+describe('what a document charges', () => {
+    const read = readSyscoInvoice(DRS_INVOICE)
+
+    // Decided on 24 September: an invoice costs what it charges, VAT and
+    // deposit included, the way the ones typed in by hand always did.
+    it('reads the VAT and the amount payable at the foot', () => {
+        expect(read.vat).toBe(24.23)
+        expect(read.payable).toBe(442.46)
+    })
+
+    // VAT code 5 is the drinks at 23%. The deposit is fifteen cents a container
+    // and the pack says how many are in a case, so the shares are exact.
+    it('puts the VAT and the deposit on the lines that owe them', () => {
+        const drinks = read.lines.filter(l => l.vat_code === '5')
+        expect(drinks.map(l => [l.code, l.vat, l.deposit])).toEqual([
+            ['483033', 6.9, 3.6],
+            ['483149', 8.1, 7.2],
+            ['483157', 7.01, 7.2],
+            ['483172', 2.22, 3.6],
+        ])
+        expect(read.lines.filter(l => l.vat_code === '1').every(l => l.vat === 0 && l.deposit === 0)).toBe(true)
+    })
+
+    it('comes to the amount payable to the cent', () => {
+        expect(read.checks.payable).toEqual({ expected: 442.46, got: 442.46, codes: true, ok: true })
+        expect(read.checks.ok).toBe(true)
+    })
+
+    // The totals would still agree with a code misread, and the VAT would sit on
+    // the wrong line, possibly in the wrong category. So the lines under each
+    // code have to add up to what the table says was taxable at it.
+    it('refuses it when a line is under the wrong VAT code', () => {
+        const wrong = edited(DRS_INVOICE_ROWS, rows => rows.map(r => (
+            r[0] === 482.3 && r[1] === 546.0 ? [r[0], r[1], r[2], '1'] : r
+        )))
+        const refused = readSyscoInvoice(wrong)
+        expect(refused.checks.payable.codes).toBe(false)
+        expect(refused.checks.ok).toBe(false)
+    })
+
+    // The figures are right aligned in boxes wider than their titles, so a
+    // short amount starts to the right of where its title ends. Reading "under
+    // the title" missed every amount payable under a hundred euro.
+    it('reads an amount under a hundred at the foot', () => {
+        const small = edited(INVOICE_ROWS, rows => rows.map(r => (
+            r[3] === '163.03' && r[0] > 640 ? [r[0], r[1] + 4, r[2] - 4, '63.03'] : r
+        )))
+        expect(footBlock(rowsOf(small))).toMatchObject({ goodsTotal: 63.03, payable: 63.03 })
+    })
+})
+
+describe('sharing money out to the cent', () => {
+    it('adds up to exactly what was shared', () => {
+        const shares = shareOut(24.23, [30, 35.22, 30.46, 9.66])
+        expect(shares).toEqual([6.9, 8.1, 7.01, 2.22])
+        expect(Math.round(shares.reduce((t, s) => t + s, 0) * 100)).toBe(2423)
+    })
+
+    it('gives the odd cent to the biggest remainder', () => {
+        expect(shareOut(0.1, [1, 1, 1])).toEqual([0.04, 0.03, 0.03])
+    })
+
+    it('keeps the sign of a credit', () => {
+        expect(shareOut(-3.6, [24])).toEqual([-3.6])
+    })
+
+    it('shares evenly when there is nothing to go by, and nothing to nobody', () => {
+        expect(shareOut(1, [0, 0])).toEqual([0.5, 0.5])
+        expect(shareOut(5, [])).toEqual([])
+    })
 })
 
 describe('when the real invoice does not add up', () => {
@@ -1195,5 +1298,24 @@ describe('the awkward parts, one at a time', () => {
             'PREMIER BAKING PARCHMENT 450MMX50M 1X1 EA',
         ])
         expect(read.checks.ok).toBe(true)
+    })
+})
+
+// Sysco's system turns a curly apostrophe into the three characters of its
+// bytes, and then prints the lot in capitals.
+describe('garbled text from the supplier', () => {
+    it('puts a curly apostrophe back as a plain one', () => {
+        expect(mend('BROWN KRAFT LEAKPROOF FOOD CONTAINER 26OZ NO.1 (9X50Â€™S)'))
+            .toBe("BROWN KRAFT LEAKPROOF FOOD CONTAINER 26OZ NO.1 (9X50'S)")
+        expect(mend('KID€™S')).toBe('KID€™S')
+        expect(mend('MUMâ€™S')).toBe("MUM'S")
+    })
+
+    it('puts curly quotes and dashes back as plain ones', () => {
+        expect(mend('Â€œHOTÂ€ SAUCE Â€“ 1L')).toBe('"HOT" SAUCE - 1L')
+    })
+
+    it('leaves ordinary text alone', () => {
+        expect(mend('SANTA MARIA FLOUR TORTILLA 12"')).toBe('SANTA MARIA FLOUR TORTILLA 12"')
     })
 })

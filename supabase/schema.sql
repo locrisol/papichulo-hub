@@ -642,12 +642,18 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "decision" "text",
     "decided_at" timestamp with time zone,
     "decided_by" "uuid",
+    "vat_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    "deposit_amount" numeric(10,2) DEFAULT 0 NOT NULL,
     CONSTRAINT "invoice_lines_category_check" CHECK (("category" IS NULL OR "category" IN ('food', 'packaging', 'cleaning', 'other'))),
     CONSTRAINT "invoice_lines_decision_check" CHECK (("decision" IS NULL OR "decision" IN ('accepted', 'rejected', 'ignored', 'matched'))),
     CONSTRAINT "invoice_lines_storage_check" CHECK (("storage" IS NULL OR "storage" IN ('ambient', 'chilled', 'frozen')))
 );
 
 COMMENT ON COLUMN "public"."invoice_lines"."decision" IS 'Whether somebody has looked at this line yet and what they said. The review works out what needs a decision by comparing the line against the price row, which answers itself once a price is accepted. Rejecting does not: the difference is still there next week, so saying no once has to stick.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."vat_amount" IS 'This line''s share of the VAT on its document, from the VAT table at the foot, shared over the lines taxed at each code so the shares add up to what was printed. The cost view adds it to line_total. The price columns stay as printed, without it.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."deposit_amount" IS 'This line''s share of the container deposit on its document, on the drinks that carry one. The cost view adds it to line_total, so the food cost takes what the invoice charged.';
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
@@ -2887,6 +2893,11 @@ COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for ever
 -- So the lines where there are lines, the header where there are not, and eight
 -- months of invoices typed off a total keep answering exactly as they did.
 --
+-- **An invoice costs what it charges, VAT and deposit included**, decided on 24
+-- September 2026: the typed ones were always entered at the amount payable, and
+-- a line counts its printed value plus its share of both. The prices stay as
+-- printed.
+--
 -- The third arm is the claims, and **the claim is the one place money coming
 -- back is taken off, always in the week the delivery happened**: the whole ask
 -- while it is open, what actually came back once it is settled. A credit note
@@ -2901,7 +2912,7 @@ CREATE OR REPLACE VIEW "public"."invoice_cost_by_category" WITH ("security_invok
  SELECT "i"."restaurant_id",
     "i"."invoice_date" AS "cost_date",
     "l"."category",
-    "sum"("l"."line_total") AS "amount",
+    "sum"((("l"."line_total" + "l"."vat_amount") + "l"."deposit_amount")) AS "amount",
     'lines'::"text" AS "came_from"
    FROM ("public"."invoices" "i"
      JOIN "public"."invoice_lines" "l" ON (("l"."invoice_id" = "i"."id")))
@@ -2931,7 +2942,7 @@ UNION ALL
      AND ("c"."amount" IS NOT NULL)
      AND (CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END > (0)::numeric));
 
-COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. Lines where an invoice has them, the header where it does not, and claims as a deduction in the week the delivery happened: the whole ask while open, what came back once settled. A credit note that settles a claim does not count on its own.';
+COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. What each invoice charged, VAT and deposit included: its lines where it has them, each with its share of both, and the header where it does not. Claims come off as a deduction in the week the delivery happened: the whole ask while open, what came back once settled. A credit note that settles a claim does not count on its own.';
 
 CREATE OR REPLACE VIEW "public"."public_menu_categories" AS
  SELECT "id",

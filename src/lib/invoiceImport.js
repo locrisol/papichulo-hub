@@ -87,7 +87,7 @@ export function placeDocument(doc, held) {
 
     const sameDay = rows.filter(h => !h.invoice_number && h.invoice_date === doc?.date)
     if (sameDay.length) {
-        const wanted = num(doc?.goodsTotal)
+        const wanted = documentTotal(doc)
         const near = [...sameDay].sort((a, b) => (
             Math.abs(num(a.total_amount) - wanted) - Math.abs(num(b.total_amount) - wanted)
         ))
@@ -117,8 +117,24 @@ export const SECTION_CATEGORY = {
 // The second half is what keeps equipment out of the catalogue. They sell
 // nothing that is stock, their invoices stay header only exactly as they work
 // today, and a line from them never creates a product.
-export function lineCategory(product, supplier) {
-    return SECTION_CATEGORY[product?.section] || supplier?.category || 'other'
+//
+// **Except that a food supplier sells more than food.** A line the Hub does not
+// recognise yet used to take the supplier's category, and for the supplier that
+// is ninety per cent of what they buy that is food, so the first real week put
+// foil, mops, bowls and lids on the food cost. The paper already says which is
+// which: food is zero rated for VAT, and on every line of the first 37 real
+// documents, everything taxed was either a drink carrying a container deposit
+// or not food at all. So a taxed line with no deposit on it is packaging until
+// somebody says otherwise. Packaging rather than cleaning because that is how
+// those invoices were filed when they were typed by hand, and matching the
+// line to a product in the review moves it to the product's own category.
+export function lineCategory(product, supplier, line = null) {
+    const own = SECTION_CATEGORY[product?.section]
+    if (own) return own
+
+    const theirs = supplier?.category || 'other'
+    const notFood = !product && line && num(line.vat) !== 0 && !num(line.deposit)
+    return theirs === 'food' && notFood ? 'packaging' : theirs
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +257,9 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
 
         if (!price) {
             const successor = codeSuccessor(line, codes, { onThisDocument, date })
+            // A new number for something already bought is the same kind of
+            // thing it was under the old one.
+            const before = successor?.price_id ? byId.get(successor.price_id) : null
             return {
                 line,
                 codeRow,
@@ -248,7 +267,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
                 product: null,
                 successor,
                 pile: successor ? 'new_code' : 'new_to_us',
-                category: lineCategory(null, supplier),
+                category: lineCategory(before?.products || before?.product || null, supplier, line),
             }
         }
 
@@ -277,7 +296,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
             perUnitWas: num(price.price_per_unit),
             perUnitNow: wantedUnits ? to(now / wantedUnits, 4) : null,
             pile: (moved || packMoved) ? 'price_changed' : 'unchanged',
-            category: lineCategory(product, supplier),
+            category: lineCategory(product, supplier, line),
         }
     })
 }
@@ -291,6 +310,27 @@ export function pilesOf(matched) {
     return out
 }
 
+// ---------------------------------------------------------------------------
+// What a document costs
+// ---------------------------------------------------------------------------
+
+// **An invoice costs what it charges**, VAT and container deposit included.
+// That is how every invoice typed in by hand was entered, and it was decided on
+// 24 September that the imported ones carry the same, so the food cost takes
+// every charge on the paper. The prices on a line stay as printed, without
+// either, because a price is compared against a price.
+//
+// The amount payable where the reader found one, and the goods total for a
+// reader that has never met VAT.
+export function documentTotal(doc) {
+    return num(doc?.payable ?? doc?.goodsTotal)
+}
+
+// A line's share of that: what it says, plus its VAT and its deposit.
+export function lineCost(line) {
+    return num(line?.value) + num(line?.vat) + num(line?.deposit)
+}
+
 // What the document comes to, split the way the money actually went.
 //
 // Shown before anything is written, because the one thing worth checking at
@@ -300,7 +340,7 @@ export function documentTotals(matched) {
     const byCategory = new Map()
     for (const row of matched || []) {
         const cat = row.category || 'other'
-        byCategory.set(cat, num(byCategory.get(cat)) + num(row.line.value))
+        byCategory.set(cat, num(byCategory.get(cat)) + lineCost(row.line))
     }
     return [...byCategory.entries()]
         .map(([category, amount]) => ({ category, amount: Math.round(amount * 100) / 100 }))
@@ -345,6 +385,10 @@ export function linePayload(row, invoiceId) {
         price_per_case: line.price_per_case,
         unit_price: perUnit,
         line_total: line.value,
+        // Its share of the VAT and the deposit, which the cost view adds to
+        // the line total. See documentTotal.
+        vat_amount: to(line.vat ?? 0, 2),
+        deposit_amount: to(line.deposit ?? 0, 2),
         storage: line.storage,
         category: row.category || null,
         product_id: row.product?.id || null,
@@ -381,6 +425,8 @@ export function storedLine(stored) {
         units: num(stored.units),
         price_per_case: stored.price_per_case == null ? null : num(stored.price_per_case),
         value: num(stored.line_total),
+        vat: num(stored.vat_amount),
+        deposit: num(stored.deposit_amount),
         storage: stored.storage,
     }
 }
@@ -394,7 +440,7 @@ export function invoicePayload(doc, { restaurantId, supplierId, weekStart, creat
         invoice_number: doc.number,
         document_type: doc.kind,
         invoice_date: doc.date,
-        total_amount: doc.goodsTotal,
+        total_amount: documentTotal(doc),
         // The header category is what a screen shows before the lines are read
         // and what the cost view falls back on when they never are, which is
         // every invoice from a supplier whose lines are not parsed at all. It
@@ -431,6 +477,19 @@ export function documentBlocks(doc) {
         out.push(`The lines come to ${fixed(doc.checks?.values?.got)} and ${said}, `
             + `so something on it was not read.`)
     }
+    // Only a reader that reads VAT has this check at all.
+    const payable = doc.checks?.payable
+    if (payable && !payable.ok) {
+        if (payable.expected == null) {
+            out.push('The amount payable at the foot could not be read.')
+        } else if (payable.codes === false) {
+            out.push('The VAT codes on the lines do not add up to the VAT table at the foot, '
+                + 'so the VAT would go on the wrong lines.')
+        } else {
+            out.push(`With VAT and deposit the lines come to ${fixed(payable.got)} and the amount `
+                + `payable says ${fixed(payable.expected)}, so the VAT was not read right.`)
+        }
+    }
     if (!doc.checks?.cases?.ok) {
         out.push(`The lines come to ${fixed(doc.checks?.cases?.got)} cases and the header says `
             + `${fixed(doc.checks?.cases?.expected)}, so a line is missing or doubled.`)
@@ -461,7 +520,9 @@ function fixed(n) {
 // there is nothing to claim. It is shown rather than absorbed, because a
 // difference nobody can account for is exactly the thing worth looking at.
 export function fillInPlan(doc, invoice) {
-    const gross = round(num(doc?.goodsTotal))
+    // Both on the same footing: what was typed was the amount payable, and so
+    // is what the document costs.
+    const gross = round(documentTotal(doc))
     const net = round(num(invoice?.total_amount))
     const difference = round(gross - net)
 
@@ -482,7 +543,7 @@ export function fillInPayload(doc, { createdBy }) {
         invoice_number: doc.number,
         document_type: doc.kind,
         invoice_date: doc.date,
-        total_amount: doc.goodsTotal,
+        total_amount: documentTotal(doc),
         entry_method: 'parsed',
         created_by: createdBy || null,
     }
@@ -557,7 +618,7 @@ export function creditOnHandEntry(doc, { held = [], documents = [], batch = [] }
                 order_reference: reference,
                 document_date: doc.date,
                 document_type: 'credit',
-                value: num(doc.goodsTotal),
+                value: documentTotal(doc),
             })
         }
         const found = documentStatus(portal, typed).get(doc.number)

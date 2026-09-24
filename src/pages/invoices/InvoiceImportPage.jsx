@@ -10,6 +10,7 @@ import { readPdfText } from '@/lib/pdfText'
 import {
     readDocument, whereItGoes, placeDocument, matchLines, pilesOf, documentTotals,
     documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim, creditOnHandEntry,
+    documentTotal,
 } from '@/lib/invoiceImport'
 import { creditSettles } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
@@ -372,7 +373,9 @@ export default function InvoiceImportPage() {
 
         const result = creditSettles({
             credit: { ...doc, id: invoice.id },
-            lines: matched.map(row => ({ code: row.line.code, value: row.line.value })),
+            lines: matched.map(row => ({
+                code: row.line.code, value: row.line.value, vat: row.line.vat, deposit: row.line.deposit,
+            })),
             against,
             claims: (open || []).map(c => ({ ...c, code: c.invoice_lines?.supplier_code || null })),
             supplierId: where.supplierId,
@@ -429,7 +432,7 @@ export default function InvoiceImportPage() {
         setKnown(k => ({
             ...k,
             held: k.held.map(h => (h.id === invoice.id
-                ? { ...h, invoice_number: doc.number, total_amount: doc.goodsTotal }
+                ? { ...h, invoice_number: doc.number, total_amount: documentTotal(doc) }
                 : h)),
         }))
         setSaid(claim
@@ -446,7 +449,7 @@ export default function InvoiceImportPage() {
         if (failed) setError(failed)
     }
 
-    const waiting = ready.reduce((total, f) => total + (f.doc?.goodsTotal || 0), 0)
+    const waiting = ready.reduce((total, f) => total + (f.doc ? documentTotal(f.doc) : 0), 0)
 
     return (
         <>

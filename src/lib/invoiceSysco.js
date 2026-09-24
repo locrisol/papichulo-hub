@@ -111,7 +111,22 @@ const SAME_LINE = 1
 // print, and nothing on it is a line.
 const FOOTER_WORDS = ['GOODS TOTAL', 'AMOUNT PAYABLE', 'TAXABLE GOODS', 'VAT RATE']
 
-const tidy = text => String(text ?? '').replace(/\s+/g, ' ').trim()
+// **Sysco's own text arrives garbled in one place.** A curly apostrophe comes
+// out of its system as the three characters of its bytes read the wrong way,
+// and then gets printed in capitals like everything else, so a box of fifty
+// reads "(9X50Â€™S)". The same thing happens to curly quotes and dashes. They
+// are put back to plain ones, which is what the rest of the text uses.
+const GARBLED = [
+    [/[âÂ]€[™˜]/g, "'"],
+    [/[âÂ]€[œ]/g, '"'],
+    [/[âÂ]€[“”]/g, '-'],
+]
+
+export function mend(text) {
+    return GARBLED.reduce((out, [wrong, right]) => out.replace(wrong, right), String(text ?? ''))
+}
+
+const tidy = text => mend(text).replace(/\s+/g, ' ').trim()
 const shout = text => tidy(text).toUpperCase()
 
 // A supplier's product code. Numbers mostly, and sometimes letters too: VG958Z
@@ -407,15 +422,64 @@ export function headField(rows, label, before = Infinity) {
     return null
 }
 
-// A label at the foot of the document, looked for from the bottom up.
+// The titles at the foot, left to right: the VAT by code on the left, then the
+// goods, the VAT and what is payable. VAT is printed twice, once in each.
+const FOOT_TITLES = ['VAT CODE', 'VAT RATE', 'TAXABLE GOODS', 'VAT', 'GOODS TOTAL', 'VAT', 'AMOUNT PAYABLE']
+const FOOT_NAMES = ['code', 'rate', 'taxable', 'codeVat', 'goods', 'vat', 'payable']
+
+// The totals at the foot of the last page.
 //
-// The goods total is printed once, under the line table on the last page, and
-// never in the block at the top.
-export function footField(rows, label) {
+// Two little tables side by side with the titles on one line and the figures
+// under them. **Read by column, not by what sits under each title.** The
+// figures are right aligned in boxes much wider than their titles, so a short
+// amount starts to the right of where its title ends: reading "under the title"
+// missed the amount payable on every invoice under a hundred euro. Each title
+// owns the ground halfway to the next one, the same as the line table.
+//
+// Looked for from the bottom up, because a document of two pages prints the
+// titles on both and the figures only on the last.
+export function footBlock(rows) {
     for (let i = rows.length - 1; i >= 0; i--) {
         const cells = cellsOf(rows[i])
-        const spot = findHeading(cells, label)
-        if (spot) return valueFor(rows, i, spot, cells)
+        const said = shout(cells.map(c => c.text).join(' '))
+        if (!said.includes('GOODS TOTAL') || !said.includes('AMOUNT PAYABLE')) continue
+
+        const titles = []
+        let from = 0
+        for (const title of FOOT_TITLES) {
+            const spot = findHeading(cells, title, from)
+            if (!spot) break
+            titles.push(spot)
+            from = spot.endIndex + 1
+        }
+        if (titles.length !== FOOT_TITLES.length) continue
+
+        const columns = titles.map((t, n) => ({
+            name: FOOT_NAMES[n],
+            from: n === 0 ? -Infinity : (titles[n - 1].right + t.left) / 2,
+            to: n === titles.length - 1 ? Infinity : (t.right + titles[n + 1].left) / 2,
+        }))
+        const read = row => {
+            const held = bucket(cellsOf(row), columns)
+            const out = {}
+            for (const c of columns) out[c.name] = money((held[c.name] || []).map(x => x.text).join(''))
+            return out
+        }
+
+        const below = rows.slice(i + 1).filter(r => r.page === rows[i].page)
+        if (!below.length) return null
+        const first = read(below[0])
+
+        // The VAT table runs down the left for as many codes as the document
+        // uses, one row each, and stops at the first row with no code.
+        const codes = []
+        for (const row of below) {
+            const line = read(row)
+            if (line.code == null) break
+            codes.push({ code: String(line.code), rate: line.rate, taxable: line.taxable, vat: line.codeVat })
+        }
+
+        return { goodsTotal: first.goods, vat: first.vat, payable: first.payable, codes }
     }
     return null
 }
@@ -508,7 +572,8 @@ export function readSyscoInvoice(items) {
     const typeSaid = shout(headField(rows, 'TYPE', first.top))
     const orderSaid = tidy(headField(rows, 'ORD No.', first.top))
     const headCases = money(headField(rows, 'CASE', first.top))
-    const goodsTotal = money(footField(rows, 'GOODS TOTAL'))
+    const totals = footBlock(rows)
+    const goodsTotal = totals?.goodsTotal ?? null
 
     const kind = typeSaid.startsWith('CREDIT') ? 'credit' : 'invoice'
 
@@ -588,26 +653,56 @@ export function readSyscoInvoice(items) {
         }
     })
 
-    // ---- the two checks --------------------------------------------------
-    //
-    // The goods total includes the container deposit and no line does, so the
-    // lines are held up against the goods less the deposit. Twelve of the first
-    // thirty seven real documents were refused for it before this.
-    //
     // A credit note prints its deposit without a minus sign, under a negative
     // goods total, and it is money coming back like everything else on it.
     const deposits = !box ? 0
         : box.deposits == null ? null
             : kind === 'credit' ? -Math.abs(box.deposits) : box.deposits
+
+    // ---- what each line cost, VAT and deposit on -------------------------
+    //
+    // **An invoice costs what it charges.** The food cost takes every charge
+    // on it, VAT and the container deposit included, the way the invoices typed
+    // in by hand always did: their totals are the amount payable, to the cent,
+    // on every one checked. The prices stay as printed, without either,
+    // because a price is compared against a price.
+    //
+    // Each line carries its own share rather than the document carrying the
+    // difference, because one document can hold food and packaging, and the
+    // VAT on the packaging belongs to packaging.
+    shareVat(lines, totals?.codes || [])
+    shareDeposit(lines, deposits)
+
+    // ---- the three checks ------------------------------------------------
+    //
+    // The goods total includes the container deposit and no line's value
+    // does, so the values are held up against the goods less the deposit.
+    // Twelve of the first thirty seven real documents were refused for it
+    // before this.
     const goods = goodsTotal == null || deposits == null ? null : round2(goodsTotal - deposits)
     const valuesGot = round2(lines.reduce((t, l) => t + num(l.value), 0))
     const casesGot = round2(lines.reduce((t, l) => t + num(l.cases), 0))
 
+    // The third is what the lines cost against what is payable, and every VAT
+    // code with VAT on it matched by lines of that code adding up to what the
+    // table says was taxable, or the VAT has gone on the wrong lines.
+    const payable = totals?.payable ?? null
+    const costGot = round2(lines.reduce((t, l) => t + num(l.value) + num(l.vat) + num(l.deposit), 0))
+    const codesAgree = (totals?.codes || []).every(c => !num(c.vat) || round2(
+        lines.filter(l => l.vat_code === c.code).reduce((t, l) => t + num(l.value), 0),
+    ) === round2(c.taxable))
+
     const checks = {
         values: { expected: goods, got: valuesGot, ok: goods != null && goods === valuesGot },
         cases: { expected: headCases, got: casesGot, ok: headCases != null && round2(headCases) === casesGot },
+        payable: {
+            expected: payable,
+            got: costGot,
+            codes: codesAgree,
+            ok: payable != null && round2(payable) === costGot && codesAgree,
+        },
     }
-    checks.ok = checks.values.ok && checks.cases.ok
+    checks.ok = checks.values.ok && checks.cases.ok && checks.payable.ok
 
     if (!number) problems.push({ why: 'no_number' })
     if (!date) problems.push({ why: 'no_date' })
@@ -615,6 +710,7 @@ export function readSyscoInvoice(items) {
     if (!lines.length) problems.push({ why: 'no_lines' })
     if (!checks.values.ok) problems.push({ why: 'values', ...checks.values })
     if (!checks.cases.ok) problems.push({ why: 'cases', ...checks.cases })
+    if (!checks.payable.ok) problems.push({ why: 'payable', ...checks.payable })
 
     return {
         format: 'sysco',
@@ -628,6 +724,9 @@ export function readSyscoInvoice(items) {
         headCases,
         goodsTotal,
         deposits,
+        vat: totals?.vat ?? null,
+        // What the document charges, and so what it costs in the Hub.
+        payable,
         pages: Math.max(...rows.map(r => r.page), 0),
         lines,
         checks,
@@ -637,6 +736,77 @@ export function readSyscoInvoice(items) {
 
 function round2(n) {
     return Math.round(num(n) * 100) / 100
+}
+
+// A sum of money shared out in proportion, to the cent.
+//
+// The odd cents go to the biggest remainders, so the shares always add up to
+// the whole exactly: VAT worked out line by line and rounded comes to a cent or
+// two either side of what was printed, and what was printed is what was paid.
+export function shareOut(total, weights) {
+    if (!weights?.length) return []
+    const cents = Math.round(Math.abs(num(total)) * 100)
+    const sign = num(total) < 0 ? -1 : 1
+    const sum = weights.reduce((t, w) => t + num(w), 0)
+    const parts = sum > 0 ? weights.map(num) : weights.map(() => 1)
+    const whole = sum > 0 ? sum : weights.length
+
+    const exact = parts.map(w => (cents * w) / whole)
+    const got = exact.map(Math.floor)
+    let left = cents - got.reduce((t, n) => t + n, 0)
+    const order = exact
+        .map((e, n) => ({ n, rest: e - got[n] }))
+        .sort((a, b) => b.rest - a.rest || a.n - b.n)
+    for (const { n } of order) {
+        if (left <= 0) break
+        got[n] += 1
+        left -= 1
+    }
+    return got.map(c => (sign * c) / 100)
+}
+
+// The VAT printed for each code, shared over the lines with that code in
+// proportion to their value. A credit note prints it without a minus sign, the
+// same as its deposit, under taxable goods that have one.
+function shareVat(lines, codes) {
+    for (const line of lines) line.vat = 0
+    for (const entry of codes) {
+        const mine = lines.filter(l => l.vat_code === entry.code)
+        const vat = Math.abs(num(entry.vat)) * (num(entry.taxable) < 0 ? -1 : 1)
+        const shares = shareOut(vat, mine.map(l => Math.abs(num(l.value))))
+        mine.forEach((l, n) => { l.vat = shares[n] })
+    }
+}
+
+// The drinks that carry a deposit say so at the front: "DRS 15C" is fifteen
+// cents a container.
+const DRS = /^DRS\s+(\d+)C\b/i
+
+// The deposit, on the drinks that carry it.
+//
+// The pack says how many containers are in a case, so a line's share can
+// usually be worked out exactly: the 21.60 on one real invoice is 144
+// containers at fifteen cents, six cases of 24. Where it cannot, it is shared by
+// value over the drinks, or over every line if none can be told apart, so the
+// lines always come to what was charged.
+function shareDeposit(lines, deposits) {
+    for (const line of lines) line.deposit = 0
+    if (!deposits) return
+
+    const drinks = lines.filter(l => DRS.test(l.description))
+    const counted = drinks.map(l => {
+        const perCase = l.pack?.count
+        if (!perCase) return null
+        const cents = Number(DRS.exec(l.description)[1])
+        return (Math.abs(num(l.cases)) * perCase + Math.abs(num(l.units))) * cents
+    })
+    const over = drinks.length ? drinks : lines
+    const weights = drinks.length && counted.every(n => n != null)
+        ? counted
+        : over.map(l => Math.abs(num(l.value)))
+
+    const shares = shareOut(deposits, weights)
+    over.forEach((l, n) => { l.deposit = shares[n] })
 }
 
 // The part of the row left of the pack size: the code and the description.
@@ -705,9 +875,13 @@ function readLine(cells, columns) {
         ...spilt.sort((a, b) => a.x - b.x).map(c => c.text),
     ].join(' '))
 
+    // Which line of the VAT table at the foot this line is taxed under.
+    const vatCode = tidy((held['VAT CODE'] || []).map(c => c.text).join(''))
+
     return {
         code: codeCell.text,
         description: words,
+        vat_code: vatCode || null,
         pack_size: packSaid || null,
         pack: packSaid ? readPackSize(packSaid) : null,
         cases: cases ?? 0,

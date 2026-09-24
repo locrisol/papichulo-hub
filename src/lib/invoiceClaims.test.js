@@ -111,6 +111,17 @@ describe('what a claim is worth', () => {
     it('says nothing when there is no line to price it against', () => {
         expect(claimAmount({ cases: 2 }, null)).toBeNull()
     })
+
+    // The line cost what it charged, VAT and deposit included, so a case of
+    // Coke sent back takes all of that off, not only the printed price. One
+    // case at 18.54 with 4.26 VAT and a 3.60 deposit on it cost 26.40.
+    it('takes the VAT and deposit off with it, in the same share as the line', () => {
+        const coke = {
+            price_per_case: 18.54, units_per_case: 24, line_total: 37.08, vat_amount: 8.52, deposit_amount: 7.2,
+        }
+        expect(claimAmount({ cases: 1, units: 0 }, coke)).toBe(26.4)
+        expect(claimAmount({ cases: 2, units: 0 }, coke)).toBe(52.8)
+    })
 })
 
 describe('what a price query is worth', () => {
@@ -136,6 +147,16 @@ describe('what a price query is worth', () => {
 
     it('says nothing when they did not charge more than agreed', () => {
         expect(claimAmount({ kind: 'price', cases: 2 }, bowls, { agreedPerCase: 49 })).toBeNull()
+    })
+
+    // The VAT on the overcharge comes back with it. Nothing was sent back, so
+    // no deposit does.
+    it('adds the VAT on the difference and no deposit', () => {
+        const taxed = { ...bowls, line_total: 98, vat_amount: 22.54, deposit_amount: 0 }
+        expect(claimAmount({ kind: 'price', cases: 2, units: 0 }, taxed, { agreedPerCase: 29 })).toBe(49.2)
+
+        const drinks = { price_per_case: 20, units_per_case: 24, line_total: 20, vat_amount: 4.6, deposit_amount: 3.6 }
+        expect(claimAmount({ kind: 'price', cases: 1, units: 0 }, drinks, { agreedPerCase: 18 })).toBe(2.46)
     })
 })
 
@@ -250,6 +271,17 @@ describe('when the credit note turns up', () => {
     })
 
     // Every credit until people start logging problems at the door.
+    // What a credit line gives back is what the line cost, the same footing
+    // the claim was priced on, so a drink sent back settles in full.
+    it('gives back the VAT and deposit on a credit line', () => {
+        const out = creditSettles({
+            credit, against: invoice, claims: [claim({ invoice_id: 'i1', amount: 33.61 })],
+            lines: [{ code: '483156', value: -24.4, vat: -5.61, deposit: -3.6 }], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 33.61, status: 'settled' })
+        expect(out.extra).toBeNull()
+    })
+
     it('counts on its own when there is no claim behind it', () => {
         const out = creditSettles({ credit, against: invoice, claims: [], supplierId: 's1' })
         expect(out).toEqual({ settle: [], extra: null, countsInCost: true })
