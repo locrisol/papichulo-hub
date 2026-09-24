@@ -149,6 +149,24 @@ export function readPortalList(text) {
     return { rows, problems }
 }
 
+// Whose lists the Hub can read.
+//
+// One so far. `readPortalList` was written against Sysco's portal, and another
+// supplier's page is another layout nobody has seen yet. The rest are still
+// offered on the screen, just not pickable, so a second one is an entry here and
+// a reader beside the one above, and the page does not change.
+//
+// Matched on the supplier's name because the list itself says nothing about
+// whose it is, only an account number, and an account is not linked to a
+// supplier until its first invoice has been imported.
+export const LIST_READERS = [
+    { format: 'sysco', supplier: /\bsysco\b/i, read: readPortalList },
+]
+
+export function listReaderFor(supplier) {
+    return LIST_READERS.find(r => r.supplier.test(supplier?.name || '')) || null
+}
+
 // What the paste amounts to, said in figures.
 //
 // Worth having on screen before anything is saved, because it is the one moment

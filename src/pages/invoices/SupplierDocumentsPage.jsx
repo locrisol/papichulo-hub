@@ -7,7 +7,7 @@ import { shortDate, fullDate, todayISO, addDays } from '@/lib/dates'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { friendlyError } from '@/lib/errors'
 import {
-    readPortalList, portalSummary, compareDocuments, pairCredits, creditDelays,
+    LIST_READERS, listReaderFor, portalSummary, compareDocuments, pairCredits, creditDelays,
 } from '@/lib/supplierDocuments'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, labelClass,
@@ -64,8 +64,14 @@ export default function SupplierDocumentsPage() {
             // The order the Invoices page offers them in, most used first, so
             // the supplier this page is nearly always about is at the top.
             const recent = addDays(todayISO(), -USE_WINDOW_DAYS)
-            setSuppliers(orderByUse(sup.data || [], (inv.data || []).filter(i => i.invoice_date >= recent)))
+            const ordered = orderByUse(sup.data || [], (inv.data || []).filter(i => i.invoice_date >= recent))
+            setSuppliers(ordered)
             setHeld(inv.data || [])
+
+            // With one supplier whose list can be read there is nothing to
+            // choose, so it is chosen already.
+            const readable = ordered.filter(s => listReaderFor(s))
+            if (readable.length === 1) setSupplierId(id => id || readable[0].id)
         }
 
         load()
@@ -73,8 +79,11 @@ export default function SupplierDocumentsPage() {
     }, [restaurantId, refresh])
 
     // Read as you type, because the one thing worth knowing before anything is
-    // saved is whether the paste came out whole.
-    const read = useMemo(() => readPortalList(paste), [paste])
+    // saved is whether the paste came out whole. Before a supplier is picked it
+    // is read the only way there is so far.
+    const reader = listReaderFor(suppliers.find(s => s.id === supplierId)) || LIST_READERS[0]
+    const read = useMemo(() => reader.read(paste), [reader, paste])
+    const readableNames = suppliers.filter(s => listReaderFor(s)).map(s => s.name)
     const summary = useMemo(() => portalSummary(read.rows), [read.rows])
     const mine = useMemo(
         () => held.filter(h => h.supplier_id === supplierId),
@@ -146,8 +155,18 @@ export default function SupplierDocumentsPage() {
                                 className={fieldClass}
                             >
                                 <option value="">Pick a supplier</option>
-                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                {suppliers.map(s => (
+                                    <option key={s.id} value={s.id} disabled={!listReaderFor(s)}>
+                                        {listReaderFor(s) ? s.name : `${s.name} (not available yet)`}
+                                    </option>
+                                ))}
                             </select>
+                            {readableNames.length > 0 && (
+                                <p className={hintClass}>
+                                    Only {readableNames.length === 1 ? 'the list' : 'the lists'} from{' '}
+                                    {readableNames.join(' and ')} can be read so far.
+                                </p>
+                            )}
                         </div>
                         <div>
                             <label className={labelClass} htmlFor="documents-paste">

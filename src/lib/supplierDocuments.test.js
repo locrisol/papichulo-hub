@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     portalFields, portalValue, portalDate, portalRow, readPortalList,
     portalSummary, compareDocuments, pairCredits, creditDelays, stillMissing,
+    listReaderFor,
 } from '@/lib/supplierDocuments'
 
 // The shape of a real paste, with the account number changed.
@@ -141,6 +142,21 @@ describe('the whole paste', () => {
         const broken = readPortalList(`${PASTE}\nsomething else entirely`)
         expect(broken.rows).toHaveLength(6)
         expect(broken.problems[0]).toEqual({ why: 'unreadable', line: 'something else entirely' })
+    })
+})
+
+describe('whose list can be read', () => {
+    // One supplier's portal has been seen. The rest stay on the screen, not
+    // pickable, until somebody writes a reader for theirs.
+    it('reads the one supplier it was written against', () => {
+        expect(listReaderFor({ name: 'Sysco Ireland' })?.read).toBe(readPortalList)
+        expect(listReaderFor({ name: 'SYSCO' })).not.toBeNull()
+    })
+
+    it('has nothing for anybody else, or for no supplier at all', () => {
+        expect(listReaderFor({ name: 'Musgrave' })).toBeNull()
+        expect(listReaderFor({ name: 'Syscorp Packaging' })).toBeNull()
+        expect(listReaderFor(null)).toBeNull()
     })
 })
 
