@@ -38,7 +38,13 @@ const to2 = n => (n == null ? null : Math.round(num(n) * 100) / 100)
 // an update would either fail or, worse, silently be a different row. And the
 // preferred flag sitting on a discontinued pack is invisible: every dish keeps
 // costing from a price that is no longer real.
-export function acceptPrice(row, { restaurantId, userId, at = null } = {}) {
+//
+// **A pack the Hub already has a price for is that price, updated.** Adding it
+// again breaks the same unique key, and the first real review hit exactly that:
+// a pack typed in months ago with no code on it, bought again on an invoice
+// that pointed its code at a different pack. `prices` is every price row the
+// screen knows about, so the one for this pack can be found.
+export function acceptPrice(row, { restaurantId, userId, at = null, prices = [] } = {}) {
     const { line, price, product } = row
     if (!price || !product) return null
 
@@ -56,12 +62,28 @@ export function acceptPrice(row, { restaurantId, userId, at = null } = {}) {
         changed_by: userId || null,
     }
 
-    if (!row.packMoved) {
+    const samePack = row.packMoved
+        ? (prices || []).find(p => (
+            p.id !== price.id
+            && p.product_id === product.id
+            && p.supplier_id === price.supplier_id
+            && (p.purchase_type || 'case') === (price.purchase_type || 'case')
+            && p.units_per_case != null
+            && Math.abs(num(p.units_per_case) - units) <= 0.0005
+        ))
+        : null
+    const target = row.packMoved ? samePack : price
+
+    if (target) {
         return {
             what: 'update',
-            priceId: price.id,
+            priceId: target.id,
             patch: { price_per_case: perCase, price_per_unit: perUnit, updated_at: at },
-            event: { ...event, price_id: price.id },
+            event: { ...event, price_id: target.id, previous_per_unit: to4(target.price_per_unit) },
+            // Where the code should point from now on, and whether the row
+            // being updated is a different pack from the one it pointed at.
+            packRow: row.packMoved ? target : null,
+            stranded: row.packMoved && price.is_preferred ? price : null,
         }
     }
 

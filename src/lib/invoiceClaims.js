@@ -369,6 +369,43 @@ export function voidedBy(invoice, credits) {
     )) || null
 }
 
+// Lines that were sent back, one at a time.
+//
+// The same idea as a voided invoice, for a single line: julienne fries ordered
+// by mistake on the first real week, charged at 47.68 and credited at 47.68 the
+// same day. A credit note names the invoice it credits and carries the same
+// codes, so a code credited in full against its own invoice was never kept, is
+// no evidence of what anything costs, and has nothing to ask about. Credited in
+// part, the rest was still bought, so it stays.
+//
+// By value rather than by count, because the value is what the credit and the
+// invoice always print the same way. `credits` carry their own lines.
+export function sentBack(lines, credits) {
+    const keyOf = (invoiceId, code) => `${invoiceId}|${code}`
+
+    const credited = new Map()
+    for (const credit of credits || []) {
+        if (!credit.credit_of_invoice_id) continue
+        for (const l of credit.invoice_lines || []) {
+            const key = keyOf(credit.credit_of_invoice_id, l.supplier_code)
+            credited.set(key, num(credited.get(key)) + Math.abs(num(l.line_total)))
+        }
+    }
+
+    const bought = new Map()
+    for (const l of lines || []) {
+        const key = keyOf(l.invoice_id, l.supplier_code)
+        bought.set(key, num(bought.get(key)) + Math.abs(num(l.line_total)))
+    }
+
+    return new Set((lines || [])
+        .filter(l => {
+            const key = keyOf(l.invoice_id, l.supplier_code)
+            return credited.has(key) && credited.get(key) + 0.005 >= bought.get(key)
+        })
+        .map(l => l.id))
+}
+
 // ---------------------------------------------------------------------------
 // What is still being chased
 // ---------------------------------------------------------------------------

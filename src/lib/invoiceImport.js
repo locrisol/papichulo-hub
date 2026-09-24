@@ -16,7 +16,7 @@
 
 import { num } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
-import { recognisesSysco, readSyscoInvoice } from '@/lib/invoiceSysco'
+import { recognisesSysco, readSyscoInvoice, readPackSize } from '@/lib/invoiceSysco'
 import { documentStatus } from '@/lib/supplierDocuments'
 
 // Every format the Hub can read.
@@ -233,6 +233,74 @@ export function unitsWanted(pack, product) {
 // cent on a case is the same price written twice.
 const SAME_PRICE = 0.005
 
+// Every way this line's pack can be counted in the product's units, the usual
+// one first.
+//
+// Usually one. **Something the Hub counts in kilos or litres that the supplier
+// sells by the each** can be read two ways, because nothing on the paper says
+// what an each weighs: White Cabbage is counted in KG in the Hub and priced at
+// one cabbage, and Sysco sells it as "1X1 EA" one day and "1X10 EA" the next.
+// Read only as one pack, the case of ten looked like a cabbage at 14.33. So the
+// number of items is offered too, and the price decides which one was meant.
+//
+// The printed pack is read again rather than trusted from the stored line,
+// because a line stored before this was written carries the one reading only.
+export function packReadings(line, product) {
+    const first = unitsWanted(line?.pack, product)
+    const printed = readPackSize(line?.pack_size)
+    const items = printed?.unit === 'Units' && product?.unit && product.unit !== 'Units'
+        ? printed.total
+        : null
+    return [first, items].filter((n, i, all) => n != null && n > 0 && all.indexOf(n) === i)
+}
+
+// Whether a line charged the same price the Hub already has, however many were
+// in it.
+//
+// **Compared per unit, not per case.** A case of ten cabbages at 14.33 and one
+// cabbage at 1.43 are the same price, 1.433 and 1.43 a cabbage, and asking about
+// it every time somebody orders loose instead of by the case is what made the
+// first real review untrustworthy. The gap allowed is only what printing the
+// smaller of the two to the cent can explain: half a cent, spread over its
+// units. The same pack is the printed prices side by side, to the half cent,
+// exactly as before.
+export function samePrice({ perCase, units }, price) {
+    if (!price) return false
+    const now = num(perCase)
+    const rowUnits = price.units_per_case == null ? null : num(price.units_per_case)
+    const rowCase = price.price_per_case == null ? null : num(price.price_per_case)
+
+    const samePack = units != null && rowUnits != null && Math.abs(rowUnits - units) <= 0.0005
+    if (rowCase != null && (samePack || !units)) return Math.abs(rowCase - now) <= SAME_PRICE
+
+    const perUnitWas = price.price_per_unit != null ? num(price.price_per_unit)
+        : rowCase != null && rowUnits ? rowCase / rowUnits
+            : null
+    // A price row with nothing on it to compare against asks nothing, as it
+    // always has.
+    if (perUnitWas == null) return true
+    if (!units) return false
+
+    const smallest = Math.min(units, rowUnits || units)
+    return Math.abs(perUnitWas - now / units) <= SAME_PRICE / smallest + 0.00005
+}
+
+// How many units a line holds, given how many somebody said another line with
+// the same code holds.
+//
+// Matching a code in the review is answered on one line and applies to every
+// line carrying it, and they are not always the same pack: one cabbage one day,
+// a case of ten the next. Each keeps its own count, scaled from the answer by
+// what is printed on the two lines.
+export function unitsForPack(chosen, fromPackSize, toPackSize) {
+    if (chosen == null) return null
+    if (fromPackSize === toPackSize) return chosen
+    const from = readPackSize(fromPackSize)
+    const into = readPackSize(toPackSize)
+    if (!from?.total || !into?.total || from.unit !== into.unit) return chosen
+    return to(num(chosen) * into.total / from.total, 3)
+}
+
 // Every line, with what the Hub already knows about it.
 //
 // `codes` is the authority once it has anything in it. The supplier_code column
@@ -273,16 +341,27 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
 
         const was = num(price.price_per_case)
         const now = num(line.price_per_case)
-        const wantedUnits = unitsWanted(line.pack, product)
+        // The reading of the pack that makes it the same price, if there is
+        // one, and the usual reading if not.
+        const readings = packReadings(line, product)
+        const agrees = readings.length
+            ? readings.find(units => samePrice({ perCase: now, units }, price))
+            : (samePrice({ perCase: now, units: null }, price) ? null : undefined)
+        const wantedUnits = agrees ?? readings[0] ?? null
         // A pack size change is not a price change and must never be treated as
         // one. The unique key on a price row includes units_per_case, so a new
         // pack is a new row, and is_preferred stays on the discontinued one
         // unless somebody moves it. That is how the app ends up costing from a
         // case nobody can buy any more.
+        //
+        // **The same price per unit in a different pack is not a question at
+        // all.** It is the same thing bought another way, a case one day and
+        // loose the next, and the Hub costs from the price per unit, which has
+        // not moved.
         const packMoved = wantedUnits != null && price.units_per_case != null
             && Math.abs(num(price.units_per_case) - wantedUnits) > 0.0005
 
-        const moved = price.price_per_case != null && Math.abs(was - now) > SAME_PRICE
+        const moved = agrees === undefined
 
         return {
             line,
@@ -295,7 +374,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
             packMoved,
             perUnitWas: num(price.price_per_unit),
             perUnitNow: wantedUnits ? to(now / wantedUnits, 4) : null,
-            pile: (moved || packMoved) ? 'price_changed' : 'unchanged',
+            pile: moved ? 'price_changed' : 'unchanged',
             category: lineCategory(product, supplier, line),
         }
     })

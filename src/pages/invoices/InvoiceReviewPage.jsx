@@ -7,10 +7,13 @@ import { useConfirm } from '@/context/confirm'
 import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { matchLines, pilesOf, storedLine, lineCategory } from '@/lib/invoiceImport'
+import {
+    matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack,
+} from '@/lib/invoiceImport'
+import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
 import { acceptPrice, movePreferred, codeRow, ignoreCode } from '@/lib/priceEvents'
 import { prefillLink } from '@/lib/products'
-import { voidedBy } from '@/lib/invoiceClaims'
+import { voidedBy, sentBack } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, secondaryButton, primaryButton, rowButton, badge,
     hintClass, dateField,
@@ -100,9 +103,9 @@ export default function InvoiceReviewPage() {
                     .eq('is_mix', false)
                     .order('name'),
                 // Every credit that points at an invoice, to find the ones that
-                // reverse a whole delivery.
+                // reverse a whole delivery and the lines sent back one at a time.
                 supabase.from('invoices')
-                    .select('id, credit_of_invoice_id, total_amount')
+                    .select('id, credit_of_invoice_id, total_amount, invoice_lines(supplier_code, line_total)')
                     .eq('restaurant_id', restaurantId)
                     .eq('document_type', 'credit')
                     .not('credit_of_invoice_id', 'is', null),
@@ -112,15 +115,19 @@ export default function InvoiceReviewPage() {
             const failed = [lines, prices, codes, suppliers, products, credits].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
-            // **Neither of these is evidence of what anything costs**, so
-            // neither asks a question about a price. A credit note's lines are
-            // money coming back at the price already charged, and a delivery
-            // that was sent back in full the next day was never bought at all.
-            // Three of those turned up in the one month this was designed
-            // against.
+            // **None of these is evidence of what anything costs**, so none
+            // asks a question about a price. A credit note's lines are money
+            // coming back at the price already charged, a delivery that was sent
+            // back in full the next day was never bought at all, and neither was
+            // a single line credited in full against its own invoice. Three of
+            // the first kind turned up in the one month this was designed
+            // against, and the julienne fries on the first real week were the
+            // second.
+            const gone = sentBack(lines.data || [], credits.data || [])
             const asks = (lines.data || []).filter(line => (
                 line.invoices.document_type !== 'credit'
                 && !voidedBy(line.invoices, credits.data || [])
+                && !gone.has(line.id)
             ))
 
             setData({
@@ -201,33 +208,42 @@ export default function InvoiceReviewPage() {
 
     async function accept(row, alsoPrefer = false) {
         const at = new Date().toISOString()
-        const out = acceptPrice(row, { restaurantId, userId: user?.id, at })
+        const out = acceptPrice(row, { restaurantId, userId: user?.id, at, prices: data.prices })
         if (!out) return 'That line has no product behind it yet.'
 
         let priceId = out.priceId
+        let costed
         if (out.what === 'update') {
             const { error: e1 } = await supabase.from('product_supplier_prices')
                 .update(out.patch).eq('id', out.priceId)
             if (e1) return friendlyError(e1)
+            costed = { ...(out.packRow || row.price), ...out.patch }
         } else {
             const { data: made, error: e1 } = await supabase.from('product_supplier_prices')
                 .insert(out.row).select().single()
             if (e1) return friendlyError(e1)
             priceId = made.id
+            costed = made
+        }
 
-            if (alsoPrefer) {
-                const move = movePreferred(row.product, made, {
-                    restaurantId, userId: user?.id, from: out.stranded, at,
-                })
-                if (move.off) {
-                    await supabase.from('product_supplier_prices')
-                        .update({ is_preferred: false }).eq('id', move.off)
-                }
-                const { error: e2 } = await supabase.from('product_supplier_prices')
-                    .update({ is_preferred: true }).eq('id', made.id)
-                if (e2) return friendlyError(e2)
-                await supabase.from('product_price_events').insert(move.event)
+        // A second pack, and he said to cost from it. Whatever the product was
+        // costed from before stops being, whichever supplier it was, or two
+        // prices would both say they are the one.
+        if (alsoPrefer && row.packMoved) {
+            const before = data.prices.find(p => (
+                p.product_id === row.product.id && p.is_preferred && p.id !== priceId
+            )) || null
+            const move = movePreferred(row.product, costed, {
+                restaurantId, userId: user?.id, from: before, at,
+            })
+            if (move.off) {
+                await supabase.from('product_supplier_prices')
+                    .update({ is_preferred: false }).eq('id', move.off)
             }
+            const { error: e2 } = await supabase.from('product_supplier_prices')
+                .update({ is_preferred: true }).eq('id', priceId)
+            if (e2) return friendlyError(e2)
+            await supabase.from('product_price_events').insert(move.event)
         }
 
         const { error: e3 } = await supabase.from('product_price_events')
@@ -237,7 +253,17 @@ export default function InvoiceReviewPage() {
         // The code follows the price row it now means, so the next document
         // matches itself.
         await pointCode(row, priceId)
-        return decide(sameCode(row).map(r => r.stored.id), 'accepted')
+        return decide(agreeing(row, costed), 'accepted')
+    }
+
+    // This line and the others with its code that charged the same price per
+    // unit as the one the Hub now has. The same code at a different price, a
+    // case at one price and loose at another, is its own question and waits.
+    function agreeing(row, priceRow) {
+        return sameCode(row)
+            .filter(r => r.stored.id === row.stored.id
+                || samePrice({ perCase: r.line.price_per_case, units: r.wantedUnits }, priceRow))
+            .map(r => r.stored.id)
     }
 
     async function reject(row) {
@@ -307,6 +333,7 @@ export default function InvoiceReviewPage() {
             })
             .in('id', sameCode(row).map(r => r.stored.id))
         if (e2) return friendlyError(e2)
+        await refreshCategories(sameCode(row).map(r => r.stored.invoice_id))
 
         // Deliberately undecided. If the price also moved, the line belongs in
         // the pile that asks about that, and it will be there when this reloads.
@@ -320,15 +347,20 @@ export default function InvoiceReviewPage() {
             ? Math.round((perCase / unitsPerCase) * 10000) / 10000
             : null
 
-        // A price row for exactly this pack from this supplier, or a new one.
-        // The unique key on the table is what decides, so looking first is the
-        // difference between adding a pack and failing on a conflict.
-        const existing = data.prices.find(p => (
+        // A price row for exactly this pack from this supplier, then one for a
+        // different pack at the same price per unit, and only then a new one.
+        // Looking first is the difference between adding a pack and failing on
+        // the unique key, and the second is the cabbage: one bought loose
+        // matches the price the Hub already has for them, whatever pack that
+        // price was typed against.
+        const ofProduct = data.prices.filter(p => (
             p.product_id === productId
             && p.supplier_id === row.supplierId
-            && num(p.units_per_case) === unitsPerCase
             && (p.purchase_type || 'case') === 'case'
         ))
+        const existing = ofProduct.find(p => num(p.units_per_case) === unitsPerCase)
+            || ofProduct.find(p => samePrice({ perCase, units: unitsPerCase }, p))
+            || null
 
         // **Pointing a code at a price we already have never changes that
         // price.** It used to write the invoice's price straight over it, which
@@ -337,11 +369,8 @@ export default function InvoiceReviewPage() {
         // under a new code at the wrong price. Nothing changes a cost without
         // him: the code is matched here, and if the invoice charged something
         // different the line goes on to the pile that asks about the price.
-        let priceId = existing?.id
-        let samePrice = true
-        if (existing) {
-            samePrice = Math.abs(num(existing.price_per_case) - perCase) < 0.005
-        } else {
+        let priceRow = existing
+        if (!existing) {
             // Preferred only when the product has nothing else, because that is
             // not a choice, it is the only answer there is.
             const others = data.prices.filter(p => p.product_id === productId)
@@ -359,7 +388,7 @@ export default function InvoiceReviewPage() {
                 })
                 .select().single()
             if (e1) return friendlyError(e1)
-            priceId = made.id
+            priceRow = made
 
             // An event is what the product itself costs, so only a price the
             // Hub now costs from gets one. A second supplier's price is a line
@@ -368,7 +397,7 @@ export default function InvoiceReviewPage() {
                 await supabase.from('product_price_events').insert({
                     restaurant_id: restaurantId,
                     product_id: productId,
-                    price_id: priceId,
+                    price_id: made.id,
                     price_per_unit: perUnit,
                     reason: 'created',
                     changed_by: user?.id || null,
@@ -377,27 +406,72 @@ export default function InvoiceReviewPage() {
             }
         }
 
-        const failed = await pointCode(row, priceId)
+        const failed = await pointCode(row, priceRow.id)
         if (failed) return failed
 
-        const { error: e2 } = await supabase.from('invoice_lines')
-            .update({
-                price_id: priceId,
-                product_id: productId,
-                units_per_case: unitsPerCase,
-                unit_price: perUnit,
-                category: lineCategory(product, row.supplier),
-            })
-            .in('id', sameCode(row).map(r => r.stored.id))
+        // **Every line with this code, each at its own pack.** It used to write
+        // the pack of the line that was pressed onto all of them, so a loose
+        // cabbage matched with a case of ten on the screen made the case one
+        // cabbage too, and marked it done at a price it was never compared with.
+        const lines = sameCode(row).map(r => {
+            const units = unitsForPack(unitsPerCase, row.line.pack_size, r.line.pack_size)
+            const charged = num(r.line.price_per_case)
+            return {
+                r,
+                units,
+                unitPrice: units > 0 ? Math.round((charged / units) * 10000) / 10000 : null,
+                agrees: samePrice({ perCase: charged, units }, priceRow),
+            }
+        })
+        const written = await Promise.all(lines.map(({ r, units, unitPrice }) => (
+            supabase.from('invoice_lines')
+                .update({
+                    price_id: priceRow.id,
+                    product_id: productId,
+                    units_per_case: units,
+                    unit_price: unitPrice,
+                    category: lineCategory(product, r.supplier),
+                })
+                .eq('id', r.stored.id)
+        )))
+        const e2 = written.map(w => w.error).find(Boolean)
         if (e2) return friendlyError(e2)
+        await refreshCategories(lines.map(({ r }) => r.stored.invoice_id))
 
-        if (!samePrice) {
-            setSaid(`Matched. This invoice charged ${fmtMoney(perCase)} a case against the `
-                + `${fmtMoney(existing.price_per_case)} we cost it at, so it is waiting under `
-                + 'The price changed.')
-            return null
+        const waiting = lines.filter(l => !l.agrees)
+        if (waiting.length) {
+            setSaid(`Matched. ${waiting.length === 1 ? 'One line charged' : `${waiting.length} lines charged`} `
+                + `a different price per unit from the ${fmtMoney(priceRow.price_per_case)} a case we `
+                + 'cost it at, so it is waiting under The price changed.')
         }
-        return decide(sameCode(row).map(r => r.stored.id), 'matched')
+        const settled = lines.filter(l => l.agrees).map(({ r }) => r.stored.id)
+        return settled.length ? decide(settled, 'matched') : null
+    }
+
+    // What each invoice is filed under, after its lines have moved.
+    //
+    // An invoice shows one label on the History page and anywhere else that
+    // lists invoices, and it is where most of its money went. Matching a line
+    // here can change that, the mops going from packaging to cleaning, so it is
+    // worked out again from every line on the invoice, decided or not.
+    async function refreshCategories(invoiceIds) {
+        const ids = [...new Set((invoiceIds || []).filter(Boolean))]
+        if (!ids.length) return
+        const { data: all } = await supabase.from('invoice_lines')
+            .select('invoice_id, category, line_total, vat_amount, deposit_amount')
+            .in('invoice_id', ids)
+        await Promise.all(ids.map(id => {
+            const category = mainCategory(storedTotals((all || []).filter(l => l.invoice_id === id)))
+            return category ? supabase.from('invoices').update({ category }).eq('id', id) : null
+        }))
+    }
+
+    // One line, set aside without teaching the Hub anything about its code:
+    // ordered by mistake and sent back before any credit came, or a one off.
+    // The next time the code turns up it is asked about again. Not stock is for
+    // a code that is never stock, and there is nothing on screen to undo it.
+    async function leaveOne(row) {
+        return decide([row.stored.id], 'ignored')
     }
 
     // A delivery charge, a crate deposit, a fuel surcharge. They have codes and
@@ -407,7 +481,8 @@ export default function InvoiceReviewPage() {
             title: 'Not stock?',
             message: `${row.line.description} will stop being offered here, and lines carrying `
                 + `code ${row.line.code} will still count towards the week's cost. `
-                + 'This is for a delivery charge, a crate deposit and the like.',
+                + 'This is for a delivery charge, a crate deposit and the like. For something '
+                + 'ordered by mistake, use Leave this one instead.',
             confirmLabel: 'It is not stock',
         })
         if (!reason) return null
@@ -534,6 +609,7 @@ export default function InvoiceReviewPage() {
                                             onSameProduct={() => run(`same-${row.stored.id}`, () => sameProduct(row))}
                                             onMatch={() => setMatching(row)}
                                             onNotStock={() => run(`skip-${row.stored.id}`, () => notStock(row))}
+                                            onLeave={() => run(`leave-${row.stored.id}`, () => leaveOne(row))}
                                         />
                                     ))}
                                 </div>
@@ -548,7 +624,7 @@ export default function InvoiceReviewPage() {
 
 // One line, and what can be done about it.
 function ReviewRow({
-    row, busy, sameCodeCount, onAccept, onReject, onSameProduct, onMatch, onNotStock,
+    row, busy, sameCodeCount, onAccept, onReject, onSameProduct, onMatch, onNotStock, onLeave,
 }) {
     const { line, stored, supplier, pile } = row
     const doc = stored.invoices
@@ -603,7 +679,8 @@ function ReviewRow({
 
             {sameCodeCount > 1 && (
                 <p className="text-xs text-muted mb-2">
-                    This code is on {sameCodeCount} lines in here. Deciding once does all of them.
+                    This code is on {sameCodeCount} lines in here. Deciding once does every one of
+                    them at the same price.
                 </p>
             )}
 
@@ -658,6 +735,9 @@ function ReviewRow({
                         >
                             Make it a new product
                         </Link>
+                        <button type="button" disabled={!!busy} onClick={onLeave} className={rowButton()}>
+                            Leave this one
+                        </button>
                         <button type="button" disabled={!!busy} onClick={onNotStock} className={rowButton()}>
                             Not stock
                         </button>

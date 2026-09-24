@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     CLAIM_KINDS, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimCandidates, claimMatch,
-    creditSettles, voidedBy, chasingList, isLate, claimsForWeek, bySupplier,
+    creditSettles, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -389,6 +389,38 @@ describe('a credit that reverses a whole invoice', () => {
         const credits = [{ id: 'cr1', credit_of_invoice_id: 'i2', total_amount: -102.43 }]
         expect(voidedBy(invoice, credits)).toBeNull()
     })
+})
+
+describe('a line sent back on its own', () => {
+    const fries = { id: 'l1', invoice_id: 'i1', supplier_code: '492717', line_total: 47.68 }
+    const chips = { id: 'l2', invoice_id: 'i1', supplier_code: '492397', line_total: 19.82 }
+
+    // The julienne fries on the first real week, ordered by mistake and
+    // credited in full the same day.
+    it('is gone when its code was credited in full against its own invoice', () => {
+        const credits = [{
+            id: 'cr1', credit_of_invoice_id: 'i1',
+            invoice_lines: [{ supplier_code: '492717', line_total: -47.68 }],
+        }]
+        expect([...sentBack([fries, chips], credits)]).toEqual(['l1'])
+    })
+
+    it('stays when only part of it came back', () => {
+        const credits = [{
+            id: 'cr1', credit_of_invoice_id: 'i1',
+            invoice_lines: [{ supplier_code: '492717', line_total: -23.84 }],
+        }]
+        expect(sentBack([fries], credits).size).toBe(0)
+    })
+
+    it('stays when the credit is against a different invoice', () => {
+        const credits = [{
+            id: 'cr1', credit_of_invoice_id: 'i9',
+            invoice_lines: [{ supplier_code: '492717', line_total: -47.68 }],
+        }]
+        expect(sentBack([fries], credits).size).toBe(0)
+    })
+
 })
 
 describe('what is still being chased', () => {

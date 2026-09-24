@@ -98,6 +98,32 @@ describe('accepting what an invoice charged', () => {
     it('is nothing at all for a line with no product behind it', () => {
         expect(acceptPrice(row({ price: null, product: null }), WHO)).toBeNull()
     })
+
+    // A pack typed in months ago with no code on it. Adding it again breaks
+    // the unique key on the table, so it is that row that gets the new price.
+    it('updates the price the Hub already has for the new pack rather than adding it twice', () => {
+        const typed = {
+            ...PRICE, id: 'pr2', supplier_code: null, units_per_case: 15, price_per_case: 44, price_per_unit: 2.9333,
+            is_preferred: false,
+        }
+        const out = acceptPrice(row({
+            packMoved: true,
+            wantedUnits: 15,
+            line: { code: '497870', description: 'FLOUR TORTILLA 12IN', price_per_case: 45.45, pack_size: '6X2.5 KG' },
+        }), { ...WHO, prices: [PRICE, typed] })
+
+        expect(out.what).toBe('update')
+        expect(out.priceId).toBe('pr2')
+        expect(out.patch).toMatchObject({ price_per_case: 45.45, price_per_unit: 3.03 })
+        expect(out.event).toMatchObject({ price_id: 'pr2', previous_per_unit: 2.9333 })
+        expect(out.packRow.id).toBe('pr2')
+        expect(out.stranded.id).toBe('pr1')
+    })
+
+    it('still adds the pack when the Hub has no price for it', () => {
+        const out = acceptPrice(row({ packMoved: true, wantedUnits: 15 }), { ...WHO, prices: [PRICE] })
+        expect(out.what).toBe('insert')
+    })
 })
 
 describe('refusing one', () => {

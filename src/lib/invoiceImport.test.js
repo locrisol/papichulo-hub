@@ -4,6 +4,7 @@ import {
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
     fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
+    samePrice, packReadings, unitsForPack,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -325,13 +326,29 @@ describe('the four piles', () => {
             lines: [line({
                 pack_size: '6X2.5 KG',
                 pack: { count: 6, size: 2.5, unit: 'KG', total: 15, printed: '6X2.5 KG' },
-                price_per_case: 45.45,
+                price_per_case: 48,
             })],
             prices: [price()],
             supplier: SUPPLIER,
         })
         expect(row.packMoved).toBe(true)
         expect(row.pile).toBe('price_changed')
+        expect(row.wantedUnits).toBe(15)
+    })
+
+    // 45.45 for fifteen kilos is 3.03 a kilo, the price the Hub already has.
+    // The same thing bought in a bigger pack is not a question.
+    it('lets a different pack at the same price per unit through', () => {
+        const [row] = matchLines({
+            lines: [line({
+                pack_size: '6X2.5 KG',
+                pack: { count: 6, size: 2.5, unit: 'KG', total: 15, printed: '6X2.5 KG' },
+                price_per_case: 45.45,
+            })],
+            prices: [price()],
+            supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('unchanged')
         expect(row.wantedUnits).toBe(15)
     })
 
@@ -355,6 +372,92 @@ describe('the four piles', () => {
         expect(piles.unchanged).toHaveLength(1)
         expect(piles.new_to_us).toEqual([])
         expect(piles.price_changed).toEqual([])
+    })
+})
+
+describe('a case one day and loose the next', () => {
+    // White Cabbage as the Hub has it: counted in KG, priced at one cabbage.
+    const CABBAGE = { id: 'p7', name: 'White Cabbage', section: 'Cold Room', unit: 'KG' }
+    const oneCabbage = price({
+        id: 'pr7', product_id: 'p7', products: CABBAGE, supplier_code: '5018687',
+        price_per_case: 1.43, units_per_case: 1, price_per_unit: 1.43,
+    })
+    const cabbage = over => line({
+        code: '5018687', description: 'WHITE CABBAGE 1X1 EA', storage: 'chilled', ...over,
+    })
+
+    // What reached the first real review as a price change from 1.43 to 14.33.
+    it('does not ask about a case of ten against the price of one', () => {
+        const [row] = matchLines({
+            lines: [cabbage({
+                pack_size: '1X10 EA', pack: { count: 1, size: 10, unit: 'Units', total: 10 },
+                cases: 1, units: 0, price_per_case: 14.33, value: 14.33,
+            })],
+            prices: [oneCabbage],
+            supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('unchanged')
+        expect(row.wantedUnits).toBe(10)
+        expect(row.perUnitNow).toBe(1.433)
+    })
+
+    it('does not ask about four loose ones either', () => {
+        const [row] = matchLines({
+            lines: [cabbage({
+                pack_size: '1X1 EA', pack: { count: 1, size: 1, unit: 'Units', total: 1 },
+                cases: 0, units: 4, price_per_case: 1.43, value: 5.72,
+            })],
+            prices: [oneCabbage],
+            supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('unchanged')
+    })
+
+    // A real change in what one cabbage costs still asks, whichever way it
+    // was bought.
+    it('still asks when a cabbage really costs more', () => {
+        const [row] = matchLines({
+            lines: [cabbage({
+                pack_size: '1X10 EA', pack: { count: 1, size: 10, unit: 'Units', total: 10 },
+                cases: 1, units: 0, price_per_case: 16, value: 16,
+            })],
+            prices: [oneCabbage],
+            supplier: SUPPLIER,
+        })
+        expect(row.pile).toBe('price_changed')
+    })
+
+    it('reads a pack sold by the each both ways for something counted in kilos', () => {
+        expect(packReadings({ pack: { count: 1, total: 10, unit: 'Units' }, pack_size: '1X10 EA' }, CABBAGE))
+            .toEqual([1, 10])
+        expect(packReadings({ pack: { count: 4, total: 10, unit: 'KG' }, pack_size: '4X2.5 KG' }, { unit: 'KG' }))
+            .toEqual([10])
+        expect(packReadings({ pack: null, pack_size: null }, CABBAGE)).toEqual([])
+    })
+
+    it('compares per unit, allowing only what printing to the cent explains', () => {
+        expect(samePrice({ perCase: 14.33, units: 10 }, oneCabbage)).toBe(true)
+        expect(samePrice({ perCase: 14.5, units: 10 }, oneCabbage)).toBe(false)
+        // The same pack is the two printed prices side by side, as it always was.
+        expect(samePrice({ perCase: 1.44, units: 1 }, oneCabbage)).toBe(false)
+        expect(samePrice({ perCase: 1.43, units: 1 }, oneCabbage)).toBe(true)
+    })
+
+    // A loose price with no case on it, like the mops.
+    it('compares a loose price by its price per unit', () => {
+        const loose = { price_per_case: null, units_per_case: null, price_per_unit: 6.12 }
+        expect(samePrice({ perCase: 6.12, units: 1 }, loose)).toBe(true)
+        expect(samePrice({ perCase: 6.5, units: 1 }, loose)).toBe(false)
+    })
+
+    // Matched on one line in the review, the answer applies to the others with
+    // the same code, each at its own pack.
+    it('scales the count answered on one line to another pack', () => {
+        expect(unitsForPack(1, '1X1 EA', '1X10 EA')).toBe(10)
+        expect(unitsForPack(0.97, '1X970 GM', '6X970 GM')).toBe(5.82)
+        expect(unitsForPack(4, '4X2.5 KG', '4X2.5 KG')).toBe(4)
+        // Kilos against eaches cannot be scaled, so the answer stands.
+        expect(unitsForPack(6, '1X1 KG', '1X6 EA')).toBe(6)
     })
 })
 
