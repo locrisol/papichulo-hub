@@ -36,6 +36,13 @@ backup to the running database, and deleting it throws that path away.
 **Folding one away is not worth a branch of its own**, so it rides with whatever
 is being worked on next.
 
+## What is in here now
+
+`001` to `009` are the Timesheet, all run on live and all merged. `010` is the
+invoice import and **it has not been run anywhere yet**: it adds five tables,
+reshapes `invoice_lines`, gives `invoices` a document number and a credit note,
+and builds `invoice_cost_by_category`.
+
 ## What was here before
 
 Sixty three numbered migrations from May to September 2026, then ten in
