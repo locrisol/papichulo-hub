@@ -15,7 +15,7 @@
 // while what a portion costs only moves when he says so.
 
 import { num } from '@/lib/format'
-import { weekStartOf } from '@/lib/dates'
+import { weekStartOf, addDays } from '@/lib/dates'
 import { recognisesSysco, readSyscoInvoice } from '@/lib/invoiceSysco'
 
 // Every format the Hub can read.
@@ -152,6 +152,14 @@ export function similarWords(a, b) {
 // the other. Below this it says nothing rather than guessing.
 export const SAME_PRODUCT = 0.7
 
+// How long a code has to have been quiet before it counts as having stopped.
+//
+// Deliveries come two or three times a week, so a code seen three days ago has
+// not gone anywhere. Without this, anything not on the document in front of you
+// looks discontinued, and the Hub would offer a perfectly live product as the
+// thing a new code replaced.
+export const QUIET_DAYS = 10
+
 // A code that stopped appearing, that this new one looks like it replaced.
 //
 // The supplier renumbering something is otherwise a new product appearing
@@ -161,12 +169,14 @@ export const SAME_PRODUCT = 0.7
 // size if both say one.
 export function codeSuccessor(line, codes, { onThisDocument = [], date = null } = {}) {
     const here = new Set(onThisDocument)
+    const quietBy = date ? addDays(date, -QUIET_DAYS) : null
+
     const gone = (codes || []).filter(c => (
         !c.ignored
         && c.price_id
         && c.supplier_code !== line.code
         && !here.has(c.supplier_code)
-        && (!date || !c.last_seen_on || c.last_seen_on < date)
+        && (!quietBy || !c.last_seen_on || c.last_seen_on <= quietBy)
     ))
 
     const scored = gone
@@ -376,7 +386,7 @@ export function storedLine(stored) {
 
 // The document itself. A credit note is an invoice row with a negative total,
 // which is what lets a week's cost read it without knowing there are two kinds.
-export function invoicePayload(doc, { restaurantId, supplierId, weekStart, createdBy }) {
+export function invoicePayload(doc, { restaurantId, supplierId, weekStart, createdBy, category }) {
     return {
         restaurant_id: restaurantId,
         supplier_id: supplierId,
@@ -385,9 +395,11 @@ export function invoicePayload(doc, { restaurantId, supplierId, weekStart, creat
         invoice_date: doc.date,
         total_amount: doc.goodsTotal,
         // The header category is what a screen shows before the lines are read
-        // and what the cost view falls back on if they never are. The lines
-        // decide once they exist.
-        category: 'food',
+        // and what the cost view falls back on when they never are, which is
+        // every invoice from a supplier whose lines are not parsed at all. It
+        // follows the supplier, so a delivery of equipment never lands against
+        // the food target. Where there are lines, the lines decide.
+        category: category || 'food',
         week_start: weekStart,
         entry_method: 'parsed',
         created_by: createdBy || null,

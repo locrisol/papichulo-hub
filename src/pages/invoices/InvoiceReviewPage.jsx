@@ -88,9 +88,14 @@ export default function InvoiceReviewPage() {
                     .eq('restaurant_id', restaurantId),
                 supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId),
                 supabase.from('suppliers').select('id, name, category'),
+                // Anything we buy. A MIX is made here out of other products
+                // and has no supplier, so offering one as the thing a code
+                // means would be offering to price something that is priced by
+                // its recipe.
                 supabase.from('products')
                     .select('id, name, section, unit, is_mix, category, is_active')
                     .eq('is_active', true)
+                    .eq('is_mix', false)
                     .order('name'),
             ])
 

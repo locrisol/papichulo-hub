@@ -144,6 +144,18 @@ describe('telling whether one code became another', () => {
 
     // The supplier renumbering something is otherwise a new product appearing
     // beside an old one that quietly stops, and nobody notices for a year.
+    // Deliveries come two or three times a week, so a code seen three days ago
+    // has not gone anywhere. Without a quiet period, anything not on the
+    // document in front of you looks discontinued.
+    it("never suggests a code that was on last week's delivery", () => {
+        const live = [{ ...codes[0], last_seen_on: '2026-09-11' }]
+        expect(codeSuccessor(
+            line({ code: '497871', description: 'SANTA MARIA FLOUR TORTILLA' }),
+            live,
+            { onThisDocument: ['497871'], date: '2026-09-14' },
+        )).toBeNull()
+    })
+
     it('suggests the code that stopped appearing', () => {
         const found = codeSuccessor(
             line({ code: '497871', description: 'SANTA MARIA FLOUR TORTILLA' }),
@@ -390,6 +402,17 @@ describe('what gets written', () => {
         expect(payload.document_type).toBe('credit')
         expect(payload.total_amount).toBe(-74.26)
         expect(payload.entry_method).toBe('parsed')
+    })
+
+    // The header is what the cost view falls back on when an invoice has no
+    // lines at all, which is every invoice from somebody who sells equipment.
+    // Food would put a new till against the food target.
+    it('takes the header category from the supplier', () => {
+        const payload = invoicePayload(
+            { number: '1', kind: 'invoice', date: '2026-08-27', goodsTotal: 400 },
+            { restaurantId: 'r1', supplierId: 's2', weekStart: '2026-08-23', category: 'other' },
+        )
+        expect(payload.category).toBe('other')
     })
 })
 

@@ -185,19 +185,61 @@ export default function InvoiceImportPage() {
             || (a.doc.kind === 'credit' ? 1 : 0) - (b.doc.kind === 'credit' ? 1 : 0)
         ))
 
+        // Every code seen anywhere in the batch, gathered as the documents go
+        // in and written once at the end.
+        //
+        // **The same code is on several invoices in a week**, which is the
+        // normal case rather than the odd one: a product bought twice a week is
+        // two documents carrying the same number. Writing the code row per
+        // document meant inserting it, then inserting it again, and the unique
+        // key stopping the second one dead halfway through a batch.
+        const seen = new Map()
+
         for (const file of inOrder) {
-            const failed = await writeDocument(file)
+            const failed = await writeDocument(file, seen)
             if (failed) { setError(failed); break }
             done += 1
             setFiles(all => all.filter(f => f.key !== file.key))
         }
 
+        const failedCodes = await writeCodes(seen)
         setSaving(false)
+        if (failedCodes) { setError(failedCodes); return }
         if (done) setSaid(`${done} ${done === 1 ? 'document' : 'documents'} imported.`)
     }
 
-    async function writeDocument(file) {
-        const { doc, where, matched } = file
+    async function writeCodes(seen) {
+        for (const [key, entry] of seen) {
+            const existing = known.codes.find(c => (
+                c.supplier_id === entry.supplierId && c.supplier_code === entry.line.code
+            ))
+
+            const patch = existing
+                ? seenAgain(existing, { line: entry.line, date: entry.lastSeen })
+                : codeRow({
+                    code: entry.line.code,
+                    line: entry.line,
+                    supplierId: entry.supplierId,
+                    restaurantId: entry.restaurantId,
+                    priceId: entry.priceId,
+                    date: entry.firstSeen,
+                })
+            // first_seen_on is what says how long the Hub has known about
+            // something, and the earliest document in the batch is the answer.
+            if (!existing) patch.last_seen_on = entry.lastSeen
+
+            const { error: e1 } = existing
+                ? await supabase.from('supplier_codes').update(patch).eq('id', existing.id)
+                : await supabase.from('supplier_codes').insert(patch)
+            if (e1) return friendlyError(e1)
+
+            seen.delete(key)
+        }
+        return null
+    }
+
+    async function writeDocument(file, seen) {
+        const { doc, where, matched, supplier } = file
 
         const { data: invoice, error: e1 } = await supabase.from('invoices')
             .insert(invoicePayload(doc, {
@@ -205,6 +247,7 @@ export default function InvoiceImportPage() {
                 supplierId: where.supplierId,
                 weekStart: weekStartOf(doc.date),
                 createdBy: user?.id,
+                category: supplier?.category,
             }))
             .select()
             .single()
@@ -214,28 +257,20 @@ export default function InvoiceImportPage() {
             .insert(matched.map(row => linePayload(row, invoice.id)))
         if (e2) return friendlyError(e2)
 
-        // Every code on the document, seen today. This is what later lets the
-        // Hub notice that one stopped appearing and another turned up in its
-        // place.
+        // Every code on the document, gathered rather than written. This is
+        // what later lets the Hub notice that one stopped appearing and another
+        // turned up in its place.
         for (const row of matched) {
-            const existing = known.codes.find(c => (
-                c.supplier_id === where.supplierId && c.supplier_code === row.line.code
-            ))
-            const patch = existing
-                ? seenAgain(existing, { line: row.line, date: doc.date })
-                : codeRow({
-                    code: row.line.code,
-                    line: row.line,
-                    supplierId: where.supplierId,
-                    restaurantId: where.restaurantId,
-                    priceId: row.price?.id,
-                    date: doc.date,
-                })
-
-            const { error: e3 } = existing
-                ? await supabase.from('supplier_codes').update(patch).eq('id', existing.id)
-                : await supabase.from('supplier_codes').insert(patch)
-            if (e3) return friendlyError(e3)
+            const key = `${where.supplierId}:${row.line.code}`
+            const already = seen.get(key)
+            seen.set(key, {
+                supplierId: where.supplierId,
+                restaurantId: where.restaurantId,
+                line: already && already.lastSeen > doc.date ? already.line : row.line,
+                priceId: row.price?.id || already?.priceId || null,
+                firstSeen: already && already.firstSeen < doc.date ? already.firstSeen : doc.date,
+                lastSeen: already && already.lastSeen > doc.date ? already.lastSeen : doc.date,
+            })
         }
 
         // A credit says which invoice it credits, and that reference is exact.
