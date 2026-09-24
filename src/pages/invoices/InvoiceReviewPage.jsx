@@ -10,6 +10,7 @@ import { friendlyError } from '@/lib/errors'
 import { matchLines, pilesOf, storedLine, lineCategory } from '@/lib/invoiceImport'
 import { acceptPrice, movePreferred, codeRow, ignoreCode } from '@/lib/priceEvents'
 import { prefillLink } from '@/lib/products'
+import { voidedBy } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, secondaryButton, primaryButton, rowButton, badge,
     hintClass, dateField,
@@ -77,9 +78,9 @@ export default function InvoiceReviewPage() {
 
         async function load() {
             setError('')
-            const [lines, prices, codes, suppliers, products] = await Promise.all([
+            const [lines, prices, codes, suppliers, products, credits] = await Promise.all([
                 supabase.from('invoice_lines')
-                    .select('*, invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, restaurant_id)')
+                    .select('*, invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, restaurant_id, total_amount)')
                     .is('decision', null)
                     .eq('invoices.restaurant_id', restaurantId)
                     .gte('invoices.invoice_date', from)
@@ -98,14 +99,32 @@ export default function InvoiceReviewPage() {
                     .eq('is_active', true)
                     .eq('is_mix', false)
                     .order('name'),
+                // Every credit that points at an invoice, to find the ones that
+                // reverse a whole delivery.
+                supabase.from('invoices')
+                    .select('id, credit_of_invoice_id, total_amount')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('document_type', 'credit')
+                    .not('credit_of_invoice_id', 'is', null),
             ])
 
             if (!alive) return
-            const failed = [lines, prices, codes, suppliers, products].map(r => r.error).find(Boolean)
+            const failed = [lines, prices, codes, suppliers, products, credits].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
+            // **Neither of these is evidence of what anything costs**, so
+            // neither asks a question about a price. A credit note's lines are
+            // money coming back at the price already charged, and a delivery
+            // that was sent back in full the next day was never bought at all.
+            // Three of those turned up in the one month this was designed
+            // against.
+            const asks = (lines.data || []).filter(line => (
+                line.invoices.document_type !== 'credit'
+                && !voidedBy(line.invoices, credits.data || [])
+            ))
+
             setData({
-                lines: lines.data || [],
+                lines: asks,
                 prices: prices.data || [],
                 codes: codes.data || [],
                 suppliers: suppliers.data || [],
@@ -122,23 +141,28 @@ export default function InvoiceReviewPage() {
     // Run again rather than remembered, because a price accepted on Tuesday
     // changes the answer for a line imported on Monday, and a screen showing
     // last week's answer about this week's prices would be worse than useless.
+    //
+    // Document by document, as the import did, because whether an old code has
+    // gone quiet is a question about the day that document was printed. Asked
+    // about today, a code replaced last week would not look replaced yet.
     const rows = useMemo(() => {
         if (!data) return []
-        const bySupplier = new Map()
-        for (const stored of data.lines) {
-            const supplierId = stored.invoices.supplier_id
-            if (!bySupplier.has(supplierId)) bySupplier.set(supplierId, [])
-            bySupplier.get(supplierId).push(stored)
+        const byDocument = new Map()
+        for (const stored of inPaperOrder(data.lines)) {
+            const id = stored.invoices.id
+            if (!byDocument.has(id)) byDocument.set(id, [])
+            byDocument.get(id).push(stored)
         }
 
-        return [...bySupplier.entries()].flatMap(([supplierId, stored]) => {
+        return [...byDocument.values()].flatMap(stored => {
+            const { supplier_id: supplierId, invoice_date: date } = stored[0].invoices
             const supplier = data.suppliers.find(s => s.id === supplierId) || null
             const matched = matchLines({
                 lines: stored.map(storedLine),
                 codes: data.codes.filter(c => c.supplier_id === supplierId),
                 prices: data.prices.filter(p => p.supplier_id === supplierId),
                 supplier,
-                date: todayISO(),
+                date,
             })
             return matched.map((row, i) => ({
                 ...row, stored: stored[i], supplier, supplierId,
@@ -306,12 +330,17 @@ export default function InvoiceReviewPage() {
             && (p.purchase_type || 'case') === 'case'
         ))
 
+        // **Pointing a code at a price we already have never changes that
+        // price.** It used to write the invoice's price straight over it, which
+        // is exactly how a bowl that should be 29.00 a case would have become
+        // 49.00 across every dish it goes into, the day the supplier put it
+        // under a new code at the wrong price. Nothing changes a cost without
+        // him: the code is matched here, and if the invoice charged something
+        // different the line goes on to the pile that asks about the price.
         let priceId = existing?.id
+        let samePrice = true
         if (existing) {
-            const { error: e1 } = await supabase.from('product_supplier_prices')
-                .update({ supplier_code: row.line.code, price_per_case: perCase, price_per_unit: perUnit })
-                .eq('id', existing.id)
-            if (e1) return friendlyError(e1)
+            samePrice = Math.abs(num(existing.price_per_case) - perCase) < 0.005
         } else {
             // Preferred only when the product has nothing else, because that is
             // not a choice, it is the only answer there is.
@@ -332,15 +361,20 @@ export default function InvoiceReviewPage() {
             if (e1) return friendlyError(e1)
             priceId = made.id
 
-            await supabase.from('product_price_events').insert({
-                restaurant_id: restaurantId,
-                product_id: productId,
-                price_id: priceId,
-                price_per_unit: perUnit,
-                reason: others.length === 0 ? 'created' : 'by_hand',
-                changed_by: user?.id || null,
-                invoice_line_id: row.stored.id,
-            })
+            // An event is what the product itself costs, so only a price the
+            // Hub now costs from gets one. A second supplier's price is a line
+            // of its own on the graph and does not move the product's.
+            if (others.length === 0) {
+                await supabase.from('product_price_events').insert({
+                    restaurant_id: restaurantId,
+                    product_id: productId,
+                    price_id: priceId,
+                    price_per_unit: perUnit,
+                    reason: 'created',
+                    changed_by: user?.id || null,
+                    invoice_line_id: row.stored.id,
+                })
+            }
         }
 
         const failed = await pointCode(row, priceId)
@@ -357,6 +391,12 @@ export default function InvoiceReviewPage() {
             .in('id', sameCode(row).map(r => r.stored.id))
         if (e2) return friendlyError(e2)
 
+        if (!samePrice) {
+            setSaid(`Matched. This invoice charged ${fmtMoney(perCase)} a case against the `
+                + `${fmtMoney(existing.price_per_case)} we cost it at, so it is waiting under `
+                + 'The price changed.')
+            return null
+        }
         return decide(sameCode(row).map(r => r.stored.id), 'matched')
     }
 
@@ -632,6 +672,22 @@ function ReviewRow({
 // so the creation form opens on the right section rather than on the first one
 // in the list.
 const SECTION_FOR = { frozen: 'Freezer', chilled: 'Cold Room', ambient: 'Dry' }
+
+// The order the lines are shown in, the same every time: oldest document
+// first, then by its number, then as they are printed on it.
+//
+// The database hands them back sorted by line number alone, and every document
+// has a line 1, so which document's line 1 came first was up to it. Every press
+// reloads the lines, and both lists were reshuffled under whoever was working
+// through them.
+function inPaperOrder(lines) {
+    return [...(lines || [])].sort((a, b) => (
+        String(a.invoices?.invoice_date).localeCompare(String(b.invoices?.invoice_date))
+        || String(a.invoices?.invoice_number).localeCompare(String(b.invoices?.invoice_number))
+        || num(a.line_no) - num(b.line_no)
+        || String(a.id).localeCompare(String(b.id))
+    ))
+}
 
 // A supplier writes in capitals and the catalogue does not. Title case is a
 // better starting point than shouting, and it is a starting point: whoever
