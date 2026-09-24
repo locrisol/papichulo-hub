@@ -437,11 +437,17 @@ union all
 union all
  select c.restaurant_id,
         c.counted_week as cost_date,
-        coalesce(l.category, 'food') as category,
+        -- The line says what kind of cost it is. Where a claim has no line
+        -- behind it, which is every note taken at the door and every hand
+        -- deduction turned into one, the document it is against does. Falling
+        -- straight to food would take a claim on a packaging delivery off the
+        -- wrong target and both percentages would be wrong.
+        coalesce(l.category, i.category, 'food') as category,
         -(c.amount - c.credited_amount) as amount,
         'claim'::text as came_from
    from public.invoice_line_claims c
    left join public.invoice_lines l on l.id = c.invoice_line_id
+   left join public.invoices i on i.id = c.invoice_id
   where c.status = 'open'
     and c.counted_week is not null
     and c.amount is not null

@@ -332,3 +332,74 @@ export function claimsForWeek(claims, weekStart, weekEnd) {
         waiting: round2(open.reduce((t, c) => t + num(claimBalance(c)), 0)),
     }
 }
+
+// ---------------------------------------------------------------------------
+// How a supplier does on claims
+// ---------------------------------------------------------------------------
+
+// One row per supplier, for the conversation with them.
+//
+// The point of it is the two figures nobody in the building has ever been able
+// to put a number on: how much of what was asked for actually came back, and
+// how long it took. A supplier who credits everything the next day and a
+// supplier who credits two thirds of it a fortnight later look identical when
+// all anybody keeps is the credit notes.
+export function bySupplier(claims, suppliers, today) {
+    const byId = new Map()
+
+    for (const claim of claims || []) {
+        const id = claim.supplier_id || 'none'
+        if (!byId.has(id)) {
+            byId.set(id, {
+                supplierId: claim.supplier_id || null,
+                name: (suppliers || []).find(s => s.id === claim.supplier_id)?.name || 'Not said',
+                raised: 0, settled: 0, refused: 0, open: 0,
+                asked: 0, credited: 0, waiting: 0,
+                days: [],
+            })
+        }
+        const row = byId.get(id)
+        row.raised += 1
+        row.asked += num(claim.amount)
+        row.credited += num(claim.credited_amount)
+
+        if (claim.status === 'refused') row.refused += 1
+        else if (claimIsOpen(claim)) {
+            row.open += 1
+            row.waiting += num(claimBalance(claim))
+        } else if (claim.status === 'settled') {
+            row.settled += 1
+            if (claim.settled_on) row.days.push(daysBetween(claim.raised_on, claim.settled_on))
+        }
+    }
+
+    return [...byId.values()]
+        .map(row => ({
+            ...row,
+            asked: round2(row.asked),
+            credited: round2(row.credited),
+            waiting: round2(row.waiting),
+            // What share of what was asked for came back. Null rather than nought
+            // where nothing has been asked, because those are different answers.
+            backPct: row.asked > 0 ? Math.round((row.credited / row.asked) * 1000) / 10 : null,
+            // The middle one rather than the average, because a single claim
+            // somebody forgot about for two months would drag a mean into
+            // saying something untrue about every other week.
+            typicalDays: middleOf(row.days),
+            oldest: oldestOpen(claims, row.supplierId, today),
+        }))
+        .sort((a, b) => b.waiting - a.waiting || b.raised - a.raised)
+}
+
+function middleOf(numbers) {
+    if (!numbers.length) return null
+    const sorted = [...numbers].sort((a, b) => a - b)
+    const at = Math.floor(sorted.length / 2)
+    return sorted.length % 2 ? sorted[at] : Math.round((sorted[at - 1] + sorted[at]) / 2)
+}
+
+function oldestOpen(claims, supplierId, today) {
+    const mine = (claims || []).filter(c => c.supplier_id === supplierId && claimIsOpen(c))
+    if (!mine.length) return null
+    return Math.max(...mine.map(c => daysBetween(c.raised_on, today)))
+}

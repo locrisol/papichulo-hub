@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     CLAIM_KINDS, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimCandidates, claimMatch,
-    creditLands, settleClaim, voidedBy, chasingList, isLate, claimsForWeek,
+    creditLands, settleClaim, voidedBy, chasingList, isLate, claimsForWeek, bySupplier,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -319,5 +319,53 @@ describe('what the week says about claims', () => {
 
     it("leaves the other week out of it", () => {
         expect(claimsForWeek(claims, '2026-09-27', '2026-10-03').raised).toBe(1)
+    })
+})
+
+describe('how a supplier does on claims', () => {
+    const suppliers = [{ id: 's1', name: 'Test Supplier' }, { id: 's2', name: 'Another' }]
+    const rows = [
+        claim({ id: 'a', status: 'settled', credited_amount: 69.98, settled_on: '2026-09-15' }),
+        claim({ id: 'b', amount: 40, credited_amount: 10 }),
+        claim({ id: 'c', status: 'refused', amount: 25 }),
+        claim({ id: 'd', supplier_id: 's2', amount: 12, raised_on: '2026-09-19' }),
+    ]
+
+    const summary = bySupplier(rows, suppliers, '2026-09-20')
+    const mine = summary.find(r => r.supplierId === 's1')
+
+    it('counts each kind of ending', () => {
+        expect(mine).toMatchObject({ raised: 3, settled: 1, refused: 1, open: 1 })
+    })
+
+    // The two figures nobody in the building has ever been able to put a number
+    // on. A supplier who credits everything the next day and one who credits
+    // two thirds of it a fortnight later look identical when all anybody keeps
+    // is the credit notes.
+    it('says how much of what was asked for came back', () => {
+        expect(mine.asked).toBe(134.98)
+        expect(mine.credited).toBe(79.98)
+        expect(mine.backPct).toBe(59.3)
+    })
+
+    it('says what is still out and how long the oldest has been', () => {
+        expect(mine.waiting).toBe(30)
+        expect(mine.oldest).toBe(6)
+    })
+
+    // The middle one, because a single claim somebody forgot about for two
+    // months would drag a mean into saying something untrue about every week.
+    it('quotes the typical wait rather than the average', () => {
+        expect(mine.typicalDays).toBe(1)
+    })
+
+    it('keeps the suppliers apart and puts the most owed first', () => {
+        expect(summary.map(r => r.supplierId)).toEqual(['s1', 's2'])
+    })
+
+    it('says nothing rather than nought where nothing has been asked', () => {
+        const none = bySupplier([claim({ amount: null })], suppliers, '2026-09-20')
+        expect(none[0].backPct).toBeNull()
+        expect(none[0].typicalDays).toBeNull()
     })
 })

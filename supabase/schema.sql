@@ -2923,11 +2923,12 @@ UNION ALL
 UNION ALL
  SELECT "c"."restaurant_id",
     "c"."counted_week" AS "cost_date",
-    COALESCE("l"."category", 'food'::"text") AS "category",
+    COALESCE("l"."category", "i"."category", 'food'::"text") AS "category",
     - ("c"."amount" - "c"."credited_amount") AS "amount",
     'claim'::"text" AS "came_from"
-   FROM ("public"."invoice_line_claims" "c"
+   FROM (("public"."invoice_line_claims" "c"
      LEFT JOIN "public"."invoice_lines" "l" ON (("l"."id" = "c"."invoice_line_id")))
+     LEFT JOIN "public"."invoices" "i" ON (("i"."id" = "c"."invoice_id")))
   WHERE (("c"."status" = 'open'::"text")
      AND ("c"."counted_week" IS NOT NULL)
      AND ("c"."amount" IS NOT NULL)

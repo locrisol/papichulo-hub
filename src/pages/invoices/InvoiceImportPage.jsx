@@ -9,7 +9,7 @@ import { friendlyError } from '@/lib/errors'
 import { readPdfText } from '@/lib/pdfText'
 import {
     readDocument, whereItGoes, placeDocument, matchLines, pilesOf, documentTotals,
-    documentBlocks, linePayload, invoicePayload,
+    documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim,
 } from '@/lib/invoiceImport'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
 import {
@@ -18,6 +18,7 @@ import {
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DocumentCard from '@/components/invoices/DocumentCard'
 import LinkAccountModal from '@/components/invoices/LinkAccountModal'
+import FillInModal from '@/components/invoices/FillInModal'
 
 // Reading a week of invoices in one go.
 //
@@ -43,6 +44,7 @@ export default function InvoiceImportPage() {
     const [said, setSaid] = useState('')
     const [known, setKnown] = useState(null)
     const [linking, setLinking] = useState(null)
+    const [fillingIn, setFillingIn] = useState(null)
     const picker = useRef(null)
 
     // Everything the matching needs, read once. A batch of twenty files asking
@@ -261,6 +263,48 @@ export default function InvoiceImportPage() {
         return null
     }
 
+    // Putting the detail behind an invoice that was typed off a total.
+    //
+    // Nothing is deleted and started again: the row keeps who entered it and
+    // when, the lines go on, and the difference between what was typed and what
+    // the supplier charged becomes a claim, so the week does not move.
+    async function fillIn({ file, invoice }, plan) {
+        const { doc, where, matched } = file
+
+        const { error: e1 } = await supabase.from('invoices')
+            .update(fillInPayload(doc, { createdBy: invoice.created_by || user?.id }))
+            .eq('id', invoice.id)
+        if (e1) return friendlyError(e1)
+
+        const { error: e2 } = await supabase.from('invoice_lines')
+            .insert(matched.map(row => linePayload(row, invoice.id)))
+        if (e2) return friendlyError(e2)
+
+        const claim = fillInClaim(plan, {
+            invoice, doc, restaurantId: where.restaurantId,
+            supplierId: where.supplierId, raisedBy: user?.id,
+        })
+        if (claim) {
+            const { error: e3 } = await supabase.from('invoice_line_claims').insert(claim)
+            if (e3) return friendlyError(e3)
+        }
+
+        setFillingIn(null)
+        setFiles(all => all.filter(f => f.key !== file.key))
+        setSaid(claim
+            ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.`
+            : 'Filled in.')
+        return null
+    }
+
+    async function run(work) {
+        setSaving(true)
+        setError('')
+        const failed = await work()
+        setSaving(false)
+        if (failed) setError(failed)
+    }
+
     const waiting = ready.reduce((total, f) => total + (f.doc?.goodsTotal || 0), 0)
 
     return (
@@ -317,6 +361,16 @@ export default function InvoiceImportPage() {
                 </div>
             </div>
 
+            {fillingIn && (
+                <FillInModal
+                    doc={fillingIn.file.doc}
+                    invoice={fillingIn.invoice}
+                    lines={fillingIn.file.doc.lines.length}
+                    onClose={() => setFillingIn(null)}
+                    onFillIn={plan => run(() => fillIn(fillingIn, plan))}
+                />
+            )}
+
             {linking && (
                 <LinkAccountModal
                     accountNo={linking.doc.accountNo}
@@ -336,9 +390,7 @@ export default function InvoiceImportPage() {
                                 file={file}
                                 onForget={() => setFiles(all => all.filter(f => f.key !== file.key))}
                                 onLinkAccount={() => setLinking(file)}
-                                onFillIn={() => setSaid(
-                                    'Filling in a hand entered invoice is on the review screen.',
-                                )}
+                                onFillIn={invoice => setFillingIn({ file, invoice })}
                             />
                         ))}
                     </div>

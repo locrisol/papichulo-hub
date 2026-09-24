@@ -3,6 +3,7 @@ import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
+    fillInPlan, fillInPayload, fillInClaim,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -430,5 +431,53 @@ describe('what stops a document being written', () => {
         expect(documentBlocks({ ...good, number: null })).toHaveLength(1)
         expect(documentBlocks({ ...good, date: null })).toHaveLength(1)
         expect(documentBlocks({ ...good, lines: [] })).toHaveLength(1)
+    })
+})
+
+describe('filling in an invoice somebody typed off a total', () => {
+    const doc = { number: '45448455', kind: 'invoice', date: '2026-08-23', goodsTotal: 163.03 }
+
+    // He takes a shortage off before typing it in, so filling one in almost
+    // always raises the total, and raising the total would move the food cost
+    // of a week that has already been reported.
+    it('reads the difference as a deduction made by hand', () => {
+        const plan = fillInPlan(doc, { total_amount: 140 })
+        expect(plan).toMatchObject({ gross: 163.03, net: 140, difference: 23.03, deducted: 23.03, over: 0 })
+    })
+
+    // The gross goes up and the claim takes the difference back off, so the
+    // week ends up on the figure it has always been on.
+    it('turns the deduction into a claim of the same amount', () => {
+        const plan = fillInPlan(doc, { total_amount: 140 })
+        const made = fillInClaim(plan, {
+            plan, doc, invoice: { id: 'i1' }, restaurantId: 'r1', supplierId: 's1', raisedBy: 'u1',
+        })
+        expect(made).toMatchObject({
+            amount: 23.03, status: 'open', kind: 'short',
+            counted_week: '2026-08-23', docket_number: '45448455',
+        })
+        expect(made.note).toContain('140.00')
+        expect(made.note).toContain('163.03')
+    })
+
+    it('has nothing to claim when the two agree', () => {
+        const plan = fillInPlan(doc, { total_amount: 163.03 })
+        expect(plan.same).toBe(true)
+        expect(fillInClaim(plan, { doc, invoice: { id: 'i1' } })).toBeNull()
+    })
+
+    // A difference nobody can account for is exactly the thing worth looking
+    // at, so it is shown rather than absorbed.
+    it('says so rather than claiming when more was typed than the document says', () => {
+        const plan = fillInPlan(doc, { total_amount: 200 })
+        expect(plan.over).toBe(36.97)
+        expect(plan.deducted).toBe(0)
+        expect(fillInClaim(plan, { doc, invoice: { id: 'i1' } })).toBeNull()
+    })
+
+    it('puts the document total on the invoice, because that is what was charged', () => {
+        expect(fillInPayload(doc, { createdBy: 'u1' })).toMatchObject({
+            invoice_number: '45448455', total_amount: 163.03, entry_method: 'parsed',
+        })
     })
 })

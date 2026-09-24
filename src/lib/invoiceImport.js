@@ -15,6 +15,7 @@
 // while what a portion costs only moves when he says so.
 
 import { num } from '@/lib/format'
+import { weekStartOf } from '@/lib/dates'
 import { recognisesSysco, readSyscoInvoice } from '@/lib/invoiceSysco'
 
 // Every format the Hub can read.
@@ -418,4 +419,81 @@ export function documentBlocks(doc) {
 
 function fixed(n) {
     return n == null ? 'nothing' : Number(n).toFixed(2)
+}
+
+// ---------------------------------------------------------------------------
+// Filling in an invoice somebody typed off a total
+// ---------------------------------------------------------------------------
+
+// **A hand entered total is net and a document is gross**, and he confirmed
+// why: he takes a shortage off before typing it in. So filling one in almost
+// always raises the total, and raising the total would move the week's food
+// cost for a delivery that happened months ago and has already been reported.
+//
+// The answer is to restore the real total and turn the hand deduction into a
+// claim of exactly the same amount. The gross goes up, the claim takes the
+// difference back off, and the week ends up on the same figure it has always
+// been on. What was an unexplained lower number becomes a tracked shortage with
+// a document behind it.
+//
+// If the typed total was higher than the document, that is not a shortage and
+// there is nothing to claim. It is shown rather than absorbed, because a
+// difference nobody can account for is exactly the thing worth looking at.
+export function fillInPlan(doc, invoice) {
+    const gross = round(num(doc?.goodsTotal))
+    const net = round(num(invoice?.total_amount))
+    const difference = round(gross - net)
+
+    return {
+        gross,
+        net,
+        difference,
+        same: Math.abs(difference) < 0.005,
+        deducted: difference > 0.005 ? difference : 0,
+        over: difference < -0.005 ? round(-difference) : 0,
+    }
+}
+
+// What the invoice row becomes. The total is the document's, because that is
+// what the supplier charged, and the claim is what brings the week back.
+export function fillInPayload(doc, { createdBy }) {
+    return {
+        invoice_number: doc.number,
+        document_type: doc.kind,
+        invoice_date: doc.date,
+        total_amount: doc.goodsTotal,
+        entry_method: 'parsed',
+        created_by: createdBy || null,
+    }
+}
+
+// The claim that keeps the week still.
+//
+// Open rather than settled, and that is the point of doing it this way: the
+// deduction was made by hand and nobody knows whether the credit ever came.
+// From here it is a job on the list like any other until somebody says.
+export function fillInClaim(plan, { invoice, doc, restaurantId, supplierId, raisedBy }) {
+    if (!plan.deducted) return null
+    return {
+        restaurant_id: restaurantId,
+        supplier_id: supplierId,
+        invoice_id: invoice.id,
+        docket_number: doc.number,
+        what: 'Taken off the total by hand before the invoice was typed in',
+        kind: 'short',
+        cases: 0,
+        units: 0,
+        amount: plan.deducted,
+        credited_amount: 0,
+        status: 'open',
+        raised_on: doc.date,
+        raised_by: raisedBy || null,
+        counted_week: weekStartOf(doc.date),
+        note: `The total typed in was ${plan.net.toFixed(2)} and the document says `
+            + `${plan.gross.toFixed(2)}.`,
+    }
+}
+
+function round(n) {
+    return Math.round(num(n) * 100) / 100
 }

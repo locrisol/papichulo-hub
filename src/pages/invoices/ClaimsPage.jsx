@@ -9,11 +9,11 @@ import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
     claimKind, doorClaimPayload, claimAmount, claimIsOpen,
-    claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS,
+    claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, rowButton, badge,
-    hintClass, captionClass,
+    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DoorClaimModal from '@/components/invoices/DoorClaimModal'
@@ -93,6 +93,10 @@ export default function ClaimsPage() {
     }, [restaurantId, manager, refresh])
 
     const waiting = useMemo(() => chasingList(claims, todayISO()), [claims])
+    const perSupplier = useMemo(
+        () => (manager ? bySupplier(claims, suppliers, todayISO()) : []),
+        [manager, claims, suppliers],
+    )
     const settled = useMemo(() => claims.filter(c => !claimIsOpen(c)), [claims])
     const owed = waiting.reduce((total, w) => total + (w.balance || 0), 0)
 
@@ -219,6 +223,65 @@ export default function ClaimsPage() {
                             ))}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* How each supplier does, which is the conversation this list is
+                really for. Two figures nobody in the building has ever been
+                able to put a number on: how much of what was asked for came
+                back, and how long it took. */}
+            {!loading && manager && perSupplier.length > 0 && (
+                <div className={`${tableCard} mb-6`}>
+                    <table className="w-full">
+                        <thead>
+                            <tr className={tableHeadRow}>
+                                <th className={`${tableHeadCell} text-left px-4 py-2`}>Supplier</th>
+                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Asked</th>
+                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Back</th>
+                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Waiting</th>
+                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Usual wait</th>
+                                <th className={`${tableHeadCell} text-right px-4 py-2`}>Oldest</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {perSupplier.map(row => (
+                                <tr key={row.supplierId || 'none'}>
+                                    <td className="px-4 py-2 text-sm text-gray-900">
+                                        {row.name}
+                                        <span className="text-xs text-muted">
+                                            {' '}&#183; {row.raised} raised
+                                            {row.refused ? `, ${row.refused} refused` : ''}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-right tabular-nums">
+                                        {fmtMoney(row.asked)}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-right tabular-nums">
+                                        {fmtMoney(row.credited)}
+                                        {row.backPct != null && (
+                                            <span className="text-xs text-muted"> {row.backPct}%</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-right tabular-nums font-semibold">
+                                        {row.waiting > 0 ? fmtMoney(row.waiting) : ''}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-right tabular-nums text-muted">
+                                        {row.typicalDays == null
+                                            ? ''
+                                            : `${row.typicalDays} ${row.typicalDays === 1 ? 'day' : 'days'}`}
+                                    </td>
+                                    <td className={`px-4 py-2 text-sm text-right tabular-nums ${
+                                        row.oldest >= LATE_AFTER_DAYS ? 'font-bold text-amber-800' : 'text-muted'
+                                    }`}
+                                    >
+                                        {row.oldest == null
+                                            ? ''
+                                            : `${row.oldest} ${row.oldest === 1 ? 'day' : 'days'}`}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             )}
 
