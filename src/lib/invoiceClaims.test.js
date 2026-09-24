@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     CLAIM_KINDS, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimCandidates, claimMatch,
-    creditLands, settleClaim, voidedBy, chasingList, isLate, claimsForWeek, bySupplier,
+    creditSettles, voidedBy, chasingList, isLate, claimsForWeek, bySupplier,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -113,6 +113,32 @@ describe('what a claim is worth', () => {
     })
 })
 
+describe('what a price query is worth', () => {
+    // The real case that prompted it: a bowl moved to a new code, came in at
+    // 49.00 a case instead of 29.00, and the supplier is crediting the
+    // difference. The bowls arrived and were kept.
+    const bowls = { price_per_case: 49, units_per_case: 50 }
+
+    it('is the difference, not the whole line', () => {
+        expect(claimAmount({ kind: 'price', cases: 2, units: 0 }, bowls, { agreedPerCase: 29 })).toBe(40)
+    })
+
+    it('prices loose units at the difference per unit', () => {
+        expect(claimAmount({ kind: 'price', cases: 0, units: 10 }, bowls, { agreedPerCase: 29 })).toBe(4)
+    })
+
+    // Without the price that should have been charged there is nothing to work
+    // it out from, and guessing the whole line would take the bowls themselves
+    // off the food cost.
+    it('says nothing until it knows what the price should have been', () => {
+        expect(claimAmount({ kind: 'price', cases: 2 }, bowls)).toBeNull()
+    })
+
+    it('says nothing when they did not charge more than agreed', () => {
+        expect(claimAmount({ kind: 'price', cases: 2 }, bowls, { agreedPerCase: 49 })).toBeNull()
+    })
+})
+
 describe('the balance', () => {
     it('is what is still being chased', () => {
         expect(claimBalance(claim({ credited_amount: 20 }))).toBe(49.98)
@@ -202,60 +228,113 @@ describe('matching a note to a line', () => {
     })
 })
 
-describe('which week a credit comes off', () => {
-    const credit = { id: 'cr1', invoice_date: '2026-09-21', total_amount: -69.98 }
+describe('when the credit note turns up', () => {
+    const invoice = { id: 'i1', invoice_number: '45612214', invoice_date: '2026-09-14' }
+    const credit = { id: 'cr1', number: 'C1', orderReference: '45612214', date: '2026-09-15', goodsTotal: -69.98 }
 
-    // The claim's deduction is replaced by the credit. One deduction, same
-    // week, and the week still adds up.
-    it('lands in the claim week while that week is still open', () => {
-        expect(creditLands(claim(), credit, { publishedWeeks: [] })).toEqual({
-            weekStart: '2026-09-13', countsInCost: true, why: 'week_still_open',
+    // The claim is where the money comes off, in the week the delivery
+    // happened. The credit settles it and does not count again on its own.
+    it('settles the claim against the invoice it credits and does not count itself', () => {
+        const out = creditSettles({
+            credit, against: invoice, claims: [claim({ invoice_id: 'i1' })],
+            lines: [{ code: '330112', value: -69.98 }], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(out.countsInCost).toBe(false)
+        expect(out.extra).toBeNull()
+        expect(out.settle).toEqual([{
+            id: 'c1',
+            patch: expect.objectContaining({
+                credited_amount: 69.98, status: 'settled', settled_on: '2026-09-15', credit_invoice_id: 'cr1',
+            }),
+        }])
+    })
+
+    // Every credit until people start logging problems at the door.
+    it('counts on its own when there is no claim behind it', () => {
+        const out = creditSettles({ credit, against: invoice, claims: [], supplierId: 's1' })
+        expect(out).toEqual({ settle: [], extra: null, countsInCost: true })
+    })
+
+    // Written down at the door before the invoice was even in the Hub.
+    it('finds a note from the door by the docket number', () => {
+        const door = claim({ invoice_id: null, docket_number: '45612214', amount: null })
+        const out = creditSettles({ credit, against: invoice, claims: [door], supplierId: 's1' })
+        expect(out.settle[0].patch).toMatchObject({
+            amount: 69.98, credited_amount: 69.98, status: 'settled', invoice_id: 'i1',
         })
     })
 
-    // A published week never changes, so the deduction it already carries
-    // stands and counting the credit again would take the same money off twice.
-    it('does not count again against a week that has already gone out', () => {
-        expect(creditLands(claim(), credit, { publishedWeeks: ['2026-09-13'] })).toEqual({
-            weekStart: '2026-09-20', countsInCost: false, why: 'already_counted',
-        })
-    })
-
-    it('simply counts when there was no claim behind it', () => {
-        expect(creditLands(null, credit, { publishedWeeks: ['2026-09-13'] })).toEqual({
-            weekStart: '2026-09-20', countsInCost: true, why: 'no_claim',
-        })
-    })
-})
-
-describe('putting a credit against a claim', () => {
-    it('settles it when the whole ask comes back', () => {
-        const out = settleClaim(claim(), { id: 'cr1', invoice_date: '2026-09-15', total_amount: -69.98 })
-        expect(out).toMatchObject({ credited_amount: 69.98, status: 'settled', credit_invoice_id: 'cr1' })
+    it('leaves a claim against a different invoice alone', () => {
+        const other = claim({ invoice_id: 'i9', docket_number: '99999999' })
+        expect(creditSettles({ credit, against: invoice, claims: [other], supplierId: 's1' }).countsInCost)
+            .toBe(true)
     })
 
     // A credit can settle part of an ask, which is what the balance is for.
-    it('leaves it open when only part comes back', () => {
-        const out = settleClaim(claim(), { id: 'cr1', invoice_date: '2026-09-15', total_amount: -30 })
-        expect(out.credited_amount).toBe(30)
-        expect(out.status).toBe('open')
-    })
-
-    // They do not credit more than was asked, so a surplus means the two were
-    // matched wrongly, and that is worth knowing rather than absorbing.
-    it('says so rather than swallowing a credit bigger than the ask', () => {
-        const out = settleClaim(claim(), { id: 'cr1', invoice_date: '2026-09-15', total_amount: -90 })
-        expect(out.credited_amount).toBe(69.98)
-        expect(out.surplus).toBe(20.02)
+    it('leaves a claim open when only part of it comes back', () => {
+        const out = creditSettles({
+            credit: { ...credit, goodsTotal: -30 }, against: invoice,
+            claims: [claim({ invoice_id: 'i1' })], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 30, status: 'open', settled_on: null })
     })
 
     it('adds to what has already come back', () => {
-        const out = settleClaim(
-            claim({ credited_amount: 30 }),
-            { id: 'cr2', invoice_date: '2026-09-16', total_amount: -39.98 },
-        )
-        expect(out.credited_amount).toBe(69.98)
-        expect(out.status).toBe('settled')
+        const out = creditSettles({
+            credit: { ...credit, goodsTotal: -39.98 }, against: invoice,
+            claims: [claim({ invoice_id: 'i1', credited_amount: 30 })], supplierId: 's1',
+        })
+        expect(out.settle[0].patch).toMatchObject({ credited_amount: 69.98, status: 'settled' })
+    })
+
+    // Two claims on one delivery and a credit note with a line for each.
+    it('puts each credit line against the claim for the same product first', () => {
+        const chicken = claim({ id: 'a', invoice_id: 'i1', amount: 40, code: '330112', raised_on: '2026-09-14' })
+        const rice = claim({ id: 'b', invoice_id: 'i1', amount: 18.45, code: '512004', raised_on: '2026-09-13' })
+        const out = creditSettles({
+            credit, against: invoice, claims: [chicken, rice], supplierId: 's1',
+            lines: [{ code: '330112', value: -40 }, { code: '512004', value: -18.45 }],
+        })
+        const byId = Object.fromEntries(out.settle.map(s => [s.id, s.patch.credited_amount]))
+        expect(byId).toEqual({ a: 40, b: 18.45 })
+    })
+
+    // They never credit more than was asked at the door, so money left over
+    // means somebody asked and nobody wrote it down. It becomes a claim of its
+    // own rather than half of one credit counting in one week and half in
+    // another.
+    it('turns money nobody logged into a claim of its own, with no reason made up', () => {
+        const out = creditSettles({
+            credit: { ...credit, goodsTotal: -90 }, against: invoice,
+            claims: [claim({ invoice_id: 'i1' })], supplierId: 's1', restaurantId: 'r1',
+        })
+        expect(out.countsInCost).toBe(false)
+        expect(out.extra).toMatchObject({
+            kind: 'other', amount: 20.02, credited_amount: 20.02, status: 'settled',
+            invoice_id: 'i1', counted_week: '2026-09-13',
+        })
+        expect(claimKind(out.extra.kind).label).toBe('Not logged')
+    })
+})
+
+describe('the claim that carries the money, week by week', () => {
+    // What invoice_cost_by_category takes off for a claim: the whole ask while
+    // it is open, what came back once it is settled. Pinned here so the view
+    // and the arithmetic cannot drift apart without a test saying so.
+    const offWeek = c => (c.status === 'open' ? c.amount : c.credited_amount)
+
+    it('takes off the same money before and after the credit arrives', () => {
+        const before = claim({ invoice_id: 'i1' })
+        const out = creditSettles({
+            credit: { id: 'cr1', orderReference: '45612214', date: '2026-09-21', goodsTotal: -69.98 },
+            against: { id: 'i1', invoice_date: '2026-09-14' }, claims: [before], supplierId: 's1',
+        })
+        const after = { ...before, ...out.settle[0].patch }
+
+        expect(offWeek(before)).toBe(69.98)
+        expect(offWeek(after)).toBe(69.98)
+        // And in the same week, even though the credit is dated the week after.
+        expect(after.counted_week).toBe(before.counted_week)
     })
 })
 

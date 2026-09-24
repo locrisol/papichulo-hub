@@ -39,9 +39,11 @@ is being worked on next.
 ## What is in here now
 
 `001` to `009` are the Timesheet, all run on live and all merged. `010` is the
-invoice import and **it has not been run anywhere yet**: it adds five tables,
-reshapes `invoice_lines`, gives `invoices` a document number and a credit note,
-and builds `invoice_cost_by_category`.
+invoice import, run on live: five tables, `invoice_lines` reshaped, `invoices`
+given a document number and a credit note, and `invoice_cost_by_category`.
+`011` is not run yet. It changes that view so a claim carries the money back in
+the week the delivery happened and a credit note that settles one does not count
+again, and it lets a claim made from a credit say nobody logged a reason.
 
 ## What was here before
 

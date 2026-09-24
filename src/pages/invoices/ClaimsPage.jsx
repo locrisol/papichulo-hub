@@ -5,6 +5,8 @@ import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney } from '@/lib/format'
 import { todayISO, shortDate, fullDate, addDays } from '@/lib/dates'
+import { orderByUse } from '@/lib/supplierOrder'
+import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
@@ -13,7 +15,7 @@ import {
 } from '@/lib/invoiceClaims'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, rowButton, badge,
-    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell,
+    hintClass, captionClass, tableCard, tableHeadRow, tableHeadCell, compactField,
 } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import DoorClaimModal from '@/components/invoices/DoorClaimModal'
@@ -67,7 +69,7 @@ export default function ClaimsPage() {
             const from = addDays(todayISO(), -LOOK_BACK_DAYS)
 
             const [sup, cl, inv] = await Promise.all([
-                supabase.from('suppliers').select('id, name').eq('is_active', true).order('name'),
+                supabase.from('suppliers').select('id, name').eq('is_active', true),
                 supabase.from('invoice_line_claims')
                     .select('*')
                     .eq('restaurant_id', restaurantId)
@@ -77,7 +79,7 @@ export default function ClaimsPage() {
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')
-                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, price_per_case, units_per_case, unit_price, supplier_code)')
+                        .select('id, invoice_number, invoice_date, supplier_id, document_type, total_amount, invoice_lines(id, raw_description, price_per_case, units_per_case, unit_price, supplier_code, product_supplier_prices(price_per_case))')
                         .eq('restaurant_id', restaurantId)
                         .gte('invoice_date', from)
                     : Promise.resolve({ data: [] }),
@@ -87,7 +89,11 @@ export default function ClaimsPage() {
             const failed = sup.error || cl.error || inv.error
             if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
-            setSuppliers(sup.data || [])
+            // Most used first, the order the Invoices page offers them in. An
+            // employee cannot read the invoices, so for them it is the
+            // problems they have logged, which puts the supplier they deal
+            // with at the door at the top after the first one.
+            setSuppliers(orderByUse(sup.data || [], [...(inv.data || []), ...(cl.data || [])]))
             setClaims(cl.data || [])
             setInvoices(inv.data || [])
             setLoading(false)
@@ -124,9 +130,16 @@ export default function ClaimsPage() {
     // nothing would ever say so, so the Hub only does this on its own when the
     // docket number was written down and one line on that document plainly
     // matches. Everything else is a list to choose from.
-    async function attach(claim, line, invoice) {
+    async function attach(claim, line, invoice, priced = {}) {
+        const amount = claimAmount(claim, line, priced)
+        if (amount == null) {
+            setError(claim.kind === 'price'
+                ? 'Say what they should have charged a case, and it has to be less than what they did.'
+                : 'That line has no price on it to work the claim out from.')
+            return
+        }
         setBusy(claim.id)
-        const amount = claimAmount(claim, line)
+        setError('')
 
         const { error: e1 } = await supabase.from('invoice_line_claims')
             .update({
@@ -326,6 +339,15 @@ function ClaimRow({
     const kind = claimKind(claim.kind)
     const supplier = suppliers.find(s => s.id === claim.supplier_id)
     const [picking, setPicking] = useState(false)
+    // A price query is worth the difference, so it waits here for the price
+    // that should have been charged before it is put against the line.
+    const [pricing, setPricing] = useState(null)
+
+    function choose(line, invoice) {
+        if (claim.kind !== 'price') { onAttach(claim, line, invoice); return }
+        const costingFrom = line.product_supplier_prices?.price_per_case
+        setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
+    }
 
     // Offered rather than done, unless the docket number makes it exact.
     const suggestion = manager && !claim.invoice_line_id ? claimMatch(claim, invoices) : null
@@ -373,7 +395,7 @@ function ClaimRow({
                             <button
                                 type="button"
                                 disabled={busy}
-                                onClick={() => onAttach(claim, suggestion.line, suggestion.invoice)}
+                                onClick={() => choose(suggestion.line, suggestion.invoice)}
                                 className={rowButton('good')}
                             >
                                 That is the one
@@ -400,7 +422,7 @@ function ClaimRow({
                                             <button
                                                 type="button"
                                                 disabled={busy}
-                                                onClick={() => onAttach(claim, line, invoice)}
+                                                onClick={() => choose(line, invoice)}
                                                 className="w-full text-left text-sm px-3 py-2 rounded-lg border border-border hover:bg-gray-50"
                                             >
                                                 <span className="font-semibold">{line.raw_description}</span>
@@ -415,6 +437,47 @@ function ClaimRow({
                                 </ul>
                             )}
                         </>
+                    )}
+
+                    {/* The goods arrived and were kept, so what is coming back is
+                        the overcharge and not the line. It starts from what the
+                        Hub costs that product at, which is the price that was
+                        agreed unless somebody says otherwise. */}
+                    {pricing && (
+                        <div className="mt-3 border border-blue-200 bg-blue-50 rounded-lg p-3">
+                            <label className="text-xs text-blue-900 block mb-1" htmlFor={`agreed-${claim.id}`}>
+                                <strong className="font-bold">{pricing.line.raw_description}</strong> came in at{' '}
+                                {fmtMoney(pricing.line.price_per_case)} a case. What should they have charged?
+                            </label>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                    id={`agreed-${claim.id}`}
+                                    {...numberField({
+                                        value: pricing.agreed,
+                                        onChange: agreed => setPricing(p => ({ ...p, agreed })),
+                                        decimals: 2,
+                                    })}
+                                    className={`${compactField} w-28`}
+                                />
+                                <button
+                                    type="button"
+                                    disabled={busy || pricing.agreed === ''}
+                                    onClick={() => onAttach(claim, pricing.line, pricing.invoice, {
+                                        agreedPerCase: Number(pricing.agreed),
+                                    })}
+                                    className={rowButton('good')}
+                                >
+                                    That is the price
+                                </button>
+                                <button type="button" onClick={() => setPricing(null)} className={rowButton()}>
+                                    Never mind
+                                </button>
+                            </div>
+                            <p className="text-xs text-blue-900 mt-1">
+                                The claim is the difference on {Number(claim.cases) || 0} cases
+                                {Number(claim.units) ? ` and ${claim.units} units` : ''}, not the whole line.
+                            </p>
+                        </div>
                     )}
                 </div>
             )}

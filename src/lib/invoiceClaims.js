@@ -69,7 +69,18 @@ export const CLAIM_KINDS = [
     },
 ]
 
+// Never offered at the door. It is what a claim made from a credit note gets
+// when nobody logged anything for it, and it says so rather than guessing.
+export const NOT_LOGGED = {
+    value: 'other',
+    label: 'Not logged',
+    at_door: '',
+    soft: 'bg-gray-100 text-gray-700 border-gray-300',
+    dot: 'bg-gray-500',
+}
+
 export function claimKind(value) {
+    if (value === NOT_LOGGED.value) return NOT_LOGGED
     return CLAIM_KINDS.find(k => k.value === value) || {
         value,
         label: value || 'Something else',
@@ -140,14 +151,29 @@ export function doorClaimPayload(form, { restaurantId, raisedBy, today }) {
 // boxes with one back: three different shapes and all of them counts, so a
 // claim carries cases and units the way the document does and the money is
 // worked out from the line's own price.
-export function claimAmount(claim, line) {
+//
+// **A price query is the exception, and it is worth the difference.** The goods
+// arrived and were kept; what is coming back is what they were overcharged. A
+// bowl that should have been 29.00 a case and came in at 49.00 is a claim of
+// 20.00 a case, and pricing it at the whole line would take the bowls
+// themselves off the food cost as if they had never arrived. So it needs the
+// price that should have been charged, and says nothing without one.
+export function claimAmount(claim, line, { agreedPerCase = null } = {}) {
     if (!line) return null
     const perCase = num(line.price_per_case)
-    const perUnit = num(line.units_per_case) > 0
-        ? perCase / num(line.units_per_case)
-        : num(line.unit_price)
+    const perPack = num(line.units_per_case)
+    const cases = Math.abs(num(claim?.cases))
+    const units = Math.abs(num(claim?.units))
 
-    return round2(Math.abs(num(claim?.cases)) * perCase + Math.abs(num(claim?.units)) * perUnit)
+    if (claim?.kind === 'price') {
+        if (agreedPerCase == null || agreedPerCase === '') return null
+        const over = perCase - num(agreedPerCase)
+        if (over <= 0) return null
+        return round2(cases * over + units * (perPack > 0 ? over / perPack : 0))
+    }
+
+    const perUnit = perPack > 0 ? perCase / perPack : num(line.unit_price)
+    return round2(cases * perCase + units * perUnit)
 }
 
 // What is still being chased.
@@ -212,57 +238,107 @@ export function claimMatch(claim, invoices) {
 }
 
 // ---------------------------------------------------------------------------
-// The credit, and which week it comes off
+// The credit note, when it turns up
 // ---------------------------------------------------------------------------
 
-// **The cost comes off exactly once.**
+// **The cost comes off exactly once, and the claim is where it comes off.**
 //
-// A claim takes its balance off the week it happened in, from the moment it is
-// raised, because the money was never spent. When the credit note turns up
-// there are two cases and they are genuinely different:
+// A claim takes its money off the week the delivery happened: the whole ask
+// while it is open, what actually came back once it is settled. So when the
+// credit note arrives it settles the claims against the invoice it credits and
+// does not count on its own, and the money never moves week because the credit
+// happened to be dated the Monday after.
 //
-//   the week is still open   the credit belongs to that week, the claim is
-//                            settled and stops deducting, and the credit note
-//                            deducts in its place. One deduction, same week.
+// A credit with no claim behind it simply counts, on its own date. That is
+// every credit until people start logging problems at the door.
 //
-//   the week is published    a published week never changes, so the deduction
-//                            it already carries stands. Counting the credit
-//                            again in a later week would take the same money
-//                            off twice, so it is recorded, matched, and marked
-//                            as already accounted for.
+// Which claims it settles: the ones against the invoice it credits, found by
+// the invoice itself or by the docket number somebody wrote down at the door. A
+// credit line goes first to a claim on the same product code, then to anything
+// still open against that invoice, oldest first.
 //
-// A credit with no claim behind it simply counts, in the week of its own date.
-export function creditLands(claim, credit, { publishedWeeks = [] } = {}) {
-    const published = new Set(publishedWeeks)
-    const ownWeek = weekStartOf(credit.invoice_date)
+// **They never credit more than was asked at the door**, so money left over
+// once every claim is settled means somebody asked and nobody wrote it down. It
+// becomes a claim of its own, settled, with no reason given yet. Leaving it to
+// count on its own would take part of one credit note off in one week and the
+// rest in another.
+export function creditSettles({ credit, lines = [], against = null, claims = [], supplierId, restaurantId }) {
+    const reference = credit.orderReference || null
+    const mine = (claims || [])
+        .filter(c => c.status === 'open' && (!supplierId || !c.supplier_id || c.supplier_id === supplierId))
+        .filter(c => (against && c.invoice_id === against.id)
+            || (reference && c.docket_number && String(c.docket_number) === String(reference)))
+        .sort((a, b) => String(a.raised_on).localeCompare(String(b.raised_on)))
 
-    if (!claim) return { weekStart: ownWeek, countsInCost: true, why: 'no_claim' }
+    if (!mine.length) return { settle: [], extra: null, countsInCost: true }
 
-    const claimWeek = claim.counted_week || ownWeek
-    if (!published.has(claimWeek)) {
-        return { weekStart: claimWeek, countsInCost: true, why: 'week_still_open' }
+    // What each claim can still take. A note from the door with no line behind
+    // it has no amount yet, and takes whatever the credit says it was worth.
+    const left = new Map(mine.map(c => [c.id, c.amount == null ? Infinity : claimBalance(c)]))
+    const got = new Map(mine.map(c => [c.id, 0]))
+    const give = (c, money) => {
+        const taken = Math.min(left.get(c.id), money)
+        got.set(c.id, round2(got.get(c.id) + taken))
+        left.set(c.id, left.get(c.id) === Infinity ? Infinity : round2(left.get(c.id) - taken))
+        return round2(money - taken)
     }
 
-    return { weekStart: ownWeek, countsInCost: false, why: 'already_counted' }
-}
+    const pots = (lines.length ? lines : [{ code: null, value: credit.goodsTotal ?? credit.total_amount }])
+        .map(l => ({ code: l.code || null, money: Math.abs(num(l.value)) }))
 
-// The claim after a credit has been put against it.
-//
-// The balance can only ever go down to nothing. If a credit is somehow bigger
-// than the ask, the surplus is said out loud rather than absorbed, because it
-// means the two were matched wrongly and that is worth knowing.
-export function settleClaim(claim, credit, { on = null } = {}) {
-    const asked = num(claim.amount)
-    const came = Math.abs(num(credit.amount ?? credit.total_amount))
-    const credited = round2(num(claim.credited_amount) + came)
+    // Same product code first, then anything still open, oldest first.
+    for (const pot of pots) {
+        for (const c of mine.filter(c => pot.code && c.code === pot.code)) {
+            if (pot.money > 0.004) pot.money = give(c, pot.money)
+        }
+    }
+    for (const pot of pots) {
+        for (const c of mine) {
+            if (pot.money > 0.004 && left.get(c.id) > 0.004) pot.money = give(c, pot.money)
+        }
+    }
 
-    return {
-        credited_amount: Math.min(credited, asked || credited),
-        status: asked > 0 && credited + 0.004 < asked ? 'open' : 'settled',
-        settled_on: on || credit.invoice_date,
+    const on = credit.date || credit.invoice_date || null
+    const settle = mine
+        .filter(c => got.get(c.id) > 0)
+        .map(c => {
+            const credited = round2(num(c.credited_amount) + got.get(c.id))
+            const asked = c.amount == null ? credited : num(c.amount)
+            const done = credited + 0.004 >= asked
+            return {
+                id: c.id,
+                patch: {
+                    amount: asked,
+                    credited_amount: credited,
+                    status: done ? 'settled' : 'open',
+                    settled_on: done ? on : null,
+                    credit_invoice_id: credit.id || null,
+                    invoice_id: c.invoice_id || against?.id || null,
+                },
+            }
+        })
+
+    const surplus = round2(pots.reduce((t, p) => t + p.money, 0))
+    const extra = surplus > 0.004 ? {
+        restaurant_id: restaurantId,
+        supplier_id: supplierId || null,
+        invoice_id: against?.id || null,
+        docket_number: reference,
+        what: 'Credited with nothing logged for it',
+        kind: NOT_LOGGED.value,
+        cases: 0,
+        units: 0,
+        amount: surplus,
+        credited_amount: surplus,
+        status: 'settled',
+        raised_on: on,
+        settled_on: on,
         credit_invoice_id: credit.id || null,
-        surplus: asked > 0 && credited > asked ? round2(credited - asked) : 0,
-    }
+        counted_week: weekStartOf(against?.invoice_date || on),
+        note: 'Nothing was logged at the door for this part of the credit.',
+    } : null
+
+    return { settle, extra, countsInCost: false }
 }
 
 // A credit that reverses a whole invoice.

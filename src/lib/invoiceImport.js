@@ -17,6 +17,7 @@
 import { num } from '@/lib/format'
 import { weekStartOf, addDays } from '@/lib/dates'
 import { recognisesSysco, readSyscoInvoice } from '@/lib/invoiceSysco'
+import { documentStatus } from '@/lib/supplierDocuments'
 
 // Every format the Hub can read.
 //
@@ -516,4 +517,56 @@ export function fillInClaim(plan, { invoice, doc, restaurantId, supplierId, rais
 
 function round(n) {
     return Math.round(num(n) * 100) / 100
+}
+
+// ---------------------------------------------------------------------------
+// A credit for an invoice that was typed in by hand
+// ---------------------------------------------------------------------------
+
+// **A total typed by hand is usually net**, because the shortage was taken off
+// before it was typed. The credit note for that shortage is then already
+// inside the typed total, and importing it would take the same money off a
+// second time.
+//
+// It happens on the very first day of importing: the last invoices typed by
+// hand have their credits dated the day after, which is the first day of
+// importing documents instead.
+//
+// With the supplier's own list pasted in, the answer is exact: the invoice it
+// credits is found at its value less this credit, or at its value as printed,
+// and only the first means it was taken off. Without the list there is only the
+// day to go on, so anything typed by hand on the day of the credit or the three
+// before it is enough to ask.
+export function creditOnHandEntry(doc, { held = [], documents = [], batch = [] } = {}) {
+    if (doc?.kind !== 'credit' || !doc.orderReference) return null
+    const reference = String(doc.orderReference)
+
+    // Imported, or about to be. The credit then settles or counts the ordinary
+    // way and there is nothing typed by hand to worry about.
+    if (held.some(h => String(h.invoice_number) === reference)) return null
+    if (batch.some(d => d && String(d.number) === reference)) return null
+
+    const typed = held.filter(h => !h.invoice_number)
+    if (!typed.length) return null
+
+    if (documents.length && documents.some(d => String(d.document_id) === reference)) {
+        const portal = documents.map(d => ({ ...d, value: num(d.value) }))
+        if (!portal.some(d => String(d.document_id) === String(doc.number))) {
+            portal.push({
+                document_id: doc.number,
+                order_reference: reference,
+                document_date: doc.date,
+                document_type: 'credit',
+                value: num(doc.goodsTotal),
+            })
+        }
+        const found = documentStatus(portal, typed).get(doc.number)
+        return found?.status === 'in_hand_total'
+            ? { sure: true, invoiceNumber: reference, typed: found.invoice }
+            : null
+    }
+
+    const days = [0, 1, 2, 3].map(n => addDays(doc.date, -n))
+    const near = typed.find(h => days.includes(h.invoice_date))
+    return near ? { sure: false, invoiceNumber: reference, typed: near } : null
 }

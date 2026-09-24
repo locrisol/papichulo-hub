@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 );
 
 COMMENT ON COLUMN "public"."invoices"."invoice_number" IS 'The number printed on the document. Null for everything entered by hand off a total, which is eight months of them.';
-COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False only for a credit settling a claim that already came off a week whose report has been published, because a published week never changes and the money would otherwise come off twice.';
+COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. A credit with no claim behind it counts on its own date.';
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
@@ -792,7 +792,7 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_line_claims" (
     "counted_week" "date",
     "note" "text",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('short', 'quality', 'damaged', 'wrong_item', 'price'))),
+    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('short', 'quality', 'damaged', 'wrong_item', 'price', 'other'))),
     CONSTRAINT "invoice_line_claims_status_check" CHECK (("status" IN ('open', 'settled', 'refused', 'void')))
 );
 
@@ -2887,11 +2887,12 @@ COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for ever
 -- So the lines where there are lines, the header where there are not, and eight
 -- months of invoices typed off a total keep answering exactly as they did.
 --
--- The third arm is the open claims. Money asked back at the door and not yet
--- credited was never spent, and leaving it out overstates the week's food cost
--- by exactly the amount somebody is chasing. It comes off once: while the claim
--- is open it is here, and once the credit note arrives the credit is a document
--- of its own and the claim stops deducting.
+-- The third arm is the claims, and **the claim is the one place money coming
+-- back is taken off, always in the week the delivery happened**: the whole ask
+-- while it is open, what actually came back once it is settled. A credit note
+-- that settles a claim is kept and matched and does not count on its own, which
+-- is what counts_in_cost is for. It comes off once, and it never moves between
+-- weeks because the credit happened to be dated the Monday after.
 --
 -- security_invoker on purpose, the same case as labour_by_day: everything
 -- underneath already decides who sees what by restaurant and the view has
@@ -2920,17 +2921,17 @@ UNION ALL
  SELECT "c"."restaurant_id",
     "c"."counted_week" AS "cost_date",
     COALESCE("l"."category", "i"."category", 'food'::"text") AS "category",
-    - ("c"."amount" - "c"."credited_amount") AS "amount",
+    - CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END AS "amount",
     'claim'::"text" AS "came_from"
    FROM (("public"."invoice_line_claims" "c"
      LEFT JOIN "public"."invoice_lines" "l" ON (("l"."id" = "c"."invoice_line_id")))
      LEFT JOIN "public"."invoices" "i" ON (("i"."id" = "c"."invoice_id")))
-  WHERE (("c"."status" = 'open'::"text")
+  WHERE (("c"."status" = ANY (ARRAY['open'::"text", 'settled'::"text", 'refused'::"text"]))
      AND ("c"."counted_week" IS NOT NULL)
      AND ("c"."amount" IS NOT NULL)
-     AND ("c"."amount" > "c"."credited_amount"));
+     AND (CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END > (0)::numeric));
 
-COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. Lines where an invoice has them, the header where it does not, and open claims as a deduction. Nothing reads invoices for a category total any more.';
+COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. Lines where an invoice has them, the header where it does not, and claims as a deduction in the week the delivery happened: the whole ask while open, what came back once settled. A credit note that settles a claim does not count on its own.';
 
 CREATE OR REPLACE VIEW "public"."public_menu_categories" AS
  SELECT "id",

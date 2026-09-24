@@ -3,7 +3,7 @@ import {
     whereItGoes, placeDocument, lineCategory, SECTION_CATEGORY, similarWords,
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
-    fillInPlan, fillInPayload, fillInClaim,
+    fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -523,5 +523,50 @@ describe('filling in an invoice somebody typed off a total', () => {
         expect(fillInPayload(doc, { createdBy: 'u1' })).toMatchObject({
             invoice_number: '45448455', total_amount: 163.03, entry_method: 'parsed',
         })
+    })
+})
+
+describe('a credit for an invoice typed in by hand', () => {
+    // 325.95 delivered, 74.26 of it credited, and 251.69 typed in by hand: the
+    // credit was taken off before the total was typed.
+    const credit = { kind: 'credit', number: 'C45485340', orderReference: '45480809', date: '2026-08-27', goodsTotal: -74.26 }
+    const typedNet = { id: 'h1', invoice_number: null, invoice_date: '2026-08-27', total_amount: 251.69 }
+    const typedGross = { id: 'h2', invoice_number: null, invoice_date: '2026-08-27', total_amount: 325.95 }
+    const listed = [{
+        document_id: '45480809', order_reference: null, document_date: '2026-08-27',
+        document_type: 'invoice', value: 325.95,
+    }]
+
+    // Importing it would take the same money off a second time.
+    it('is held back when the supplier list says it was taken off by hand', () => {
+        expect(creditOnHandEntry(credit, { held: [typedNet], documents: listed }))
+            .toMatchObject({ sure: true, invoiceNumber: '45480809', typed: { id: 'h1' } })
+    })
+
+    // Typed at its full price, so the credit was not in it and has to count.
+    it('goes in when the invoice was typed at its full price', () => {
+        expect(creditOnHandEntry(credit, { held: [typedGross], documents: listed })).toBeNull()
+    })
+
+    // Without the supplier list there is only the day to go on, so it asks
+    // rather than decides.
+    it('asks when there is no list and something was typed in around then', () => {
+        expect(creditOnHandEntry(credit, { held: [typedNet] }))
+            .toMatchObject({ sure: false, invoiceNumber: '45480809' })
+    })
+
+    it('says nothing when the invoice it credits is in the Hub by its number', () => {
+        const held = [typedNet, { id: 'i1', invoice_number: '45480809' }]
+        expect(creditOnHandEntry(credit, { held, documents: listed })).toBeNull()
+    })
+
+    it('says nothing when the invoice it credits is in the same batch', () => {
+        expect(creditOnHandEntry(credit, { held: [typedNet], batch: [{ number: '45480809' }] })).toBeNull()
+    })
+
+    it('says nothing about an invoice, or a credit with nothing typed near it', () => {
+        expect(creditOnHandEntry({ ...credit, kind: 'invoice' }, { held: [typedNet] })).toBeNull()
+        const weekEarlier = { ...typedNet, invoice_date: '2026-08-20' }
+        expect(creditOnHandEntry(credit, { held: [weekEarlier] })).toBeNull()
     })
 })

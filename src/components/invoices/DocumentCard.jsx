@@ -26,10 +26,11 @@ const STATE = {
     already_here: { words: 'Already here', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
     by_hand: { words: 'Entered by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
     blocked: { words: 'Cannot be read', tint: 'bg-red-50 text-red-800 border-red-200' },
+    on_hand: { words: 'Already taken off?', tint: 'bg-amber-50 text-amber-800 border-amber-200' },
     working: { words: 'Reading...', tint: 'bg-gray-100 text-gray-700 border-gray-300' },
 }
 
-export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn }) {
+export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn, onAllow }) {
     const { name, state, doc, totals, piles, blocks, place, where, restaurantName } = file
     const look = STATE[state] || STATE.working
 
@@ -93,6 +94,35 @@ export default function DocumentCard({ file, onForget, onLinkAccount, onFillIn }
                     >
                         Fill that one in
                     </button>
+                </div>
+            )}
+
+            {/* A credit for an invoice that was typed in by hand, where the
+                shortage was very likely taken off before the total was typed.
+                Importing it would take the same money off twice. */}
+            {state === 'on_hand' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-900">
+                    <strong className="font-bold">
+                        This credits invoice {file.onHand.invoiceNumber}, which was typed in by hand
+                        {file.onHand.typed?.invoice_date ? ` on ${fullDate(file.onHand.typed.invoice_date)}` : ''}.
+                    </strong>{' '}
+                    {file.onHand.waitingOn
+                        ? `Fill that invoice in first. It is ${file.onHand.waitingOn}, above, and once it is filled in this credit settles the shortage instead of taking it off a second time.`
+                        : file.onHand.sure
+                            ? 'The total typed in is the invoice less this credit, so it was already taken off and importing it would take it off again.'
+                            : 'If the shortage was taken off that total before it was typed, this credit is already counted and importing it would take it off again.'}
+                    {/* Nothing to choose when the invoice is in the batch: filling
+                        it in is what lets this one through on its own. */}
+                    {!file.onHand.waitingOn && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            <button type="button" onClick={onForget} className={rowButton('good')}>
+                                Leave it out
+                            </button>
+                            <button type="button" onClick={onAllow} className={rowButton()}>
+                                It was not taken off, import it
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 

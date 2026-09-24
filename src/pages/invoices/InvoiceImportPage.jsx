@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { weekStartOf } from '@/lib/dates'
+import { weekStartOf, todayISO, addDays } from '@/lib/dates'
 import { fmtMoney } from '@/lib/format'
 import { friendlyError } from '@/lib/errors'
 import { readPdfText } from '@/lib/pdfText'
 import {
     readDocument, whereItGoes, placeDocument, matchLines, pilesOf, documentTotals,
-    documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim,
+    documentBlocks, linePayload, invoicePayload, fillInPayload, fillInClaim, creditOnHandEntry,
 } from '@/lib/invoiceImport'
+import { creditSettles } from '@/lib/invoiceClaims'
+import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, hintClass,
@@ -45,6 +47,8 @@ export default function InvoiceImportPage() {
     const [known, setKnown] = useState(null)
     const [linking, setLinking] = useState(null)
     const [fillingIn, setFillingIn] = useState(null)
+    // Credits somebody has said were not taken off by hand, so they go in.
+    const [allowed, setAllowed] = useState(() => new Set())
     const picker = useRef(null)
 
     // Everything the matching needs, read once. A batch of twenty files asking
@@ -58,9 +62,9 @@ export default function InvoiceImportPage() {
             // See the comment on the same line in ClaimsPage: a banner that is
             // never cleared outlives the thing it was about.
             setError('')
-            const [accounts, suppliers, prices, codes, held] = await Promise.all([
+            const [accounts, suppliers, prices, codes, held, documents] = await Promise.all([
                 supabase.from('supplier_accounts').select('*'),
-                supabase.from('suppliers').select('id, name, category'),
+                supabase.from('suppliers').select('id, name, category, is_active'),
                 supabase.from('product_supplier_prices')
                     .select('*, products(id, name, section, unit)')
                     .eq('restaurant_id', restaurantId),
@@ -68,15 +72,25 @@ export default function InvoiceImportPage() {
                 supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount, supplier_id')
                     .eq('restaurant_id', restaurantId),
+                // The supplier's own list, where it has been pasted. It is what
+                // says for certain whether a credit was already taken off a
+                // total typed by hand.
+                supabase.from('supplier_documents').select('*').eq('restaurant_id', restaurantId),
             ])
 
             if (!alive) return
-            const failed = [accounts, suppliers, prices, codes, held].map(r => r.error).find(Boolean)
+            const failed = [accounts, suppliers, prices, codes, held, documents].map(r => r.error).find(Boolean)
             if (failed) { setError(friendlyError(failed)); return }
 
+            // In the order the Invoices page offers them, most used first.
+            const recent = addDays(todayISO(), -USE_WINDOW_DAYS)
             setKnown({
                 accounts: accounts.data || [],
-                suppliers: suppliers.data || [],
+                suppliers: orderByUse(
+                    suppliers.data || [],
+                    (held.data || []).filter(h => h.invoice_date >= recent),
+                ),
+                documents: documents.data || [],
                 prices: prices.data || [],
                 codes: codes.data || [],
                 held: held.data || [],
@@ -173,7 +187,30 @@ export default function InvoiceImportPage() {
         setSaid('That account is linked now. Choose the files again.')
     }
 
-    const ready = files.filter(f => f.state === 'ready')
+    // A credit for an invoice that was typed in by hand, net of that credit, is
+    // already counted: importing it would take the same money off twice. It is
+    // worked out over the whole batch, because the invoice it credits may be one
+    // of the other files.
+    //
+    // **Only a file that is going in as new clears it.** One that is itself
+    // typed in by hand has to be filled in first, or pressing Import would put
+    // the credit in against a total that already has it taken off. So the card
+    // says which one to fill in, and once it is filled in the credit settles the
+    // shortage the fill in turns into a claim.
+    const cards = useMemo(() => files.map(file => {
+        if (file.state !== 'ready' || file.doc?.kind !== 'credit' || allowed.has(file.key)) return file
+        const others = files.filter(f => f.key !== file.key)
+        const onHand = creditOnHandEntry(file.doc, {
+            held: (known?.held || []).filter(h => h.supplier_id === file.where.supplierId),
+            documents: (known?.documents || []).filter(d => d.supplier_id === file.where.supplierId),
+            batch: others.filter(f => f.state === 'ready').map(f => f.doc),
+        })
+        if (!onHand) return file
+        const waitingOn = others.find(f => f.state === 'by_hand' && f.doc?.number === onHand.invoiceNumber)
+        return { ...file, state: 'on_hand', onHand: { ...onHand, waitingOn: waitingOn?.name || null } }
+    }), [files, known, allowed])
+
+    const ready = cards.filter(f => f.state === 'ready')
 
     async function importAll() {
         setSaving(true)
@@ -256,8 +293,14 @@ export default function InvoiceImportPage() {
             .single()
         if (e1) return friendlyError(e1)
 
+        // A credit note's lines are money coming back at the price already
+        // charged. They are not evidence of a new price, so nobody is asked
+        // about them.
         const { error: e2 } = await supabase.from('invoice_lines')
-            .insert(matched.map(row => linePayload(row, invoice.id)))
+            .insert(matched.map(row => ({
+                ...linePayload(row, invoice.id),
+                ...(doc.kind === 'credit' ? { decision: 'matched' } : {}),
+            })))
         if (e2) return friendlyError(e2)
 
         // Every code on the document, gathered rather than written. This is
@@ -276,18 +319,9 @@ export default function InvoiceImportPage() {
             })
         }
 
-        // A credit says which invoice it credits, and that reference is exact.
-        if (doc.kind === 'credit' && doc.orderReference) {
-            const { data: against } = await supabase.from('invoices')
-                .select('id')
-                .eq('restaurant_id', where.restaurantId)
-                .eq('supplier_id', where.supplierId)
-                .eq('invoice_number', doc.orderReference)
-                .maybeSingle()
-            if (against) {
-                await supabase.from('invoices')
-                    .update({ credit_of_invoice_id: against.id }).eq('id', invoice.id)
-            }
+        if (doc.kind === 'credit') {
+            const failed = await settleWith(doc, invoice, where, matched)
+            if (failed) return failed
         }
 
         // If the portal list has been pasted, this closes the gap it was
@@ -298,6 +332,61 @@ export default function InvoiceImportPage() {
             .eq('supplier_id', where.supplierId)
             .eq('document_id', doc.number)
 
+        return null
+    }
+
+    // A credit note, and the claims it settles.
+    //
+    // The claim is where money coming back is taken off, in the week the
+    // delivery happened. So a credit that settles one is kept and matched and
+    // does not count on its own, and a credit with no claim behind it counts on
+    // its own date the ordinary way. See creditSettles.
+    async function settleWith(doc, invoice, where, matched) {
+        let against = null
+        if (doc.orderReference) {
+            const { data } = await supabase.from('invoices')
+                .select('id, invoice_number, invoice_date')
+                .eq('restaurant_id', where.restaurantId)
+                .eq('supplier_id', where.supplierId)
+                .eq('invoice_number', doc.orderReference)
+                .maybeSingle()
+            against = data || null
+            if (against) {
+                await supabase.from('invoices')
+                    .update({ credit_of_invoice_id: against.id }).eq('id', invoice.id)
+            }
+        }
+
+        // Read fresh for every credit, because the one before it in the batch
+        // may have just settled some of them.
+        const { data: open, error: e1 } = await supabase.from('invoice_line_claims')
+            .select('*, invoice_lines(supplier_code)')
+            .eq('restaurant_id', where.restaurantId)
+            .eq('status', 'open')
+        if (e1) return friendlyError(e1)
+
+        const result = creditSettles({
+            credit: { ...doc, id: invoice.id },
+            lines: matched.map(row => ({ code: row.line.code, value: row.line.value })),
+            against,
+            claims: (open || []).map(c => ({ ...c, code: c.invoice_lines?.supplier_code || null })),
+            supplierId: where.supplierId,
+            restaurantId: where.restaurantId,
+        })
+
+        for (const { id, patch } of result.settle) {
+            const { error: e2 } = await supabase.from('invoice_line_claims').update(patch).eq('id', id)
+            if (e2) return friendlyError(e2)
+        }
+        if (result.extra) {
+            const { error: e3 } = await supabase.from('invoice_line_claims').insert(result.extra)
+            if (e3) return friendlyError(e3)
+        }
+        if (!result.countsInCost) {
+            const { error: e4 } = await supabase.from('invoices')
+                .update({ counts_in_cost: false }).eq('id', invoice.id)
+            if (e4) return friendlyError(e4)
+        }
         return null
     }
 
@@ -329,6 +418,14 @@ export default function InvoiceImportPage() {
 
         setFillingIn(null)
         setFiles(all => all.filter(f => f.key !== file.key))
+        // The typed row is that document now, number and all, so a credit
+        // against it in the same batch stops waiting and settles the claim.
+        setKnown(k => ({
+            ...k,
+            held: k.held.map(h => (h.id === invoice.id
+                ? { ...h, invoice_number: doc.number, total_amount: doc.goodsTotal }
+                : h)),
+        }))
         setSaid(claim
             ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.`
             : 'Filled in.')
@@ -422,13 +519,14 @@ export default function InvoiceImportPage() {
             {files.length > 0 && (
                 <>
                     <div className="space-y-3 mb-6">
-                        {files.map(file => (
+                        {cards.map(file => (
                             <DocumentCard
                                 key={file.key}
                                 file={file}
                                 onForget={() => setFiles(all => all.filter(f => f.key !== file.key))}
                                 onLinkAccount={() => setLinking(file)}
                                 onFillIn={invoice => setFillingIn({ file, invoice })}
+                                onAllow={() => setAllowed(all => new Set(all).add(file.key))}
                             />
                         ))}
                     </div>
