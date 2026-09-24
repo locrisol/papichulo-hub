@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtPct } from '@/lib/format'
-import { shortDate, fullDate } from '@/lib/dates'
+import { shortDate, fullDate, todayISO, addDays } from '@/lib/dates'
+import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { friendlyError } from '@/lib/errors'
 import {
     readPortalList, portalSummary, compareDocuments, pairCredits, creditDelays,
@@ -47,14 +48,17 @@ export default function SupplierDocumentsPage() {
         async function load() {
             setError('')
             const [sup, inv] = await Promise.all([
-                supabase.from('suppliers').select('id, name').eq('is_active', true).order('name'),
+                supabase.from('suppliers').select('id, name').eq('is_active', true),
                 supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount, supplier_id, document_type')
                     .eq('restaurant_id', restaurantId),
             ])
             if (!alive) return
             if (sup.error || inv.error) { setError(friendlyError(sup.error || inv.error)); return }
-            setSuppliers(sup.data || [])
+            // The order the Invoices page offers them in, most used first, so
+            // the supplier this page is nearly always about is at the top.
+            const recent = addDays(todayISO(), -USE_WINDOW_DAYS)
+            setSuppliers(orderByUse(sup.data || [], (inv.data || []).filter(i => i.invoice_date >= recent)))
             setHeld(inv.data || [])
         }
 
@@ -90,7 +94,10 @@ export default function SupplierDocumentsPage() {
             document_date: row.document_date,
             document_type: row.document_type,
             value: row.value,
-            invoice_id: mine.find(h => h.invoice_number === row.document_id)?.id || null,
+            // The Hub's own row for this document: imported, or typed in by
+            // hand at the same total. A pairing with a difference in it is left
+            // unlinked, because it is a question rather than an answer.
+            invoice_id: linkedTo(against.status.get(row.document_id)),
         }))
 
         // Pasting an overlapping month again is normal and must not fail, so
@@ -167,9 +174,11 @@ export default function SupplierDocumentsPage() {
                         <Figure label="Credited" value={fmtMoney(summary.credited)}
                             under={summary.creditedPct == null ? '' : `${fmtPct(summary.creditedPct)} of what was invoiced`} />
                         <Figure
-                            label="We are missing"
+                            label="Not in the Hub"
                             value={against.missing.length}
-                            under={against.missing.length ? 'never downloaded' : 'nothing at all'}
+                            under={against.byHand.length
+                                ? `${against.byHand.length} more were typed in by hand`
+                                : (against.missing.length ? 'never downloaded' : 'nothing at all')}
                         />
                     </div>
 
@@ -226,9 +235,10 @@ export default function SupplierDocumentsPage() {
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {read.rows.map(row => {
-                                    const have = mine.some(h => h.invoice_number === row.document_id)
+                                    const where = against.status.get(row.document_id) || { status: 'missing' }
+                                    const look = HELD[where.status]
                                     return (
-                                        <tr key={row.document_id} className={have ? '' : 'bg-amber-50/60'}>
+                                        <tr key={row.document_id} className={where.status === 'missing' ? 'bg-amber-50/60' : ''}>
                                             <td className="px-4 py-2 text-sm font-mono text-gray-900">
                                                 {row.document_id}
                                             </td>
@@ -242,12 +252,12 @@ export default function SupplierDocumentsPage() {
                                                 {fmtMoney(row.value)}
                                             </td>
                                             <td className="px-4 py-2">
-                                                <span className={`${badge} border ${have
-                                                    ? 'bg-green-50 text-green-800 border-green-200'
-                                                    : 'bg-amber-50 text-amber-800 border-amber-200'}`}
-                                                >
-                                                    {have ? 'Have it' : 'Not downloaded'}
-                                                </span>
+                                                <span className={`${badge} border ${look.tint}`}>{look.words}</span>
+                                                {where.differs ? (
+                                                    <span className="block text-xs text-muted mt-0.5 whitespace-nowrap">
+                                                        typed as {fmtMoney(where.invoice.total_amount)}
+                                                    </span>
+                                                ) : null}
                                             </td>
                                         </tr>
                                     )
@@ -293,6 +303,27 @@ export default function SupplierDocumentsPage() {
             )}
         </>
     )
+}
+
+// What each state is called on screen.
+//
+// **Typed in by hand is not missing.** Eight months of invoices went in that
+// way, off a total with no number on it, and the first version of this page
+// called every one of them not downloaded because a number was all it looked
+// for. A credit taken off a total before it was typed is not missing either:
+// its money is already in the Hub, inside that total.
+const HELD = {
+    held: { words: 'Have it', tint: 'bg-green-50 text-green-800 border-green-200' },
+    by_hand: { words: 'Typed in by hand', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
+    in_hand_total: { words: 'In a typed total', tint: 'bg-blue-50 text-blue-800 border-blue-200' },
+    missing: { words: 'Not in the Hub', tint: 'bg-amber-50 text-amber-800 border-amber-200' },
+}
+
+function linkedTo(where) {
+    if (!where?.invoice) return null
+    if (where.status === 'held') return where.invoice.id
+    if (where.status === 'by_hand' && !where.differs) return where.invoice.id
+    return null
 }
 
 function Figure({ label, value, under }) {

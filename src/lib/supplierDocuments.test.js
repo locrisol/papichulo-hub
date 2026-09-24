@@ -181,8 +181,7 @@ describe('the list against what we hold', () => {
         { id: 'b', invoice_number: '45480809' },
         // Held, and not on the list at all.
         { id: 'c', invoice_number: '99999999' },
-        // Entered by hand off a total, so it has no number and cannot be
-        // matched either way.
+        // Entered by hand off a total, on no day the list has anything for.
         { id: 'd', invoice_number: null },
     ]
 
@@ -238,5 +237,54 @@ describe('how long a credit took', () => {
         const { rows } = readPortalList(PASTE)
         const { pairs } = pairCredits(rows)
         expect(creditDelays(pairs).map(d => d.days)).toEqual([0, 1])
+    })
+})
+
+describe('what was typed in by hand', () => {
+    // Eight months of invoices were entered off a total with no number, so the
+    // first version of the page called every one of them not downloaded.
+    const { rows } = readPortalList(PASTE)
+
+    it('finds an invoice typed in at its printed total', () => {
+        const held = [{ id: 'h1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 163.03 }]
+        const status = compareDocuments(rows, held).status
+        expect(status.get('45448455')).toMatchObject({ status: 'by_hand', invoice: { id: 'h1' } })
+    })
+
+    // A total typed by hand is usually net: the shortage was taken off before
+    // it was typed. 325.95 less the 74.26 credited is 251.69.
+    it('finds one typed in net of its credit, and says the credit was taken off by hand', () => {
+        const held = [{ id: 'h2', invoice_number: null, invoice_date: '2026-08-27', total_amount: 251.69 }]
+        const status = compareDocuments(rows, held).status
+        expect(status.get('45480809')).toMatchObject({ status: 'by_hand', net: true })
+        expect(status.get('C45485340')).toMatchObject({ status: 'in_hand_total', invoice: { id: 'h2' } })
+    })
+
+    // A typing slip and a different delivery look the same from here, so the
+    // pairing is made and the difference said, rather than either hidden.
+    it('pairs what is left on the day and says how far apart the totals are', () => {
+        const held = [{ id: 'h3', invoice_number: null, invoice_date: '2026-08-23', total_amount: 160 }]
+        const status = compareDocuments(rows, held).status
+        expect(status.get('45448455')).toMatchObject({ status: 'by_hand', differs: -3.03 })
+    })
+
+    it('never uses one typed total for two invoices', () => {
+        const held = [{ id: 'h4', invoice_number: null, invoice_date: '2026-09-14', total_amount: 102.43 }]
+        const status = compareDocuments(rows, held).status
+        const typed = ['45612214', '45612570'].filter(id => status.get(id).status === 'by_hand')
+        expect(typed).toEqual(['45612214'])
+        expect(status.get('45612570').status).toBe('missing')
+    })
+
+    it('leaves something from another day alone', () => {
+        const held = [{ id: 'h5', invoice_number: null, invoice_date: '2026-08-24', total_amount: 163.03 }]
+        expect(compareDocuments(rows, held).status.get('45448455').status).toBe('missing')
+    })
+
+    it('lists them apart from what is actually missing', () => {
+        const held = [{ id: 'h1', invoice_number: null, invoice_date: '2026-08-23', total_amount: 163.03 }]
+        const { byHand, missing } = compareDocuments(rows, held)
+        expect(byHand.map(r => r.document_id)).toEqual(['45448455'])
+        expect(missing.map(r => r.document_id)).not.toContain('45448455')
     })
 })

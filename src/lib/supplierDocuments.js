@@ -179,31 +179,118 @@ export function portalSummary(rows) {
     }
 }
 
+const cents = n => Math.round(num(n) * 100) / 100
+const same = (a, b) => Math.abs(cents(a) - cents(b)) < 0.005
+
+// Where each document on the supplier's list stands in the Hub.
+//
+//   held            imported, found by its number
+//   by_hand         typed in off a total, found by its day and its total
+//   in_hand_total   a credit that was taken off a total typed by hand
+//   missing         nowhere in the Hub at all
+//
+// **Everything typed by hand has no number**, which is why the first version of
+// this page called every one of them not downloaded: it only ever looked for
+// the number. Eight months of invoices were entered that way, so what a hand
+// entry looks like has to be worked out from the day and the money.
+//
+// A total typed by hand is usually net: a shortage was taken off before it was
+// typed. So an invoice is looked for at its value less the credits against it
+// first, which is also what says those credits were taken off by hand, then at
+// its value as printed, and only then paired with whatever is left on the same
+// day, with the difference said out loud rather than ignored.
+export function documentStatus(portal, held) {
+    const out = new Map()
+    const numbered = new Map((held || []).filter(h => h.invoice_number).map(h => [String(h.invoice_number), h]))
+
+    for (const row of portal || []) {
+        const invoice = numbered.get(String(row.document_id))
+        if (invoice) out.set(row.document_id, { status: 'held', invoice })
+    }
+
+    const creditsOf = new Map()
+    for (const row of portal || []) {
+        if (row.document_type !== 'credit' || !row.order_reference) continue
+        if (!creditsOf.has(row.order_reference)) creditsOf.set(row.order_reference, [])
+        creditsOf.get(row.order_reference).push(row)
+    }
+
+    const typed = new Map()
+    for (const h of held || []) {
+        if (h.invoice_number) continue
+        if (!typed.has(h.invoice_date)) typed.set(h.invoice_date, [])
+        typed.get(h.invoice_date).push(h)
+    }
+
+    const waiting = (portal || []).filter(r => r.document_type === 'invoice' && !out.has(r.document_id))
+    const days = [...new Set(waiting.map(r => r.document_date))].sort()
+
+    for (const day of days) {
+        const pool = [...(typed.get(day) || [])]
+        const take = test => {
+            const i = pool.findIndex(test)
+            return i < 0 ? null : pool.splice(i, 1)[0]
+        }
+        const todays = waiting.filter(r => r.document_date === day)
+
+        for (const row of todays) {
+            const credits = creditsOf.get(row.document_id) || []
+            if (!credits.length) continue
+            const net = cents(row.value + credits.reduce((t, c) => t + num(c.value), 0))
+            const hit = take(h => same(h.total_amount, net))
+            if (!hit) continue
+            out.set(row.document_id, { status: 'by_hand', invoice: hit, net: true })
+            for (const c of credits) out.set(c.document_id, { status: 'in_hand_total', invoice: hit })
+        }
+
+        for (const row of todays.filter(r => !out.has(r.document_id))) {
+            const hit = take(h => same(h.total_amount, row.value))
+            if (hit) out.set(row.document_id, { status: 'by_hand', invoice: hit })
+        }
+
+        // Whatever is left on the day, one for one, nearest total first. Said
+        // with the difference, because a typing slip and a different delivery
+        // look the same from here and somebody has to look.
+        const rest = todays.filter(r => !out.has(r.document_id)).sort((a, b) => b.value - a.value)
+        for (const row of rest) {
+            if (!pool.length) break
+            pool.sort((a, b) => Math.abs(num(a.total_amount) - row.value) - Math.abs(num(b.total_amount) - row.value))
+            const hit = pool.shift()
+            out.set(row.document_id, {
+                status: 'by_hand', invoice: hit, differs: cents(num(hit.total_amount) - row.value),
+            })
+        }
+    }
+
+    for (const row of portal || []) {
+        if (!out.has(row.document_id)) out.set(row.document_id, { status: 'missing' })
+    }
+    return out
+}
+
 // The list against what we actually hold.
 //
-// Three answers rather than one, because they are three different jobs:
-// `missing` is a list of things to go and download, `extra` is a document the
-// Hub holds that the supplier's list does not mention, and `held` is everything
-// already accounted for.
+// Separate answers, because they are separate jobs: `missing` is a list of
+// things to go and download, `byHand` is what was typed in off a total and has
+// no document behind it yet, `extra` is a document the Hub holds that the
+// supplier's list does not mention, and `held` is everything already imported.
 //
 // `extra` is worth showing even though it will nearly always be empty. It is
 // how a document filed against the wrong supplier shows itself, and how a
 // paste covering the wrong month announces that it is.
 export function compareDocuments(portal, held) {
-    const have = new Map((held || []).filter(h => h.invoice_number).map(h => [h.invoice_number, h]))
-    const listed = new Set((portal || []).map(r => r.document_id))
-
-    const missing = []
-    const matched = []
-    for (const row of portal || []) {
-        if (have.has(row.document_id)) matched.push({ ...row, invoice: have.get(row.document_id) })
-        else missing.push(row)
-    }
+    const status = documentStatus(portal, held)
+    const listed = new Set((portal || []).map(r => String(r.document_id)))
+    const pick = wanted => (portal || [])
+        .filter(r => wanted.includes(status.get(r.document_id).status))
+        .map(r => ({ ...r, ...status.get(r.document_id) }))
 
     return {
-        held: matched,
-        missing,
-        extra: (held || []).filter(h => h.invoice_number && !listed.has(h.invoice_number)),
+        status,
+        held: pick(['held']),
+        byHand: pick(['by_hand', 'in_hand_total']),
+        missing: pick(['missing']),
+        extra: (held || []).filter(h => h.invoice_number && !listed.has(String(h.invoice_number))),
     }
 }
 
