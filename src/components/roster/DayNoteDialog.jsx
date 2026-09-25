@@ -7,11 +7,12 @@ import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
 import { hoursForDay, shortTime, BANK_HOLIDAY } from '@/lib/roster'
 import { bankHolidayOn, BANK_HOLIDAY_INK } from '@/lib/bankHolidays'
-import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton } from '@/lib/controlStyles'
+import { modalFooter, removeButton, secondaryButton, checkbox, labelClass, fieldClass, hintClass, primaryButton, rowButton } from '@/lib/controlStyles'
 import { mirrorClosedToSales } from '@/lib/closedDays'
 import ModalSection from '@/components/ui/ModalSection'
 import {
-    cleanExtras, sortExtras, hasExtra, toggleExtra, setExtraTime, removeExtra,
+    cleanExtras, sortExtras, hasExtra, toggleExtra, addExtra, repeatExtra, setExtraTimeAt, removeExtraAt,
+    extraKey,
 } from '@/lib/dayExtras'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -298,24 +299,38 @@ export default function DayNoteDialog({
                         Nothing is lost by leaving it. Saving sorts them, and
                         everything that reads a day sorts them again on the way
                         out, so the roster is in time order wherever it is
-                        shown. This is the one place somebody is mid-thought. */}
+                        shown. This is the one place somebody is mid-thought.
+
+                        **Another** puts a second one of the same on the day,
+                        straight under it and with no time yet: three Feedr
+                        orders on one day are three rows, each at its own time.
+                        Each row is told apart by where it sits, since the name
+                        no longer does it. */}
                     {form.extras.length > 0 && (
                         <div className="divide-y divide-border mb-4">
-                            {form.extras.map(extra => (
-                                <div key={extra.name} className="py-2 flex flex-wrap items-center gap-2">
+                            {form.extras.map((extra, i) => (
+                                <div key={extraKey(extra, i)} className="py-2 flex flex-wrap items-center gap-2">
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>
                                     <ClockField
                                         value={extra.time}
-                                        onChange={v => set("extras", setExtraTime(form.extras, extra.name, v))}
-                                        aria-label={extra.name + " time"}
+                                        onChange={v => set('extras', setExtraTimeAt(form.extras, i, v))}
+                                        aria-label={extra.name + ' time'}
                                         className={timeCls}
                                         />
                                     <button
                                         type="button"
-                                        onClick={() => set('extras', removeExtra(form.extras, extra.name))}
-                                        aria-label={'Take ' + extra.name + ' off this day'}
+                                        onClick={() => set('extras', repeatExtra(form.extras, i))}
+                                        aria-label={'Another ' + extra.name + ' this day'}
+                                        className={rowButton()}
+                                    >
+                                        Another
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => set('extras', removeExtraAt(form.extras, i))}
+                                        aria-label={'Take this ' + extra.name + ' off this day'}
                                         className={removeButton}
                                     >
                                         &times;
@@ -330,8 +345,9 @@ export default function DayNoteDialog({
                         a thing to set up, it is a thing to type. */}
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="flex-1 min-w-40">
-                            <label className={labelClass}>Something else, just this day</label>
+                            <label className={labelClass} htmlFor="day-one-off">Something else, just this day</label>
                             <input
+                                id="day-one-off"
                                 type="text"
                                 value={oneOff.name}
                                 onChange={e => setOneOff(o => ({ ...o, name: e.target.value }))}
@@ -348,7 +364,7 @@ export default function DayNoteDialog({
                             type="button"
                             onClick={() => {
                                 if (!oneOff.name.trim()) return
-                                set('extras', toggleExtra(form.extras, oneOff))
+                                set('extras', addExtra(form.extras, oneOff))
                                 setOneOff({ name: '', time: '' })
                             }}
                             disabled={!oneOff.name.trim()}

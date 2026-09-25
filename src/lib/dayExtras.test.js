@@ -6,8 +6,13 @@ import {
     extraLabel,
     hasExtra,
     toggleExtra,
-    setExtraTime,
-    removeExtra,
+    addExtra,
+    repeatExtra,
+    setExtraTimeAt,
+    removeExtraAt,
+    setNthTime,
+    removeNth,
+    extraKey,
     usualProblem,
     extraLanes,
     weekGrid,
@@ -119,16 +124,83 @@ describe('changing one on the day', () => {
     // The whole reason the time is copied onto the day rather than read back
     // off the usual list every time.
     it('lets a day disagree with the usual time', () => {
-        expect(setExtraTime(list, 'Feedr', '13:30')[0].time).toBe('13:30')
-        expect(setExtraTime(list, 'Feedr', '13:30')[1].time).toBe('15:00')
+        expect(setExtraTimeAt(list, 0, '13:30')[0].time).toBe('13:30')
+        expect(setExtraTimeAt(list, 0, '13:30')[1].time).toBe('15:00')
     })
 
     it('lets a time be cleared', () => {
-        expect(setExtraTime(list, 'Feedr', '')[0].time).toBe('')
+        expect(setExtraTimeAt(list, 0, '')[0].time).toBe('')
     })
 
     it('takes one off', () => {
-        expect(removeExtra(list, 'Clockmeal').map(e => e.name)).toEqual(['Feedr'])
+        expect(removeExtraAt(list, 1).map(e => e.name)).toEqual(['Feedr'])
+    })
+})
+
+// Three Feedr orders on one day, the week he asked for this.
+describe('more than one of the same on a day', () => {
+    const three = [
+        { name: 'Feedr', time: '11:30' },
+        { name: 'Feedr', time: '12:00' },
+        { name: 'Clockmeal', time: '15:00' },
+        { name: 'Feedr', time: '12:30' },
+    ]
+
+    it('puts another one on rather than taking the first one off', () => {
+        const once = addExtra([], { name: 'Feedr', time: '11:30' })
+        expect(addExtra(once, { name: 'Feedr', time: '12:00' })).toEqual([
+            { name: 'Feedr', time: '11:30' },
+            { name: 'Feedr', time: '12:00' },
+        ])
+    })
+
+    it('adds another straight after, with no time yet', () => {
+        expect(repeatExtra(three, 0).slice(0, 3)).toEqual([
+            { name: 'Feedr', time: '11:30' },
+            { name: 'Feedr', time: '' },
+            { name: 'Feedr', time: '12:00' },
+        ])
+    })
+
+    it('changes the time on one without touching the others', () => {
+        expect(setExtraTimeAt(three, 1, '12:15').map(e => e.time)).toEqual(['11:30', '12:15', '15:00', '12:30'])
+    })
+
+    it('takes one of them off and leaves the rest', () => {
+        expect(removeExtraAt(three, 0).filter(e => e.name === 'Feedr').map(e => e.time)).toEqual(['12:00', '12:30'])
+    })
+
+    // The week grid has a row for Feedr, and its third time on a day is the
+    // third Feedr, wherever Clockmeal sits between them.
+    it('finds the nth one of a name', () => {
+        expect(setNthTime(three, 'feedr', 2, '13:00')[3].time).toBe('13:00')
+        expect(removeNth(three, 'Feedr', 2).map(e => e.time)).toEqual(['11:30', '12:00', '15:00'])
+        expect(setNthTime(three, 'Feedr', 5, '13:00')).toEqual(three)
+    })
+
+    it('keeps all of them, in time order, once saved', () => {
+        expect(sortExtras(three).map(extraLabel)).toEqual([
+            '11:30 Feedr', '12:00 Feedr', '12:30 Feedr', '15:00 Clockmeal',
+        ])
+    })
+
+    it('gives each its own key to be drawn by', () => {
+        const keys = sortExtras(three).map(extraKey)
+        expect(new Set(keys).size).toBe(4)
+        expect(extraKey({ name: 'Feedr', time: '12:00' }, 0)).not.toBe(extraKey({ name: 'Feedr', time: '12:00' }, 1))
+    })
+
+    it('still takes every one of them off when the button is untouched', () => {
+        expect(toggleExtra(three, { name: 'Feedr' })).toEqual([{ name: 'Clockmeal', time: '15:00' }])
+    })
+
+    it('draws them on separate lines when they are close together', () => {
+        expect(extraLanes(three.filter(e => e.name === 'Feedr'))).toHaveLength(3)
+    })
+
+    it('lists all three on the day', () => {
+        const on = whatIsOn([], { extras: three }, [])
+        expect(on.filter(item => item.extra?.name === 'Feedr')).toHaveLength(3)
     })
 })
 
@@ -214,15 +286,15 @@ describe('the whole week at once', () => {
     it('puts the time in the cell, not a tick, because the time is what varies', () => {
         const feedr = weekGrid(USUAL, NOTES, DATES)[0]
         expect(feedr.onDay).toEqual({
-            '2026-10-12': '12:00',
-            '2026-10-13': null,
-            '2026-10-14': '11:30',
+            '2026-10-12': ['12:00'],
+            '2026-10-13': [],
+            '2026-10-14': ['11:30'],
         })
     })
 
     it('leaves a usual one that is on no day completely empty', () => {
         const clockmeal = weekGrid(USUAL, NOTES, DATES)[1]
-        expect(Object.values(clockmeal.onDay)).toEqual([null, null, null])
+        expect(Object.values(clockmeal.onDay)).toEqual([[], [], []])
         expect(clockmeal.count).toBe(0)
     })
 
@@ -236,12 +308,20 @@ describe('the whole week at once', () => {
     })
 
     // On with nobody saying when is a real answer, and it is not the same as
-    // not being on at all. Getting these two the same way round is the whole
-    // reason null and empty string mean different things here.
+    // not being on at all.
     it('tells on with no time apart from not on', () => {
         const extraction = weekGrid(USUAL, NOTES, DATES).find(r => r.name === 'Extraction')
-        expect(extraction.onDay['2026-10-14']).toBe('')
-        expect(extraction.onDay['2026-10-13']).toBeNull()
+        expect(extraction.onDay['2026-10-14']).toEqual([''])
+        expect(extraction.onDay['2026-10-13']).toEqual([])
+    })
+
+    it('holds every time one is on that day, in the order they were put on', () => {
+        const busy = [{ note_date: '2026-10-13', extras: [
+            { name: 'Feedr', time: '12:30' }, { name: 'Feedr', time: '11:30' }, { name: 'Feedr', time: '12:00' },
+        ] }]
+        const feedr = weekGrid(USUAL, busy, DATES)[0]
+        expect(feedr.onDay['2026-10-13']).toEqual(['12:30', '11:30', '12:00'])
+        expect(feedr.count).toBe(1)
     })
 
     it('counts the days each one is on, which is what says a job is half done', () => {

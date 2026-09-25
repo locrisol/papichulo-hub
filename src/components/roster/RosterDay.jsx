@@ -8,7 +8,7 @@ import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
 import { hasWarnings } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '@/lib/absences'
 import { partWords, partDaySpans } from '@/lib/timeOff'
-import { extrasFor, extraLabel, extraLanes } from '@/lib/dayExtras'
+import { extrasFor, extraLabel, extraLanes, extraKey } from '@/lib/dayExtras'
 import { onDate, showsOnRoster, kindLabel, kindChip, kindDot } from '@/lib/diary'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
@@ -411,11 +411,11 @@ export default function RosterDay({
                                 <span className="block text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
                                     Also on
                                 </span>
-                                {looseExtras.map(extra => {
+                                {looseExtras.map((extra, i) => {
                                     const mine = byName.get(extra.name.toLowerCase())
                                     return mine ? (
                                         <button
-                                            key={extra.name}
+                                            key={extraKey(extra, i)}
                                             type="button"
                                             onClick={() => onOpenDiary?.(mine.entry)}
                                             className={`block w-full text-left text-[0.625rem] truncate rounded border-l-[3px] px-1 ${kindChip(mine.entry.kind)}`}
@@ -423,7 +423,7 @@ export default function RosterDay({
                                             {extra.name}
                                         </button>
                                     ) : (
-                                        <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
+                                        <span key={extraKey(extra, i)} className="block text-[0.625rem] text-slate-500 truncate">
                                             {extra.name}
                                         </span>
                                     )
@@ -432,7 +432,7 @@ export default function RosterDay({
                             <div className="flex-1 py-1">
                                 {extraRows.map((row, i) => (
                                     <div key={i} className="relative h-4 mb-0.5 last:mb-0">
-                                        {row.map(extra => {
+                                        {row.map((extra, i) => {
                                             const mine = byName.get(extra.name.toLowerCase())
                                             // kindDot is the solid colour and
                                             // kindChip the soft fill. Pulling
@@ -445,7 +445,7 @@ export default function RosterDay({
                                             const bar = mine ? kindDot(mine.entry.kind) : 'bg-slate-400'
                                             return (
                                                 <span
-                                                    key={extra.name}
+                                                    key={extraKey(extra, i)}
                                                     className="absolute top-0 bottom-0 flex items-center"
                                                     style={{ left: `${pct(toMinutes(extra.time))}%` }}
                                                 >

@@ -8,7 +8,7 @@ import { shortDate, weekDates, weekStartOf, addDays, weekMonthLabel, todayISO } 
 import { DAY_NAMES } from '@/lib/events'
 import { friendlyError } from '@/lib/errors'
 import {
-    weekGrid, sortExtras, toggleExtra, setExtraTime, removeExtra, extrasFor,
+    weekGrid, sortExtras, addExtra, setNthTime, removeNth, extrasFor,
 } from '@/lib/dayExtras'
 import {
     modalFooter, secondaryButton, primaryButton, fieldClass, labelClass, hintClass,
@@ -32,7 +32,7 @@ import JumpButton from '@/components/ui/JumpButton'
 // names scrolling away too, so you end up looking at four times with no idea
 // which delivery they belong to. The email is about one delivery across a week,
 // so the phone asks which one and then shows its week down the screen.
-function PhoneShape({ rows, dates, picked, onPick, onSet }) {
+function PhoneShape({ rows, dates, picked, onPick, onAdd, onTime, onRemove }) {
     const row = rows.find(r => r.name === picked) || rows[0]
 
     return (
@@ -73,36 +73,49 @@ function PhoneShape({ rows, dates, picked, onPick, onSet }) {
                     </div>
 
                     {dates.map((date, i) => {
-                        const at = row.onDay[date]
-                        const on = at !== null && at !== undefined
+                        const times = row.onDay[date] || []
+                        const on = times.length > 0
 
                         return (
-                            <div key={date} className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-b-0">
-                                <span className={`flex-none w-20 text-sm font-semibold ${on ? 'text-gray-800' : 'text-muted'}`}>
+                            <div key={date} className="flex items-start gap-3 px-3 py-2 border-b border-border last:border-b-0">
+                                <span className={`flex-none w-20 pt-1 text-sm font-semibold ${on ? 'text-gray-800' : 'text-muted'}`}>
                                     {DAY_NAMES[i]} {shortDate(date).split(' ')[0]}
                                 </span>
 
                                 {on ? (
-                                    <>
-                                        <ClockField
-                                            value={at}
-                                            onChange={v => onSet(date, row.name, v)}
-                                            compact
-                                            aria-label={`${row.name} time on ${date}`}
-                                        />
+                                    <div className="flex-1 min-w-0 space-y-1.5">
+                                        {times.map((at, n) => (
+                                            <div key={`${n}:${at}`} className="flex items-center gap-2">
+                                                <ClockField
+                                                    value={at}
+                                                    onChange={v => onTime(date, row.name, n, v)}
+                                                    compact
+                                                    aria-label={`${row.name} time on ${date}`}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onRemove(date, row.name, n)}
+                                                    aria-label={`Take this ${row.name} off ${date}`}
+                                                    className="ml-auto text-muted text-lg leading-none px-2"
+                                                >
+                                                    &times;
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {/* A second order the same day, at its
+                                            own time. */}
                                         <button
                                             type="button"
-                                            onClick={() => onSet(date, row.name, null)}
-                                            aria-label={`Take ${row.name} off ${date}`}
-                                            className="ml-auto text-muted text-lg leading-none px-2"
+                                            onClick={() => onAdd(date, row.name, '')}
+                                            className="text-xs font-semibold text-muted border border-dashed border-gray-300 rounded-lg px-2.5 py-1"
                                         >
-                                            &times;
+                                            + another
                                         </button>
-                                    </>
+                                    </div>
                                 ) : (
                                     <button
                                         type="button"
-                                        onClick={() => onSet(date, row.name, row.usualTime || '')}
+                                        onClick={() => onAdd(date, row.name, row.usualTime || '')}
                                         className="text-sm font-semibold text-muted border border-dashed border-gray-300 rounded-lg px-3 py-1"
                                     >
                                         + put it on
@@ -119,7 +132,7 @@ function PhoneShape({ rows, dates, picked, onPick, onSet }) {
 
 // On a computer the whole week is one grid, because seeing all three deliveries
 // against all seven days at once is the entire advantage of a wide screen.
-function GridShape({ rows, dates, onSet }) {
+function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
     return (
         <div className="hidden sm:block overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -145,32 +158,49 @@ function GridShape({ rows, dates, onSet }) {
                                 </span>
                             </td>
                             {dates.map(date => {
-                                const at = row.onDay[date]
-                                const on = at !== null && at !== undefined
+                                const times = row.onDay[date] || []
+                                const on = times.length > 0
 
                                 return (
-                                    <td key={date} className="px-1 py-1 text-center border-r border-border last:border-r-0">
+                                    <td key={date} className="px-1 py-1 text-center align-top border-r border-border last:border-r-0">
                                         {on ? (
-                                            <span className="inline-flex items-center gap-1">
-                                                <ClockField
-                                                    value={at}
-                                                    onChange={v => onSet(date, row.name, v)}
-                                                    compact
-                                                    aria-label={`${row.name} time on ${date}`}
-                                                />
+                                            <div className="flex flex-col items-center gap-1">
+                                                {times.map((at, n) => (
+                                                    <span key={`${n}:${at}`} className="inline-flex items-center gap-1">
+                                                        <ClockField
+                                                            value={at}
+                                                            onChange={v => onTime(date, row.name, n, v)}
+                                                            compact
+                                                            aria-label={`${row.name} time on ${date}`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onRemove(date, row.name, n)}
+                                                            aria-label={`Take this ${row.name} off ${date}`}
+                                                            className="text-muted text-base leading-none px-0.5"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                                {/* A second order the same
+                                                    day, at its own time. Small,
+                                                    because it is the rare case
+                                                    and the grid is for reading
+                                                    a week at a glance. */}
                                                 <button
                                                     type="button"
-                                                    onClick={() => onSet(date, row.name, null)}
-                                                    aria-label={`Take ${row.name} off ${date}`}
-                                                    className="text-muted text-base leading-none px-0.5"
+                                                    onClick={() => onAdd(date, row.name, '')}
+                                                    aria-label={`Another ${row.name} on ${date}`}
+                                                    className="text-xs text-muted hover:text-accent-ink px-1.5 rounded transition-colors"
                                                 >
-                                                    &times;
+                                                    + another
                                                 </button>
-                                            </span>
+                                            </div>
                                         ) : (
                                             <button
                                                 type="button"
-                                                onClick={() => onSet(date, row.name, row.usualTime || '')}
+                                                onClick={() => onAdd(date, row.name, row.usualTime || '')}
                                                 aria-label={`Put ${row.name} on ${date}`}
                                                 className="w-full py-1.5 text-muted hover:text-accent-ink hover:bg-gray-50 rounded transition-colors"
                                             >
@@ -248,23 +278,19 @@ export default function WeekExtrasModal({
 
     const rows = weekGrid([...(restaurant?.usual_extras || []), ...oneOffs], notes, dates)
 
-    // null takes it off the day. Anything else puts it on, at that time or at
-    // no time, which are two different answers.
-    function onSet(date, name, time) {
+    // Three ways a cell changes: one more of it on the day, the time on one of
+    // them, or one of them off. Several of the same on one day are counted in
+    // the order they were put on, so the second Feedr in a cell is always the
+    // second Feedr on the day, whatever sits between them.
+    function change(date, work) {
         setTouched(was => new Set(was).add(date))
-        setNotes(list => list.map(note => {
-            if (note.note_date !== date) return note
-            if (time === null) return { ...note, extras: removeExtra(note.extras, name) }
-
-            const already = note.extras.some(e => e.name.toLowerCase() === name.toLowerCase())
-            return {
-                ...note,
-                extras: already
-                    ? setExtraTime(note.extras, name, time)
-                    : toggleExtra(note.extras, { name, time }),
-            }
-        }))
+        setNotes(list => list.map(note => (
+            note.note_date === date ? { ...note, extras: work(note.extras) } : note
+        )))
     }
+    const onAdd = (date, name, time) => change(date, extras => addExtra(extras, { name, time }))
+    const onTime = (date, name, n, time) => change(date, extras => setNthTime(extras, name, n, time))
+    const onRemove = (date, name, n) => change(date, extras => removeNth(extras, name, n))
 
     function addOneOff() {
         const name = adding.trim()
@@ -358,7 +384,8 @@ export default function WeekExtrasModal({
 
                 <p className={`${hintClass} mb-3 mt-0`}>
                     The schedule arrives as a week, so it goes in as a week. Tap a day to put
-                    something on it, and tap the time to change it.
+                    something on it, and tap the time to change it. Two or three of the same on one
+                    day: add another under the first.
                 </p>
 
                 {/* Anything typed and not saved is lost on a week step, which
@@ -374,13 +401,15 @@ export default function WeekExtrasModal({
                     </p>
                 ) : (
                     <>
-                        <GridShape rows={rows} dates={dates} onSet={onSet} />
+                        <GridShape rows={rows} dates={dates} onAdd={onAdd} onTime={onTime} onRemove={onRemove} />
                         <PhoneShape
                             rows={rows}
                             dates={dates}
                             picked={picked}
                             onPick={setPicked}
-                            onSet={onSet}
+                            onAdd={onAdd}
+                            onTime={onTime}
+                            onRemove={onRemove}
                         />
                     </>
                 )}

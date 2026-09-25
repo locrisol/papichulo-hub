@@ -9,7 +9,7 @@ import { hasWarnings } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf, holidayHoursInWeek } from '@/lib/absences'
 import { askedOff, partWords } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
-import { extrasFor, whatIsOn } from '@/lib/dayExtras'
+import { extrasFor, whatIsOn, extraKey } from '@/lib/dayExtras'
 import { rowsOn, ownRows, sharedRows, placeName } from '@/lib/nearby'
 import NearbyChip from '@/components/nearby/NearbyChip'
 import {
@@ -389,7 +389,7 @@ export default function RosterWeek({
                                 const onToday = whatIsOn(diaryOn(d), noteFor(d), nearOn(d))
                                 const inside = onToday.length === 0 ? (
                                     <span className="text-muted text-xs">{staff ? '' : '+'}</span>
-                                ) : onToday.map(({ entry, extra, near }) => (entry ? (
+                                ) : onToday.map(({ entry, extra, near }, i) => (entry ? (
                                     <span
                                         key={entry.id}
                                         className={`block rounded-md border-l-[3px] px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words text-left ${kindChip(entry.kind)}`}
@@ -442,7 +442,7 @@ export default function RosterWeek({
                                     // Ordinary text flow wraps it mid phrase,
                                     // beside the time, the way a sentence does.
                                     <span
-                                        key={extra.name}
+                                        key={extraKey(extra, i)}
                                         className="block rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[0.6875rem] leading-tight break-words"
                                     >
                                         {extra.time && (
