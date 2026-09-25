@@ -41,12 +41,16 @@ is being worked on next.
 `001` to `009` are the Timesheet, all run on live and all merged. `010` is the
 invoice import, run on live: five tables, `invoice_lines` reshaped, `invoices`
 given a document number and a credit note, and `invoice_cost_by_category`.
-`011` is not run yet. It changes that view so a claim carries the money back in
-the week the delivery happened and a credit note that settles one does not count
-again, and it lets a claim made from a credit say nobody logged a reason.
-`012` is not run yet either and goes after `011`. It gives each invoice line its
-share of the VAT and the container deposit, and the view counts them, so an
-invoice costs what it charges, the way the typed ones always did.
+`011` and `012` are run on live. `011` changes that view so a claim carries the
+money back in the week the delivery happened and a credit note that settles one
+does not count again, and lets a claim made from a credit say nobody logged a
+reason. `012` gives each invoice line its share of the VAT and the container
+deposit, and the view counts them, so an invoice costs what it charges.
+`013` is not run yet. It gives every supplier code a price of its own, splitting
+the six prices two or three codes were sharing, widens the reasons for a
+delivery problem, lets a credit note nobody logged be given its reason as a
+label, adds how far recipes may drift before the report says so, and puts the
+Prices and suppliers section into every report still being written.
 
 ## What was here before
 

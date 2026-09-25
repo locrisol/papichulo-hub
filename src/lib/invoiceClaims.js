@@ -28,23 +28,34 @@ import { similarWords, documentTotal, lineCost } from '@/lib/invoiceImport'
 
 // What can be wrong with a delivery.
 //
-// Five, and they are five different conversations with a supplier rather than
-// five words for one. A shortage is their loading bay, quality is their
-// supplier, the wrong item is their picking, and a price query is their office.
+// Each one is a different conversation with a supplier rather than another
+// word for the same one. A shortage is their loading bay, quality is their
+// supplier, the wrong item is their picking, a price query is their office. The
+// first real fortnight added one nobody had listed: three deliveries that never
+// came at all and were credited in full, which is not short, it is nothing.
+//
+// **Ordered by mistake is ours**, and it is on the list because a return that
+// was our own doing looks exactly like one that was theirs on a credit note.
+// Something else says what in the note.
+//
+// `colour` is the same colour as the dot, as a figure, for the report's bar and
+// for the mail, neither of which can read a class name.
 export const CLAIM_KINDS = [
+    {
+        value: 'not_delivered',
+        label: 'Not delivered',
+        at_door: 'It was on the docket and never came',
+        soft: 'bg-slate-100 text-slate-800 border-slate-300',
+        dot: 'bg-slate-500',
+        colour: '#64748B',
+    },
     {
         value: 'short',
         label: 'Short',
         at_door: 'It did not all turn up',
         soft: 'bg-amber-50 text-amber-800 border-amber-200',
         dot: 'bg-amber-500',
-    },
-    {
-        value: 'quality',
-        label: 'Sent back',
-        at_door: 'It was not good enough and went back',
-        soft: 'bg-red-50 text-red-800 border-red-200',
-        dot: 'bg-red-500',
+        colour: '#F59E0B',
     },
     {
         value: 'damaged',
@@ -52,6 +63,31 @@ export const CLAIM_KINDS = [
         at_door: 'It arrived broken, split or leaking',
         soft: 'bg-orange-50 text-orange-800 border-orange-200',
         dot: 'bg-orange-500',
+        colour: '#F97316',
+    },
+    {
+        value: 'quality',
+        label: 'Bad quality',
+        at_door: 'It was not good enough and went back',
+        soft: 'bg-red-50 text-red-800 border-red-200',
+        dot: 'bg-red-500',
+        colour: '#EF4444',
+    },
+    {
+        value: 'out_of_date',
+        label: 'Out of date',
+        at_door: 'Past its date, or too close to it to use',
+        soft: 'bg-pink-50 text-pink-800 border-pink-200',
+        dot: 'bg-pink-500',
+        colour: '#EC4899',
+    },
+    {
+        value: 'warm',
+        label: 'Arrived warm',
+        at_door: 'Chilled or frozen and not cold enough',
+        soft: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+        dot: 'bg-cyan-500',
+        colour: '#06B6D4',
     },
     {
         value: 'wrong_item',
@@ -59,6 +95,7 @@ export const CLAIM_KINDS = [
         at_door: 'They sent something we did not order',
         soft: 'bg-purple-50 text-purple-800 border-purple-200',
         dot: 'bg-purple-500',
+        colour: '#A855F7',
     },
     {
         value: 'price',
@@ -66,6 +103,23 @@ export const CLAIM_KINDS = [
         at_door: 'The price on the docket looks wrong',
         soft: 'bg-blue-50 text-blue-800 border-blue-200',
         dot: 'bg-blue-500',
+        colour: '#3B82F6',
+    },
+    {
+        value: 'mistake',
+        label: 'Ordered by mistake',
+        at_door: 'Our mistake: too much, or the wrong thing',
+        soft: 'bg-teal-50 text-teal-800 border-teal-200',
+        dot: 'bg-teal-500',
+        colour: '#14B8A6',
+    },
+    {
+        value: 'something_else',
+        label: 'Something else',
+        at_door: 'Say what under Anything else',
+        soft: 'bg-stone-100 text-stone-800 border-stone-300',
+        dot: 'bg-stone-500',
+        colour: '#78716C',
     },
 ]
 
@@ -73,20 +127,23 @@ export const CLAIM_KINDS = [
 // when nobody logged anything for it, and it says so rather than guessing.
 export const NOT_LOGGED = {
     value: 'other',
-    label: 'Not logged',
+    label: 'No reason logged',
     at_door: '',
     soft: 'bg-gray-100 text-gray-700 border-gray-300',
     dot: 'bg-gray-500',
+    colour: '#9CA3AF',
 }
 
 export function claimKind(value) {
     if (value === NOT_LOGGED.value) return NOT_LOGGED
+    if (!value) return NOT_LOGGED
     return CLAIM_KINDS.find(k => k.value === value) || {
         value,
-        label: value || 'Something else',
+        label: value,
         at_door: '',
         soft: 'bg-gray-100 text-gray-700 border-gray-300',
         dot: 'bg-gray-500',
+        colour: NOT_LOGGED.colour,
     }
 }
 
@@ -113,6 +170,11 @@ export function doorClaimProblem(form) {
     if (!form?.kind) return 'Say what was wrong.'
     if (!String(form?.what || '').trim()) return 'Say what it was, in your own words.'
     if (num(form.cases) <= 0 && num(form.units) <= 0) return 'Say how many.'
+    // The one reason that means nothing without words, so the words are the
+    // reason.
+    if (form.kind === 'something_else' && !String(form?.note || '').trim()) {
+        return 'Say what was wrong, under Anything else.'
+    }
     return null
 }
 

@@ -44,7 +44,14 @@ const to2 = n => (n == null ? null : Math.round(num(n) * 100) / 100)
 // a pack typed in months ago with no code on it, bought again on an invoice
 // that pointed its code at a different pack. `prices` is every price row the
 // screen knows about, so the one for this pack can be found.
-export function acceptPrice(row, { restaurantId, userId, at = null, prices = [] } = {}) {
+//
+// **Never a row that belongs to another code.** Two codes are two versions of a
+// product, each with its own price, even in the same pack. The Santa Maria
+// tortillas and the plain wraps are both ten packs of ten, and taking the
+// wraps' price onto the Santa Maria row is exactly how a recipe ends up costed
+// off something bought once. `codes` is the code table, which says who owns a
+// row when the row itself does not.
+export function acceptPrice(row, { restaurantId, userId, at = null, prices = [], codes = [] } = {}) {
     const { line, price, product } = row
     if (!price || !product) return null
 
@@ -70,6 +77,7 @@ export function acceptPrice(row, { restaurantId, userId, at = null, prices = [] 
             && (p.purchase_type || 'case') === (price.purchase_type || 'case')
             && p.units_per_case != null
             && Math.abs(num(p.units_per_case) - units) <= 0.0005
+            && !ownedByAnother(p, line.code, codes)
         ))
         : null
     const target = row.packMoved ? samePack : price
@@ -109,6 +117,21 @@ export function acceptPrice(row, { restaurantId, userId, at = null, prices = [] 
         stranded: price.is_preferred ? price : null,
         event,
     }
+}
+
+// Whether a price row is some other code's.
+//
+// A row carries the code it was made for, and the code table points each code
+// at its row. Either one saying a different code is enough: a code with a
+// price of its own is a version of the product, and its price is not anybody
+// else's to take over. A row with no code on it and nothing pointing at it is
+// a price somebody typed, free for the first code that turns out to mean it.
+export function ownedByAnother(price, code, codes = []) {
+    if (!price) return false
+    if (price.supplier_code && price.supplier_code !== code) return true
+    return (codes || []).some(c => (
+        c.price_id === price.id && !c.ignored && c.supplier_code !== code
+    ))
 }
 
 // Refusing one.
@@ -211,4 +234,87 @@ export function seenAgain(existing, { line, date }) {
 // single week until somebody could say no.
 export function ignoreCode(existing, reason) {
     return { ignored: true, ignored_reason: String(reason || '').trim() || null, price_id: null }
+}
+
+// Costing from what was last paid, from the weekly report.
+//
+// The recipe card's own button, and the same thing as accepting the price in
+// the review, one product at a time: the usual price row takes the price its
+// own code was last charged, and the product's line on the graph gets a step
+// with the invoice line behind it.
+export function costFromPaid(gap, row, { restaurantId, userId, at = null } = {}) {
+    if (!gap || !row) return null
+    const perUnit = to4(gap.paid)
+    // A price kept per loose unit has no case, and it keeps having none.
+    const patch = gap.newCase == null
+        ? { price_per_unit: perUnit, updated_at: at }
+        : { price_per_case: to2(gap.newCase), price_per_unit: perUnit, updated_at: at }
+    return {
+        priceId: row.id,
+        patch,
+        event: {
+            restaurant_id: restaurantId,
+            product_id: row.product_id,
+            price_id: row.id,
+            at,
+            price_per_unit: perUnit,
+            previous_per_unit: to4(row.price_per_unit),
+            reason: 'invoice',
+            invoice_line_id: gap.lineId || null,
+            changed_by: userId || null,
+        },
+    }
+}
+
+// The same thing under a new number.
+//
+// What "Yes, same product" does in the review, said afterwards from the
+// report: the new code takes over the price the old one had, the old code
+// lets go of it, and the new code remembers which one it replaced so the price
+// history runs on across the change. The row the new code had of its own goes,
+// with its lines moved onto the price they now mean, because a price row
+// belongs to one code and it would otherwise be a second price for the same
+// pack under the same code.
+//
+// In the order the database needs: a price row can have one code pointing at
+// it, so the old one lets go first, and the row the new code is leaving is
+// gone before the usual row takes its code.
+//
+// **The newer number is the one that carries on**, whichever of the two recipes
+// cost from. Usually the new code is the one bought instead, and it takes the
+// usual price over. Sometimes the usual price is already on the new code and
+// the one bought instead is the old number, still turning up on older
+// invoices: then the old one lets go of its own price, its lines move onto the
+// usual one, and the usual code remembers the number it replaced.
+//
+// **It refuses rather than break a chain.** A code that already replaced
+// another keeps that link, or the older number's deliveries drop out of the
+// history. And it only folds away a price that is this product's and that
+// nothing is costed from.
+export function renumberPlan(item) {
+    if (!item?.usualPriceId || !item?.codeRowId || !item?.code) return null
+    if (item.ownPriceOk === false) return null
+    const own = item.ownPriceId && item.ownPriceId !== item.usualPriceId ? item.ownPriceId : null
+    if (item.newer === false) {
+        if (!item.usualCodeRowId) return null
+        if (item.usualReplaces && item.usualReplaces !== item.code) return null
+        return {
+            moveLines: own ? { from: own, to: item.usualPriceId } : null,
+            release: item.codeRowId,
+            drop: own,
+            point: { id: item.usualCodeRowId, patch: { replaces_code: item.code } },
+            rowCode: null,
+        }
+    }
+    if (item.replaces && item.replaces !== item.usualCode) return null
+    return {
+        moveLines: own ? { from: own, to: item.usualPriceId } : null,
+        release: item.usualCodeRowId || null,
+        drop: own,
+        point: {
+            id: item.codeRowId,
+            patch: { price_id: item.usualPriceId, replaces_code: item.usualCode || null },
+        },
+        rowCode: { id: item.usualPriceId, supplier_code: item.code },
+    }
 }

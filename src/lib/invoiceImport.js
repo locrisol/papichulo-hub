@@ -165,6 +165,19 @@ export function similarWords(a, b) {
     return shared / Math.min(one.size, two.size)
 }
 
+// How much two descriptions are the same words, measured against the longer
+// of the two, so a name with an extra word in it is not the same thing:
+// SANTA MARIA TORTILLA against SANTA MARIA TORTILLA WHOLEMEAL is 0.8 here and 1
+// above.
+export function sameWords(a, b) {
+    const one = new Set(words(a))
+    const two = new Set(words(b))
+    if (!one.size || !two.size) return 0
+    let shared = 0
+    for (const w of one) if (two.has(w)) shared += 1
+    return shared / Math.max(one.size, two.size)
+}
+
 // How alike two descriptions have to be before the Hub will suggest one became
 // the other. Below this it says nothing rather than guessing.
 export const SAME_PRODUCT = 0.7
@@ -177,6 +190,25 @@ export const SAME_PRODUCT = 0.7
 // thing a new code replaced.
 export const QUIET_DAYS = 10
 
+// **Near enough the same words, not just alike.** A code that has stopped is
+// judged at 0.7, and that is right for it. A code still being bought is judged
+// here, because Sysco sells the same thing under two numbers at once (the green
+// peppers, one of them labelled ReadyChef), and at 0.7 Ballygowan and River
+// Rock sparkling water would be the same thing: they score 0.75 on the words
+// they share. Every real pair on the first fortnight read word for word the
+// same, and the pack has to match as well.
+export const SAME_WORDS = 0.9
+
+const tidyPack = p => String(p || '').toUpperCase().replace(/\s+/g, '')
+
+// The same thing under another number, whether or not the other one has
+// stopped: the same words and the same pack.
+export function sameThing(line, code) {
+    if (!line?.pack_size || !code?.pack_size) return false
+    if (tidyPack(line.pack_size) !== tidyPack(code.pack_size)) return false
+    return sameWords(line.description, code.last_description) >= SAME_WORDS
+}
+
 // A code that stopped appearing, that this new one looks like it replaced.
 //
 // The supplier renumbering something is otherwise a new product appearing
@@ -188,12 +220,16 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
     const here = new Set(onThisDocument)
     const quietBy = date ? addDays(date, -QUIET_DAYS) : null
 
+    // One that has stopped, or one still being bought that reads word for
+    // word the same in the same pack: Sysco sells some things under two
+    // numbers at once, and asking about those only once one has gone quiet
+    // meant ten days of the new one sitting under Never bought before.
     const gone = (codes || []).filter(c => (
         !c.ignored
         && c.price_id
         && c.supplier_code !== line.code
         && !here.has(c.supplier_code)
-        && (!quietBy || !c.last_seen_on || c.last_seen_on <= quietBy)
+        && (!quietBy || !c.last_seen_on || c.last_seen_on <= quietBy || sameThing(line, c))
     ))
 
     const scored = gone
@@ -209,7 +245,14 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
         .filter(s => s.score >= SAME_PRODUCT)
         .sort((a, b) => b.score - a.score)
 
-    return scored.length ? { ...scored[0].code, score: Math.round(scored[0].score * 100) / 100 } : null
+    if (!scored.length) return null
+    const best = scored[0].code
+    return {
+        ...best,
+        score: Math.round(scored[0].score * 100) / 100,
+        // Still being bought, so the screen does not say it has stopped.
+        stillBought: !!quietBy && !!best.last_seen_on && best.last_seen_on > quietBy,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +361,16 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
             return { line, codeRow, price: null, product: null, pile: 'ignored' }
         }
 
+        // **A number somebody said is the same thing as another still means
+        // its price.** Joining two codes gives the price to one of them and
+        // the other remembers it through replaces_code, and Sysco goes on
+        // sending both: without this the older green pepper code went back to
+        // Never bought before the next time it came.
+        const replacedBy = codeRow && !codeRow.price_id
+            ? (codes || []).find(c => c.replaces_code === line.code && c.price_id && byId.get(c.price_id))
+            : null
         const price = (codeRow?.price_id && byId.get(codeRow.price_id))
+            || (replacedBy && byId.get(replacedBy.price_id))
             || (!codeRow && prices.find(p => p.supplier_code === line.code))
             || null
         const product = price?.products || price?.product || null
@@ -366,6 +418,7 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
         return {
             line,
             codeRow,
+            replacedBy,
             price,
             product,
             was,

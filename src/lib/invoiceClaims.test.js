@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
-    CLAIM_KINDS, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
+    CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimCandidates, claimMatch,
     creditSettles, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
 } from '@/lib/invoiceClaims'
@@ -32,9 +33,38 @@ function claim(over = {}) {
 }
 
 describe('what can be wrong with a delivery', () => {
-    it('is five different conversations rather than five words for one', () => {
-        expect(CLAIM_KINDS.map(k => k.value))
-            .toEqual(['short', 'quality', 'damaged', 'wrong_item', 'price'])
+    // Theirs first, then ours, then anything else. Not delivered is the one
+    // the first real fortnight added: three deliveries that never came.
+    it('is a different conversation each, theirs first and then ours', () => {
+        expect(CLAIM_KINDS.map(k => k.value)).toEqual([
+            'not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm',
+            'wrong_item', 'price', 'mistake', 'something_else',
+        ])
+    })
+
+    // The database refuses anything else, so the two lists have to agree.
+    it('offers only what the database will take', () => {
+        const schema = readFileSync('supabase/schema.sql', 'utf8')
+        const check = /"invoice_line_claims_kind_check" CHECK \(\("kind" IN \(([^)]*)\)/.exec(schema)
+        expect(check).not.toBeNull()
+        const allowed = check[1].split(',').map(v => v.trim().replace(/'/g, ''))
+        expect(allowed).toEqual([...CLAIM_KINDS.map(k => k.value), NOT_LOGGED.value])
+    })
+
+    it('gives every reason a colour the report and the mail can draw with', () => {
+        for (const kind of [...CLAIM_KINDS, NOT_LOGGED]) {
+            expect(kind.colour).toMatch(/^#[0-9A-F]{6}$/)
+        }
+        expect(new Set(CLAIM_KINDS.map(k => k.colour)).size).toBe(CLAIM_KINDS.length)
+    })
+
+    it('calls quality what it is, now that everything in came back was sent back', () => {
+        expect(claimKind('quality').label).toBe('Bad quality')
+    })
+
+    it('says so when nothing was logged, rather than guessing', () => {
+        expect(claimKind('other').label).toBe('No reason logged')
+        expect(claimKind(null).label).toBe('No reason logged')
     })
 
     it('says what each one means at the door', () => {
@@ -65,6 +95,11 @@ describe('taking the note at the door', () => {
     // The docket number is what turns a note into an exact match later, and it
     // is still not required: a note with no number is worth far more than no
     // note at all.
+    it('wants the note when the reason is something else', () => {
+        expect(doorClaimProblem({ ...filled, kind: 'something_else' })).toContain('under Anything else')
+        expect(doorClaimProblem({ ...filled, kind: 'something_else', note: 'Box soaked through' })).toBeNull()
+    })
+
     it('does not insist on the docket number', () => {
         expect(doorClaimProblem({ ...filled, docket: '' })).toBeNull()
     })
@@ -345,7 +380,7 @@ describe('when the credit note turns up', () => {
             kind: 'other', amount: 20.02, credited_amount: 20.02, status: 'settled',
             invoice_id: 'i1', counted_week: '2026-09-13',
         })
-        expect(claimKind(out.extra.kind).label).toBe('Not logged')
+        expect(claimKind(out.extra.kind).label).toBe('No reason logged')
     })
 })
 

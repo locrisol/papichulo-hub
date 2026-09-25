@@ -4,14 +4,14 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
-import { fmtMoney, fmtUnitCost, num } from '@/lib/format'
+import { fmtMoney, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
     matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack,
 } from '@/lib/invoiceImport'
 import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
-import { acceptPrice, movePreferred, codeRow, ignoreCode } from '@/lib/priceEvents'
+import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother } from '@/lib/priceEvents'
 import { prefillLink } from '@/lib/products'
 import { voidedBy, sentBack } from '@/lib/invoiceClaims'
 import {
@@ -46,13 +46,13 @@ const PILE_CARDS = [
     },
     {
         key: 'new_code',
-        title: 'The code has moved',
-        under: 'A code that stopped appearing and a new one with almost the same description. The supplier renumbering something is otherwise a new product beside an old one that quietly stops.',
+        title: 'The same thing under a new code',
+        under: 'A code we have never had, that reads like one we already buy. Sysco renumbers things, and sometimes sells one thing under two numbers at once. Same thing, this is a code update keeps one price and one price history for both.',
     },
     {
         key: 'price_changed',
         title: 'The price changed',
-        under: 'What the supplier charged is already in the week. This is only about what the Hub costs a portion at.',
+        under: 'What the supplier charged is already in the week. This is only about what the Hub costs a portion at. Not now leaves the costing as it is, and the weekly report keeps saying so until the two agree.',
     },
     {
         key: 'unchanged',
@@ -208,7 +208,9 @@ export default function InvoiceReviewPage() {
 
     async function accept(row, alsoPrefer = false) {
         const at = new Date().toISOString()
-        const out = acceptPrice(row, { restaurantId, userId: user?.id, at, prices: data.prices })
+        const out = acceptPrice(row, {
+            restaurantId, userId: user?.id, at, prices: data.prices, codes: data.codes,
+        })
         if (!out) return 'That line has no product behind it yet.'
 
         let priceId = out.priceId
@@ -251,8 +253,10 @@ export default function InvoiceReviewPage() {
         if (e3) return friendlyError(e3)
 
         // The code follows the price row it now means, so the next document
-        // matches itself.
-        await pointCode(row, priceId)
+        // matches itself. Not for an old number that means its replacement's
+        // price already: that price belongs to the new number, and the old one
+        // reaches it through replaces_code.
+        if (!(row.replacedBy && row.replacedBy.price_id === priceId)) await pointCode(row, priceId)
         return decide(agreeing(row, costed), 'accepted')
     }
 
@@ -291,7 +295,15 @@ export default function InvoiceReviewPage() {
                 priceId,
                 date: row.stored.invoices.invoice_date,
             }))
-        return e1 ? friendlyError(e1) : null
+        if (e1) return friendlyError(e1)
+
+        // A price typed with no code on it belongs to this code from now on,
+        // and says so, the way the rows made from an invoice already do.
+        const { error: e2 } = await supabase.from('product_supplier_prices')
+            .update({ supplier_code: row.line.code })
+            .eq('id', priceId)
+            .is('supplier_code', null)
+        return e2 ? friendlyError(e2) : null
     }
 
     // The supplier renumbered something. The old code's price row is the one
@@ -301,6 +313,16 @@ export default function InvoiceReviewPage() {
         const successor = row.successor
         const price = data.prices.find(p => p.id === successor.price_id)
         if (!price) return 'That code points at a price the Hub no longer has.'
+
+        // The old code lets go of the price row first, because a price row
+        // belongs to one code, and it stops being offered: the thing it named
+        // is bought under the new number now.
+        const { error: e0 } = await supabase.from('supplier_codes')
+            .update({ price_id: null })
+            .eq('supplier_id', row.supplierId)
+            .eq('restaurant_id', restaurantId)
+            .eq('supplier_code', successor.supplier_code)
+        if (e0) return friendlyError(e0)
 
         const { error: e1 } = await supabase.from('supplier_codes')
             .upsert({
@@ -317,13 +339,13 @@ export default function InvoiceReviewPage() {
             }, { onConflict: 'supplier_id,restaurant_id,supplier_code' })
         if (e1) return friendlyError(e1)
 
-        // The old code keeps its price row and stops being offered, because the
-        // thing it named is now bought under the new number.
-        await supabase.from('supplier_codes')
-            .update({ price_id: null })
-            .eq('supplier_id', row.supplierId)
-            .eq('restaurant_id', restaurantId)
-            .eq('supplier_code', successor.supplier_code)
+        // The row carries the code it is for, and that is the new one now. The
+        // report follows the old number's deliveries through replaces_code, so
+        // the price history stays in one piece.
+        const { error: e3 } = await supabase.from('product_supplier_prices')
+            .update({ supplier_code: row.line.code })
+            .eq('id', price.id)
+        if (e3) return friendlyError(e3)
 
         const { error: e2 } = await supabase.from('invoice_lines')
             .update({
@@ -353,10 +375,16 @@ export default function InvoiceReviewPage() {
         // the unique key, and the second is the cabbage: one bought loose
         // matches the price the Hub already has for them, whatever pack that
         // price was typed against.
+        //
+        // **Never another code's row.** Two codes are two versions of the
+        // product, each with its own price, even in the same pack: the plain
+        // wraps matched to the tortillas get a price of their own, and the
+        // Santa Maria price recipes cost from is left alone.
         const ofProduct = data.prices.filter(p => (
             p.product_id === productId
             && p.supplier_id === row.supplierId
             && (p.purchase_type || 'case') === 'case'
+            && !ownedByAnother(p, row.line.code, data.codes)
         ))
         const existing = ofProduct.find(p => num(p.units_per_case) === unitsPerCase)
             || ofProduct.find(p => samePrice({ perCase, units: unitsPerCase }, p))
@@ -654,7 +682,7 @@ function ReviewRow({
                         <span className="tabular-nums font-bold">{fmtMoney(row.now)}</span>
                         {row.perUnitNow != null && (
                             <span className="text-muted">
-                                {' '}({fmtUnitCost(row.perUnitWas)} to {fmtUnitCost(row.perUnitNow)} a unit)
+                                {' '}({fmtMoney(row.perUnitWas)} to {fmtMoney(row.perUnitNow)} a unit)
                             </span>
                         )}
                     </p>
@@ -672,8 +700,10 @@ function ReviewRow({
             {pile === 'new_code' && row.successor && (
                 <p className="text-sm text-gray-900 mb-3">
                     This looks like <strong className="font-bold">{row.successor.last_description}</strong>,
-                    which was bought under code {row.successor.supplier_code} and has not appeared
-                    since {shortDate(row.successor.last_seen_on)}.
+                    bought under code {row.successor.supplier_code}
+                    {row.successor.stillBought
+                        ? `, which is still coming as well (last on ${shortDate(row.successor.last_seen_on)}).`
+                        : ` and not seen since ${shortDate(row.successor.last_seen_on)}.`}
                 </p>
             )}
 
@@ -691,7 +721,7 @@ function ReviewRow({
                             Cost from the new price
                         </button>
                         <button type="button" disabled={!!busy} onClick={onReject} className={rowButton()}>
-                            Leave our costing alone
+                            Not now
                         </button>
                     </>
                 )}
@@ -712,7 +742,7 @@ function ReviewRow({
 
                 {pile === 'new_code' && (
                     <button type="button" disabled={!!busy} onClick={onSameProduct} className={rowButton('good')}>
-                        Yes, same product
+                        Same thing, this is a code update
                     </button>
                 )}
 

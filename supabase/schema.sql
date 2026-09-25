@@ -91,7 +91,9 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "longitude" numeric(9,6),
     "timesheet_recipients" "text"[],
     "pay_period_start" "date",
+    "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
     -- The payroll list, and nobody is on it by role. See the comment below.,
+    CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
@@ -100,6 +102,7 @@ COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded b
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
 COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
+COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -282,10 +285,12 @@ CREATE TABLE IF NOT EXISTS "public"."product_supplier_prices" (
     CONSTRAINT "product_supplier_prices_purchase_type_check" CHECK (("purchase_type" IN ('case', 'loose')))
 );
 
+COMMENT ON COLUMN "public"."product_supplier_prices"."supplier_code" IS 'The supplier''s code this price is for. Each code has a price of its own, because two codes are two versions of a product even in the same pack, and one of them costing more is not the other one going up. supplier_codes is the authority on which row a code means; this is kept in step with it.';
+
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."product_supplier_prices"
-    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case");
+    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case", "supplier_code");
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 
@@ -593,12 +598,15 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "document_type" "text" DEFAULT 'invoice'::"text" NOT NULL,
     "credit_of_invoice_id" "uuid",
     "counts_in_cost" boolean DEFAULT true NOT NULL,
+    "credit_reason" "text",
     CONSTRAINT "invoices_category_check" CHECK (("category" IN ('food', 'packaging', 'cleaning', 'other'))),
     CONSTRAINT "invoices_document_type_check" CHECK (("document_type" IN ('invoice', 'credit'))),
-    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted', 'parsed')))
+    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted', 'parsed'))),
+    CONSTRAINT "invoices_credit_reason_check" CHECK (("credit_reason" IS NULL OR "credit_reason" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else')))
 );
 
 COMMENT ON COLUMN "public"."invoices"."invoice_number" IS 'The number printed on the document. Null for everything entered by hand off a total, which is eight months of them.';
+COMMENT ON COLUMN "public"."invoices"."credit_reason" IS 'Why a credit note came back, given afterwards for the part nobody logged at the door. A label and nothing else: it moves no money and no week. Logging a claim for it now would take the money off the week the delivery happened, which may be a report already sent.';
 COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. A credit with no claim behind it counts on its own date.';
 
 ALTER TABLE ONLY "public"."invoices"
@@ -724,6 +732,9 @@ ALTER TABLE ONLY "public"."supplier_codes"
     ADD CONSTRAINT "supplier_codes_pkey" PRIMARY KEY ("id");
 CREATE UNIQUE INDEX "supplier_codes_once" ON "public"."supplier_codes" USING "btree" ("supplier_id", "restaurant_id", "supplier_code");
 CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+-- A price row belongs to one code. Two codes are two versions of a product,
+-- each with its own price, even when they come in the same pack.
+CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
 
 -- What a product's cost did, and why. The decision log, as against the evidence.
 --
@@ -798,11 +809,12 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_line_claims" (
     "counted_week" "date",
     "note" "text",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('short', 'quality', 'damaged', 'wrong_item', 'price', 'other'))),
+    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else', 'other'))),
     CONSTRAINT "invoice_line_claims_status_check" CHECK (("status" IN ('open', 'settled', 'refused', 'void')))
 );
 
 COMMENT ON TABLE "public"."invoice_line_claims" IS 'What was wrong with a delivery, and how much of it has come back. Raised at the door before any document exists, or against a line when a credit note turns up and the Hub asks why. The balance is amount less credited_amount, because a credit can partly settle an ask.';
+COMMENT ON COLUMN "public"."invoice_line_claims"."kind" IS 'Why. The supplier''s side: not_delivered, short, damaged, quality, out_of_date, warm, wrong_item, price. Ours: mistake, ordered by mistake. something_else says what in the note. other is never picked: it is what a credit note gets when nobody logged anything for it.';
 COMMENT ON COLUMN "public"."invoice_line_claims"."counted_week" IS 'The week this comes off, which is the week it happened in and not always the week the credit lands in. A week is open until its report is published; after that everything later belongs to the week it happened.';
 
 ALTER TABLE ONLY "public"."invoice_line_claims"
@@ -1246,7 +1258,7 @@ CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
-COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
+COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, prices_suppliers, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
 COMMENT ON COLUMN "public"."report_sections"."title" IS 'What is shown. Free to change.';
 ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_pkey" PRIMARY KEY ("id");

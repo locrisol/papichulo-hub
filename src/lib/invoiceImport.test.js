@@ -204,10 +204,12 @@ describe('telling whether one code became another', () => {
     // Deliveries come two or three times a week, so a code seen three days ago
     // has not gone anywhere. Without a quiet period, anything not on the
     // document in front of you looks discontinued.
-    it("never suggests a code that was on last week's delivery", () => {
+    // Unless it reads word for word the same in the same pack, which is the
+    // same thing sold under two numbers: see the green peppers below.
+    it("never suggests a code on last week's delivery that is only alike", () => {
         const live = [{ ...codes[0], last_seen_on: '2026-09-11' }]
         expect(codeSuccessor(
-            line({ code: '497871', description: 'SANTA MARIA FLOUR TORTILLA' }),
+            line({ code: '497871', description: 'SANTA MARIA FLOUR TORTILLA WHOLEMEAL' }),
             live,
             { onThisDocument: ['497871'], date: '2026-09-14' },
         )).toBeNull()
@@ -236,6 +238,47 @@ describe('telling whether one code became another', () => {
             line({ code: '497871', description: 'CHICKEN BREAST DICED' }),
             codes,
             { onThisDocument: ['497871'], date: '2026-09-14' },
+        )).toBeNull()
+    })
+
+    // Sysco sells some things under two numbers at once: the green peppers,
+    // one of them labelled ReadyChef. Waiting ten quiet days meant the new one
+    // sat under Never bought before for a fortnight.
+    it('suggests one still being bought when it reads the same in the same pack', () => {
+        const peppers = [{
+            supplier_code: '5018758', price_id: 'pr9', last_description: 'GREEN PEPPERS 1X5 KG',
+            pack_size: '1X5 KG', last_seen_on: '2026-09-15', ignored: false,
+        }]
+        const found = codeSuccessor(
+            line({ code: '483508', description: 'GREEN PEPPERS 1X5 KG', pack_size: '1X5 KG' }),
+            peppers,
+            { onThisDocument: ['483508'], date: '2026-09-20' },
+        )
+        expect(found.supplier_code).toBe('5018758')
+        expect(found.stillBought).toBe(true)
+    })
+
+    it('does not treat two brands in the same bottle as one still being bought', () => {
+        const water = [{
+            supplier_code: '483173', price_id: 'pr8', last_description: 'DRS 15C RIVERROCK SPARKLING WATER PLASTIC BOTTLE 24X500 ML',
+            pack_size: '24X500 ML', last_seen_on: '2026-09-18', ignored: false,
+        }]
+        expect(codeSuccessor(
+            line({ code: '483176', description: 'DRS 15C BALLYGOWAN SPARKLING MINERAL WATER 24X500 ML', pack_size: '24X500 ML' }),
+            water,
+            { onThisDocument: ['483176'], date: '2026-09-20' },
+        )).toBeNull()
+    })
+
+    it('does not treat another pack as the same thing still being bought', () => {
+        const peppers = [{
+            supplier_code: '5018758', price_id: 'pr9', last_description: 'GREEN PEPPERS 1X5 KG',
+            pack_size: '1X5 KG', last_seen_on: '2026-09-15', ignored: false,
+        }]
+        expect(codeSuccessor(
+            line({ code: '5016517', description: 'GREEN PEPPERS 1X5 KG', pack_size: '5X1 KG' }),
+            peppers,
+            { onThisDocument: ['5016517'], date: '2026-09-20' },
         )).toBeNull()
     })
 
@@ -293,6 +336,22 @@ describe('the four piles', () => {
         })
         expect(row.pile).toBe('new_code')
         expect(row.successor.supplier_code).toBe('497869')
+    })
+
+    // Joining two codes gives the price to one and the other remembers it.
+    // Sysco goes on sending both, and the older one must not go back to
+    // Never bought before.
+    it('matches an old number to the price of the code that replaced it', () => {
+        const codes = [
+            { supplier_code: '497869', price_id: null, ignored: false },
+            { supplier_code: '497870', price_id: 'pr1', replaces_code: '497869', ignored: false },
+        ]
+        const [row] = matchLines({
+            lines: [line({ code: '497869' })], codes, prices: [price()], supplier: SUPPLIER, date: '2026-09-14',
+        })
+        expect(row.pile).toBe('unchanged')
+        expect(row.price.id).toBe('pr1')
+        expect(row.replacedBy.supplier_code).toBe('497870')
     })
 
     it('leaves a line whose price has not moved alone', () => {
