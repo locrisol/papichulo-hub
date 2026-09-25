@@ -12,6 +12,12 @@
 // The usual ones live on the restaurant and are ticked onto a day. Ticking
 // copies the name and the time rather than pointing at them, so renaming Feedr
 // next year does not quietly rewrite last March.
+//
+// **The same one can be on a day more than once.** Three Feedr orders on one
+// day are three things arriving, each at its own time, and the day could only
+// hold one until he had a week that needed three (25 September 2026). So a
+// day's list is told apart by place, never by name: two Feedrs are the first
+// and the second one, and changing the time of one must not move the other.
 
 import { toMinutes, shortTime } from '@/lib/roster'
 
@@ -60,7 +66,9 @@ export function hasExtra(list, name) {
     return cleanExtras(list).some(e => e.name.toLowerCase() === wanted)
 }
 
-// Ticking one on, or off again.
+// Ticking one on, or off again. Off takes every one of that name off the day,
+// which is what untouching a lit button means; one of several comes off by its
+// own cross.
 export function toggleExtra(list, extra) {
     const current = cleanExtras(list)
     return hasExtra(current, extra?.name)
@@ -68,21 +76,56 @@ export function toggleExtra(list, extra) {
         : [...current, ...cleanExtras([extra])]
 }
 
+// Putting one on, always, even when one of that name is on already.
+export function addExtra(list, extra) {
+    return [...cleanExtras(list), ...cleanExtras([extra])]
+}
+
+// Another of the one at this place, straight after it and with no time yet,
+// because a second order is there for being at a different time.
+export function repeatExtra(list, index) {
+    const current = cleanExtras(list)
+    const one = current[index]
+    if (!one) return current
+    return [...current.slice(0, index + 1), { name: one.name, time: '' }, ...current.slice(index + 1)]
+}
+
 // Changing the time on one that is already there.
 //
 // A usual list holds the time it normally arrives, and a day can disagree with
 // it. That is the whole reason the time is copied onto the day rather than read
 // back off the list every time.
-export function setExtraTime(list, name, time) {
-    const wanted = String(name || '').trim().toLowerCase()
-    return cleanExtras(list).map(e => (
-        e.name.toLowerCase() === wanted ? { ...e, time: time ? shortTime(time) : '' } : e
-    ))
+export function setExtraTimeAt(list, index, time) {
+    return cleanExtras(list).map((e, i) => (i === index ? { ...e, time: time ? shortTime(time) : '' } : e))
 }
 
-export function removeExtra(list, name) {
+export function removeExtraAt(list, index) {
+    return cleanExtras(list).filter((_, i) => i !== index)
+}
+
+// Where the nth one of a name sits in the day's list, for a screen that shows
+// one name at a time: the week grid has a row for Feedr, and its second time
+// on Wednesday is the second Feedr on Wednesday.
+function placeOf(list, name, n) {
     const wanted = String(name || '').trim().toLowerCase()
-    return cleanExtras(list).filter(e => e.name.toLowerCase() !== wanted)
+    let seen = -1
+    return cleanExtras(list).findIndex(e => e.name.toLowerCase() === wanted && ++seen === n)
+}
+
+export function setNthTime(list, name, n, time) {
+    const at = placeOf(list, name, n)
+    return at === -1 ? cleanExtras(list) : setExtraTimeAt(list, at, time)
+}
+
+export function removeNth(list, name, n) {
+    const at = placeOf(list, name, n)
+    return at === -1 ? cleanExtras(list) : removeExtraAt(list, at)
+}
+
+// A key for drawing each one, since the name is no longer enough to tell two
+// apart and React warns, and then misdraws, when two siblings share one.
+export function extraKey(extra, index) {
+    return `${index}:${extra?.time || ''}:${extra?.name || ''}`
 }
 
 // Which line of the strip each one goes on.
@@ -187,13 +230,20 @@ export function usualProblem(list) {
 // tick. The time is the half that varies, showing it costs the same as showing
 // a tick, and it answers the question a tick raises.
 //
-// null means it is not on that day. An empty string means it is on and nobody
-// said when, which is a real answer and not the same as not being on.
+// A cell holds every time that one is on that day, in the order they were put
+// on: none means it is not on, and an empty string means it is on and nobody
+// said when, which is a real answer and not the same as not being on. Three
+// Feedr orders on one day are three times in one cell.
 export function weekGrid(usualExtras, dayNotes, dates) {
     const days = dates || []
+    // In the order they are held, not in time order. A cell is edited as the
+    // second Feedr of the day, so the grid and the edit have to count them the
+    // same way round, and sorting would also move a time out from under the
+    // cursor while it is being typed, the reason the day dialog does not sort
+    // either. Saving sorts them.
     const onDate = {}
     for (const date of days) {
-        onDate[date] = extrasFor((dayNotes || []).find(n => n.note_date === date))
+        onDate[date] = cleanExtras((dayNotes || []).find(n => n.note_date === date)?.extras)
     }
 
     // The usual list first and in its own order, because that is the order
@@ -219,10 +269,12 @@ export function weekGrid(usualExtras, dayNotes, dates) {
 
     return rows.map(row => ({
         ...row,
-        onDay: Object.fromEntries(days.map(date => {
-            const found = onDate[date].find(e => e.name.toLowerCase() === row.name.toLowerCase())
-            return [date, found ? (found.time || '') : null]
-        })),
+        onDay: Object.fromEntries(days.map(date => [
+            date,
+            onDate[date]
+                .filter(e => e.name.toLowerCase() === row.name.toLowerCase())
+                .map(e => e.time || ''),
+        ])),
         count: days.filter(date => onDate[date]
             .some(e => e.name.toLowerCase() === row.name.toLowerCase())).length,
     }))
