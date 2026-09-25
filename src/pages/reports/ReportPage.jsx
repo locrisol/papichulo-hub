@@ -24,7 +24,11 @@ import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
 import ReportCorporateSales from '@/components/reports/ReportCorporateSales'
 import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
-import InvoiceWeek from '@/components/reports/InvoiceWeek'
+import ReportPrices from '@/components/reports/ReportPrices'
+import usePriceWeek from '@/components/reports/usePriceWeek'
+import { claimActions } from '@/lib/invoiceReport'
+import { costFromPaid, movePreferred, renumberPlan } from '@/lib/priceEvents'
+import { claimKind } from '@/lib/invoiceClaims'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
@@ -117,6 +121,22 @@ export default function ReportPage() {
 
     const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
+
+    // Prices and suppliers. Read live while the report is a draft and frozen
+    // with everything else when it goes out, so a price accepted next week
+    // cannot change what people were sent. Its own reload, because a decision
+    // in it changes prices and not the report, and reading the whole page
+    // again for that would be half a year of invoice lines for nothing.
+    const [priceRefresh, setPriceRefresh] = useState(0)
+    const [priceBusy, setPriceBusy] = useState('')
+    const [priceSaid, setPriceSaid] = useState('')
+    const livePrices = usePriceWeek({
+        restaurantId: report?.restaurant_id,
+        weekStart: report?.week_start,
+        threshold: activeRestaurant?.recipe_gap_percent == null ? undefined : num(activeRestaurant.recipe_gap_percent),
+        enabled: report?.status === 'draft',
+        refresh: priceRefresh,
+    })
 
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
@@ -559,6 +579,9 @@ export default function ReportPage() {
             // rather than the one set today; freezing it means a target changed
             // in October cannot repaint a report sent in September.
             targets,
+            // The price section exactly as it stood, words and all, because
+            // the mail cannot work any of it out for itself.
+            prices: livePrices.ready ? livePrices.data : null,
             paperwork: {
                 food,
                 // Frozen with whether a renewal had been applied for, because
@@ -569,9 +592,21 @@ export default function ReportPage() {
         })
     }
 
+    // The price section is frozen with everything else, so it has to have
+    // finished reading, and be this week's, before anything goes out.
+    function pricesNotReady() {
+        if (!sections.some(s => s.key === 'prices_suppliers')) return false
+        if (livePrices.ready) return false
+        setError(livePrices.error
+            ? `The prices could not be read, so this cannot go out yet: ${livePrices.error}`
+            : 'The prices are still being read. Give it a moment and press it again.')
+        return true
+    }
+
     async function publish() {
         const check = publishCheck(sections, figures)
         if (check.blockers.length > 0) return
+        if (pricesNotReady()) return
 
         const first = (report.send_count || 0) === 0
         const ok = await confirm({
@@ -669,6 +704,7 @@ export default function ReportPage() {
     // sends a test to whoever is logged in, which is a rule a browser cannot
     // talk it out of.
     async function testSend() {
+        if (pricesNotReady()) return
         setMailed(null)
         setSaving(true)
         try {
@@ -770,6 +806,142 @@ export default function ReportPage() {
 
         setRefresh(n => n + 1)
         return null
+    }
+
+    // ---- the decisions in the price section ----
+    //
+    // Each one changes what recipes cost or what a code means, never the
+    // report, so each is asked about first and then only the price section is
+    // read again.
+    async function decidePrice(key, question, work, done) {
+        const ok = await confirm(question)
+        if (!ok) return
+        setPriceBusy(key)
+        setPriceSaid('')
+        setError('')
+        const failed = await work()
+        setPriceBusy('')
+        if (failed) { setError(failed); return }
+        setPriceSaid(done)
+        setPriceRefresh(n => n + 1)
+    }
+
+    function costFrom(item, key) {
+        const row = livePrices.prices.find(p => p.id === item.priceId)
+        return decidePrice(key, {
+            title: `Cost ${item.name} from what we pay?`,
+            message: `Every recipe with ${item.name} in it will cost it at ${fmtMoney(item.paid)} ${item.unit} `
+                + `instead of ${fmtMoney(item.recipe)}, the price on the invoice of ${shortDate(item.paidOn)}.`,
+            confirmLabel: 'Cost from it',
+        }, async () => {
+            const out = costFromPaid(item, row, {
+                restaurantId: report.restaurant_id, userId: user?.id, at: new Date().toISOString(),
+            })
+            if (!out) return 'That price is not in the Hub any more. Reload the page.'
+            const { error: e1 } = await supabase.from('product_supplier_prices').update(out.patch).eq('id', out.priceId)
+            if (e1) return friendlyError(e1)
+            const { error: e2 } = await supabase.from('product_price_events').insert(out.event)
+            return e2 ? friendlyError(e2) : null
+        }, `${item.name} is costed from ${fmtMoney(item.paid)} ${item.unit} now.`)
+    }
+
+    function makeUsual(item, key) {
+        const to = livePrices.prices.find(p => p.id === item.priceId)
+        const from = livePrices.prices.find(p => p.id === item.fromPriceId)
+        return decidePrice(key, {
+            title: `Make ${item.bought} the usual one?`,
+            message: `Recipes with ${item.name} in them will cost it at ${fmtMoney(item.rowPer)} ${item.unit}, `
+                + `the price the Hub has for ${item.bought} (code ${item.code}), and the report will compare `
+                + 'everything else with it from now on. If that price is not what is paid now, the report '
+                + 'says so next.',
+            confirmLabel: 'Make it the usual one',
+        }, async () => {
+            if (!to || to.price_per_unit == null) return 'That price is not in the Hub any more. Reload the page.'
+            const move = movePreferred({ id: item.productId }, to, {
+                restaurantId: report.restaurant_id, userId: user?.id, from, at: new Date().toISOString(),
+            })
+            if (move.off) {
+                const { error: e1 } = await supabase.from('product_supplier_prices')
+                    .update({ is_preferred: false }).eq('id', move.off)
+                if (e1) return friendlyError(e1)
+            }
+            const { error: e2 } = await supabase.from('product_supplier_prices')
+                .update({ is_preferred: true }).eq('id', move.on)
+            if (e2) return friendlyError(e2)
+            const { error: e3 } = await supabase.from('product_price_events').insert({
+                ...move.event, note: `Bought as ${item.bought} three times in a row`,
+            })
+            return e3 ? friendlyError(e3) : null
+        }, `${item.name} is costed from ${item.bought} now.`)
+    }
+
+    function renumber(item, key) {
+        const plan = renumberPlan(item)
+        return decidePrice(key, {
+            title: 'The same thing under a new number?',
+            message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
+                + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
+                + 'change from now on.',
+            confirmLabel: 'They are the same',
+        }, async () => {
+            if (!plan) return 'The Hub cannot join these two. Match the code in the review instead.'
+            if (plan.moveLines) {
+                const { error: e1 } = await supabase.from('invoice_lines')
+                    .update({ price_id: plan.moveLines.to }).eq('price_id', plan.moveLines.from)
+                if (e1) return friendlyError(e1)
+            }
+            if (plan.release) {
+                const { error: e2 } = await supabase.from('supplier_codes')
+                    .update({ price_id: null }).eq('id', plan.release)
+                if (e2) return friendlyError(e2)
+            }
+            // Asked to say what it removed, because a removal the database
+            // quietly declines comes back with no error and nothing gone, and
+            // the green peppers were left with a price nobody pointed at.
+            if (plan.drop) {
+                const { data: gone, error: e3 } = await supabase.from('product_supplier_prices')
+                    .delete().eq('id', plan.drop).select('id')
+                if (e3) return friendlyError(e3)
+                if (!gone?.length) {
+                    return "The code was joined, but its old price could not be removed. It is on the product's "
+                        + 'prices page and nothing uses it: delete it there.'
+                }
+            }
+            const { error: e4 } = await supabase.from('supplier_codes').update(plan.point.patch).eq('id', plan.point.id)
+            if (e4) return friendlyError(e4)
+            if (plan.rowCode) {
+                const { error: e5 } = await supabase.from('product_supplier_prices')
+                    .update({ supplier_code: plan.rowCode.supplier_code }).eq('id', plan.rowCode.id)
+                if (e5) return friendlyError(e5)
+            }
+            return null
+        }, `${item.bought} and the usual ${item.name} are one version now.`)
+    }
+
+    // A label on the credit note and nothing else. Logging a claim for it now
+    // would take its money off the week the delivery happened, which may be a
+    // report already sent.
+    function giveReason(item, reason, key) {
+        const label = claimKind(reason).label
+        return decidePrice(key, {
+            title: `${label}?`,
+            message: `${item.what} (${item.number || 'credit note'}) will say ${label.toLowerCase()} `
+                + 'on this report and every one after. No money moves and no week changes.',
+            confirmLabel: 'Give the reason',
+        }, async () => {
+            const { error: e1 } = await supabase.from('invoices').update({ credit_reason: reason }).eq('id', item.id)
+            return e1 ? friendlyError(e1) : null
+        }, 'Saved.')
+    }
+
+    async function listClaims(jobs) {
+        setPriceBusy('list')
+        setPriceSaid('')
+        const failed = await putClaimsOnList(jobs)
+        setPriceBusy('')
+        if (failed) { setError(failed); return }
+        setPriceSaid('The support list has them now, and they stay on it until they are ticked.')
     }
 
     async function addRefund(platform) {
@@ -966,7 +1138,7 @@ export default function ReportPage() {
                 report is visible while it fills in. */}
             {sections.filter(s => s.key !== 'sales_costs').map(section => {
                 const built = [
-                    'profit_loss', 'online_sales', 'corporate_sales',
+                    'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
                     'people_ops', 'marketing', 'support_actions',
                 ].includes(section.key)
                 return (
@@ -996,18 +1168,24 @@ export default function ReportPage() {
                                         />
                                         <PageChart spec={specs.delivery} rows={history} />
                                         <PageChart spec={specs.earnings} rows={history} />
-                                        {/* Under the food cost, because a food
-                                            cost that moved two points should
-                                            have its reason on the same page. */}
-                                        <InvoiceWeek
-                                            restaurantId={report?.restaurant_id}
-                                            weekStart={week}
-                                            weekEnd={addDays(week, 6)}
-                                            canEdit={canEdit}
-                                            supportSection={sections.find(s => s.key === 'support_actions')}
-                                            onAddActions={putClaimsOnList}
-                                        />
                                         </>
+                                    )}
+                                    {section.key === 'prices_suppliers' && (
+                                        <PricesBlock
+                                            report={report}
+                                            live={livePrices}
+                                            canEdit={canEdit}
+                                            busy={priceBusy}
+                                            said={priceSaid}
+                                            supportSection={sections.find(s => s.key === 'support_actions')}
+                                            handlers={{
+                                                onCostFrom: costFrom,
+                                                onMakeUsual: makeUsual,
+                                                onRenumber: renumber,
+                                                onGiveReason: giveReason,
+                                                onPutOnList: listClaims,
+                                            }}
+                                        />
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
@@ -1089,6 +1267,38 @@ export default function ReportPage() {
 
             {canEdit && <AddSection onAdd={addSection} />}
         </div>
+    )
+}
+
+// The price section, live or frozen.
+//
+// A report that has gone out shows what it said when it went, and nothing on
+// it can be decided any more: the buttons belong to a week still being
+// written. One sent before the section existed has nothing frozen, and says
+// so rather than showing today's prices under last month's heading.
+function PricesBlock({ report, live, canEdit, busy, said, supportSection, handlers }) {
+    const published = report.status === 'published'
+    const section = published ? report.figures?.prices : live.data
+
+    if (published && !section) {
+        return <p className="text-sm text-muted">This report went out before prices had a section of their own.</p>
+    }
+    if (!published && live.error) return <ErrorBanner>{live.error}</ErrorBanner>
+    if (!section) return <p className="text-sm text-muted">Reading the invoices for the week.</p>
+
+    const jobs = canEdit ? claimActions(live.claims, supportSection?.items, report.week_start) : null
+    return (
+        <>
+            {said && <p className="text-sm text-green-700 mb-3" aria-live="polite">{said}</p>}
+            <ReportPrices
+                section={section}
+                canDecide={canEdit}
+                canEdit={canEdit}
+                busy={busy}
+                jobs={jobs}
+                {...handlers}
+            />
+        </>
     )
 }
 

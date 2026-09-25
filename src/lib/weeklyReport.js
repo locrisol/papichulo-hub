@@ -15,6 +15,7 @@ import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 export const DEFAULT_SECTIONS = [
     { key: 'sales_costs', title: 'Sales and costs' },
     { key: 'profit_loss', title: 'Weekly profit and loss' },
+    { key: 'prices_suppliers', title: 'Prices and suppliers' },
     { key: 'online_sales', title: 'Online sales' },
     { key: 'corporate_sales', title: 'Corporate sales' },
     { key: 'people_ops', title: 'People and operations' },
@@ -46,7 +47,7 @@ export const DEFAULT_OVERHEADS = [
 //
 // One question, because the answer settles both of the things that can be done
 // to a section. Its own can be renamed and dropped, since a heading somebody
-// typed is theirs to change or be rid of. The seven built in can be neither: a
+// typed is theirs to change or be rid of. The eight built in can be neither: a
 // report missing its profit and loss is not a shorter report, it is a broken
 // one, and a heading that says one thing in August and another in September
 // makes two weeks harder to read rather than one easier.
@@ -55,6 +56,28 @@ export const DEFAULT_OVERHEADS = [
 // what a quiet week looks like.
 export function isOwnSection(section) {
     return !DEFAULT_SECTIONS.some(d => d.key === section?.key)
+}
+
+// The sections a new week starts with.
+//
+// Last week's list, so a section somebody added keeps appearing and a heading
+// somebody renamed keeps its new name. **Plus any built-in one it is missing**,
+// in its place: a built-in section cannot be dropped, so one that is missing
+// is one the report did not have yet when last week was written, the way
+// Prices and suppliers arrived in September. It goes straight after the
+// built-in section it follows in the default list, and the week before's
+// own sections stay where they were.
+export function sectionsFor(previous) {
+    if (!previous?.length) return DEFAULT_SECTIONS.map(s => ({ key: s.key, title: s.title }))
+
+    const out = previous.map(s => ({ key: s.key, title: s.title }))
+    DEFAULT_SECTIONS.forEach((wanted, i) => {
+        if (out.some(s => s.key === wanted.key)) return
+        const before = DEFAULT_SECTIONS.slice(0, i).reverse().find(d => out.some(s => s.key === d.key))
+        const at = before ? out.findIndex(s => s.key === before.key) + 1 : 0
+        out.splice(at, 0, { key: wanted.key, title: wanted.title })
+    })
+    return out
 }
 
 // A key for a section somebody typed the title of.

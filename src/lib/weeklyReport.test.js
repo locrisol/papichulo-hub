@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     sectionKey,
     isOwnSection,
+    sectionsFor,
     weekReadiness,
     weekIsOver,
     reportableWeeks,
@@ -60,9 +61,46 @@ describe('sectionKey', () => {
     })
 })
 
+describe('the sections a new week starts with', () => {
+    const LAST_WEEK = [
+        { key: 'sales_costs', title: 'Sales and costs' },
+        { key: 'profit_loss', title: 'P and L' },
+        { key: 'priorities', title: 'Priorities' },
+        { key: 'online_sales', title: 'Online sales' },
+        { key: 'corporate_sales', title: 'Corporate sales' },
+        { key: 'people_ops', title: 'People and operations' },
+        { key: 'marketing', title: 'Marketing and sales development' },
+        { key: 'support_actions', title: 'Support / actions needed' },
+    ]
+
+    it('is the built-in list for a restaurant that has never written one', () => {
+        expect(sectionsFor(null).map(s => s.key)[2]).toBe('prices_suppliers')
+    })
+
+    // Prices and suppliers arrived in September, after every restaurant had
+    // a week to copy from.
+    it('adds a built-in section last week did not have, straight after the one it follows', () => {
+        expect(sectionsFor(LAST_WEEK).map(s => s.key)).toEqual([
+            'sales_costs', 'profit_loss', 'prices_suppliers', 'priorities', 'online_sales',
+            'corporate_sales', 'people_ops', 'marketing', 'support_actions',
+        ])
+    })
+
+    it('keeps a renamed heading and a section of their own', () => {
+        const next = sectionsFor(LAST_WEEK)
+        expect(next.find(s => s.key === 'profit_loss').title).toBe('P and L')
+        expect(next.find(s => s.key === 'priorities').title).toBe('Priorities')
+    })
+
+    it('changes nothing once it has them all', () => {
+        const once = sectionsFor(LAST_WEEK)
+        expect(sectionsFor(once)).toEqual(once)
+    })
+})
+
 describe('isOwnSection', () => {
-    it('says no to every one of the seven the report comes with', () => {
-        for (const key of ['sales_costs', 'profit_loss', 'online_sales', 'corporate_sales',
+    it('says no to every one of the eight the report comes with', () => {
+        for (const key of ['sales_costs', 'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
             'people_ops', 'marketing', 'support_actions']) {
             expect(isOwnSection({ key })).toBe(false)
         }

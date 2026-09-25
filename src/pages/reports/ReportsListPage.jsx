@@ -11,7 +11,7 @@ import {
     reportableWeeks,
     weekReadiness,
     carriedItems,
-    DEFAULT_SECTIONS,
+    sectionsFor,
     DEFAULT_OVERHEADS,
 } from '@/lib/weeklyReport'
 import { personWeek, unanswered } from '@/lib/timesheet'
@@ -331,9 +331,9 @@ export default function ReportsListPage() {
 
         // The section list comes from the week before where there is one, so a
         // section somebody added keeps appearing and one they dropped stays
-        // dropped. Only a restaurant that has never written a report gets the
-        // built-in list.
-        const wanted = previous?.sections?.length ? previous.sections : DEFAULT_SECTIONS
+        // dropped, plus any built-in one it did not have yet. Only a restaurant
+        // that has never written a report gets the built-in list as it is.
+        const wanted = sectionsFor(previous?.sections)
 
         const { data: sections, error: sErr } = await supabase
             .from('report_sections')

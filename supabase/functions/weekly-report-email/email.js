@@ -218,7 +218,7 @@ function band(colour, background, title, body) {
     </table>`
 }
 
-// A section heading, and which of the seven it is.
+// A section heading, and which of the eight it is.
 //
 // A filled bar rather than small grey lettering over a short rule. Seven
 // sections deep in a mail read on a phone, the old one carried the same weight
@@ -232,7 +232,7 @@ function band(colour, background, title, body) {
 //
 // **The number is not decoration.** A band tells you where a section starts and
 // says nothing once you have scrolled past it, which on a phone is most of the
-// time. The seven are always the same seven in the same order, so "4" is a true
+// time. The eight are always the same eight in the same order, so "4" is a true
 // thing about the section and it is the answer to standing in the middle of a
 // long mail wondering which part this is.
 //
@@ -755,6 +755,261 @@ function ownSection(section) {
 }
 
 // ---------------------------------------------------------------------------
+// Prices and suppliers
+// ---------------------------------------------------------------------------
+//
+// Read from what was frozen when the report was published, the same as every
+// other figure in here. It is worked out in the app (invoiceReport.js), words
+// and all, because nothing in this folder can import from there. So this only
+// lays it out.
+
+const signedMoney = n => (num(n) > 0 ? '+' : '') + money(n)
+
+export function change(n) {
+    if (n == null || isNaN(Number(n))) return ''
+    return (Number(n) > 0 ? '+' : '') + Number(n).toFixed(1) + '%'
+}
+
+// Two places, the same as every other figure in here. Prices are kept to four,
+// and on a report the extra two only made them harder to read.
+const unitMoney = money
+const priceOf = value => money(value)
+
+// A day and a month, for a row that already says which week it is in.
+export function dayMonth(iso) {
+    if (!iso) return ''
+    const d = new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+    if (isNaN(d)) return String(iso)
+    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
+
+const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
+
+// One kind of thing, as a card: a header with what it came to, then a row each.
+// Built the way the paperwork cards are, and for the same reason: loose rows
+// under a section band read as one long list.
+function priceCard(title, figure, tone, rows, empty) {
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                            font-weight:700;color:${tone};white-space:nowrap;">${figure}</td>
+                    </tr>
+                </table>
+            </td></tr>
+            <tr><td style="padding:0 0 4px;">
+                ${rows.length
+                    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                        style="border-collapse:collapse;">${rows.join('')}</table>`
+                    : `<div style="padding:12px 14px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
+            </td></tr>
+        </table>
+    </td></tr>`
+}
+
+const toneFor = n => (num(n) > 0.004 ? RED : num(n) < -0.004 ? GREEN : MUTED)
+
+// The headlines, one to a line, with what kind of thing it is in bold: his
+// choice on 26 September for the mail (B). The label is everything before the
+// first colon, which is how the app writes them.
+function wordsBlock(words) {
+    if (!words?.length) return ''
+    const one = w => {
+        const at = w.indexOf(': ')
+        return at === -1
+            ? escapeHtml(w)
+            : `<strong style="color:${DARK};">${escapeHtml(w.slice(0, at + 1))}</strong>&#32;${escapeHtml(w.slice(at + 2))}`
+    }
+    return `<tr><td style="padding:14px ${SIDE}px 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">`
+        + words.map(w => `<div style="margin:0 0 8px;">${one(w)}</div>`).join('')
+        + '</td></tr>'
+}
+
+export function pricesSection(section, f) {
+    const p = f.prices
+    if (!p) {
+        return heading(section.title, section.number)
+            + note('Prices were not read for this week.')
+            + comments(sectionComments(section))
+    }
+    const t = p.totals || {}
+
+    // The four figures an owner reads first, as rows, with what each one is
+    // under its name rather than beside the money.
+    const summary = figures([
+        line({
+            label: 'Same product, new price'
+                + small(p.moves.length ? `${p.moves.length} ${p.moves.length === 1 ? 'product' : 'products'}` : 'Every code cost what it did'),
+            value: p.moves.length ? signedMoney(t.moves) : 'None',
+            tone: toneFor(t.moves),
+        }),
+        line({
+            label: 'Bought as something else'
+                + small(p.switches.length ? `${p.switches.length} ${p.switches.length === 1 ? 'product' : 'products'}` : 'Everything was the usual one'),
+            value: p.switches.length ? signedMoney(t.switches) : 'None',
+            tone: toneFor(t.switches),
+        }),
+        line({
+            label: 'Recipes out of line'
+                + small(t.cannot ? `and ${t.cannot} that cannot be compared` : `more than ${p.threshold}% off what we pay`),
+            value: String(t.recipes || 0),
+            tone: t.recipes ? AMBER : MUTED,
+        }),
+        line({
+            label: 'Came back'
+                + small(`${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`
+                    + (t.owedCount ? `, ${t.owedCount} still owed` : '')),
+            value: money(t.back),
+        }),
+    ])
+
+    const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
+        [
+            ...p.moves.map(m => line({
+                inset: 14,
+                // The split on a line of its own, "6 cases, €3.15 less each",
+                // so the total beside it can be checked by multiplying. Absent
+                // on anything frozen before it existed.
+                label: escapeHtml(m.name)
+                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}, `
+                        + `${dayMonth(m.on)}${m.invoice ? ` ${escapeHtml(m.invoice)}` : ''}`)
+                    + (m.split ? small(escapeHtml(m.split)) : ''),
+                value: `${change(m.change)}<br /><span style="font-size:13px;">${signedMoney(m.effect)}</span>`,
+                tone: m.up ? RED : GREEN,
+            })),
+            ...(p.doubtful || []).map(m => line({
+                inset: 14,
+                label: `${escapeHtml(m.name)}, left out`
+                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}: `
+                        + 'more likely a pack read wrong than a real price'),
+                value: '',
+            })),
+        ],
+        'Every code cost what it did the last time it came.')
+
+    const switches = priceCard('Bought as something else', p.switches.length ? signedMoney(t.switches) : '', toneFor(t.switches),
+        p.switches.map(x => line({
+            inset: 14,
+            label: escapeHtml(x.name)
+                + small(`${escapeHtml(x.bought)}, ${dayMonth(x.on)}. `
+                    + (x.cannot
+                        ? 'Cannot be compared.'
+                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} usually`)),
+            value: x.cannot ? '' : `${change(x.change)}<br /><span style="font-size:13px;">${signedMoney(x.effect)}</span>`,
+            tone: x.cannot ? MUTED : toneFor(x.change),
+        })),
+        'Everything came as the version recipes cost from.')
+
+    const recipes = priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
+        p.recipes.map(r => line({
+            inset: 14,
+            label: escapeHtml(r.name)
+                + small(r.state === 'cannot'
+                    ? (r.why === 'units'
+                        ? 'Cannot be compared: the price recipes use and the invoice are not counted the same way.'
+                        : 'Cannot be compared: counted by weight, sold one at a time.')
+                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`),
+            value: r.state === 'cannot' ? '' : change(r.gap)
+                + (r.effect ? `<br /><span style="font-size:13px;">${signedMoney(r.effect)}</span>` : ''),
+            tone: r.state === 'cannot' ? MUTED : AMBER,
+        })),
+        `Every recipe is within ${p.threshold}% of what was last paid.`)
+
+    // What came back: by reason first, then each credit note, then what is
+    // still owed. The reasons are lines of their own rather than a bar, which
+    // a mail cannot be trusted to draw.
+    const backRows = [
+        ...(p.reasons || []).map(r => line({
+            inset: 14,
+            label: `<span style="color:${r.colour};">&#9632;</span>&nbsp;${escapeHtml(r.label)}`,
+            value: money(r.money),
+        })),
+        ...p.back.map(b => line({
+            inset: 14,
+            label: escapeHtml(b.what)
+                + small(`${escapeHtml(b.number || 'Credit note')} of ${dayMonth(b.date)}: `
+                    + b.parts.map(part => escapeHtml(part.label)).join(', ')),
+            value: money(b.money),
+            tone: GREEN,
+        })),
+        ...(p.owed.length ? [subHeading('Still waiting on a credit')] : []),
+        ...p.owed.map(o => line({
+            inset: 14,
+            label: escapeHtml(o.what) + small(`${escapeHtml(o.label)}, since ${dayMonth(o.since)}`),
+            value: o.money == null ? 'not priced' : money(o.money),
+        })),
+    ]
+    const back = priceCard('Came back, and why', p.back.length ? money(t.back) : '', GREEN, backRows,
+        'Nothing came back this week and nothing is owed.')
+
+    const fresh = p.newCodes?.length
+        ? note(`${p.newCodes.length} ${p.newCodes.length === 1 ? 'code was' : 'codes were'} delivered for the first time.`)
+        : ''
+
+    // Where it came from first, set the way the headlines are: only a
+    // document read line by line says anything about a price, and a reader
+    // has to know which suppliers were only a typed total. Absent on anything
+    // frozen before it existed.
+    return heading(section.title, section.number)
+        + (p.readFrom?.words ? wordsBlock([p.readFrom.words]) : '')
+        + summary
+        + wordsBlock(p.words)
+        + moves + switches + recipes + back
+        + fresh
+        + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
+        + comments(sectionComments(section))
+}
+
+function pricesText(p) {
+    if (!p) return ['  Prices were not read for this week.']
+    const t = p.totals || {}
+    const out = [
+        ...(p.readFrom?.words ? [`  ${p.readFrom.words}`] : []),
+        `  Same product, new price: ${p.moves.length ? signedMoney(t.moves) : 'none'}`,
+        `  Bought as something else: ${p.switches.length ? signedMoney(t.switches) : 'none'}`,
+        `  Recipes out of line: ${t.recipes || 0}${t.cannot ? `, and ${t.cannot} that cannot be compared` : ''}`,
+        `  Came back: ${money(t.back)} on ${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`,
+    ]
+    for (const w of p.words || []) out.push(`  - ${w}`)
+    if (p.moves.length) {
+        out.push('  Same product, new price')
+        for (const m of p.moves) {
+            out.push(`    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
+                + (m.split ? ` (${m.split})` : ''))
+        }
+    }
+    if (p.switches.length) {
+        out.push('  Bought as something else')
+        for (const x of p.switches) {
+            out.push(`    ${x.name}: ${x.bought}` + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`))
+        }
+    }
+    if (p.recipes.length) {
+        out.push('  Recipes not costing what we pay')
+        for (const r of p.recipes) {
+            out.push(`    ${r.name}: ` + (r.state === 'cannot'
+                ? 'cannot be compared'
+                : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`))
+        }
+    }
+    if (p.back.length) {
+        out.push('  Came back')
+        for (const b of p.back) {
+            out.push(`    ${b.what}: ${money(b.money)}, ${b.parts.map(part => part.label).join(', ')}`)
+        }
+    }
+    if (p.owed.length) {
+        out.push('  Still waiting on a credit')
+        for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
 // What a correction corrected
 // ---------------------------------------------------------------------------
 
@@ -801,6 +1056,7 @@ export function reportEmail({
     const known = {
         sales_costs: s => salesAndCosts(s, f, charts),
         profit_loss: s => profitAndLoss(s, f, charts),
+        prices_suppliers: s => pricesSection(s, f),
         online_sales: s => platformSection(s, f, charts, 'online_platform', 'online'),
         // The bucket is called catering in the database, nailed down in
         // migration 015. The report calls it corporate, which is what people
@@ -927,6 +1183,8 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
             for (const item of of(section, 'delivery')) out.push(share(item.label, item.amount, null))
             out.push(share('Third party delivery costs', f.deliveryTotal, null))
             out.push(share('Net earnings', f.earnings, f.earningsPct))
+        } else if (section.key === 'prices_suppliers') {
+            out.push(...pricesText(f.prices))
         } else if (section.key === 'online_sales' || section.key === 'corporate_sales') {
             const bucket = section.key === 'online_sales' ? 'online_platform' : 'catering'
             for (const platform of (f.platforms || []).filter(p => p.bucket === bucket)) {
