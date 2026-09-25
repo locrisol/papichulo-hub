@@ -12,7 +12,6 @@ import { mirrorClosedToSales } from '@/lib/closedDays'
 import ModalSection from '@/components/ui/ModalSection'
 import {
     cleanExtras, sortExtras, hasExtra, toggleExtra, addExtra, repeatExtra, setExtraTimeAt, removeExtraAt,
-    extraKey,
 } from '@/lib/dayExtras'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -305,11 +304,16 @@ export default function DayNoteDialog({
                         straight under it and with no time yet: three Feedr
                         orders on one day are three rows, each at its own time.
                         Each row is told apart by where it sits, since the name
-                        no longer does it. */}
+                        no longer does it.
+
+                        **By where it sits and nothing else.** The key used to
+                        carry the time as well, so the moment a box held a
+                        whole time the row became a new row, the box was thrown
+                        away mid typing, and 11:15 came out as 11:01. */}
                     {form.extras.length > 0 && (
                         <div className="divide-y divide-border mb-4">
                             {form.extras.map((extra, i) => (
-                                <div key={extraKey(extra, i)} className="py-2 flex flex-wrap items-center gap-2">
+                                <div key={i} className="py-2 flex flex-wrap items-center gap-2">
                                     <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                                         {extra.name}
                                     </span>

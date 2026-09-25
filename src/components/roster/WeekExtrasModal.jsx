@@ -85,7 +85,10 @@ function PhoneShape({ rows, dates, picked, onPick, onAdd, onTime, onRemove }) {
                                 {on ? (
                                     <div className="flex-1 min-w-0 space-y-1.5">
                                         {times.map((at, n) => (
-                                            <div key={`${n}:${at}`} className="flex items-center gap-2">
+                                            // Keyed by place only: a key with the time in
+                                            // it made a new box the moment a time was whole,
+                                            // and the next digit went nowhere.
+                                            <div key={n} className="flex items-center gap-2">
                                                 <ClockField
                                                     value={at}
                                                     onChange={v => onTime(date, row.name, n, v)}
@@ -166,7 +169,7 @@ function GridShape({ rows, dates, onAdd, onTime, onRemove }) {
                                         {on ? (
                                             <div className="flex flex-col items-center gap-1">
                                                 {times.map((at, n) => (
-                                                    <span key={`${n}:${at}`} className="inline-flex items-center gap-1">
+                                                    <span key={n} className="inline-flex items-center gap-1">
                                                         <ClockField
                                                             value={at}
                                                             onChange={v => onTime(date, row.name, n, v)}

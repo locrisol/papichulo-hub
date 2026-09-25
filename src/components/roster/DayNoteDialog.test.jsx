@@ -68,6 +68,19 @@ describe('more than one of the same on a day', () => {
         expect(feedrTimes()).toEqual(['11:30', '12:45'])
     })
 
+    // Typing 11:15 went 11 then 11:01, because a whole time gave the row a new
+    // key and the box was thrown away before the last digit.
+    it('keeps the same box while a time is being typed into it', () => {
+        draw([{ name: 'Feedr', time: '' }])
+        const box = screen.getByLabelText('Feedr time')
+        box.focus()
+        fireEvent.change(box, { target: { value: '11:01' } })
+        expect(screen.getByLabelText('Feedr time')).toBe(box)
+        expect(document.activeElement).toBe(box)
+        fireEvent.change(box, { target: { value: '11:15' } })
+        expect(feedrTimes()).toEqual(['11:15'])
+    })
+
     it('takes one of them off and keeps the rest', () => {
         draw([{ name: 'Feedr', time: '11:30' }, { name: 'Feedr', time: '12:00' }, { name: 'Feedr', time: '12:30' }])
         fireEvent.click(screen.getAllByRole('button', { name: 'Take this Feedr off this day' })[1])
