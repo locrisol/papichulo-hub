@@ -11,7 +11,9 @@ import { fmtMoney } from '@/lib/format'
 import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
-import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '@/lib/team'
+import {
+    sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
+} from '@/lib/team'
 import { fullDayRun, fullDayWords } from '@/lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
@@ -50,13 +52,6 @@ import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 //
 // A week is a draft until it is published, and publishing is a week at a time,
 // never a shift on its own. Half a roster going out is worse than none.
-const NEW_PERSON = {
-    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
-    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
-    permissionRenewalApplied: '', permissionRenewalReference: '',
-    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
-}
-
 export default function RosterPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
@@ -115,7 +110,7 @@ export default function RosterPage() {
     const [view, setView] = useState('week')
     const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
-    const [personForm, setPersonForm] = useState(NEW_PERSON)
+    const [personForm, setPersonForm] = useState(EMPTY_EMPLOYEE)
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
@@ -660,21 +655,7 @@ export default function RosterPage() {
 
         const { error: err } = await supabase.from('employees').insert({
             restaurant_id: restaurantId,
-            full_name: personForm.fullName.trim(),
-            position_id: personForm.positionId || null,
-            hourly_rate: personForm.hourlyRate === '' ? null : Number(personForm.hourlyRate),
-            started_on: personForm.startedOn || null,
-            ended_on: personForm.endedOn || null,
-            user_id: personForm.userId || null,
-            notes: personForm.notes.trim() || null,
-            date_of_birth: personForm.dateOfBirth || null,
-            work_permission: personForm.workPermission || null,
-            work_permission_expires: personForm.workPermissionExpires || null,
-            permission_renewal_applied: personForm.permissionRenewalApplied || null,
-            permission_renewal_reference: personForm.permissionRenewalReference || null,
-            food_safety_level: personForm.foodSafetyLevel || null,
-            food_safety_issued: personForm.foodSafetyIssued || null,
-            food_safety_expires: personForm.foodSafetyExpires || null,
+            ...employeeRow(personForm),
             sort_order: nextSortOrder(employees),
             created_by: user?.id,
         })
@@ -683,7 +664,7 @@ export default function RosterPage() {
         if (err) { setError(friendlyError(err)); return }
 
         setAddingPerson(false)
-        setPersonForm(NEW_PERSON)
+        setPersonForm(EMPTY_EMPLOYEE)
         load({ quiet: true })
     }
 
@@ -990,7 +971,7 @@ export default function RosterPage() {
                             {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
                         </button>
                     )}
-                    <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
+                    <button type="button" onClick={() => { setPersonForm(EMPTY_EMPLOYEE); setAddingPerson(true) }} className={secondaryButton}>
                         Add staff
                     </button>
                     {/* Reached from here as well as from the team list, because

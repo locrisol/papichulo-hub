@@ -9,6 +9,8 @@ import {
     employeeNote,
     nextColour,
     POSITION_COLOURS,
+    employeeRow,
+    EMPTY_EMPLOYEE,
 } from '@/lib/team'
 
 const emp = (id, full_name, sort_order = 0, extra = {}) => ({ id, full_name, sort_order, ...extra })
@@ -235,5 +237,32 @@ describe('employeeNote', () => {
 
     it('asks about an implausible age', () => {
         expect(employeeNote({ dateOfBirth: '1910-01-01' }, TODAY)).toMatch(/Worth checking/)
+    })
+})
+
+// The roster's Add someone kept its own copy of this and never wrote the On
+// trial box, so somebody added from the roster came out hired.
+describe('employeeRow', () => {
+    it('writes the trial tick', () => {
+        expect(employeeRow({ ...EMPTY_EMPLOYEE, fullName: 'Ana', onTrial: true }).on_trial).toBe(true)
+        expect(employeeRow({ ...EMPTY_EMPLOYEE, fullName: 'Ana' }).on_trial).toBe(false)
+    })
+
+    it('stores empty boxes as nothing, not as an empty string or a nought', () => {
+        const row = employeeRow({ ...EMPTY_EMPLOYEE, fullName: '  Ana  ' })
+        expect(row.full_name).toBe('Ana')
+        expect(row.hourly_rate).toBe(null)
+        expect(row.ended_on).toBe(null)
+        expect(row.permission_renewal_applied).toBe(null)
+    })
+
+    it('keeps a rate of nought as nought', () => {
+        expect(employeeRow({ ...EMPTY_EMPLOYEE, fullName: 'Ana', hourlyRate: '0' }).hourly_rate).toBe(0)
+    })
+
+    it('has a box on the empty form for every column it writes', () => {
+        const row = employeeRow({ ...EMPTY_EMPLOYEE, fullName: 'Ana' })
+        expect(Object.keys(row)).toHaveLength(16)
+        expect(Object.keys(EMPTY_EMPLOYEE)).toHaveLength(16)
     })
 })
