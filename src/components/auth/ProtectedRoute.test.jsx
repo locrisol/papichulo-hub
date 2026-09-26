@@ -6,7 +6,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 const auth = { session: null, user: null, loading: true, error: null }
 const restaurant = { error: null }
 
-vi.mock('@/context/auth', () => ({ useAuth: () => auth }))
+vi.mock('@/context/auth', () => ({ useAuth: () => auth, NO_ACCESS: 'no access' }))
 vi.mock('@/context/restaurant', () => ({ useRestaurant: () => restaurant }))
 vi.mock('@/lib/supabase', () => ({
     supabase: { auth: { signOut: vi.fn(() => Promise.resolve({ error: null })) } },
@@ -72,6 +72,18 @@ describe('ProtectedRoute', () => {
         Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'no row' })
         show()
         expect(screen.getByRole('button', { name: 'Sign out and start again' })).toBeInTheDocument()
+    })
+
+    // Signing in again does nothing for a login that is switched off, after a
+    // last day or by a manager, so that screen must not say it will.
+    it('tells somebody whose login is switched off, and who to ask', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } }, error: 'no access' })
+        show()
+        expect(screen.getByText('Your login is switched off')).toBeInTheDocument()
+        expect(screen.getByText(/ask your manager/)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+        expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()
+        expect(screen.queryByText('no access')).not.toBeInTheDocument()
     })
 
     // A good sign-in has a session before it has a user, and the error is only

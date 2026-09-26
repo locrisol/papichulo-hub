@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { AuthContext } from '@/context/auth'
+import { AuthContext, NO_ACCESS } from '@/context/auth'
 
 // Who is signed in.
 //
@@ -40,9 +40,12 @@ export function AuthProvider({ children }) {
         // Do not swallow this. If the row cannot be read the app has no idea
         // who is signed in, every role check reads undefined, and nothing says
         // so. That is how an employee could sign in and quietly have no role.
+        //
+        // No row at all (PGRST116) is the one answer that is not a fault: see
+        // NO_ACCESS.
         if (readError) {
             console.error('Could not load the signed-in user:', readError.message)
-            setError(readError.message)
+            setError(readError.code === 'PGRST116' ? NO_ACCESS : readError.message)
         } else {
             setUser(data)
             setError(null)

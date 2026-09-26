@@ -192,7 +192,7 @@ COMMENT ON COLUMN "public"."employees"."availability_from" IS 'The day availabil
 COMMENT ON COLUMN "public"."employees"."availability_next" IS 'The availability that takes over on availability_from. Null when nothing is queued.';
 COMMENT ON COLUMN "public"."employees"."calendar_token" IS 'The secret in their calendar subscription URL. Anybody holding it can read that person''s published shifts and nothing else. Null until a link is made. Replacing it makes every old link stop working, which is what to do when a phone is lost.';
 COMMENT ON COLUMN "public"."employees"."date_of_birth" IS 'Only used to tell whether somebody is under 18, who has their own limits: eight hours a day, forty a week, nothing after ten at night and twelve hours rest rather than eleven. Empty for everybody else and nothing depends on it.';
-COMMENT ON COLUMN "public"."employees"."ended_on" IS 'The last day worked. There is no delete. Everything follows from this date: gone from rosters after it, present on rosters before it, and access removed on it.';
+COMMENT ON COLUMN "public"."employees"."ended_on" IS 'The last day worked. There is no delete. Everything follows from this date: gone from rosters after it, present on rosters before it, and their login switched off the night after it (switch_off_leavers).';
 COMMENT ON COLUMN "public"."employees"."food_safety_expires" IS 'When it runs out. This is the one that matters and the one everything watches. Two years is the usual term and is what gets offered, but it is typed rather than calculated so a certificate that says something different can say something different here.';
 COMMENT ON COLUMN "public"."employees"."food_safety_issued" IS 'When they sat it. Only used to work out the expiry, which is offered as two years later and can be changed.';
 COMMENT ON COLUMN "public"."employees"."food_safety_level" IS 'Which food safety training they hold. Empty means none recorded, which for anybody handling food is itself worth knowing.';
@@ -1748,6 +1748,38 @@ begin
 end;
 $$;
 
+-- A leaver's login, switched off once their last day has passed.
+--
+-- The same as pressing Deactivate on the Users page: an account that is not
+-- active gets nothing back from get_my_role and the other two, so every rule
+-- refuses it. Every night rather than at sign in, because a check at sign in
+-- does nothing about a session already open and leaves the Users page saying
+-- Active for somebody who cannot get in. The date is read in Ireland, so a
+-- last day is a working day to its end. Never an owner or a super admin: they
+-- are the ones who can undo a last day typed by mistake. Never switches
+-- anybody back on. Scheduled on live by 016, like this:
+--
+--   select cron.schedule('switch-off-leavers', '5 0 * * *', $$select public.switch_off_leavers()$$);
+CREATE OR REPLACE FUNCTION "public"."switch_off_leavers"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+declare
+  switched integer;
+begin
+  update public.users u
+     set is_active = false
+    from public.employees e
+   where e.user_id = u.id
+     and u.is_active
+     and u.role in ('employee', 'store_manager')
+     and e.ended_on < (now() at time zone 'Europe/Dublin')::date;
+
+  get diagnostics switched = row_count;
+  return switched;
+end;
+$$;
+
 CREATE OR REPLACE FUNCTION "public"."brief"("v" "jsonb") RETURNS "jsonb"
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO 'public', 'pg_temp'
@@ -2059,6 +2091,7 @@ $$;
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
+COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
 COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'Which row this is, in words, worked out from its own columns and its foreign keys. Never raises: a label that cannot be built comes back null.';
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
@@ -2079,6 +2112,8 @@ revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") fr
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
+revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
+grant execute on function "public"."switch_off_leavers"() to service_role;
 revoke all on function "public"."unwatched_tables"() from public, anon, authenticated, service_role;
 grant execute on function "public"."unwatched_tables"() to authenticated, service_role;
 revoke all on function "public"."watch_changes"() from public, anon, authenticated, service_role;
