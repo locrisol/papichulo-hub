@@ -10,6 +10,7 @@
 // that out during an inspection is the expensive way.
 
 import { addDays } from '@/lib/dates'
+import { permissionFor } from '@/lib/workRules'
 
 // How far ahead is worth mentioning.
 //
@@ -27,24 +28,32 @@ export function workingThatWeek(employees, weekStart) {
         && (!e.ended_on || e.ended_on >= weekStart))
 }
 
-// The permissions that have nothing to expire.
+// Who the paperwork is checked for: on the books in the week, and not gone by
+// the day it is checked.
 //
-// An Irish or EU citizen has no permit and never will, so a blank expiry on one
-// is not a gap in the records, it is the correct answer. Everything else needs
-// a date: a student stamp runs out, and so does an employment permit.
-//
-// Stamp 4 is lumped in with citizens on the employee form, and a Stamp 4 does
-// expire. That is why a date is still checked whenever one has been entered,
-// whatever the permission says. This list only decides whether a MISSING date
-// is a problem.
-const NOTHING_TO_EXPIRE = ['unrestricted']
+// Somebody who did one trial shift on the Thursday and left the same day was on
+// the books that week, and the report checked the Monday after still listed him
+// with no certificate. The team page treats a leaver as history rather than a
+// job to do (gapsFor), and so does this: nobody chases paperwork for somebody
+// who is not coming back. A last day still ahead is somebody still here.
+export function checkedPeople(employees, weekStart, asOf) {
+    return workingThatWeek(employees, weekStart)
+        .filter(e => !e.ended_on || e.ended_on >= asOf)
+}
 
 // Does this person need a right to work expiry date on file?
 //
-// A permission nobody has recorded at all counts as needing one. We do not know
-// what they hold, and not knowing is the thing worth saying.
+// An Irish or EU citizen has no permit and never will, so a blank expiry on one
+// is not a gap in the records, it is the correct answer. Everything else needs
+// a date: a student stamp runs out, and so does an employment permit. Which is
+// which is `expires` on WORK_PERMISSIONS, the list the team page reads too.
+//
+// Stamp 4 is lumped in with citizens on the employee form, and a Stamp 4 does
+// expire. That is why a date is still checked whenever one has been entered,
+// whatever the permission says. This only decides whether a MISSING date is a
+// problem.
 export function permissionNeedsExpiry(person) {
-    return !NOTHING_TO_EXPIRE.includes(person?.work_permission || '')
+    return permissionFor(person?.work_permission).expires
 }
 
 // One kind of paperwork, counted.
@@ -122,18 +131,32 @@ export function daysUntil(on, from) {
 // JSON, which is why nothing at all is written for food rather than a null:
 // undefined is "this does not have renewals", null is "it does and nobody has
 // applied", and JSON.stringify drops the first and keeps the second.
-function names(list, field, renewals) {
-    return list.map(entry => {
-        const person = field ? entry.person : entry
-        return {
-            name: person.full_name || person.name || 'Somebody',
-            on: field ? entry.on : null,
-            ...(renewals ? { applied: person.permission_renewal_applied || null } : {}),
-        }
-    })
+//
+// `trial` says so beside the name of anybody on trial. His rule, 27 September:
+// somebody on trial is still listed with no certificate, but as on trial,
+// because nobody books the course for somebody who might do one shift, and an
+// owner reading three names needs to know which one is a job to do. Written
+// into the name rather than carried as a flag, so the page and the mail say the
+// same words and a mail function deployed before this still says it. The ones
+// on trial go after everybody else, for the same reason.
+function names(list, field, { renewals = false, trial = false } = {}) {
+    const personOf = entry => (field ? entry.person : entry)
+    const onTrial = entry => (trial && personOf(entry).on_trial ? 1 : 0)
+    return list
+        .map((entry, at) => ({ entry, at }))
+        .sort((a, b) => onTrial(a.entry) - onTrial(b.entry) || a.at - b.at)
+        .map(({ entry }) => {
+            const person = personOf(entry)
+            const name = person.full_name || person.name || 'Somebody'
+            return {
+                name: onTrial(entry) ? `${name} (on trial)` : name,
+                on: field ? entry.on : null,
+                ...(renewals ? { applied: person.permission_renewal_applied || null } : {}),
+            }
+        })
 }
 
-export function paperworkSummary(state, { renewals = false } = {}) {
+export function paperworkSummary(state, { renewals = false, trial = false } = {}) {
     if (!state) return null
     return {
         total: state.total,
@@ -141,8 +164,27 @@ export function paperworkSummary(state, { renewals = false } = {}) {
         ok: state.ok,
         // Nothing on file has no renewal to talk about. You cannot have applied
         // to renew a permission nobody has recorded.
-        missing: names(state.missing),
-        expired: names(state.expired, 'on', renewals),
-        expiring: names(state.expiring, 'on', renewals),
+        missing: names(state.missing, null, { trial }),
+        expired: names(state.expired, 'on', { renewals, trial }),
+        expiring: names(state.expiring, 'on', { renewals, trial }),
+    }
+}
+
+// Both kinds of paperwork, the way the page shows them and the mail sends them.
+//
+// One function for both, so the page and the mail cannot disagree about who is
+// on the list or what is said about them. Food safety says who is on trial; a
+// work permit does not, because working without one is the same offence
+// either way. The right to work carries whether a renewal was applied for,
+// because that is the difference between somebody who cannot legally be on
+// next week's roster and somebody who is waiting on the post.
+export function paperworkFor(employees, weekStart, asOf) {
+    const people = checkedPeople(employees, weekStart, asOf)
+    return {
+        people: people.length,
+        food: paperworkSummary(paperworkState(people, 'food_safety_expires', asOf), { trial: true }),
+        permits: paperworkSummary(
+            paperworkState(people, 'work_permission_expires', asOf, permissionNeedsExpiry),
+            { renewals: true }),
     }
 }
