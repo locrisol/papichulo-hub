@@ -1331,3 +1331,29 @@ describe('prices and suppliers', () => {
         expect(mail.html).toMatch(/>3<\/td><td style="padding-left:12px;[^"]*">Prices and suppliers</)
     })
 })
+
+// A cell that cannot wrap is as wide as its longest line whatever the screen.
+// "4.2 out of 5 (no change)" on one line held the whole mail wider than a
+// phone, and the Gmail app answers a mail wider than the screen by shrinking
+// every box in it to its own words: on 27 September titles ran into their
+// money and minus signs came off their figures, all down the mail. Money, a
+// share, a rating, a count and a move all fit in sixteen characters.
+describe('nothing in the mail is too wide for a phone', () => {
+    const cannotWrap = html => [...html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+        .flatMap(m => m[1].split(/<br\s*\/?>/))
+        .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+
+    it('puts a rating that moved over two lines', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).toMatch(/4\.6&nbsp;out&nbsp;of&nbsp;5<br \/><span[^>]*>\(up from 4\.4\)/)
+        expect(mail.html).toMatch(/4\.8&nbsp;out&nbsp;of&nbsp;5<br \/><span[^>]*>\(no change\)/)
+    })
+
+    it('has no line that cannot wrap longer than sixteen characters', () => {
+        const lines = cannotWrap(reportEmail(base).html)
+        // Found something before saying anything about what was found.
+        expect(lines.length).toBeGreaterThan(10)
+        expect(lines).toContain('4.6 out of 5')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
+    })
+})

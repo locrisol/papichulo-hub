@@ -546,15 +546,21 @@ function platformBlock(section, platform, rated) {
         && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
     const up = moved && num(rating.amount) > num(rating.carried_from)
 
+    // The move goes under the rating, not beside it, the same as a share goes
+    // under the money. The figure cell cannot wrap, so "4.2 out of 5 (no
+    // change)" on one line was the widest thing in the mail: wider than a
+    // phone, and the Gmail app answers a mail wider than the screen by
+    // shrinking every box in it to fit its own words.
+    const change = `font-size:13px;font-weight:400;`
     if (rated) rows.push(line({ inset: 14,
         label: 'Overall rating',
         value: rating?.amount == null
             ? '<span style="color:' + MUTED + ';">not recorded</span>'
             : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
                 + (moved
-                    ? ` <span style="color:${up ? GREEN : AMBER};">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
+                    ? `<br /><span style="color:${up ? GREEN : AMBER};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
                     : (rating.carried_from != null
-                        ? ` <span style="color:${MUTED};">(no change)</span>`
+                        ? `<br /><span style="color:${MUTED};${change}">(no change)</span>`
                         : '')),
     }))
 
@@ -598,7 +604,7 @@ function platformBlock(section, platform, rated) {
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:17px;
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -700,7 +706,7 @@ function paperwork(state, title) {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
                     </tr>
                 </table>
@@ -796,7 +802,7 @@ function priceCard(title, figure, tone, rows, empty) {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${figure}</td>
                     </tr>
                 </table>
