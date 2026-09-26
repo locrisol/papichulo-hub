@@ -3,7 +3,7 @@ import { fmtMoney } from '@/lib/format'
 import { shortDate } from '@/lib/dates'
 import { CLAIM_KINDS } from '@/lib/invoiceClaims'
 import { decisionsFrom } from '@/lib/invoiceReport'
-import { renumberPlan } from '@/lib/priceEvents'
+import { renumberPlan, alternatePlan } from '@/lib/priceEvents'
 import {
     badge, rowButton, compactField, tableHeadRow, tableHeadCell,
 } from '@/lib/controlStyles'
@@ -48,6 +48,7 @@ const WHY = {
 
 export default function ReportPrices({
     section, canDecide, canEdit, busy, jobs, onCostFrom, onMakeUsual, onRenumber, onGiveReason, onPutOnList,
+    onBuyBoth,
 }) {
     if (!section) return null
     const t = section.totals || {}
@@ -67,6 +68,7 @@ export default function ReportPrices({
                     onMakeUsual={onMakeUsual}
                     onRenumber={onRenumber}
                     onGiveReason={onGiveReason}
+                    onBuyBoth={onBuyBoth}
                 />
             )}
 
@@ -109,7 +111,7 @@ export default function ReportPrices({
             <WeekInShort section={section} />
 
             <Moves moves={section.moves} doubtful={section.doubtful || []} />
-            <Switches switches={section.switches} />
+            <Switches switches={section.switches} canDecide={canDecide} busy={busy} onBuyBoth={onBuyBoth} />
             <Recipes recipes={section.recipes} checkedOn={section.checkedOn} threshold={section.threshold} />
             <Back
                 back={section.back}
@@ -131,7 +133,7 @@ export default function ReportPrices({
 // The things somebody has to decide
 // ---------------------------------------------------------------------------
 
-function Decisions({ items, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReason }) {
+function Decisions({ items, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReason, onBuyBoth }) {
     return (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 sm:px-4 mb-4">
             <p className="text-sm font-bold text-amber-800">
@@ -147,6 +149,7 @@ function Decisions({ items, busy, onCostFrom, onMakeUsual, onRenumber, onGiveRea
                         onMakeUsual={onMakeUsual}
                         onRenumber={onRenumber}
                         onGiveReason={onGiveReason}
+                        onBuyBoth={onBuyBoth}
                     />
                 ))}
             </div>
@@ -157,7 +160,7 @@ function Decisions({ items, busy, onCostFrom, onMakeUsual, onRenumber, onGiveRea
     )
 }
 
-function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReason }) {
+function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReason, onBuyBoth }) {
     const [reason, setReason] = useState('')
     const key = `${item.kind}:${item.productId || item.id}:${item.code || ''}`
     // Each button has its own key, so the one pressed is the one that says so.
@@ -169,9 +172,11 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
         const more = item.gap > 0
         words = (
             <>
-                <b>{item.name}.</b> Recipes cost it at {fmtMoney(item.recipe)} {item.unit} and the last
-                one, on {shortDate(item.paidOn)}, was {fmtMoney(item.paid)}: {Math.abs(item.gap).toFixed(0)}%{' '}
-                {more ? 'more' : 'less'} than recipes say.
+                <b>{item.name}.</b> Recipes cost it at {fmtMoney(item.recipe)} {item.unit} and
+                {item.averaged
+                    ? ` it averaged ${fmtMoney(item.paid)} over the last ${item.averaged.deliveries} deliveries`
+                    : ` the last one, on ${shortDate(item.paidOn)}, was ${fmtMoney(item.paid)}`}
+                : {Math.abs(item.gap).toFixed(0)}% {more ? 'more' : 'less'} than recipes say.
             </>
         )
         buttons = (
@@ -195,6 +200,11 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
                         {saving('renumber') ? 'Saving...' : 'Same thing, this is a code update'}
                     </button>
                 )}
+                {alternatePlan(item, 'new') && (
+                    <button type="button" disabled={!!busy} onClick={() => onBuyBoth(item, `${key}:both`)} className={rowButton('good')}>
+                        {saving('both') ? 'Saving...' : 'Same thing, we usually buy both'}
+                    </button>
+                )}
                 <button
                     type="button"
                     disabled={!!busy}
@@ -214,9 +224,16 @@ function Decision({ item, busy, onCostFrom, onMakeUsual, onRenumber, onGiveReaso
             </>
         )
         buttons = (
-            <button type="button" disabled={!!busy} onClick={() => onRenumber(item, `${key}:renumber`)} className={rowButton('good')}>
-                {saving('renumber') ? 'Saving...' : 'Same thing, this is a code update'}
-            </button>
+            <>
+                <button type="button" disabled={!!busy} onClick={() => onRenumber(item, `${key}:renumber`)} className={rowButton('good')}>
+                    {saving('renumber') ? 'Saving...' : 'Same thing, this is a code update'}
+                </button>
+                {alternatePlan(item, 'new') && (
+                    <button type="button" disabled={!!busy} onClick={() => onBuyBoth(item, `${key}:both`)} className={rowButton('good')}>
+                        {saving('both') ? 'Saving...' : 'Same thing, we usually buy both'}
+                    </button>
+                )}
+            </>
         )
     } else {
         words = (
@@ -502,7 +519,7 @@ function Moves({ moves, doubtful }) {
     )
 }
 
-function Switches({ switches }) {
+function Switches({ switches, canDecide, busy, onBuyBoth }) {
     return (
         <Card
             title="Bought as something else"
@@ -518,6 +535,19 @@ function Switches({ switches }) {
                             {s.bought}, code {s.code} &middot; {shortDate(s.on)}{s.invoice ? `, ${s.invoice}` : ''}
                             {s.deliveries > 1 ? `, ${s.deliveries} deliveries` : ''}
                         </p>
+                        {/* Any row here can be the same thing bought either
+                            way, not only the ones whose words match: the
+                            tortillas come in two brands depending on stock. */}
+                        {canDecide && alternatePlan(s, 'new') && (
+                            <button
+                                type="button"
+                                disabled={!!busy}
+                                onClick={() => onBuyBoth(s, `switch:${s.productId}:${s.code}:both`)}
+                                className={`${rowButton()} mt-1.5`}
+                            >
+                                {busy === `switch:${s.productId}:${s.code}:both` ? 'Saving...' : 'Same thing, we usually buy both'}
+                            </button>
+                        )}
                     </div>
                     {s.cannot ? (
                         <p className="text-xs text-muted">Cannot be compared. {WHY[s.why]}</p>
@@ -550,8 +580,9 @@ function Recipes({ recipes, checkedOn, threshold }) {
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900">{r.name}</p>
                         <p className="text-xs text-muted">
-                            Last paid on {shortDate(r.paidOn)}{r.invoice ? `, ${r.invoice}` : ''}
-                            {r.code ? `, code ${r.code}` : ''}
+                            {r.averaged
+                                ? `Average of the last ${r.averaged.deliveries} deliveries, since ${shortDate(r.averaged.since)}`
+                                : `Last paid on ${shortDate(r.paidOn)}${r.invoice ? `, ${r.invoice}` : ''}${r.code ? `, code ${r.code}` : ''}`}
                         </p>
                     </div>
                     {r.state === 'cannot' ? (

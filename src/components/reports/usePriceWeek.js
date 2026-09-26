@@ -71,7 +71,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                     .order('id')),
                 everyRow(() => supabase.from('supplier_codes')
                     .select('id, supplier_id, supplier_code, price_id, last_description, pack_size, '
-                        + 'first_seen_on, replaces_code, ignored')
+                        + 'first_seen_on, replaces_code, ignored, alternate_group')
                     .eq('restaurant_id', restaurantId)
                     .order('id')),
                 // Every claim. Open ones are still owed whatever week they

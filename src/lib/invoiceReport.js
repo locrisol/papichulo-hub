@@ -50,6 +50,11 @@ export const LOOK_BACK_DAYS = 182
 // Three deliveries in a row of another version and the report asks.
 export const IN_A_ROW = 3
 
+// How far back the recipe check averages a group of codes bought either way.
+// Four weeks is a dozen deliveries or so, enough that buying one then the
+// other does not put a product on the report and off it again.
+export const GROUP_DAYS = 28
+
 // What a restaurant that has never said gets. It is a setting, not a rule.
 export const DEFAULT_RECIPE_GAP = 5
 
@@ -158,13 +163,20 @@ function sameAs(before, after) {
 // A supplier renumbering something is still the same version of it, so its
 // price history carries on across the change: the first delivery under the
 // new number is compared with the last under the old one.
+//
+// It also knows which group a code is in, for codes bought either way: see
+// isUsual. One function carrying both, so nothing that asks one question can
+// forget the other.
 export function lineageOf(codes) {
     const replaced = new Map()
+    const groups = new Map()
     for (const c of codes || []) {
+        const key = versionKey(c.supplier_id, c.supplier_code)
+        if (c.alternate_group) groups.set(key, c.alternate_group)
         if (!c.replaces_code) continue
-        replaced.set(versionKey(c.supplier_id, c.supplier_code), versionKey(c.supplier_id, c.replaces_code))
+        replaced.set(key, versionKey(c.supplier_id, c.replaces_code))
     }
-    return key => {
+    const lineage = key => {
         const out = [key]
         let at = replaced.get(key)
         while (at && !out.includes(at)) {
@@ -173,6 +185,8 @@ export function lineageOf(codes) {
         }
         return out
     }
+    lineage.groupOf = key => groups.get(key) || null
+    return lineage
 }
 
 // What a thing is called on the report: its name in the Hub, or the
@@ -236,6 +250,7 @@ export function usualFor(productId, prices, codes) {
         description: pointing?.last_description || null,
         pack: pointing?.pack_size || null,
         replaces: pointing?.replaces_code || null,
+        group: pointing?.alternate_group || null,
     }
 }
 
@@ -274,10 +289,14 @@ function isNewer(first, usual, all, lineage, codes) {
     return !usualFirst || usualFirst.at < first.at
 }
 
+// **A code in the same group as the usual one is the usual one**: the green
+// peppers come as 483508 or 5018758 depending on what Sysco has, and neither
+// is ever bought instead of the other.
 function isUsual(d, usual, lineage) {
     if (!usual) return false
     if (d.priceId && d.priceId === usual.row.id) return true
     if (!usual.key) return false
+    if (usual.group && lineage.groupOf?.(d.key) === usual.group) return true
     return lineage(d.key).includes(usual.key) || lineage(usual.key).includes(d.key)
 }
 
@@ -451,6 +470,8 @@ export function switchesIn(all, { weekStart, weekEnd, prices = [], codes = [] })
             ownPriceOk: !codeRow?.price_id || (!!own && own.product_id === last.productId && !own.is_preferred),
             replaces: codeRow?.replaces_code || null,
             usualReplaces: usual.replaces,
+            group: codeRow?.alternate_group || null,
+            usualGroup: usual.group,
             renumbered: looksRenumbered(last, usual),
             newer: isNewer(list[0], usual, all, lineage, codes),
             why: cannot ? (weight ? 'weight' : 'units') : null,
@@ -539,6 +560,8 @@ export function usualSuggestions(all, { weekStart, weekEnd, prices = [], codes =
             ownPriceOk: true,
             replaces: codeRow.replaces_code || null,
             usualReplaces: usual.replaces,
+            group: codeRow.alternate_group || null,
+            usualGroup: usual.group,
             rowPer: r4(row.price_per_unit),
             renumbered: looksRenumbered(sample, usual),
             newer: isNewer(recent[0].items[0], usual, all, lineage, codes),
@@ -585,6 +608,17 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
         const last = mine[mine.length - 1]
         if (!last) continue
 
+        // **A group bought either way is checked against what it cost on
+        // average**, weighted by how much of each came, over the last four
+        // weeks. Against the last delivery, buying one then the other would
+        // put the product on the report and off it again.
+        const lately = usual.group
+            ? mine.filter(d => d.date >= addDays(weekEnd, -(GROUP_DAYS - 1)) && d.perUnit > 0 && d.cost > 0)
+            : []
+        const averaged = lately.length > 1
+            ? lately.reduce((t, d) => t + d.cost, 0) / lately.reduce((t, d) => t + d.cost / d.perUnit, 0)
+            : null
+
         const rowUnits = num(usual.row.units_per_case)
         const recipe = usual.row.price_per_unit != null
             ? num(usual.row.price_per_unit)
@@ -602,16 +636,20 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
             invoice: last.number,
             unit: unitOf(last),
             recipe: r4(recipe),
-            paid: r4(last.perUnit),
+            paid: r4(averaged ?? last.perUnit),
+            // How many deliveries the average is over, and since when, or
+            // nothing when it is the last delivery on its own.
+            averaged: averaged == null ? null : { deliveries: lately.length, since: lately[0].date },
         }
 
-        if (cannotCompare(last) || outOfReason(last.perUnit, recipe)) {
+        if (cannotCompare(last) || outOfReason(averaged ?? last.perUnit, recipe)) {
             const why = cannotCompare(last) ? 'weight' : 'units'
             if (thisWeek.length) out.push({ ...base, state: 'cannot', why, gap: null, effect: 0 })
             continue
         }
 
-        const gap = pctOf(last.perUnit, recipe)
+        const paid = averaged ?? last.perUnit
+        const gap = pctOf(paid, recipe)
         if (Math.abs(gap) <= num(threshold)) continue
 
         out.push({
@@ -626,9 +664,9 @@ export function recipeGaps(all, { weekStart, weekEnd, prices = [], codes = [], t
             // the unit price carried up to the row's own pack.
             newCase: rowUnits <= 0
                 ? null
-                : last.units != null && Math.abs(last.units - rowUnits) < 0.0005
+                : averaged == null && last.units != null && Math.abs(last.units - rowUnits) < 0.0005
                     ? r2(last.perCase)
-                    : r2(last.perUnit * rowUnits),
+                    : r2(paid * rowUnits),
         })
     }
 

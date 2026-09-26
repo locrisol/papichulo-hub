@@ -27,7 +27,7 @@ import ReportActions from '@/components/reports/ReportActions'
 import ReportPrices from '@/components/reports/ReportPrices'
 import usePriceWeek from '@/components/reports/usePriceWeek'
 import { claimActions } from '@/lib/invoiceReport'
-import { costFromPaid, movePreferred, renumberPlan } from '@/lib/priceEvents'
+import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
@@ -919,6 +919,31 @@ export default function ReportPage() {
         }, `${item.bought} and the usual ${item.name} are one version now.`)
     }
 
+    // The same thing bought either way. Nothing is moved or removed: the two
+    // codes go in one group and each keeps its own price.
+    function buyBoth(item, key) {
+        const plan = alternatePlan(item, newGroupId())
+        return decidePrice(key, {
+            title: 'Same thing, you usually buy both?',
+            message: `${item.bought} (code ${item.code}) and ${item.usualName}`
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way. `
+                + 'Each keeps its own price, neither is listed as bought instead of the other again, and recipes are '
+                + 'checked against what they cost on average.',
+            confirmLabel: 'We buy both',
+        }, async () => {
+            if (!plan) return 'The Hub cannot group these two. The usual price has no code on it.'
+            const { error: e1 } = await supabase.from('supplier_codes')
+                .update({ alternate_group: plan.group }).in('id', plan.rows)
+            if (e1) return friendlyError(e1)
+            if (plan.fold) {
+                const { error: e2 } = await supabase.from('supplier_codes')
+                    .update({ alternate_group: plan.group }).eq('alternate_group', plan.fold)
+                if (e2) return friendlyError(e2)
+            }
+            return null
+        }, `${item.name} is bought either way now.`)
+    }
+
     // A label on the credit note and nothing else. Logging a claim for it now
     // would take its money off the week the delivery happened, which may be a
     // report already sent.
@@ -1183,6 +1208,7 @@ export default function ReportPage() {
                                                 onMakeUsual: makeUsual,
                                                 onRenumber: renumber,
                                                 onGiveReason: giveReason,
+                                                onBuyBoth: buyBoth,
                                                 onPutOnList: listClaims,
                                             }}
                                         />

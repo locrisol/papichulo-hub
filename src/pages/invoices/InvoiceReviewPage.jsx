@@ -8,10 +8,10 @@ import { fmtMoney, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
-    matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack,
+    matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack, packReadings,
 } from '@/lib/invoiceImport'
 import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
-import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother } from '@/lib/priceEvents'
+import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGroupId } from '@/lib/priceEvents'
 import { prefillLink } from '@/lib/products'
 import { voidedBy, sentBack } from '@/lib/invoiceClaims'
 import {
@@ -47,7 +47,7 @@ const PILE_CARDS = [
     {
         key: 'new_code',
         title: 'The same thing under a new code',
-        under: 'A code we have never had, that reads like one we already buy. Sysco renumbers things, and sometimes sells one thing under two numbers at once. Same thing, this is a code update keeps one price and one price history for both.',
+        under: 'A code we have never had, that reads like one we already buy. If the old code has stopped, it is a code update: one price and one price history for both. If Sysco sends either one depending on what it has, we usually buy both: each keeps its own price and neither is ever counted as bought instead of the other.',
     },
     {
         key: 'price_changed',
@@ -362,6 +362,29 @@ export default function InvoiceReviewPage() {
         return null
     }
 
+    // Sysco sends either code depending on what it has: the green peppers as
+    // 483508 or 5018758. The new code gets a price of its own, the same way as
+    // matching it to something we already have, and the two codes go in one
+    // group, the old one's if it is in one already, so a third code joins the
+    // same group.
+    async function buyBoth(row) {
+        const successor = row.successor
+        const price = data.prices.find(p => p.id === successor.price_id)
+        if (!price) return 'That code points at a price the Hub no longer has.'
+        const product = data.products.find(p => p.id === price.product_id) || price.products
+        const units = packReadings(row.line, product)[0] ?? num(price.units_per_case)
+
+        const failed = await matchTo(row, { productId: price.product_id, unitsPerCase: units })
+        if (failed) return failed
+
+        const { error: e1 } = await supabase.from('supplier_codes')
+            .update({ alternate_group: successor.alternate_group || newGroupId() })
+            .eq('supplier_id', row.supplierId)
+            .eq('restaurant_id', restaurantId)
+            .in('supplier_code', [row.line.code, successor.supplier_code])
+        return e1 ? friendlyError(e1) : null
+    }
+
     async function matchTo(row, { productId, unitsPerCase }) {
         const product = data.products.find(p => p.id === productId)
         const perCase = num(row.line.price_per_case)
@@ -635,6 +658,7 @@ export default function InvoiceReviewPage() {
                                             onAccept={also => run(`accept-${row.stored.id}`, () => accept(row, also))}
                                             onReject={() => run(`reject-${row.stored.id}`, () => reject(row))}
                                             onSameProduct={() => run(`same-${row.stored.id}`, () => sameProduct(row))}
+                                            onBuyBoth={() => run(`both-${row.stored.id}`, () => buyBoth(row))}
                                             onMatch={() => setMatching(row)}
                                             onNotStock={() => run(`skip-${row.stored.id}`, () => notStock(row))}
                                             onLeave={() => run(`leave-${row.stored.id}`, () => leaveOne(row))}
@@ -652,7 +676,7 @@ export default function InvoiceReviewPage() {
 
 // One line, and what can be done about it.
 function ReviewRow({
-    row, busy, sameCodeCount, onAccept, onReject, onSameProduct, onMatch, onNotStock, onLeave,
+    row, busy, sameCodeCount, onAccept, onReject, onSameProduct, onBuyBoth, onMatch, onNotStock, onLeave,
 }) {
     const { line, stored, supplier, pile } = row
     const doc = stored.invoices
@@ -741,9 +765,14 @@ function ReviewRow({
                 )}
 
                 {pile === 'new_code' && (
-                    <button type="button" disabled={!!busy} onClick={onSameProduct} className={rowButton('good')}>
-                        Same thing, this is a code update
-                    </button>
+                    <>
+                        <button type="button" disabled={!!busy} onClick={onSameProduct} className={rowButton('good')}>
+                            Same thing, this is a code update
+                        </button>
+                        <button type="button" disabled={!!busy} onClick={onBuyBoth} className={rowButton('good')}>
+                            Same thing, we usually buy both
+                        </button>
+                    </>
                 )}
 
                 {(pile === 'new_to_us' || pile === 'new_code') && (

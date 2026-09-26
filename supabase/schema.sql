@@ -726,7 +726,8 @@ CREATE TABLE IF NOT EXISTS "public"."supplier_codes" (
     "ignored" boolean DEFAULT false NOT NULL,
     "ignored_reason" "text",
     "replaces_code" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "alternate_group" "uuid"
 );
 
 COMMENT ON TABLE "public"."supplier_codes" IS 'Every code a supplier has ever printed at a restaurant, and the price row it means. Points at a price rather than a product because a code is one pack of one product from one supplier, which is what a price row is. last_seen_on is what powers noticing a code has been replaced.';
@@ -738,6 +739,8 @@ CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btre
 -- A price row belongs to one code. Two codes are two versions of a product,
 -- each with its own price, even when they come in the same pack.
 CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
+COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
 
 -- What a product's cost did, and why. The decision log, as against the evidence.
 --

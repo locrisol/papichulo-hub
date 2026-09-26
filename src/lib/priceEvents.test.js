@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     REASONS, acceptPrice, rejectPrice, movePreferred, typedPrice, codeRow,
-    seenAgain, ignoreCode, ownedByAnother, costFromPaid, renumberPlan,
+    seenAgain, ignoreCode, ownedByAnother, costFromPaid, renumberPlan, alternatePlan, newGroupId,
 } from '@/lib/priceEvents'
 
 const PRODUCT = { id: 'p1', name: 'Flour Tortilla', section: 'Dry', unit: 'KG' }
@@ -343,5 +343,37 @@ describe('the same thing under a new number', () => {
 
     it('is nothing without a code to move', () => {
         expect(renumberPlan({ ...item, codeRowId: null })).toBeNull()
+    })
+})
+
+describe('codes bought either way', () => {
+    const item = { codeRowId: 'c2', usualCodeRowId: 'c1', group: null, usualGroup: null }
+
+    it('puts the two codes in a new group', () => {
+        expect(alternatePlan(item, 'fresh')).toEqual({ group: 'fresh', rows: ['c2', 'c1'], fold: null })
+    })
+
+    // A third code joins the group the others are already in.
+    it('joins the group the usual one is already in', () => {
+        expect(alternatePlan({ ...item, usualGroup: 'g1' }, 'fresh')).toMatchObject({ group: 'g1', fold: null })
+        expect(alternatePlan({ ...item, group: 'g2' }, 'fresh')).toMatchObject({ group: 'g2', fold: null })
+    })
+
+    it('folds a group the other one was in into the usual one', () => {
+        expect(alternatePlan({ ...item, group: 'g2', usualGroup: 'g1' }, 'fresh'))
+            .toEqual({ group: 'g1', rows: ['c2', 'c1'], fold: 'g2' })
+    })
+
+    it('has nothing to do when the usual price has no code on it', () => {
+        expect(alternatePlan({ ...item, usualCodeRowId: null }, 'fresh')).toBeNull()
+    })
+})
+
+// The phone over the shop's Wi-Fi is not a secure page, so no randomUUID.
+describe('a new group id', () => {
+    it('is a version 4 id made from random bytes', () => {
+        const id = newGroupId(n => new Uint8Array(n).fill(255))
+        expect(id).toBe('ffffffff-ffff-4fff-bfff-ffffffffffff')
+        expect(newGroupId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     })
 })

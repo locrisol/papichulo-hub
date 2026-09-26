@@ -236,6 +236,41 @@ export function ignoreCode(existing, reason) {
     return { ignored: true, ignored_reason: String(reason || '').trim() || null, price_id: null }
 }
 
+// A new group's id.
+//
+// Not crypto.randomUUID, which a browser only offers on a secure page, and the
+// Hub on a phone over the shop's Wi-Fi is not one. getRandomValues is offered
+// everywhere, and a version 4 id is sixteen random bytes with two of them
+// marked.
+export function newGroupId(random = n => crypto.getRandomValues(new Uint8Array(n))) {
+    const b = random(16)
+    b[6] = (b[6] & 0x0f) | 0x40
+    b[8] = (b[8] & 0x3f) | 0x80
+    const hex = [...b].map(x => x.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+// Codes bought either way, put in one group.
+//
+// The green peppers come as 483508 or 5018758 depending on what Sysco has.
+// Each code keeps its own price, so nothing is moved or removed here: the two
+// code rows are given the same group, the usual one's if it already has one,
+// and a group the other one was in is folded into it, so a third or fourth code
+// joins the same group rather than starting a second.
+//
+// Nothing to do without both code rows: a usual price somebody typed with no
+// code on it has nothing to be grouped with.
+export function alternatePlan(item, fresh) {
+    if (!item?.codeRowId || !item?.usualCodeRowId || item.codeRowId === item.usualCodeRowId) return null
+    const group = item.usualGroup || item.group || fresh
+    if (!group) return null
+    return {
+        group,
+        rows: [item.codeRowId, item.usualCodeRowId],
+        fold: item.group && item.usualGroup && item.group !== item.usualGroup ? item.group : null,
+    }
+}
+
 // Costing from what was last paid, from the weekly report.
 //
 // The recipe card's own button, and the same thing as accepting the price in

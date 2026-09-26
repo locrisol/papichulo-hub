@@ -362,6 +362,74 @@ describe('the same thing under a new number', () => {
     })
 })
 
+// The green peppers come as 483508 or 5018758 depending on what Sysco has.
+// Put in one group, neither is ever bought instead of the other, and recipes
+// are checked against what the group cost on average.
+describe('codes bought either way', () => {
+    const GROUP = 'g1'
+    const prices = [
+        price({ id: 'box', product_id: 'pep', supplier_code: '483508', price_per_case: 11.52, units_per_case: 5, price_per_unit: 2.304 }),
+        price({ id: 'box2', product_id: 'pep', supplier_code: '5018758', price_per_case: 12.5, units_per_case: 5, price_per_unit: 2.5, is_preferred: false }),
+    ]
+    const codes = [
+        code({ id: 'c1', supplier_code: '483508', price_id: 'box', alternate_group: GROUP, first_seen_on: '2026-09-20' }),
+        code({ id: 'c2', supplier_code: '5018758', price_id: 'box2', alternate_group: GROUP, first_seen_on: '2026-09-14' }),
+    ]
+    const box = (codeNo, priceId, date, perCase) => line({
+        code: codeNo, product: PEPPERS, priceId, date, perCase, units: 5, pack: '1X5 KG', description: 'GREEN PEPPERS 1X5 KG',
+    })
+    const WEEK20 = { weekStart: '2026-09-20', weekEnd: '2026-09-26' }
+
+    it('never lists one of them as bought instead of the other', () => {
+        const all = deliveriesFrom([box('483508', 'box', '2026-09-21', 11.52), box('5018758', 'box2', '2026-09-23', 12.5)])
+        expect(switchesIn(all, { ...WEEK20, prices, codes })).toEqual([])
+    })
+
+    it('never calls a swap between them a price change', () => {
+        const all = deliveriesFrom([
+            box('483508', 'box', '2026-09-14', 11.52), box('5018758', 'box2', '2026-09-21', 12.5),
+            box('483508', 'box', '2026-09-23', 11.52),
+        ])
+        expect(priceMoves(all, { ...WEEK20, codes })).toEqual([])
+    })
+
+    it('checks recipes against what the group cost on average, weighted by what came', () => {
+        const all = deliveriesFrom([
+            box('483508', 'box', '2026-09-21', 11.52), box('5018758', 'box2', '2026-09-23', 12.5),
+        ])
+        const dear = prices.map(p => (p.id === 'box' ? { ...p, price_per_unit: 3.326, price_per_case: 16.63 } : p))
+        const [gap] = recipeGaps(all, { ...WEEK20, prices: dear, codes, threshold: 5 })
+        expect(gap.paid).toBe(2.402)
+        expect(gap.averaged).toEqual({ deliveries: 2, since: '2026-09-21' })
+        expect(gap.newCase).toBe(12.01)
+    })
+
+    // The whole point: one then the other must not put it on the report and
+    // off it again.
+    it('leaves a group off the report when the average is close to what recipes say', () => {
+        const all = deliveriesFrom([
+            box('483508', 'box', '2026-09-21', 11.52), box('5018758', 'box2', '2026-09-23', 12.5),
+        ])
+        const middle = prices.map(p => (p.id === 'box' ? { ...p, price_per_unit: 2.4, price_per_case: 12 } : p))
+        expect(recipeGaps(all, { ...WEEK20, prices: middle, codes, threshold: 5 })).toEqual([])
+    })
+
+    it('never suggests the other one as the usual after three in a row', () => {
+        const all = deliveriesFrom([
+            box('5018758', 'box2', '2026-09-20', 12.5), box('5018758', 'box2', '2026-09-22', 12.5),
+            box('5018758', 'box2', '2026-09-24', 12.5),
+        ])
+        expect(usualSuggestions(all, { ...WEEK20, prices, codes })).toEqual([])
+    })
+
+    it('carries each code on its own, one at a time, when nobody has grouped them', () => {
+        const all = deliveriesFrom([box('483508', 'box', '2026-09-21', 11.52), box('5018758', 'box2', '2026-09-23', 12.5)])
+        const apart = codes.map(c => ({ ...c, alternate_group: null }))
+        const [s] = switchesIn(all, { ...WEEK20, prices, codes: apart })
+        expect(s).toMatchObject({ code: '5018758', codeRowId: 'c2', usualCodeRowId: 'c1', group: null, usualGroup: null })
+    })
+})
+
 describe('three in a row', () => {
     const scope = { ...WEEK, prices: TORTILLA_PRICES, codes: TORTILLA_CODES }
 

@@ -52,6 +52,7 @@ const section = priceWeek({
 function draw(over = {}) {
     const handlers = {
         onCostFrom: vi.fn(), onMakeUsual: vi.fn(), onRenumber: vi.fn(), onGiveReason: vi.fn(), onPutOnList: vi.fn(),
+        onBuyBoth: vi.fn(),
     }
     render(<ReportPrices section={section} canDecide canEdit busy="" jobs={{ add: [], tick: [] }} {...handlers} {...over} />)
     return handlers
@@ -139,6 +140,36 @@ describe('prices and suppliers on the report', () => {
         const options = [...screen.getByLabelText('Why it came back').querySelectorAll('option')].map(o => o.value)
         expect(options).toContain('not_delivered')
         expect(options).not.toContain('something_else')
+    })
+
+    // Any row bought instead can be the same thing bought either way, not only
+    // the ones whose words match.
+    it('offers to group a code bought instead with the usual one', () => {
+        const withCodes = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            lines: [
+                line('497870', TORTILLA, '2026-09-14', 30.3, 100, { priceId: 'santa' }),
+                line('5013972', TORTILLA, '2026-09-18', 33.03, 100, { priceId: 'plain', description: 'FLOUR PLAIN WRAPS' }),
+            ],
+            prices: [
+                { id: 'santa', product_id: 'tor', supplier_id: 's1', supplier_code: '497870', price_per_case: 30.3, units_per_case: 100, price_per_unit: 0.303, is_preferred: true },
+                { id: 'plain', product_id: 'tor', supplier_id: 's1', supplier_code: '5013972', price_per_case: 33.03, units_per_case: 100, price_per_unit: 0.3303, is_preferred: false },
+            ],
+            codes: [
+                { id: 'c-santa', supplier_id: 's1', supplier_code: '497870', price_id: 'santa', ignored: false },
+                { id: 'c-plain', supplier_id: 's1', supplier_code: '5013972', price_id: 'plain', ignored: false },
+            ],
+        })
+        const handlers = draw({ section: withCodes })
+        fireEvent.click(screen.getByRole('button', { name: 'Same thing, we usually buy both' }))
+        expect(handlers.onBuyBoth).toHaveBeenCalledWith(
+            expect.objectContaining({ codeRowId: 'c-plain', usualCodeRowId: 'c-santa' }), 'switch:tor:5013972:both',
+        )
+    })
+
+    it('does not offer it on a report that has gone out', () => {
+        draw({ canDecide: false })
+        expect(screen.queryByRole('button', { name: 'Same thing, we usually buy both' })).toBeNull()
     })
 
     it('draws nothing when there is no section to draw', () => {

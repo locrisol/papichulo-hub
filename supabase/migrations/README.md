@@ -53,6 +53,8 @@ label, adds how far recipes may drift before the report says so, and puts the
 Prices and suppliers section into every report still being written.
 `014` is not run yet. It lets a product say roughly what one piece weighs, so
 a case of ten cabbages can be priced by the kilo.
+`015` is not run yet and goes after `014`. It lets codes for the same thing
+that are bought either way be put in one group, each keeping its own price.
 
 ## What was here before
 
