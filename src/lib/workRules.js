@@ -25,13 +25,19 @@ import { shortDate, fullDate, addDays } from '@/lib/dates'
 //
 // null means no cap from us: either there is no restriction, or the restriction
 // is of a kind the roster cannot check, like a permit tied to one employer.
+//
+// `expires` is whether it comes with a date it runs out, so whether a blank
+// expiry is a gap in the records. The team page and the weekly report both read
+// it from here, so they cannot disagree about who is missing one. Not recorded
+// counts as expiring: we do not know what they hold, and not knowing is the
+// thing worth saying.
 export const WORK_PERMISSIONS = [
-    { value: '', label: 'Not recorded', term: null, holiday: null },
-    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null },
-    { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40 },
-    { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0 },
-    { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null },
-    { value: 'stamp1g', label: 'Stamp 1G (graduate)', term: null, holiday: null },
+    { value: '', label: 'Not recorded', term: null, holiday: null, expires: true },
+    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null, expires: false },
+    { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40, expires: true },
+    { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0, expires: true },
+    { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null, expires: true },
+    { value: 'stamp1g', label: 'Stamp 1G (graduate)', term: null, holiday: null, expires: true },
 ]
 
 // The food safety training a restaurant records against somebody.

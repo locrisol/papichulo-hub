@@ -120,8 +120,9 @@ export default function EmployeeForm({
             {/* On the team, doing shifts and being paid for them, but not
                 hired. It changes one thing and it is worth saying which, or it
                 reads as a label somebody might set and forget: food safety
-                training stops being asked for. A work permit is still asked for
-                from the first day, because working without one is the same
+                training stops being asked for, and the weekly report names them
+                as on trial rather than as a gap. A work permit is still asked
+                for from the first day, because working without one is the same
                 offence either way. */}
             <label className={`${checkRow} mb-3`}>
                 <input
@@ -133,8 +134,9 @@ export default function EmployeeForm({
                 <span>
                     <span className="block text-sm font-semibold text-gray-900">On trial</span>
                     <span className="block text-xs text-muted">
-                        Food safety training is not asked for or warned about while this is on.
-                        Everything else is, including a work permit. Turn it off when they are hired.
+                        Food safety training is not asked for while this is on, and the weekly report
+                        shows them as on trial. Everything else is, including a work permit. Turn it off
+                        when they are hired.
                     </span>
                 </span>
             </label>

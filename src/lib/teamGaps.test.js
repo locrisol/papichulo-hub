@@ -105,7 +105,7 @@ describe('somebody on trial', () => {
     const trial = {
         full_name: 'Declan', started_on: '2026-10-01', position_id: 'p1',
         hourly_rate: 15, date_of_birth: '2000-01-01',
-        work_permission: 'citizen', on_trial: true,
+        work_permission: 'unrestricted', on_trial: true,
     }
 
     it('is not asked for food safety training', () => {

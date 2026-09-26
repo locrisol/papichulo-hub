@@ -12,8 +12,7 @@ import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey, publishCheck, figuresToStore } from '@/lib/weeklyReport'
-import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpiry }
-    from '@/lib/reportPeople'
+import { paperworkFor } from '@/lib/reportPeople'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { chartSpecs } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
@@ -364,12 +363,12 @@ export default function ReportPage() {
                 return row
             }))
 
-            // The team, for the paperwork lines. Only the four fields the
+            // The team, for the paperwork lines. Only the fields the
             // section reads, so a mail built from this cannot carry anything
             // else about anybody.
             const { data: team } = await supabase
                 .from('employees')
-                .select('id, full_name, started_on, ended_on, food_safety_expires, work_permission, work_permission_expires, permission_renewal_applied')
+                .select('id, full_name, started_on, ended_on, on_trial, food_safety_expires, work_permission, work_permission_expires, permission_renewal_applied')
                 .eq('restaurant_id', head.restaurant_id)
             setEmployees(team || [])
 
@@ -529,9 +528,7 @@ export default function ReportPage() {
     // change what a report sent in September said. So they are frozen here
     // beside the figures, and the mail reads the frozen copy.
     function frozenFigures() {
-        const week = report.week_start
-        const onTheBooks = workingThatWeek(employees, week)
-        const asOf = todayISO()
+        const { food, permits } = paperworkFor(employees, report.week_start, todayISO())
 
         return figuresToStore({
             ...figures,
@@ -559,13 +556,11 @@ export default function ReportPage() {
             // in October cannot repaint a report sent in September.
             targets,
             paperwork: {
-                food: paperworkSummary(paperworkState(onTheBooks, 'food_safety_expires', asOf)),
+                food,
                 // Frozen with whether a renewal had been applied for, because
                 // that is the difference between somebody who cannot legally be
                 // on next week's roster and somebody who is waiting on the post.
-                permits: paperworkSummary(
-                    paperworkState(onTheBooks, 'work_permission_expires', asOf, permissionNeedsExpiry),
-                    { renewals: true }),
+                permits,
             },
         })
     }
@@ -973,7 +968,7 @@ export default function ReportPage() {
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
-                                            employees={workingThatWeek(employees, week)}
+                                            paperwork={paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
                                             asOf={todayISO()}
                                         />

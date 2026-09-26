@@ -15,6 +15,8 @@ import {
     employeeStatus,
     employeeProblem,
     employeeNote,
+    employeeRow,
+    EMPTY_EMPLOYEE,
     NO_COLOUR,
 } from '@/lib/team'
 import Modal from '@/components/ui/Modal'
@@ -37,12 +39,6 @@ import ArrangeList from '@/components/ui/ArrangeList'
 // Nothing here deletes. Somebody leaving gets a last day, and every question
 // answers itself from that date: off the rosters after it, still on the ones
 // before it. A list with a delete button on it loses last March.
-const EMPTY = {
-    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
-    onTrial: false,
-    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
-    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
-}
 
 export default function EmployeesPage() {
     const { activeRestaurant } = useRestaurant()
@@ -65,7 +61,7 @@ export default function EmployeesPage() {
     const [availabilityFor, setAvailabilityFor] = useState(null)
     const [timeOffFor, setTimeOffFor] = useState(null)
     const [arranging, setArranging] = useState(false)
-    const [form, setForm] = useState(EMPTY)
+    const [form, setForm] = useState(EMPTY_EMPLOYEE)
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
@@ -111,7 +107,7 @@ export default function EmployeesPage() {
     const note = employeeNote(form, today)
 
     function openAdd() {
-        setForm(EMPTY)
+        setForm(EMPTY_EMPLOYEE)
         setAdding(true)
     }
 
@@ -137,30 +133,6 @@ export default function EmployeesPage() {
         setEditing(employee)
     }
 
-    // Empty boxes are stored as nothing rather than as a nought or an empty
-    // string. A date the database can read as a date is the whole point of
-    // ended_on, and '' is not one.
-    function toRow() {
-        return {
-            full_name: form.fullName.trim(),
-            position_id: form.positionId || null,
-            hourly_rate: form.hourlyRate === '' ? null : Number(form.hourlyRate),
-            started_on: form.startedOn || null,
-            ended_on: form.endedOn || null,
-            on_trial: !!form.onTrial,
-            user_id: form.userId || null,
-            notes: form.notes.trim() || null,
-            date_of_birth: form.dateOfBirth || null,
-            work_permission: form.workPermission || null,
-            work_permission_expires: form.workPermissionExpires || null,
-            permission_renewal_applied: form.permissionRenewalApplied || null,
-            permission_renewal_reference: form.permissionRenewalReference || null,
-            food_safety_level: form.foodSafetyLevel || null,
-            food_safety_issued: form.foodSafetyIssued || null,
-            food_safety_expires: form.foodSafetyExpires || null,
-        }
-    }
-
     async function save(e) {
         e.preventDefault()
         if (problem) return
@@ -168,9 +140,9 @@ export default function EmployeesPage() {
         setError('')
 
         const { error: err } = editing
-            ? await supabase.from('employees').update(toRow()).eq('id', editing.id)
+            ? await supabase.from('employees').update(employeeRow(form)).eq('id', editing.id)
             : await supabase.from('employees').insert({
-                ...toRow(),
+                ...employeeRow(form),
                 restaurant_id: restaurantId,
                 sort_order: nextSortOrder(employees),
                 created_by: user?.id,

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { workingThatWeek, paperworkState, paperworkSummary, permissionNeedsExpiry, daysUntil, WARN_DAYS } from '@/lib/reportPeople'
+import {
+    workingThatWeek, checkedPeople, paperworkState, paperworkSummary, paperworkFor, permissionNeedsExpiry,
+    daysUntil, WARN_DAYS,
+} from '@/lib/reportPeople'
+import { WORK_PERMISSIONS } from '@/lib/workRules'
 
 const WEEK = '2026-08-09'
 
@@ -191,5 +195,84 @@ describe('carrying the renewal into the frozen figures', () => {
         const summary = JSON.parse(JSON.stringify(paperworkSummary(state, { renewals: true })))
         expect(summary.expired.find(p => p.name === 'Majo').applied).toBe(null)
         expect(summary.expired.find(p => p.name === 'Iliana').applied).toBe('2026-08-01')
+    })
+})
+
+// Somebody who did one trial shift and left the same day was on the books that
+// week, and the report checked the Monday after still listed him.
+describe('checkedPeople', () => {
+    const MONDAY_AFTER = '2026-08-17'
+
+    it('leaves out somebody who left during the week, once they have gone', () => {
+        const gone = person('A', { started_on: '2026-08-12', ended_on: '2026-08-12' })
+        expect(workingThatWeek([gone], WEEK)).toHaveLength(1)
+        expect(checkedPeople([gone], WEEK, MONDAY_AFTER)).toHaveLength(0)
+    })
+
+    it('keeps somebody whose last day is the day it is checked, like the team page', () => {
+        expect(checkedPeople([person('A', { ended_on: MONDAY_AFTER })], WEEK, MONDAY_AFTER)).toHaveLength(1)
+    })
+
+    it('keeps somebody whose last day is still ahead', () => {
+        expect(checkedPeople([person('A', { ended_on: '2026-09-30' })], WEEK, MONDAY_AFTER)).toHaveLength(1)
+    })
+
+    it('still leaves out somebody who had not started', () => {
+        expect(checkedPeople([person('A', { started_on: '2026-09-01' })], WEEK, MONDAY_AFTER)).toHaveLength(0)
+    })
+})
+
+// His rule, 27 September: somebody on trial is still listed with no food
+// safety certificate, but as on trial, and after the ones that are a job to do.
+describe('paperworkFor', () => {
+    const MONDAY_AFTER = '2026-08-17'
+    const team = [
+        person('Ana', { food_safety_expires: '2028-01-01', work_permission: 'unrestricted' }),
+        person('Tom', { on_trial: true, work_permission: 'stamp2' }),
+        person('Sam', { work_permission: 'unrestricted' }),
+        person('Kim', { on_trial: true, work_permission: 'stamp2', work_permission_expires: '2027-01-01' }),
+        person('Lee', {
+            on_trial: true, started_on: '2026-08-13', ended_on: '2026-08-13', work_permission: 'stamp2',
+        }),
+    ]
+    const out = paperworkFor(team, WEEK, MONDAY_AFTER)
+
+    it('counts only the people still here', () => {
+        expect(out.people).toBe(4)
+        expect(out.food.total).toBe(4)
+        expect(out.permits.total).toBe(4)
+    })
+
+    it('lists somebody on trial with no certificate as on trial, after everybody else', () => {
+        expect(out.food.missing.map(p => p.name)).toEqual(['Sam', 'Tom (on trial)', 'Kim (on trial)'])
+        expect(out.food.fine).toBe(1)
+    })
+
+    it('says nothing about a trial beside a work permit', () => {
+        expect(out.permits.missing.map(p => p.name)).toEqual(['Tom'])
+    })
+
+    it('says it beside a date too', () => {
+        const dated = paperworkFor([person('Tom', { on_trial: true, food_safety_expires: '2026-08-01' })], WEEK, MONDAY_AFTER)
+        expect(dated.food.expired).toEqual([{ name: 'Tom (on trial)', on: '2026-08-01' }])
+    })
+
+    it('never names anybody who has left', () => {
+        const all = [...out.food.missing, ...out.permits.missing, ...out.permits.expired]
+        expect(all.map(p => p.name).join()).not.toMatch(/Lee/)
+    })
+})
+
+// The team page and the report read the same list, so a permission cannot be
+// a gap on one and fine on the other.
+describe('which permissions run out', () => {
+    it('says so on every option', () => {
+        for (const option of WORK_PERMISSIONS) expect(typeof option.expires).toBe('boolean')
+    })
+
+    it('is what the report asks for', () => {
+        for (const option of WORK_PERMISSIONS) {
+            expect(permissionNeedsExpiry({ work_permission: option.value })).toBe(option.expires)
+        }
     })
 })
