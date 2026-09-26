@@ -36,7 +36,7 @@
 import { num, fmtMoney, fmtQty } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
 import { addDays, dayMonth } from '@/lib/dates'
-import { samePrice, sameWords, SAME_WORDS } from '@/lib/invoiceImport'
+import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
 import { readPackSize, mend } from '@/lib/invoiceSysco'
 import {
     claimBalance, claimIsOpen, claimKind, NOT_LOGGED, voidedBy, sentBack,
@@ -102,7 +102,11 @@ export function deliveriesFrom(lines, credits = []) {
 }
 
 function delivery(l) {
-    const units = l.units_per_case == null ? null : num(l.units_per_case)
+    // In the product's own unit through what one piece weighs, where the
+    // product says: ten cabbages at about a kilo are ten kilos, whatever the
+    // line was stored as before anybody said.
+    const weighed = byPieceWeight(readPackSize(l.pack_size), l.products)
+    const units = weighed ?? (l.units_per_case == null ? null : num(l.units_per_case))
     const perCase = num(l.price_per_case)
     const perUnit = units > 0
         ? perCase / units
@@ -205,8 +209,11 @@ export function notFood(product) {
 // **Recipes count it in kilos and the supplier sells it one at a time.** Then
 // nothing on the paper says what one weighs, and any comparison is a guess.
 // White Cabbage is the one on the first fortnight.
+//
+// Unless the product says what one weighs, which is the whole point of saying.
 export function cannotCompare(d, product = d?.product) {
     if (d?.perUnit == null) return true
+    if (num(product?.piece_weight) > 0) return false
     const printed = readPackSize(d?.pack)
     return printed?.unit === 'Units' && !!product?.unit && product.unit !== 'Units'
 }

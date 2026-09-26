@@ -251,6 +251,7 @@ export default function ProductsPage() {
     unit: 'KG',
     is_mix: false,
     weight_loss_pct: 0,
+    piece_weight: '',
     notes: '',
     is_active: true,
     ...(fromLink?.form || {}),
@@ -428,6 +429,12 @@ export default function ProductsPage() {
       newErrors.weight_loss_pct = 'Weight loss must be between 0 and 100'
     }
 
+    // Empty is a real answer: nobody has said. A number has to be more than
+    // nothing, since a piece that weighs nothing would make a case of ten free.
+    if (String(formData.piece_weight ?? '').trim() !== '' && !(parseFloat(formData.piece_weight) > 0)) {
+      newErrors.piece_weight = 'Leave it empty, or say roughly what one piece weighs'
+    }
+
     return newErrors
   }
 
@@ -521,6 +528,9 @@ export default function ProductsPage() {
     const payload = {
       ...formData,
       weight_loss_pct: parseFloat(formData.weight_loss_pct),
+      piece_weight: parseFloat(formData.piece_weight) > 0 && !formData.is_mix
+        ? parseFloat(formData.piece_weight)
+        : null,
       // Somewhere it is already kept is not somewhere it is also kept. The
       // section can be changed after the boxes are ticked, so this is cleared
       // on the way out rather than trusted on the way in.
@@ -721,7 +731,7 @@ export default function ProductsPage() {
     setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
-      unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
+      unit: 'KG', is_mix: false, weight_loss_pct: 0, piece_weight: '', notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
     setFormats(EMPTY_FORMATS)
@@ -756,6 +766,7 @@ export default function ProductsPage() {
       unit: product.unit,
       is_mix: product.is_mix,
       weight_loss_pct: product.weight_loss_pct || 0,
+      piece_weight: product.piece_weight == null ? '' : String(Number(product.piece_weight)),
       notes: product.notes || '',
       is_active: product.is_active,
     })

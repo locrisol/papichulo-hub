@@ -46,11 +46,13 @@ money back in the week the delivery happened and a credit note that settles one
 does not count again, and lets a claim made from a credit say nobody logged a
 reason. `012` gives each invoice line its share of the VAT and the container
 deposit, and the view counts them, so an invoice costs what it charges.
-`013` is not run yet. It gives every supplier code a price of its own, splitting
+`013` is run on live. It gives every supplier code a price of its own, splitting
 the six prices two or three codes were sharing, widens the reasons for a
 delivery problem, lets a credit note nobody logged be given its reason as a
 label, adds how far recipes may drift before the report says so, and puts the
 Prices and suppliers section into every report still being written.
+`014` is not run yet. It lets a product say roughly what one piece weighs, so
+a case of ten cabbages can be priced by the kilo.
 
 ## What was here before
 

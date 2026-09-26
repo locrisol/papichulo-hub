@@ -255,15 +255,18 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "also_in" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "category" "text" DEFAULT 'ingredient'::"text" NOT NULL,
     "held_for" "text",
+    "piece_weight" numeric(10,3),
     CONSTRAINT "products_also_in_known" CHECK (("also_in" <@ ARRAY['Freezer'::"text", 'Cold Room'::"text", 'Dry'::"text", 'Packaging'::"text", 'Cleaning'::"text"])),
     CONSTRAINT "products_category_known" CHECK (("category" = ANY (ARRAY['ingredient'::"text", 'drink'::"text"]))),
     CONSTRAINT "products_count_frequency_check" CHECK ((("count_frequency" IS NULL) OR ("count_frequency" = ANY (ARRAY['daily'::"text", 'weekly'::"text", 'monthly'::"text"])))),
     CONSTRAINT "products_section_check" CHECK (("section" IN ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))),
-    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre')))
+    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre'))),
+    CONSTRAINT "products_piece_weight_positive" CHECK (("piece_weight" IS NULL OR "piece_weight" > (0)::numeric))
 );
 
 COMMENT ON COLUMN "public"."products"."also_in" IS 'The other places this product turns up, on top of its own section. It only affects where it appears on a stock take: the section is still what the product is, and the costing and the reports read that and never this. Empty for nearly everything.';
 COMMENT ON COLUMN "public"."products"."category" IS 'What kind of thing this is, as opposed to where it is kept, which is the section. ingredient is anything that can go into a recipe and is the default. drink is counted on a stock take like everything else but is never offered as an ingredient in a MIX. Menu items are not filtered by this: a can of Coke is a real line on a menu.';
+COMMENT ON COLUMN "public"."products"."piece_weight" IS 'Roughly what one piece weighs, for something sold by the piece and counted by weight, or the other way round: a cabbage, a lime, an avocado. In the product''s own unit, kilos or litres; in kilos for something counted in units. Only an estimate, used to turn a case of ten into kilos and back. Empty means nobody has said.';
 COMMENT ON COLUMN "public"."products"."held_for" IS 'Who this stock belongs to, when it is not ours. Empty for almost everything. Set it and the product is still counted on a stock take exactly as it always was, and the report splits its section into theirs, ours and the two together. It is deliberately not a section: where a thing is kept and whose it is are different questions, and merging them would make a combined total impossible.';
 ALTER TABLE ONLY "public"."products"
     ADD CONSTRAINT "products_pkey" PRIMARY KEY ("id");

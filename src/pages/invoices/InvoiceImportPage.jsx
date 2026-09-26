@@ -72,7 +72,7 @@ export default function InvoiceImportPage() {
                 supabase.from('supplier_accounts').select('*'),
                 supabase.from('suppliers').select('id, name, category, is_active'),
                 supabase.from('product_supplier_prices')
-                    .select('*, products(id, name, section, unit)')
+                    .select('*, products(id, name, section, unit, piece_weight)')
                     .eq('restaurant_id', restaurantId),
                 supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId),
                 supabase.from('invoices')

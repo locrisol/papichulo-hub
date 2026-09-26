@@ -49,7 +49,7 @@ export default function usePriceWeek({ restaurantId, weekStart, threshold, enabl
                 everyRow(() => supabase.from('invoice_lines')
                     .select('id, invoice_id, supplier_code, product_id, price_id, raw_description, pack_size, '
                         + 'units_per_case, price_per_case, unit_price, cases, units, line_no, line_total, decision, '
-                        + 'products(id, name, unit, category, section), '
+                        + 'products(id, name, unit, category, section, piece_weight), '
                         + 'invoices!inner(id, invoice_number, invoice_date, supplier_id, document_type, total_amount, restaurant_id)')
                     .eq('invoices.restaurant_id', restaurantId)
                     .gte('invoices.invoice_date', from)

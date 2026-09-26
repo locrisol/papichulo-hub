@@ -4,7 +4,7 @@ import {
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
     fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
-    samePrice, packReadings, unitsForPack,
+    samePrice, packReadings, unitsForPack, byPieceWeight,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -431,6 +431,34 @@ describe('the four piles', () => {
         expect(piles.unchanged).toHaveLength(1)
         expect(piles.new_to_us).toEqual([])
         expect(piles.price_changed).toEqual([])
+    })
+})
+
+// What one piece weighs, set on the product (26 September). Ten cabbages at
+// about a kilo each are ten kilos, and a four kilo box of limes at 80 g each
+// is fifty limes.
+describe('what one piece weighs', () => {
+    const CABBAGE = { unit: 'KG', piece_weight: 1.2 }
+    const LIMES = { unit: 'Units', piece_weight: 0.08 }
+
+    it('turns a case of pieces into kilos for something counted in kilos', () => {
+        expect(byPieceWeight({ unit: 'Units', total: 10 }, CABBAGE)).toBe(12)
+    })
+
+    it('turns a box by the kilo into pieces for something counted in pieces', () => {
+        expect(byPieceWeight({ unit: 'KG', total: 4 }, LIMES)).toBe(50)
+    })
+
+    it('does nothing when the product has not said, or already agrees with the pack', () => {
+        expect(byPieceWeight({ unit: 'Units', total: 10 }, { unit: 'KG' })).toBeNull()
+        expect(byPieceWeight({ unit: 'KG', total: 6 }, { unit: 'KG', piece_weight: 1.2 })).toBeNull()
+    })
+
+    // First, so a new price is a price a kilo; the older readings stay behind
+    // it, so a price already kept per piece still agrees with itself.
+    it('comes first among the ways a pack can be read', () => {
+        expect(packReadings({ pack: { count: 1, unit: 'Units', total: 10 }, pack_size: '1X10 EA' }, CABBAGE))
+            .toEqual([12, 1, 10])
     })
 })
 

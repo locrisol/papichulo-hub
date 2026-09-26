@@ -288,13 +288,32 @@ const SAME_PRICE = 0.005
 //
 // The printed pack is read again rather than trusted from the stored line,
 // because a line stored before this was written carries the one reading only.
+//
+// **Once the product says what one piece weighs, that is the reading, and it
+// comes first** (26 September): a case of ten cabbages at about a kilo each is
+// ten kilos, so its price is a price a kilo like everything else the product is
+// costed at. The other way round too: a four kilo box of something counted by
+// the piece is four kilos over what one weighs. The two older readings stay
+// behind it, so a price already kept per piece still agrees with itself and
+// nothing asks a question that was answered before.
 export function packReadings(line, product) {
     const first = unitsWanted(line?.pack, product)
     const printed = readPackSize(line?.pack_size)
     const items = printed?.unit === 'Units' && product?.unit && product.unit !== 'Units'
         ? printed.total
         : null
-    return [first, items].filter((n, i, all) => n != null && n > 0 && all.indexOf(n) === i)
+    return [byPieceWeight(printed, product), first, items]
+        .filter((n, i, all) => n != null && n > 0 && all.indexOf(n) === i)
+}
+
+// A pack in the product's own unit, through what one piece weighs. Null when
+// the product has not said, or the pack and the product already agree.
+export function byPieceWeight(printed, product) {
+    const weight = num(product?.piece_weight)
+    if (!(weight > 0) || !printed?.total || !product?.unit) return null
+    if (printed.unit === 'Units' && product.unit !== 'Units') return to(printed.total * weight, 3)
+    if (printed.unit === 'KG' && product.unit === 'Units') return to(printed.total / weight, 3)
+    return null
 }
 
 // Whether a line charged the same price the Hub already has, however many were

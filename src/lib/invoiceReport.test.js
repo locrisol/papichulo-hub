@@ -486,6 +486,30 @@ describe('what is too far apart to be a price', () => {
     })
 })
 
+// Once the product says what one weighs, a case of ten cabbages is priced by
+// the kilo and can be checked against recipes like anything else.
+describe('something sold by the piece once its weight is known', () => {
+    const WEIGHED = { ...CABBAGE, piece_weight: 1.2 }
+
+    it('prices a case of pieces by the kilo', () => {
+        const [d] = deliveriesFrom([line({ code: '5018687', product: WEIGHED, date: '2026-09-15', perCase: 14.33, units: 10, pack: '1X10 EA' })])
+        expect(d.units).toBe(12)
+        expect(d.perUnit).toBeCloseTo(1.1942, 4)
+    })
+
+    it('reads a case and a single one as the same price a kilo', () => {
+        const all = deliveriesFrom([
+            line({ code: '5018687', product: WEIGHED, date: '2026-09-14', perCase: 14.33, units: 1, pack: '1X10 EA' }),
+            line({ code: '5018687', product: WEIGHED, date: '2026-09-16', perCase: 1.43, units: 1, pack: '1X1 EA' }),
+        ])
+        expect(priceMoves(all, WEEK)).toEqual([])
+    })
+
+    it('can be compared once the weight is known', () => {
+        expect(cannotCompare({ perUnit: 1.19, pack: '1X10 EA', product: WEIGHED })).toBe(false)
+    })
+})
+
 describe('what cannot be compared', () => {
     it('is something counted by weight and sold by the each', () => {
         expect(cannotCompare({ perUnit: 1.43, pack: '1X10 EA', product: CABBAGE })).toBe(true)
