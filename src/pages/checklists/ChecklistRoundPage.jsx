@@ -7,8 +7,8 @@ import { useConfirm } from '@/context/confirm'
 import { can, MANAGERS } from '@/lib/access'
 import { stampDateTime } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
-import { checkbox, primaryButton, rowButton } from '@/lib/controlStyles'
-import { doneDay, doneDayLong, elementDone, listTree, roundOutcome, tickable } from '@/lib/checklists'
+import { badge, checkbox, primaryButton, rowButton } from '@/lib/controlStyles'
+import { doneDay, doneDayLong, elementDone, leftLastTime, listTree, placeOf, roundOutcome, tickable } from '@/lib/checklists'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import BackButton from '@/components/ui/BackButton'
 import GuidePicture from '@/components/checklists/GuidePicture'
@@ -52,6 +52,7 @@ export default function ChecklistRoundPage() {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
+    const [before, setBefore] = useState({ round: null, ticks: [] })
 
     const draftKey = `checklist-draft-${id}`
 
@@ -77,12 +78,24 @@ export default function ChecklistRoundPage() {
             ? await supabase.from('checklist_last_done').select('task_id, done_at').in('task_id', ids)
             : { data: [] }
 
+        // The round of this list before this one, for what it left undone.
+        // Only a round a manager ended early leaves anything, so its ticks
+        // are only read then.
+        const { data: earlier } = await supabase.from('checklist_rounds').select('*')
+            .eq('checklist_id', r.checklist_id).not('ended_at', 'is', null).lte('ended_at', r.started_at)
+            .order('ended_at', { ascending: false }).limit(1)
+        const prev = Array.isArray(earlier) ? earlier[0] || null : null
+        const prevTicks = prev?.ended_by
+            ? await supabase.from('checklist_ticks').select('round_id, task_id').eq('round_id', prev.id)
+            : { data: [] }
+
         setRound(r)
         setList(l.data)
         setCategories(cats.data)
         setTasks(tsk.data)
         setSaved(ticks.data)
         setLastDone(new Map((last.data || []).map(x => [x.task_id, x.done_at])))
+        setBefore({ round: prev, ticks: prevTicks.data || [] })
         setLoading(false)
 
         // A manager may have taken the last thing left off the list, which
@@ -141,6 +154,10 @@ export default function ChecklistRoundPage() {
     const waiting = Object.keys(pending).filter(k => allIds.has(k) && !byTask.has(k))
     const done = all.filter(t => byTask.has(t.id)).length
     const outcome = roundOutcome(round)
+    // Left undone last time and not ticked yet this time: High priority.
+    const priority = leftLastTime(tree, before.round, before.ticks)
+    const urgent = open ? all.filter(t => priority.has(t.id) && !byTask.has(t.id)) : []
+    const where = placeOf(tree)
 
     function toggle(task) {
         if (!open || byTask.has(task.id)) return
@@ -195,13 +212,18 @@ export default function ChecklistRoundPage() {
         load()
     }
 
+    // What is left comes back on the next round as High priority. No reason is
+    // asked for: his call, 27 September, it goes in a comment on the report or
+    // is said to whoever needs to know.
     async function endEarly() {
         const left = all.length - done
         const ok = await confirm({
             title: 'End this round?',
-            message: `${left === 1 ? 'One thing is' : `${left} things are`} not done. They will show as not done on the weekly report, and the next round starts fresh.`,
+            message: `${left === 1 ? 'One thing is' : `${left} things are`} not done. `
+                + `${left === 1 ? 'It comes' : 'They come'} back on the next round as High priority, and the weekly report shows ${left === 1 ? 'it' : 'them'} as not done.`,
             confirmLabel: 'End the round',
             tone: 'danger',
+            dangerNote: 'A round cannot be opened again once it has ended.',
         })
         if (!ok) return
         setBusy(true)
@@ -210,6 +232,10 @@ export default function ChecklistRoundPage() {
         if (endErr) { setError(friendlyError(endErr)); return }
         keep({})
         load()
+    }
+
+    function jumpTo(taskId) {
+        document.getElementById(`row-${taskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
 
     async function deleteRound() {
@@ -289,6 +315,28 @@ export default function ChecklistRoundPage() {
                             {' '}Nothing on it can be changed now.
                         </div>
                     )}
+                    {urgent.length > 0 && (
+                        <div className="mt-4 rounded-xl border-2 border-red-300 bg-red-50 p-4" role="note">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="font-semibold text-red-900">High priority</p>
+                                <span className={`${badge} bg-red-700 text-white`}>{urgent.length}</span>
+                            </div>
+                            <p className="text-sm text-red-900 mt-1">
+                                {urgent.length === 1 ? 'This was' : 'These were'} not done last time, so do {urgent.length === 1 ? 'it' : 'them'} first.
+                                {before.round?.ended_by_name && ` ${before.round.ended_by_name} ended that round on ${doneDayLong(before.round.ended_at)}.`}
+                            </p>
+                            <ul className="mt-2 space-y-1.5">
+                                {urgent.map(t => (
+                                    <li key={t.id}>
+                                        <button type="button" onClick={() => jumpTo(t.id)} className="text-left text-sm font-semibold text-red-900 underline underline-offset-2 decoration-red-300 hover:decoration-red-700">
+                                            {where.get(t.id)?.label}
+                                        </button>
+                                        <span className="block text-xs text-red-800">{where.get(t.id)?.category}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     {open && (
                         <p className="text-xs text-muted mt-1">
                             Tick things as you do them, then press Submit. Once submitted, a tick cannot be changed.
@@ -320,6 +368,7 @@ export default function ChecklistRoundPage() {
                                             open, restaurantId: round.restaurant_id, roundId: round.id,
                                             onToggle: () => toggle(t), onAddPhoto: path => addPhoto(t, path),
                                             onRemovePhoto: path => removePhoto(t, path), onError: setError,
+                                        urgent: open && priority.has(t.id) && !byTask.has(t.id),
                                         })
                                         if (!subs.length) return <TickRow {...rowProps(task)} />
                                         const subDone = subs.filter(s => byTask.has(s.id)).length
@@ -355,7 +404,7 @@ export default function ChecklistRoundPage() {
                             <p className="text-xs text-muted basis-full">
                                 {saved.length === 0
                                     ? 'For a round started by mistake. Only a manager can do this.'
-                                    : 'Ends it with what is left marked as not done. Only a manager can do this.'}
+                                    : 'Ends it with what is left marked as not done, and that comes back as High priority next time. Only a manager can do this.'}
                             </p>
                         </div>
                     )}
@@ -380,13 +429,16 @@ export default function ChecklistRoundPage() {
 
 // One thing to tick. The whole name is the label, so a thumb landing anywhere
 // on the words ticks it rather than having to find the box.
-function TickRow({ task, tick, draft, lastDone, open, restaurantId, roundId, onToggle, onAddPhoto, onRemovePhoto, onError }) {
+function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roundId, onToggle, onAddPhoto, onRemovePhoto, onError }) {
     const photos = draft?.photos || []
     const needsOne = task.needs_photo && !tick && !photos.length
     const inputId = `tick-${task.id}`
 
     return (
-        <div className={`flex items-start gap-3 px-4 py-3 min-h-[56px] ${tick ? 'bg-green-50' : draft ? 'bg-accent-light/50' : ''}`}>
+        <div
+            id={`row-${task.id}`}
+            className={`flex items-start gap-3 px-4 py-3 min-h-[56px] scroll-mt-32 ${tick ? 'bg-green-50' : urgent ? 'bg-red-50 shadow-[inset_4px_0_0_#b91c1c]' : draft ? 'bg-accent-light/50' : ''}`}
+        >
             {/* A submitted tick is a solid green mark rather than a box. A
                 disabled box is drawn grey by the browser, which reads as "you
                 cannot tick this" when what it means is "done". The box is still
@@ -407,6 +459,7 @@ function TickRow({ task, tick, draft, lastDone, open, restaurantId, roundId, onT
                 onChange={onToggle}
             />
             <div className="flex-1 min-w-0">
+                {urgent && <span className={`${badge} bg-red-700 text-white mb-1`}>High priority</span>}
                 <label htmlFor={inputId} className="block font-medium text-gray-900 cursor-pointer">{task.name}</label>
                 {task.how_to && <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{task.how_to}</p>}
                 {task.guide_photo && <GuidePicture path={task.guide_photo} name={task.name} />}

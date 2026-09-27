@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     listTree, tickable, progressOf, elementDone, repeatWords, periodOf, doneDay, doneDayLong,
     agoWords, lastDoneByTask, cardState, weekCleaning, periodRecord, cleaningWords, ticksByWeekday,
-    ticksByHour, placeOf, roundOutcome, ticksByTimeOfDay, busiestWords, lastDoneRows,
+    ticksByHour, placeOf, roundOutcome, ticksByTimeOfDay, busiestWords, lastDoneRows, roundBefore, leftLastTime,
 } from './checklists'
 import { shortDate } from './dates'
 
@@ -287,5 +287,51 @@ describe('the reports on how the cleaning is going', () => {
             ['Mop the floor', 'Toilets'],
             ['Small toaster area: Clean under the toaster', 'Kitchen'],
         ])
+    })
+})
+
+// Asked for on 27 September: what was not done when a round was ended early
+// comes back on the next round labelled High priority.
+describe('what was left last time', () => {
+    const tree = listTree(CATEGORIES, TASKS)
+    const early = { id: 'r1', checklist_id: 'L1', started_at: at('2026-09-14'), ended_at: at('2026-09-18'), ended_by: 'u9', ended_by_name: 'Ciara' }
+    const next = { id: 'r2', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: null }
+
+    it('finds the round before, of the same list', () => {
+        const other = { id: 'x', checklist_id: 'L9', started_at: at('2026-09-19'), ended_at: at('2026-09-20') }
+        expect(roundBefore([early, next, other], next)).toBe(early)
+        expect(roundBefore([next], next)).toBe(null)
+    })
+
+    it('is what a round ended early did not tick', () => {
+        const left = leftLastTime(tree, early, [{ round_id: 'r1', task_id: 't2' }])
+        expect([...left]).toEqual(['t3', 't4'])
+    })
+
+    it('is nothing after a round that finished', () => {
+        expect(leftLastTime(tree, { ...early, ended_by: null }, []).size).toBe(0)
+        expect(leftLastTime(tree, null, []).size).toBe(0)
+    })
+
+    it('leaves out something added to the list after that round ended', () => {
+        const added = listTree(CATEGORIES, [...TASKS, task('t7', 'Clean the new oven', { created_at: at('2026-09-19') })])
+        expect(leftLastTime(added, early, []).has('t7')).toBe(false)
+    })
+
+    it('puts the count on the card for the list', () => {
+        expect(cardState({ list: WEEKLY, rounds: [early, next], done: 0, total: 3, today: '2026-09-22', priority: 2 }).priority).toBe(2)
+        expect(cardState({ list: WEEKLY, rounds: [], today: '2026-09-22' }).priority).toBe(0)
+    })
+
+    it('says in the weekly report what was missed twice running', () => {
+        const rounds = [early, { id: 'r2', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: at('2026-09-25'), ended_by: 'u9', ended_by_name: 'Ciara' }]
+        const ticks = [
+            { round_id: 'r1', task_id: 't2', done_at: at('2026-09-14'), done_by_name: 'Aoife', photos: [] },
+            { round_id: 'r2', task_id: 't2', done_at: at('2026-09-21'), done_by_name: 'Aoife', photos: [] },
+            { round_id: 'r2', task_id: 't3', done_at: at('2026-09-21'), done_by_name: 'Aoife', photos: [] },
+        ]
+        const [line] = weekCleaning({ lists: [WEEKLY], categories: CATEGORIES, tasks: TASKS, rounds, ticks, weekStart: '2026-09-20' }).lists[0].lines
+        expect(line.words).toBe(`Ended on Friday ${shortDate('2026-09-25')} by Ciara with 1 not done.`)
+        expect(line.left.map(t => [t.label, t.again])).toEqual([['Mop the floor', true]])
     })
 })

@@ -151,9 +151,34 @@ export function roundOutcome(round) {
 
 const latest = (rows, field) => rows.reduce((best, r) => (!best || ms(r[field]) > ms(best[field]) ? r : best), null)
 
+// The round of the same list that ended most recently before this one began.
+export function roundBefore(rounds, round) {
+    return latest(rounds.filter(r => r.checklist_id === round.checklist_id && r.id !== round.id
+        && r.ended_at && ms(r.ended_at) <= ms(round.started_at)), 'ended_at')
+}
+
+// What was left undone when a round was ended early, and is still on the list.
+// It comes back as High priority on the next round until it is ticked. Asked
+// for on 27 September: "the tasks that weren't completed last time should be
+// label as High Priority and tinted in red". A round that finished left nothing
+// undone, and something added to the list after the round ended was never
+// left, so neither counts.
+export function leftLastTime(tree, before, ticks) {
+    if (!before || roundOutcome(before) !== 'ended') return new Set()
+    const ticked = new Set(ticks.filter(t => t.round_id === before.id).map(t => t.task_id))
+    return new Set(tickable(tree)
+        .filter(t => !ticked.has(t.id) && !(t.created_at && ms(t.created_at) > ms(before.ended_at)))
+        .map(t => t.id))
+}
+
 // What a list's card on the phone says, and whether it offers Start. Only one
 // round is ever open, which the database holds to, so there is no choosing.
-export function cardState({ list, rounds, done, total, lastTick, today }) {
+// `priority` is how many High priority things are waiting, said on the card.
+export function cardState({ priority = 0, ...rest }) {
+    return { ...stateOfCard(rest), priority }
+}
+
+function stateOfCard({ list, rounds, done, total, lastTick, today }) {
     const mine = rounds.filter(r => r.checklist_id === list.id)
     const open = mine.find(r => !r.ended_at)
     if (open) {
@@ -287,12 +312,18 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
         const weekTicks = known.filter(t => ms(t.done_at) >= start && mine.some(r => r.id === t.round_id))
         const where = placeOf(tree)
 
+        // What a round left, each with when it was last done and whether the
+        // round before left it too. Missed two rounds running is the thing
+        // worth a manager's eye, so it is marked.
         const leftOf = round => {
             const ticked = new Set(known.filter(t => t.round_id === round?.id).map(t => t.task_id))
+            const before = round ? roundBefore(mine, round) : latest(mine.filter(r => r.ended_at), 'ended_at')
+            const again = leftLastTime(tree, before, known)
             return leaves.filter(t => !ticked.has(t.id)).map(t => ({
                 id: t.id, name: t.name, ...where.get(t.id),
                 lastDone: lastDone.get(t.id) ? dayOf(lastDone.get(t.id)) : null,
                 lastDoneWords: lastDone.get(t.id) ? `last done ${doneDay(lastDone.get(t.id))}` : 'never done',
+                again: again.has(t.id),
             }))
         }
         const verdict = (label, period, warnWhenNotDone) => {

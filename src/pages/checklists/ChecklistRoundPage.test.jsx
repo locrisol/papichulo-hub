@@ -22,11 +22,18 @@ const TASKS = [
 ]
 const SAVED = [{ id: 'k1', round_id: 'r1', task_id: 't2', done_by_name: 'Aoife', done_at: '2026-09-22T09:30:00+00:00', photos: [] }]
 
+// The round before this one, ended early by a manager with the floor and the
+// toaster sides left.
+const EARLIER = {
+    id: 'r0', checklist_id: 'L1', restaurant_id: 'rest1', started_at: '2026-09-14T09:00:00+00:00',
+    ended_at: '2026-09-18T17:00:00+00:00', ended_by: 'u9', ended_by_name: 'Ciara',
+}
+const EARLIER_TICKS = [{ round_id: 'r0', task_id: 't2' }]
+
 let db
-function setUp({ round = ROUND, saved = SAVED, upsertResult } = {}) {
+function setUp({ round = ROUND, saved = SAVED, upsertResult, earlier = null } = {}) {
     const upsert = makeQuery(upsertResult || { data: [{ task_id: 't3' }], error: null })
     db = mockSupabase({
-        checklist_rounds: { data: round, error: null },
         checklists: { data: LIST, error: null },
         checklist_categories: { data: CATEGORIES, error: null },
         checklist_tasks: { data: TASKS, error: null },
@@ -34,8 +41,17 @@ function setUp({ round = ROUND, saved = SAVED, upsertResult } = {}) {
     })
     const plain = db.from.getMockImplementation()
     db.from.mockImplementation(table => {
+        // One question for this round, one for the round before it.
+        if (table === 'checklist_rounds') {
+            const q = makeQuery({ data: earlier ? [earlier] : [], error: null })
+            q.maybeSingle = vi.fn(() => Promise.resolve({ data: round, error: null }))
+            return q
+        }
         if (table !== 'checklist_ticks') return plain(table)
-        const read = makeQuery({ data: saved, error: null })
+        let roundId
+        const read = makeQuery()
+        read.eq = vi.fn((column, value) => { if (column === 'round_id') roundId = value; return read })
+        read.then = (resolve, reject) => Promise.resolve({ data: roundId === 'r0' ? EARLIER_TICKS : saved, error: null }).then(resolve, reject)
         read.upsert = vi.fn(() => upsert)
         return read
     })
@@ -160,14 +176,16 @@ describe('what only a manager sees', () => {
         expect(screen.queryByRole('button', { name: 'End this round now' })).toBeNull()
     })
 
-    it('ends the round when a manager says so', async () => {
+    // No reason asked for: his call, 27 September.
+    it('ends the round when a manager says so, saying what comes of it', async () => {
         role = 'store_manager'
         const user = open()
         await user.click(await screen.findByRole('button', { name: 'End this round now' }))
         await waitFor(() => expect(confirm).toHaveBeenCalled())
-        expect(confirm.mock.calls.at(-1)[0].message).toMatch(/^2 things are not done/)
+        expect(confirm.mock.calls.at(-1)[0].message).toBe('2 things are not done. They come back on the next round as High priority, and the weekly report shows them as not done.')
+        await waitFor(() => expect(db.from.mock.results.map(r => r.value).some(q => q.update?.mock.calls.length)).toBe(true))
         const ended = db.from.mock.results.map(r => r.value).find(q => q.update?.mock.calls.length)
-        expect(ended.update.mock.calls[0][0]).toHaveProperty('ended_at')
+        expect(ended.update.mock.calls[0][0]).toEqual({ ended_at: expect.any(String) })
     })
 
     it('offers the record as a PDF', async () => {
@@ -175,5 +193,39 @@ describe('what only a manager sees', () => {
         open()
         const bar = (await screen.findByRole('heading', { name: 'Weekly Deep Clean' })).closest('div').parentElement
         expect(within(bar).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    })
+})
+
+// His idea, 27 September: what was not done when the last round was ended
+// early is labelled High priority and tinted red on the next one.
+describe('what was left last time', () => {
+    it('is labelled High priority and tinted red, saying who ended that round', async () => {
+        setUp({ earlier: EARLIER })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).getByText('High priority')).toBeInTheDocument()
+        expect(within(box).getByText(/These were not done last time, so do them first. Ciara ended that round on Friday/)).toBeInTheDocument()
+        expect(within(box).queryByText(/saying/)).toBeNull()
+        expect(within(box).getByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeInTheDocument()
+        expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
+        const row = screen.getByLabelText('Mop the floor').closest('[id^="row-"]')
+        expect(row.className).toMatch(/bg-red-50/)
+        expect(within(row).getByText('High priority')).toBeInTheDocument()
+    })
+
+    it('stops being High priority once it is ticked this time', async () => {
+        setUp({ earlier: EARLIER, saved: [...SAVED, { id: 'k2', round_id: 'r1', task_id: 't3', done_by_name: 'Aoife', done_at: '2026-09-22T10:00:00+00:00', photos: [] }] })
+        open()
+        const box = await screen.findByRole('note')
+        expect(within(box).queryByRole('button', { name: 'Small toaster area: Clean toaster sides' })).toBeNull()
+        expect(within(box).getByRole('button', { name: 'Mop the floor' })).toBeInTheDocument()
+    })
+
+    it('marks nothing after a round that finished', async () => {
+        setUp({ earlier: { ...EARLIER, ended_by: null, ended_by_name: null } })
+        open()
+        await screen.findByText('Kitchen')
+        expect(screen.queryByRole('note')).toBeNull()
+        expect(screen.queryByText('High priority')).toBeNull()
     })
 })

@@ -7,7 +7,9 @@ import { can, MANAGERS } from '@/lib/access'
 import { addDays, todayISO } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { badge, card, pageTitle, primaryButton, rowButton, secondaryButton } from '@/lib/controlStyles'
-import { agoWords, cardState, doneDayLong, listTree, periodWords, progressOf, repeatWords } from '@/lib/checklists'
+import {
+    agoWords, cardState, doneDayLong, leftLastTime, listTree, periodWords, progressOf, repeatWords, roundBefore,
+} from '@/lib/checklists'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import AddButton from '@/components/ui/AddButton'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
@@ -34,6 +36,7 @@ export default function ChecklistsPage() {
     const [trees, setTrees] = useState({})
     const [rounds, setRounds] = useState([])
     const [openTicks, setOpenTicks] = useState([])
+    const [sources, setSources] = useState({})
     const [showOff, setShowOff] = useState(false)
     const [loading, setLoading] = useState(true)
     const [starting, setStarting] = useState(null)
@@ -54,7 +57,7 @@ export default function ChecklistsPage() {
         const since = addDays(todayISO(), -124)
         const [cats, tasks, rnds] = await Promise.all([
             ids.length ? supabase.from('checklist_categories').select('*').in('checklist_id', ids) : { data: [] },
-            ids.length ? supabase.from('checklist_tasks').select('id, checklist_id, category_id, parent_id, name, sort_order, is_active').in('checklist_id', ids) : { data: [] },
+            ids.length ? supabase.from('checklist_tasks').select('id, checklist_id, category_id, parent_id, name, sort_order, is_active, created_at').in('checklist_id', ids) : { data: [] },
             supabase.from('checklist_rounds').select('*')
                 .eq('restaurant_id', activeRestaurant.id)
                 .or(`ended_at.is.null,ended_at.gte.${since}`),
@@ -62,9 +65,20 @@ export default function ChecklistsPage() {
         const failed = cats.error || tasks.error || rnds.error
         if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
-        const open = (rnds.data || []).filter(r => !r.ended_at).map(r => r.id)
-        const ticks = open.length
-            ? await supabase.from('checklist_ticks').select('round_id, task_id, done_at').in('round_id', open)
+        // The round each list's High priority comes from: the one before the
+        // open round, or the last one if nothing is open. Only a round a
+        // manager ended early leaves anything behind.
+        const everyRound = rnds.data || []
+        const openRounds = everyRound.filter(r => !r.ended_at)
+        const from = {}
+        for (const l of rows) {
+            const openNow = openRounds.find(r => r.checklist_id === l.id)
+            const before = roundBefore(everyRound, openNow || { checklist_id: l.id, id: null, started_at: new Date().toISOString() })
+            if (before?.ended_by) from[l.id] = before
+        }
+        const wanted = [...openRounds.map(r => r.id), ...Object.values(from).map(r => r.id)]
+        const ticks = wanted.length
+            ? await supabase.from('checklist_ticks').select('round_id, task_id, done_at').in('round_id', wanted)
             : { data: [] }
 
         const byList = {}
@@ -78,6 +92,7 @@ export default function ChecklistsPage() {
         setTrees(byList)
         setRounds(rnds.data || [])
         setOpenTicks(ticks.data || [])
+        setSources(from)
         setLoading(false)
     }, [activeRestaurant])
 
@@ -156,7 +171,9 @@ export default function ChecklistsPage() {
                         const ticks = openRound ? openTicks.filter(t => t.round_id === openRound.id) : []
                         const { done, total } = progressOf(trees[list.id] || [], ticks)
                         const lastTick = ticks.reduce((best, t) => (!best || new Date(t.done_at) > new Date(best) ? t.done_at : best), null)
-                        const state = cardState({ list, rounds, done, total, lastTick, today })
+                        const ticked = new Set(ticks.map(t => t.task_id))
+                        const priority = [...leftLastTime(trees[list.id] || [], sources[list.id], openTicks)].filter(t => !ticked.has(t)).length
+                        const state = cardState({ list, rounds, done, total, lastTick, today, priority })
                         return (
                             <ListCard
                                 key={list.id}
@@ -231,6 +248,12 @@ function ListCard({ list, state, empty, starting, isManager, restaurant, onStart
                         {list.repeats === 'once'
                             ? (state.canStart ? 'Not started yet.' : `Starts on ${doneDayLong(list.starts_on + 'T12:00:00')}.`)
                             : state.last ? `Last done on ${state.last}.` : 'Not done yet.'}
+                    </p>
+                )}
+                {state.priority > 0 && list.is_active && (
+                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
+                        <span aria-hidden="true" className="w-2 h-2 rounded-full bg-red-600" />
+                        {state.priority} high priority from last time
                     </p>
                 )}
                 {empty && list.is_active && (

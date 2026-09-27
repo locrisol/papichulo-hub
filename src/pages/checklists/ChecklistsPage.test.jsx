@@ -34,10 +34,20 @@ beforeEach(() => {
         checklist_categories: { data: CATEGORIES, error: null },
         checklist_tasks: { data: TASKS, error: null },
         checklist_rounds: {
-            data: [{ id: 'r9', checklist_id: 'L1', started_at: iso(0.2), started_by_name: 'Aoife', ended_at: null }],
+            data: [
+                { id: 'r9', checklist_id: 'L1', started_at: iso(0.2), started_by_name: 'Aoife', ended_at: null },
+                // Toilets was ended early by a manager ten days ago with two things left.
+                { id: 'e2', checklist_id: 'L2', started_at: iso(11), ended_at: iso(10), ended_by: 'u9', ended_by_name: 'Ciara' },
+            ],
             error: null,
         },
-        checklist_ticks: { data: [{ round_id: 'r9', task_id: 'L1-t1', done_at: iso(0.1) }], error: null },
+        checklist_ticks: {
+            data: [
+                { round_id: 'r9', task_id: 'L1-t1', done_at: iso(0.1) },
+                { round_id: 'e2', task_id: 'L2-t1', done_at: iso(11) },
+            ],
+            error: null,
+        },
     })
 })
 
@@ -67,6 +77,15 @@ describe('what staff see', () => {
         expect(screen.queryByRole('button', { name: 'New list' })).toBeNull()
         expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
         expect(screen.queryByText('Old list')).toBeNull()
+    })
+})
+
+describe('what was left last time', () => {
+    it('says on the card how many High priority things are waiting', async () => {
+        renderWithRouter(<ChecklistsPage />)
+        const card = await cardOf('Toilet Checklist')
+        expect(within(card).getByText('2 high priority from last time')).toBeInTheDocument()
+        expect(within(await cardOf('Weekly Deep Clean')).queryByText(/high priority/)).toBeNull()
     })
 })
 

@@ -1477,6 +1477,26 @@ describe('the cleaning section', () => {
         expect(reportEmail(none).html).toContain('No checklists were due this week.')
     })
 
+    // A thing left two rounds running says so, in red.
+    it('says what was missed twice running', () => {
+        const ended = weekCleaning({
+            lists: [lists[0]], categories, tasks, weekStart: week,
+            rounds: [
+                { id: 'e0', checklist_id: 'L1', started_at: at('2026-09-13'), ended_at: at('2026-09-14'), ended_by: 'u9', ended_by_name: 'Ciara' },
+                { id: 'e1', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: at('2026-09-24'), ended_by: 'u9', ended_by_name: 'Ciara' },
+            ],
+            ticks: [
+                { round_id: 'e0', task_id: 't2', done_at: at('2026-09-13'), done_by_name: 'Aoife', photos: [] },
+                { round_id: 'e1', task_id: 't2', done_at: at('2026-09-21'), done_by_name: 'Aoife', photos: [] },
+            ],
+        })
+        const mail = reportEmail({ ...withCleaning, figures: { ...figures, cleaning: ended } })
+        expect(mail.html).toContain('by Ciara with 1 not done.')
+        expect(mail.html).not.toContain('Why:')
+        expect(mail.html).toContain('not done the time before either')
+        expect(mail.text).toContain('      - Small toaster area: Clean toaster sides, never done, not done the time before either')
+    })
+
     it('is the last section, numbered after the rest', () => {
         const { html } = reportEmail(withCleaning)
         expect(html.lastIndexOf('>8</td>')).toBeGreaterThan(html.indexOf('Support / actions needed'))

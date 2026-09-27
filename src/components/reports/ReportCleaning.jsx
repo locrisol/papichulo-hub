@@ -51,6 +51,7 @@ export default function ReportCleaning({ cleaning, published }) {
                                             <li key={t.id} className="text-gray-900">
                                                 {t.label}
                                                 <span className="text-muted">, {t.lastDoneWords}</span>
+                                                {t.again && <span className="text-red-700 font-semibold">, not done the time before either</span>}
                                             </li>
                                         ))}
                                     </ul>

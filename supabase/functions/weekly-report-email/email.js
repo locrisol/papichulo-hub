@@ -806,8 +806,11 @@ function cleaningCard(list) {
         const colour = line.warn ? RED : line.state === 'done' ? GREEN : INK
         let out = `<div style="margin-top:8px;font-family:${FONT};font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
         if (line.warn && line.left?.length) {
+            // Missed two rounds running is the thing worth a manager's eye,
+            // so it is said in red.
             const shown = line.left.slice(0, LEFT_IN_MAIL)
-                .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`)
+                .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`
+                    + (t.again ? `<span style="color:${RED};font-weight:700;">, not done the time before either</span>` : ''))
             if (line.left.length > LEFT_IN_MAIL) shown.push(`<span style="color:${MUTED};">and ${line.left.length - LEFT_IN_MAIL} more, on the Hub</span>`)
             out += `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
         }
@@ -1327,7 +1330,11 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 out.push(`  ${list.name} (${list.repeats})`)
                 for (const line of list.lines) {
                     out.push(`    ${line.words}`)
-                    if (line.warn) for (const t of line.left || []) out.push(`      - ${t.label}, ${t.lastDoneWords}`)
+                    if (line.warn) {
+                        for (const t of line.left || []) {
+                            out.push(`      - ${t.label}, ${t.lastDoneWords}${t.again ? ', not done the time before either' : ''}`)
+                        }
+                    }
                 }
                 if (list.photos?.length) out.push(`    ${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.`)
             }
