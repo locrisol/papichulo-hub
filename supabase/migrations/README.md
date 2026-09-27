@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `019` are in here, all run on live, and the next one is `020`.**
+**`001` to `020` are in here. `001` to `019` are run on live, `020` is not yet, and the next one is `021`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -68,6 +68,8 @@ never be changed, a private `checklist-photos` bucket with its three policies,
 the functions the nightly photo job calls, and the Cleaning section on the
 report still being written. The job itself is the `checklist-photos` edge
 function, scheduled as cron job 7.
+`020` is **not run yet**. It lets a checklist task carry up to four guide
+pictures instead of one, moving any picture already added into the new list.
 
 ## What was here before
 

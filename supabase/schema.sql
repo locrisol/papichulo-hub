@@ -1176,14 +1176,15 @@ CREATE TABLE IF NOT EXISTS "public"."checklist_tasks" (
     "parent_id" "uuid",
     "name" "text" NOT NULL,
     "how_to" "text",
-    "guide_photo" "text",
     "needs_photo" boolean DEFAULT false NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
     "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "guide_photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     CONSTRAINT "checklist_tasks_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
-    CONSTRAINT "checklist_tasks_not_its_own_parent" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id")))
+    CONSTRAINT "checklist_tasks_not_its_own_parent" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id"))),
+    CONSTRAINT "checklist_tasks_a_few_pictures" CHECK (("cardinality"("guide_photos") <= 4))
 );
 
 ALTER TABLE ONLY "public"."checklist_tasks"
@@ -1193,7 +1194,7 @@ CREATE INDEX "idx_checklist_tasks_parent" ON "public"."checklist_tasks" USING "b
 
 COMMENT ON TABLE "public"."checklist_tasks" IS 'An element of a list, or a sub element under one when parent_id is set. One level only. Only the ones with nothing under them are ticked.';
 COMMENT ON COLUMN "public"."checklist_tasks"."how_to" IS 'How to do it, shown under the name: use the blue roll and the green spray.';
-COMMENT ON COLUMN "public"."checklist_tasks"."guide_photo" IS 'A picture showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Kept for as long as the task is.';
+COMMENT ON COLUMN "public"."checklist_tasks"."guide_photos" IS 'Up to four pictures showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Each is kept until it is taken off the task, or the task or its list is.';
 COMMENT ON COLUMN "public"."checklist_tasks"."needs_photo" IS 'It cannot be ticked without a photo of it done.';
 
 CREATE TABLE IF NOT EXISTS "public"."checklist_rounds" (
@@ -2269,7 +2270,8 @@ end;
 $$;
 
 -- A sub element sits under an element of the same list, one level down, in
--- the same category. A guide picture is in this restaurant's guides folder.
+-- the same category. Its guide pictures are in this restaurant's guides
+-- folder.
 create or replace function public.checklist_task_guard() returns trigger
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
@@ -2277,6 +2279,7 @@ create or replace function public.checklist_task_guard() returns trigger
 declare
     parent public.checklist_tasks;
     place uuid;
+    picture text;
 begin
     if not exists (select 1 from public.checklist_categories c
                     where c.id = new.category_id and c.checklist_id = new.checklist_id) then
@@ -2294,11 +2297,13 @@ begin
         new.category_id := parent.category_id;
     end if;
 
-    if new.guide_photo is not null then
+    if cardinality(new.guide_photos) > 0 then
         select l.restaurant_id into place from public.checklists l where l.id = new.checklist_id;
-        if left(new.guide_photo, length(place::text || '/guides/')) <> place::text || '/guides/' then
-            raise exception 'A guide picture has to be in this restaurant''s folder';
-        end if;
+        foreach picture in array new.guide_photos loop
+            if left(picture, length(place::text || '/guides/')) <> place::text || '/guides/' then
+                raise exception 'A guide picture has to be in this restaurant''s folder';
+            end if;
+        end loop;
     end if;
 
     new.updated_at := now();
@@ -2501,10 +2506,10 @@ end $$;
 -- the photos of its last finished round and of the one in progress, so there
 -- are never two old rounds and a new one all holding pictures. A list done
 -- once keeps its photos two weeks after it is finished. A guide picture never
--- expires: it goes when its task is deleted or taken off the list, when it is
--- replaced, or when the whole list is. And a photo taken and never submitted
--- goes after a day, which is also the grace every file gets so nothing is
--- deleted between being uploaded and being saved.
+-- expires: it goes when it is taken off its task, when its task is deleted or
+-- taken off the list, or when the whole list is. And a photo taken and never
+-- submitted goes after a day, which is also the grace every file gets so
+-- nothing is deleted between being uploaded and being saved.
 create or replace function public.checklist_photos_due() returns setof text
     language sql stable security definer
     set search_path to 'public', 'pg_temp'
@@ -2536,14 +2541,14 @@ create or replace function public.checklist_photos_due() returns setof text
              and not exists (select 1
                                from public.checklist_tasks k
                                join public.checklists l on l.id = k.checklist_id
-                              where k.guide_photo = o.name
+                              where o.name = any (k.guide_photos)
                                 and k.is_active
                                 and l.is_active)))
 $$;
 
 -- And what it says afterwards, so the tick shows the photo was deleted rather
--- than never taken, and a task taken off the list stops pointing at a guide
--- picture that is no longer there.
+-- than never taken, and a task taken off the list stops pointing at guide
+-- pictures that are no longer there.
 create or replace function public.checklist_photos_removed(names text[]) returns integer
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
@@ -2558,8 +2563,8 @@ begin
     get diagnostics marked = row_count;
 
     update public.checklist_tasks
-       set guide_photo = null
-     where guide_photo = any (names);
+       set guide_photos = array(select p from unnest(guide_photos) as p where p <> all (names))
+     where guide_photos && names;
 
     return marked;
 end $$;

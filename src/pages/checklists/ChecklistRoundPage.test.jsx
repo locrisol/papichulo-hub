@@ -15,9 +15,9 @@ const ROUND = {
 const LIST = { id: 'L1', name: 'Weekly Deep Clean', repeats: 'weeks', every_weeks: 1, is_active: true }
 const CATEGORIES = [{ id: 'c1', checklist_id: 'L1', name: 'Kitchen', sort_order: 1, is_active: true }]
 const TASKS = [
-    { id: 't1', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Small toaster area', how_to: 'Unplug it first.', guide_photo: 'rest1/guides/g.jpg', needs_photo: false, sort_order: 1, is_active: true },
+    { id: 't1', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Small toaster area', how_to: 'Unplug it first.', guide_photos: ['rest1/guides/g.jpg'], needs_photo: false, sort_order: 1, is_active: true },
     { id: 't2', checklist_id: 'L1', category_id: 'c1', parent_id: 't1', name: 'Clean under the toaster', sort_order: 1, is_active: true },
-    { id: 't3', checklist_id: 'L1', category_id: 'c1', parent_id: 't1', name: 'Clean toaster sides', sort_order: 2, is_active: true },
+    { id: 't3', checklist_id: 'L1', category_id: 'c1', parent_id: 't1', name: 'Clean toaster sides', sort_order: 2, is_active: true, guide_photos: ['rest1/guides/a.jpg', 'rest1/guides/b.jpg'] },
     { id: 't4', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Mop the floor', needs_photo: true, sort_order: 2, is_active: true },
 ]
 const SAVED = [{ id: 'k1', round_id: 'r1', task_id: 't2', done_by_name: 'Aoife', done_at: '2026-09-22T09:30:00+00:00', photos: [] }]
@@ -99,10 +99,18 @@ describe('the list as it reads', () => {
 
     it('hides a guide picture behind a button until it is asked for', async () => {
         const user = open()
-        const show = await screen.findByRole('button', { name: 'Show picture' })
+        const show = (await screen.findAllByRole('button', { name: 'Show picture' }))[0]
         expect(screen.queryByRole('img')).toBeNull()
         await user.click(show)
         expect(await screen.findByRole('img', { name: 'What Small toaster area should look like' })).toHaveAttribute('src', 'https://signed/rest1/guides/g.jpg')
+    })
+
+    it('says how many pictures there are, and shows them all', async () => {
+        const user = open()
+        await user.click(await screen.findByRole('button', { name: 'Show 2 pictures' }))
+        expect(await screen.findByRole('img', { name: 'What Clean toaster sides should look like, 1 of 2' })).toHaveAttribute('src', 'https://signed/rest1/guides/a.jpg')
+        expect(screen.getByRole('img', { name: 'What Clean toaster sides should look like, 2 of 2' })).toHaveAttribute('src', 'https://signed/rest1/guides/b.jpg')
+        expect(screen.getByRole('button', { name: 'Hide pictures' })).toBeInTheDocument()
     })
 
     it('never lets a submitted tick be taken off', async () => {

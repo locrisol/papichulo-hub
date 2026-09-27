@@ -383,7 +383,7 @@ export default function ChecklistRoundPage() {
                                                         </span>
                                                     </div>
                                                     {task.how_to && <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{task.how_to}</p>}
-                                                    {task.guide_photo && <GuidePicture path={task.guide_photo} name={task.name} />}
+                                                    {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
                                                 </div>
                                                 <div className="pl-4 divide-y divide-border">
                                                     {subs.map(s => <TickRow {...rowProps(s)} />)}
@@ -462,7 +462,7 @@ function TickRow({ task, tick, draft, lastDone, open, urgent, restaurantId, roun
                 {urgent && <span className={`${badge} bg-red-700 text-white mb-1`}>High priority</span>}
                 <label htmlFor={inputId} className="block font-medium text-gray-900 cursor-pointer">{task.name}</label>
                 {task.how_to && <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{task.how_to}</p>}
-                {task.guide_photo && <GuidePicture path={task.guide_photo} name={task.name} />}
+                {task.guide_photos?.length > 0 && <GuidePicture paths={task.guide_photos} name={task.name} />}
 
                 {tick ? (
                     <p className="text-xs text-green-900 mt-1.5">Done by {tick.done_by_name}, {stampDateTime(tick.done_at)}</p>

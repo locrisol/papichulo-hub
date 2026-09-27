@@ -19,7 +19,7 @@ import ArrangeList from '@/components/ui/ArrangeList'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 import Modal from '@/components/ui/Modal'
 import PhotoButton from '@/components/checklists/PhotoButton'
-import useSignedUrls from '@/components/checklists/useSignedUrls'
+import PhotoStrip from '@/components/checklists/PhotoStrip'
 import PrintListButton from '@/components/checklists/PrintListButton'
 
 // Making a list, and changing one. Managers and above.
@@ -42,6 +42,9 @@ const HOW_OFTEN = [
 ]
 
 const oftenOf = list => (list.repeats === 'weeks' ? `weeks:${list.every_weeks}` : list.repeats)
+
+// The most guide pictures a task can carry. The database holds to it as well.
+const MAX_PICTURES = 4
 
 export default function ChecklistEditPage() {
     const { id } = useParams()
@@ -132,7 +135,7 @@ export default function ChecklistEditPage() {
             dangerNote: ticked ? 'Its guide picture is deleted tonight.' : 'This cannot be undone.',
         })
         if (!ok) return false
-        const pictures = rows.map(r => r.guide_photo).filter(Boolean)
+        const pictures = rows.flatMap(r => r.guide_photos || [])
         const { error: rmErr } = ticked
             ? await supabase.from('checklist_tasks').update({ is_active: false }).in('id', ids)
             : await supabase.from('checklist_tasks').delete().in('id', ids)
@@ -166,7 +169,7 @@ export default function ChecklistEditPage() {
                 || (await supabase.from('checklist_categories').update({ is_active: false }).eq('id', category.id)).error
             : (await supabase.from('checklist_categories').delete().eq('id', category.id)).error
         if (failed) { setError(friendlyError(failed)); return }
-        const pictures = inside.map(t => t.guide_photo).filter(Boolean)
+        const pictures = inside.flatMap(t => t.guide_photos || [])
         if (!ticked && pictures.length) await supabase.storage.from(PHOTO_BUCKET).remove(pictures)
         load()
     }
@@ -188,7 +191,7 @@ export default function ChecklistEditPage() {
                 tone: 'danger',
             })
             if (!ok) return
-            const pictures = tasks.map(t => t.guide_photo).filter(Boolean)
+            const pictures = tasks.flatMap(t => t.guide_photos || [])
             const { error: delErr } = await supabase.from('checklists').delete().eq('id', list.id)
             if (delErr) { setError(friendlyError(delErr)); return }
             if (pictures.length) await supabase.storage.from(PHOTO_BUCKET).remove(pictures)
@@ -392,7 +395,11 @@ function TaskLine({ task, bold, hasSubs, onEdit, onRemove, onAddSub }) {
                 <p className={`${bold ? 'font-semibold' : 'font-medium'} text-gray-900 break-words`}>{task.name}</p>
                 {task.how_to && <p className="text-sm text-gray-600 line-clamp-2 whitespace-pre-line">{task.how_to}</p>}
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                    {task.guide_photo && <span className={`${badge} bg-blue-50 text-blue-800`}>Has a picture</span>}
+                    {task.guide_photos?.length > 0 && (
+                        <span className={`${badge} bg-blue-50 text-blue-800`}>
+                            {task.guide_photos.length === 1 ? '1 picture' : `${task.guide_photos.length} pictures`}
+                        </span>
+                    )}
                     {task.needs_photo && !hasSubs && <span className={`${badge} bg-amber-100 text-amber-900`}>Needs a photo</span>}
                 </div>
             </div>
@@ -490,17 +497,25 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
     const isSub = Boolean(editing.parent || task?.parent_id)
     const [name, setName] = useState(task?.name || '')
     const [howTo, setHowTo] = useState(task?.how_to || '')
-    const [picture, setPicture] = useState(task?.guide_photo || null)
+    // Up to four, his number, 27 September: the same as a tick's photos.
+    const original = task?.guide_photos || []
+    const [pictures, setPictures] = useState(original)
     const [needsPhoto, setNeedsPhoto] = useState(Boolean(task?.needs_photo))
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
-    const urls = useSignedUrls(picture ? [picture] : [])
-    const uploaded = picture && picture !== task?.guide_photo ? picture : null
+    // Uploaded while this was open and not saved to anything yet.
+    const fresh = pictures.filter(p => !original.includes(p))
 
     async function close() {
-        // A picture uploaded here and never saved to anything.
-        if (uploaded) await supabase.storage.from(PHOTO_BUCKET).remove([uploaded])
+        if (fresh.length) await supabase.storage.from(PHOTO_BUCKET).remove(fresh)
         onClose()
+    }
+
+    // A picture only this dialog knows about goes straight away. One already
+    // saved stays until Save, so Cancel still puts it back.
+    function takeOff(path) {
+        if (fresh.includes(path)) supabase.storage.from(PHOTO_BUCKET).remove([path])
+        setPictures(before => before.filter(p => p !== path))
     }
 
     async function save(e) {
@@ -508,7 +523,7 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
         if (!name.trim()) return
         setSaving(true)
         setError('')
-        const row = { name: name.trim(), how_to: howTo.trim() || null, guide_photo: picture, needs_photo: needsPhoto }
+        const row = { name: name.trim(), how_to: howTo.trim() || null, guide_photos: pictures, needs_photo: needsPhoto }
         const { error: saveErr } = task
             ? await supabase.from('checklist_tasks').update(row).eq('id', task.id)
             : await supabase.from('checklist_tasks').insert({
@@ -520,11 +535,9 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
             })
         setSaving(false)
         if (saveErr) { setError(friendlyError(saveErr)); return }
-        // The picture it replaced, or the one taken away, is not needed by
-        // anything now.
-        if (task?.guide_photo && task.guide_photo !== picture) {
-            await supabase.storage.from(PHOTO_BUCKET).remove([task.guide_photo])
-        }
+        // The pictures taken away are not needed by anything now.
+        const gone = original.filter(p => !pictures.includes(p))
+        if (gone.length) await supabase.storage.from(PHOTO_BUCKET).remove(gone)
         onSaved()
     }
 
@@ -559,34 +572,21 @@ function TaskDialog({ list, editing, restaurantId, onClose, onSaved }) {
                         />
                     </div>
                     <div>
-                        <p className={labelClass}>Picture showing what is meant (optional)</p>
-                        {picture && (
-                            <div className="mb-2">
-                                {urls[picture]
-                                    ? <img src={urls[picture]} alt="" className="max-h-48 max-w-full rounded-lg border border-border" />
-                                    : <p className="text-xs text-muted">Loading the picture...</p>}
-                            </div>
-                        )}
-                        <div className="flex flex-wrap gap-2">
+                        <p className={labelClass}>Pictures showing what is meant (optional, up to {MAX_PICTURES})</p>
+                        <PhotoStrip paths={pictures} onRemove={takeOff} label="Picture" />
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
                             <PhotoButton
                                 restaurantId={restaurantId}
                                 kind="guide"
-                                onAdded={path => {
-                                    if (uploaded) supabase.storage.from(PHOTO_BUCKET).remove([uploaded])
-                                    setPicture(path)
-                                }}
+                                room={MAX_PICTURES - pictures.length}
+                                onAdded={path => setPictures(before => [...before, path])}
                                 onError={setError}
                             >
-                                {picture ? 'Change picture' : 'Add picture'}
+                                {pictures.length ? 'Add another picture' : 'Add picture'}
                             </PhotoButton>
-                            {picture && (
-                                <button type="button" onClick={() => {
-                                    if (uploaded) supabase.storage.from(PHOTO_BUCKET).remove([uploaded])
-                                    setPicture(null)
-                                }} className={rowButton('danger')}>Remove picture</button>
-                            )}
+                            {pictures.length >= MAX_PICTURES && <span className="text-xs text-muted">That is the most a task can have.</span>}
                         </div>
-                        <p className={hintClass}>Staff see a button for it and open it only if they need it.</p>
+                        <p className={hintClass}>Staff see a button for them and open them only if they need to.</p>
                     </div>
                     {!editing.hasSubs && (
                         <label className={`${checkRow} cursor-pointer`}>

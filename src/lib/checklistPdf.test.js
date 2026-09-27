@@ -23,10 +23,10 @@ function bigList() {
         categories.push({ id: `c${c}`, checklist_id: 'L', name: `Area ${c + 1}`, sort_order: c, is_active: true })
         for (let e = 0; e < 7; e++) {
             const id = `c${c}e${e}`
-            tasks.push({ id, checklist_id: 'L', category_id: `c${c}`, parent_id: null, name: `Element ${e + 1} of area ${c + 1}`, how_to: e % 2 ? 'Use the green spray and the blue roll, then dry it with a clean cloth so there are no streaks left on it.' : null, guide_photo: e % 3 === 0 ? 'g.jpg' : null, sort_order: e, is_active: true })
+            tasks.push({ id, checklist_id: 'L', category_id: `c${c}`, parent_id: null, name: `Element ${e + 1} of area ${c + 1}`, how_to: e % 2 ? 'Use the green spray and the blue roll, then dry it with a clean cloth so there are no streaks left on it.' : null, guide_photos: e % 3 === 0 ? ['g.jpg'] : e === 5 ? ['g.jpg', 'g2.jpg', 'g3.jpg', 'g4.jpg'] : [], sort_order: e, is_active: true })
             if (e % 2 === 0) {
                 for (let s = 0; s < 3; s++) {
-                    tasks.push({ id: `${id}s${s}`, checklist_id: 'L', category_id: `c${c}`, parent_id: id, name: `Sub element ${s + 1}`, how_to: null, guide_photo: s === 1 ? 'g.jpg' : null, sort_order: s, is_active: true })
+                    tasks.push({ id: `${id}s${s}`, checklist_id: 'L', category_id: `c${c}`, parent_id: id, name: `Sub element ${s + 1}`, how_to: null, guide_photos: s === 1 ? ['g.jpg', 'g2.jpg'] : [], sort_order: s, is_active: true })
                 }
             }
         }
@@ -64,7 +64,7 @@ const LIST = { id: 'L', name: 'Weekly Deep Clean', repeats: 'weeks', every_weeks
 
 describe('the blank list to print', () => {
     it('never lets a picture run past the bottom of a page', async () => {
-        const pictures = new Map([['g.jpg', PICTURE]])
+        const pictures = new Map([['g.jpg', PICTURE], ['g2.jpg', PICTURE], ['g3.jpg', PICTURE], ['g4.jpg', PICTURE]])
         const { pdf, log } = await drawn(() => blankListPdf({ restaurant: RESTAURANT, list: LIST, tree: bigList(), pictures, save: false }))
         const bottom = pdf.internal.pageSize.getHeight() - 16
         const images = log.filter(l => l.name === 'addImage' && l.args[0] !== undefined && l.args[3] > 30)
@@ -74,7 +74,7 @@ describe('the blank list to print', () => {
     })
 
     it('never leaves a category heading alone at the foot of a page', async () => {
-        const pictures = new Map([['g.jpg', PICTURE]])
+        const pictures = new Map([['g.jpg', PICTURE], ['g2.jpg', PICTURE], ['g3.jpg', PICTURE], ['g4.jpg', PICTURE]])
         const { log } = await drawn(() => blankListPdf({ restaurant: RESTAURANT, list: LIST, tree: bigList(), pictures, save: false }))
         const headings = log.filter(l => l.name === 'roundedRect')
         expect(headings.length).toBeGreaterThan(3)
@@ -183,6 +183,28 @@ describe('the cleaning report on paper', () => {
         const bottom = pdf.internal.pageSize.getHeight() - 16
         for (const l of log.filter(x => x.name === 'text' && typeof x.args[2] === 'number' && x.args[2] > 40 && x.args[2] < 280)) {
             expect(l.args[2]).toBeLessThanOrEqual(bottom)
+        }
+    })
+})
+
+// Up to four guide pictures on a task since 27 September, side by side on one
+// line so the row is no taller for having more.
+describe('a task with several guide pictures', () => {
+    it('prints all four side by side, inside the text column', async () => {
+        const pictures = new Map([['g.jpg', PICTURE], ['g2.jpg', PICTURE], ['g3.jpg', PICTURE], ['g4.jpg', PICTURE]])
+        const { pdf, log } = await drawn(() => blankListPdf({ restaurant: RESTAURANT, list: LIST, tree: bigList(), pictures, save: false }))
+        const width = pdf.internal.pageSize.getWidth()
+        const images = log.filter(l => l.name === 'addImage' && l.args[3] > 30)
+        const rows = new Map()
+        for (const { args, page } of images) {
+            const key = `${page}:${args[3].toFixed(2)}`
+            rows.set(key, [...(rows.get(key) || []), args])
+        }
+        const four = [...rows.values()].filter(r => r.length === 4)
+        expect(four.length).toBeGreaterThan(0)
+        for (const r of four) {
+            for (let i = 1; i < r.length; i++) expect(r[i][2]).toBeGreaterThan(r[i - 1][2] + r[i - 1][4] - 0.01)
+            expect(r[3][2] + r[3][4]).toBeLessThan(width - 15 - 58)
         }
     })
 })

@@ -30,7 +30,7 @@ export default function PrintListButton({ list, restaurant, onError, className =
         try {
             const { blankListPdf, loadPictures } = await import('@/lib/checklistPdf')
             const paths = withPictures
-                ? tree.flatMap(g => g.elements.flatMap(e => [e.task.guide_photo, ...e.subs.map(s => s.guide_photo)]))
+                ? tree.flatMap(g => g.elements.flatMap(e => [...(e.task.guide_photos || []), ...e.subs.flatMap(s => s.guide_photos || [])]))
                 : []
             const pictures = await loadPictures(paths, signer)
             await blankListPdf({ restaurant, list, tree, pictures })
@@ -46,7 +46,7 @@ export default function PrintListButton({ list, restaurant, onError, className =
         setBusy(true)
         try {
             const tree = await read()
-            const pictured = tree.some(g => g.elements.some(e => e.task.guide_photo || e.subs.some(s => s.guide_photo)))
+            const pictured = tree.some(g => g.elements.some(e => e.task.guide_photos?.length || e.subs.some(s => s.guide_photos?.length)))
             setBusy(false)
             if (pictured) setAsking(tree)
             else await print(tree, false)

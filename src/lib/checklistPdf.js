@@ -140,7 +140,7 @@ async function paper({ label, restaurant, title, lines, fileName }) {
 // One row: the box, the name, the how to, the picture, and whatever the
 // right hand column says. Measured and drawn by the same code, so the height a
 // row was given is the height it takes.
-function row(sheet, { indent, name, bold, howTo, picture, box, ticked, right, photos, photosNote }) {
+function row(sheet, { indent, name, bold, howTo, pictures = [], box, ticked, right, photos, photosNote }) {
     const { pdf, width } = sheet
     const rightWidth = 58
     const x = MARGIN + indent + (box ? 7 : 0)
@@ -152,12 +152,17 @@ function row(sheet, { indent, name, bold, howTo, picture, box, ticked, right, ph
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(8)
     const howLines = howTo ? pdf.splitTextToSize(howTo, textWidth) : []
-    const shape = picture ? fitPicture(picture, Math.min(70, textWidth), PICTURE_HEIGHT) : null
+    // A task's guide pictures side by side on one line, each fitted into an
+    // equal share of the width, so four are smaller than one but the row is
+    // no taller.
+    const share = pictures.length ? Math.min(70, (textWidth - 2 * (pictures.length - 1)) / pictures.length) : 0
+    const shapes = pictures.map(p => fitPicture(p, share, PICTURE_HEIGHT))
+    const pictureHeight = shapes.reduce((most, s) => Math.max(most, s.h), 0)
     const shots = (photos || []).map(p => fitPicture(p, 40, PHOTO_HEIGHT))
 
     const measure = () => {
         let h = 2 + nameLines.length * 4.6 + howLines.length * 3.6
-        if (shape) h += shape.h + 2
+        if (shapes.length) h += pictureHeight + 2
         if (shots.length) h += PHOTO_HEIGHT + 2
         if (photosNote) h += 3.8
         return Math.max(h + 2, right ? 11 : 8)
@@ -191,9 +196,13 @@ function row(sheet, { indent, name, bold, howTo, picture, box, ticked, right, ph
                 pdf.text(howLines, x, yy + 0.6)
                 yy += howLines.length * 3.6
             }
-            if (shape) {
-                pdf.addImage(picture.data, 'JPEG', x, yy, shape.w, shape.h)
-                yy += shape.h + 2
+            if (shapes.length) {
+                let px = x
+                shapes.forEach((s, i) => {
+                    pdf.addImage(pictures[i].data, 'JPEG', px, yy, s.w, s.h)
+                    px += s.w + 2
+                })
+                yy += pictureHeight + 2
             }
             if (shots.length) {
                 let px = x
@@ -257,14 +266,14 @@ function rowsFor(sheet, elements, cells, pictures, extra = () => ({})) {
     for (const { task, subs } of elements) {
         const own = {
             indent: 0, name: task.name, bold: true, howTo: task.how_to,
-            picture: task.guide_photo ? pictures.get(task.guide_photo) : null,
+            pictures: (task.guide_photos || []).map(p => pictures.get(p)).filter(Boolean),
         }
         if (subs.length) {
             rows.push(row(sheet, own))
             for (const s of subs) {
                 rows.push(row(sheet, {
                     indent: 7, name: s.name, howTo: s.how_to, box: true,
-                    picture: s.guide_photo ? pictures.get(s.guide_photo) : null,
+                    pictures: (s.guide_photos || []).map(p => pictures.get(p)).filter(Boolean),
                     right: cells(s), ...extra(s),
                 }))
             }
@@ -400,8 +409,8 @@ export async function roundPdf({ restaurant, list, tree, round, ticks, pictures 
         // No guide pictures on the record: it is about what was done, and the
         // photos of it are the pictures that matter here.
         place(sheet, category.name, rowsFor(sheet, elements.map(e => ({
-            task: { ...e.task, guide_photo: null },
-            subs: e.subs.map(s => ({ ...s, guide_photo: null })),
+            task: { ...e.task, guide_photos: [] },
+            subs: e.subs.map(s => ({ ...s, guide_photos: [] })),
         })), who, pictures, extra))
     }
     return sheet.finish(`${list.name}, ${doneDayLong(round.started_at)}. The Papi Chulo Hub checklist record`, save)

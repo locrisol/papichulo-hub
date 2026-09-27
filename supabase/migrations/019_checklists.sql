@@ -133,8 +133,16 @@ comment on table public.checklist_tasks is
     'An element of a list, or a sub element under one when parent_id is set. One level only. Only the ones with nothing under them are ticked.';
 comment on column public.checklist_tasks.how_to is
     'How to do it, shown under the name: use the blue roll and the green spray.';
-comment on column public.checklist_tasks.guide_photo is
-    'A picture showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Kept for as long as the task is.';
+-- Only while the column is there. 020 turned it into guide_photos, and the
+-- local build replays every migration on top of schema.sql, where it is gone.
+do $$
+begin
+    if exists (select 1 from information_schema.columns
+                where table_schema = 'public' and table_name = 'checklist_tasks' and column_name = 'guide_photo') then
+        comment on column public.checklist_tasks.guide_photo is
+            'A picture showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Kept for as long as the task is.';
+    end if;
+end $$;
 comment on column public.checklist_tasks.needs_photo is
     'It cannot be ticked without a photo of it done.';
 
@@ -663,6 +671,10 @@ create policy checklist_photos_remove on storage.objects
 -- replaced, or when the whole list is. And a photo taken and never submitted
 -- goes after a day, which is also the grace every file gets so nothing is
 -- deleted between being uploaded and being saved.
+-- Written without being checked against the tables, for the same reason as
+-- the comment above: replayed on top of schema.sql the column it reads is
+-- gone, and 020 replaces this with the version that reads the list.
+set check_function_bodies = off;
 create or replace function public.checklist_photos_due() returns setof text
     language sql stable security definer
     set search_path to 'public', 'pg_temp'
@@ -698,6 +710,8 @@ create or replace function public.checklist_photos_due() returns setof text
                                 and k.is_active
                                 and l.is_active)))
 $$;
+
+reset check_function_bodies;
 
 -- And what it says afterwards, so the tick shows the photo was deleted rather
 -- than never taken, and a task taken off the list stops pointing at a guide

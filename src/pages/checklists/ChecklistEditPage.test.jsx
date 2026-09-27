@@ -12,8 +12,8 @@ import { mockSupabase, renderWithRouter } from '@/test/helpers'
 const LIST = { id: 'L1', restaurant_id: 'r1', name: 'Weekly Deep Clean', repeats: 'weeks', every_weeks: 1, starts_on: '2026-09-01', finish_by: null, is_active: true }
 const CATEGORIES = [{ id: 'c1', checklist_id: 'L1', name: 'Kitchen', sort_order: 1, is_active: true }]
 const TASKS = [
-    { id: 't1', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Small toaster area', sort_order: 1, is_active: true, guide_photo: 'r1/guides/g.jpg' },
-    { id: 't2', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Mop the floor', sort_order: 2, is_active: true },
+    { id: 't1', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Small toaster area', sort_order: 1, is_active: true, guide_photos: ['r1/guides/g.jpg'] },
+    { id: 't2', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Mop the floor', sort_order: 2, is_active: true, guide_photos: ['r1/guides/m1.jpg', 'r1/guides/m2.jpg', 'r1/guides/m3.jpg', 'r1/guides/m4.jpg'] },
 ]
 
 let db
@@ -104,5 +104,34 @@ describe('taking things off', () => {
         const user = open()
         await user.click(await screen.findByRole('button', { name: 'Take this list off' }))
         await waitFor(() => expect(written('checklists', 'update')).toEqual([{ is_active: false }]))
+    })
+})
+
+// Up to four guide pictures on a task, his number, 27 September.
+describe('guide pictures', () => {
+    it('says how many a task has', async () => {
+        open()
+        const row = (await screen.findByText('Mop the floor')).closest('li')
+        expect(within(row).getByText('4 pictures')).toBeInTheDocument()
+        expect(within((await screen.findByText('Small toaster area')).closest('li')).getByText('1 picture')).toBeInTheDocument()
+    })
+
+    it('stops at four', async () => {
+        const user = open()
+        const row = (await screen.findByText('Mop the floor')).closest('li')
+        await user.click(within(row).getByRole('button', { name: 'Edit' }))
+        expect(screen.getByRole('button', { name: 'Add another picture' })).toBeDisabled()
+        expect(screen.getByText('That is the most a task can have.')).toBeInTheDocument()
+    })
+
+    it('saves without one taken off, and only then deletes it', async () => {
+        const user = open()
+        const row = (await screen.findByText('Mop the floor')).closest('li')
+        await user.click(within(row).getByRole('button', { name: 'Edit' }))
+        await user.click(screen.getByRole('button', { name: 'Take off picture 2' }))
+        expect(removed).not.toHaveBeenCalled()
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' }))
+        await waitFor(() => expect(removed).toHaveBeenCalledWith(['r1/guides/m2.jpg']))
+        expect(written('checklist_tasks', 'update')[0].guide_photos).toEqual(['r1/guides/m1.jpg', 'r1/guides/m3.jpg', 'r1/guides/m4.jpg'])
     })
 })
