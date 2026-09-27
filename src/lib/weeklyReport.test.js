@@ -21,6 +21,14 @@ import {
     figuresToStore,
     FIGURES_VERSION,
     isCorrection,
+    statementWeek,
+    statementWords,
+    dayWords,
+    platformTaken,
+    deliveryCost,
+    deliveryRows,
+    statementSundayIn,
+    deliveryBlockers,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -594,5 +602,124 @@ describe('blockedBy', () => {
     it('says nothing for a week that is ready', () => {
         expect(blockedBy({ missing: [], unanswered: [] })).toBeNull()
         expect(blockedBy(undefined)).toBeNull()
+    })
+})
+
+// The platforms bill Monday to Sunday and our week runs Sunday to Saturday.
+// Invented figures throughout; the week is 20 to 26 September 2026, the one
+// that raised it.
+describe("the delivery platforms' own week", () => {
+    const WEEK = '2026-09-20'
+    const ROO = { id: 'p1', name: 'Deliveroo' }
+    const EAT = { id: 'p2', name: 'Just Eat' }
+
+    // Deliveroo takes 100 every day from Sunday 20 to Sunday 27, except the
+    // two Sundays, which take 50 and 150.
+    const DAYS = [
+        { sale_date: '2026-09-20', platform_sales: { Deliveroo: 50 } },
+        ...['21', '22', '23', '24', '25', '26'].map(d => ({
+            sale_date: `2026-09-${d}`, platform_sales: { Deliveroo: 100, 'Just Eat': 10 },
+        })),
+        { sale_date: '2026-09-27', platform_sales: { Deliveroo: 150 } },
+    ]
+
+    it('runs the statement from the Monday to the Sunday after, out the Monday after that', () => {
+        expect(statementWeek(WEEK)).toEqual({ from: '2026-09-21', to: '2026-09-27', out: '2026-09-28' })
+    })
+
+    it('says the days the way a person would', () => {
+        expect(dayWords('2026-09-28')).toBe('Monday 28 September')
+        expect(statementWords(WEEK)).toBe('Monday 21 to Sunday 27 September')
+        expect(statementWords('2026-09-27')).toBe('Monday 28 September to Sunday 4 October')
+    })
+
+    it('adds up what a platform took between two dates', () => {
+        expect(platformTaken(DAYS, 'Deliveroo', '2026-09-21', '2026-09-27')).toBe(750)
+        expect(platformTaken(DAYS, 'Deliveroo', '2026-09-20', '2026-09-26')).toBe(650)
+    })
+
+    // 225 on 750 taken is 30%, and 30% of the 650 our week took is 195.
+    it('costs our week at the share the statement kept', () => {
+        const got = deliveryCost({ statement: 225, statementTaken: 750, weekTaken: 650 })
+        expect(got.rate).toBeCloseTo(30, 6)
+        expect(got.cost).toBe(195)
+        expect(got.typed).toBe(true)
+    })
+
+    it('knows nothing typed is not nought', () => {
+        expect(deliveryCost({ statement: null, statementTaken: 750, weekTaken: 650 }))
+            .toEqual({ typed: false, rate: null, cost: 0 })
+        expect(deliveryCost({ statement: 0, statementTaken: 750, weekTaken: 650 }))
+            .toMatchObject({ typed: true, cost: 0 })
+    })
+
+    it('counts a statement as it stands when nothing was taken over its week', () => {
+        expect(deliveryCost({ statement: 40, statementTaken: 0, weekTaken: 0 }))
+            .toEqual({ typed: true, rate: null, cost: 40 })
+    })
+
+    it('gives every platform a row, typed or not', () => {
+        const rows = deliveryRows({
+            platforms: [ROO, EAT],
+            items: [{ kind: 'delivery', key: 'p1', amount: 225 }, { kind: 'overhead', key: 'p2', amount: 999 }],
+            days: DAYS,
+            weekStart: WEEK,
+        })
+        expect(rows[0]).toMatchObject({ statement: 225, statementTaken: 750, weekTaken: 650, cost: 195, typed: true })
+        expect(rows[1]).toMatchObject({ statement: null, statementTaken: 60, weekTaken: 60, cost: 0, typed: false })
+    })
+
+    it("knows whether the statement's Sunday is in", () => {
+        expect(statementSundayIn(DAYS, [ROO], WEEK)).toBe(true)
+        expect(statementSundayIn(DAYS.slice(0, -1), [ROO], WEEK)).toBe(false)
+        expect(statementSundayIn([{ sale_date: '2026-09-27', platform_sales: {} }], [ROO], WEEK)).toBe(false)
+        expect(statementSundayIn([{ sale_date: '2026-09-27', is_closed: true }], [ROO], WEEK)).toBe(true)
+    })
+
+    describe('what stops it being sent', () => {
+        const rows = deliveryRows({
+            platforms: [ROO, EAT], items: [{ kind: 'delivery', key: 'p1', amount: 225 }], days: DAYS, weekStart: WEEK,
+        })
+
+        it('waits for the Monday the statements come out', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-27', rows, days: DAYS })
+            expect(said[0]).toBe('The delivery platforms bill Monday to Sunday, so their statements for '
+                + 'Monday 21 to Sunday 27 September come out on Monday 28 September. The report can be sent from then.')
+        })
+
+        it('asks for the Sunday the statements end on', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows, days: DAYS.slice(0, -1) })
+            expect(said.some(s => s.startsWith('Sunday 27 September has no online platform sales yet.'))).toBe(true)
+        })
+
+        it('asks for each statement not typed, by name', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows, days: DAYS })
+            expect(said).toEqual(["Type what Just Eat's statement for Monday 21 to Sunday 27 September came to."])
+        })
+
+        it('says nothing once it is Monday, the Sunday is in and every statement is typed', () => {
+            const all = deliveryRows({
+                platforms: [ROO, EAT],
+                items: [{ kind: 'delivery', key: 'p1', amount: 225 }, { kind: 'delivery', key: 'p2', amount: 0 }],
+                days: DAYS,
+                weekStart: WEEK,
+            })
+            expect(deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows: all, days: DAYS })).toEqual([])
+        })
+
+        it('does not ask about a platform that took nothing either week', () => {
+            const quiet = deliveryRows({ platforms: [{ id: 'p3', name: 'Quiet' }], days: DAYS, weekStart: WEEK })
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows: quiet, days: DAYS })
+            expect(said.some(s => s.includes('Quiet'))).toBe(false)
+        })
+
+        it('waits for nothing at a restaurant with no online platforms', () => {
+            expect(deliveryBlockers({ weekStart: WEEK, today: '2026-09-27', rows: [], days: [] })).toEqual([])
+        })
+
+        it('stops the send alongside everything else', () => {
+            const check = publishCheck([], null, ['Waiting for Monday.'])
+            expect(check.blockers).toEqual(['Waiting for Monday.'])
+        })
     })
 })

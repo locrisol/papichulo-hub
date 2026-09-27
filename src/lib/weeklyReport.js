@@ -3,7 +3,7 @@
 // Everything in here is arithmetic and rules, kept out of the pages so it can
 // be tested without a database or a browser. The pages fetch, this decides.
 
-import { weekDates, weekStartOf, todayISO, addDays } from '@/lib/dates'
+import { weekDates, weekStartOf, todayISO, addDays, dayMonth } from '@/lib/dates'
 import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
@@ -307,6 +307,147 @@ export function platformShare(cost, sales) {
 }
 
 // ---------------------------------------------------------------------------
+// The delivery platforms' own week
+// ---------------------------------------------------------------------------
+
+// **Deliveroo, Just Eat and Uber Eats bill Monday to Sunday, and our week runs
+// Sunday to Saturday.** He raised it on 27 September: writing up 20 to 26
+// September, every figure was there except what the platforms charged,
+// because their statements for Monday 21 to Sunday 27 only come out on Monday
+// 28.
+//
+// So the figure typed is the statement exactly as the platform sent it, and
+// the report never pretends it covers our week. It is compared with what that
+// platform took over the statement's own seven days, which gives the share it
+// kept, and that share is applied to what it took in our week. That is the
+// cost that goes into the profit and loss. The statement's Sunday is the day
+// after our week ends, which is why that Sunday has to be entered before the
+// report can go.
+export function statementWeek(weekStart) {
+    return {
+        from: addDays(weekStart, 1),
+        to: addDays(weekStart, 7),
+        // The Monday the statements come out, and the first day the report
+        // can be sent.
+        out: addDays(weekStart, 8),
+    }
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// "Monday 28 September".
+export function dayWords(date) {
+    return `${WEEKDAYS[new Date(date + 'T00:00:00').getDay()]} ${dayMonth(date)}`
+}
+
+// "Monday 21 to Sunday 27 September", or across a month end "Monday 28
+// September to Sunday 4 October".
+export function statementWords(weekStart) {
+    const { from, to } = statementWeek(weekStart)
+    const first = from.slice(0, 7) === to.slice(0, 7)
+        ? `${WEEKDAYS[new Date(from + 'T00:00:00').getDay()]} ${Number(from.slice(8))}`
+        : dayWords(from)
+    return `${first} to ${dayWords(to)}`
+}
+
+// What a platform took between two dates, off the tracking rows beside the
+// till. Keyed by name, because that is how platform_sales stores it.
+export function platformTaken(days, name, from, to) {
+    return (days || [])
+        .filter(d => d.sale_date >= from && d.sale_date <= to)
+        .reduce((t, d) => t + num(d.platform_sales?.[name]), 0)
+}
+
+const r2 = n => Math.round(num(n) * 100) / 100
+
+// What one platform cost in our week.
+//
+// Nothing typed is nothing known, not nought: the line says so and the report
+// cannot go. A statement with nothing taken over its seven days (a penalty on a
+// quiet week) has no share to work out, so it counts as it stands.
+export function deliveryCost({ statement, statementTaken, weekTaken }) {
+    if (statement == null || statement === '') return { typed: false, rate: null, cost: 0 }
+    const bill = num(statement)
+    const over = num(statementTaken)
+    if (over <= 0) return { typed: true, rate: null, cost: r2(bill) }
+    return {
+        typed: true,
+        rate: (bill / over) * 100,
+        cost: r2((bill * num(weekTaken)) / over),
+    }
+}
+
+// One row per online platform: its statement, what it took over the
+// statement's week and over ours, the share it kept and what that cost us.
+//
+// `days` has to reach the Sunday after the week, or the statement's takings
+// are a day short. `items` is the report's own lines, where the statement is
+// kept against the platform's id.
+export function deliveryRows({ platforms = [], items = [], days = [], weekStart }) {
+    const { from, to } = statementWeek(weekStart)
+    const weekEnd = addDays(weekStart, 6)
+    const typed = new Map(items.filter(i => i.kind === 'delivery').map(i => [i.key, i]))
+
+    return platforms.map(platform => {
+        const item = typed.get(platform.id)
+        const statementTaken = platformTaken(days, platform.name, from, to)
+        const weekTaken = platformTaken(days, platform.name, weekStart, weekEnd)
+        return {
+            platform,
+            statement: item ? num(item.amount) : null,
+            statementTaken,
+            weekTaken,
+            ...deliveryCost({ statement: item?.amount ?? null, statementTaken, weekTaken }),
+        }
+    })
+}
+
+// Whether the Sunday the statements end on has its online platform figures.
+//
+// A day marked closed has its answer. Otherwise at least one online platform
+// has to have a figure on it: platform_sales drops a nought, so a Sunday where
+// every platform genuinely took nothing cannot be told from one nobody
+// entered, and that Sunday has not happened here.
+export function statementSundayIn(days, platforms, weekStart) {
+    const { to } = statementWeek(weekStart)
+    const day = (days || []).find(d => d.sale_date === to)
+    if (!day) return false
+    if (day.is_closed) return true
+    return (platforms || []).some(p => num(day.platform_sales?.[p.name]) !== 0)
+}
+
+// What stands between this report and being sent, because of the platforms.
+//
+// Only for a restaurant that has online platforms: the wait is for their
+// statements, and a restaurant with none has nothing to wait for. Said in the
+// order they come: the Monday, the Sunday, then each statement.
+export function deliveryBlockers({ weekStart, today = todayISO(), rows = [], days = [] }) {
+    if (!rows.length) return []
+    const { to, out } = statementWeek(weekStart)
+    const span = statementWords(weekStart)
+    const said = []
+
+    if (today < out) {
+        said.push(`The delivery platforms bill Monday to Sunday, so their statements for ${span} `
+            + `come out on ${dayWords(out)}. The report can be sent from then.`)
+    }
+
+    if (!statementSundayIn(days, rows.map(r => r.platform), weekStart)) {
+        said.push(`${dayWords(to)} has no online platform sales yet. The statements run to that `
+            + 'Sunday, so it is needed to work out what share each platform kept. Enter it on '
+            + `Weekly sales, in the week starting ${dayMonth(to)}.`)
+    }
+
+    for (const row of rows) {
+        if (row.typed) continue
+        if (row.statementTaken <= 0 && row.weekTaken <= 0) continue
+        said.push(`Type what ${row.platform.name}'s statement for ${span} came to.`)
+    }
+
+    return said
+}
+
+// ---------------------------------------------------------------------------
 // What a new week starts with
 // ---------------------------------------------------------------------------
 
@@ -437,10 +578,10 @@ export function blockers(items = []) {
 // entered, no invoices. Those are said and not enforced, the same rule the list
 // page uses for a day out against the till. Somebody who knows the week was
 // genuinely like that should not be argued with.
-export function publishCheck(sections = [], figures = null) {
+export function publishCheck(sections = [], figures = null, delivery = []) {
     const items = sections.flatMap(s => s.items || [])
     return {
-        blockers: blockers(items),
+        blockers: [...blockers(items), ...delivery],
         warnings: figures ? figureGaps(figures) : [],
     }
 }
@@ -451,7 +592,10 @@ export function publishCheck(sections = [], figures = null) {
 // how any of this is worked out ever changes, this goes up and the reader can
 // tell which rules a stored set was written under, rather than quietly
 // showing a July report through September's arithmetic.
-export const FIGURES_VERSION = 1
+// 2, 27 September 2026: each online platform carries its statement, what it
+// took over the statement's week and over ours, the share it kept and the
+// cost, and deliveryTotal is those costs added up rather than the statements.
+export const FIGURES_VERSION = 2
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }
