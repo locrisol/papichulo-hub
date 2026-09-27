@@ -147,6 +147,19 @@ export function weekReadiness(weekStart, days, tenders, unanswered = []) {
     }
 }
 
+// Which of the two is in the way of starting a week, when one is.
+//
+// Sales first: a week with no figures at all is the bigger hole, and the
+// timesheet is easier to finish once the days are there. Worked out once so the
+// badge, the sentence under it and the button cannot disagree. They did: the
+// badge said Sales not finished for a week whose sales were all in and whose
+// timesheet was what was missing.
+export function blockedBy(readiness) {
+    if (readiness?.missing?.length) return 'sales'
+    if (readiness?.unanswered?.length) return 'timesheet'
+    return null
+}
+
 // Has the week finished? A week is written up after it has ended, never while
 // it is running, so the earliest a report can be started is the Sunday after.
 export function weekIsOver(weekStart, today = todayISO()) {

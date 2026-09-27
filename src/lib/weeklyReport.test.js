@@ -4,6 +4,7 @@ import {
     isOwnSection,
     sectionsFor,
     weekReadiness,
+    blockedBy,
     weekIsOver,
     reportableWeeks,
     reportFigures,
@@ -578,3 +579,20 @@ describe('isCorrection', () => {
     })
 })
 
+describe('blockedBy', () => {
+    it('says sales while any day has no figures', () => {
+        expect(blockedBy({ missing: ['2026-09-20'], unanswered: [{ person: {} }] })).toBe('sales')
+    })
+
+    // The week that showed it: every day typed in, seven people still to
+    // answer for on the timesheet, and the badge saying the sales were not
+    // finished.
+    it('says timesheet once the sales are in and somebody is still unanswered', () => {
+        expect(blockedBy({ missing: [], unanswered: [{ person: {} }] })).toBe('timesheet')
+    })
+
+    it('says nothing for a week that is ready', () => {
+        expect(blockedBy({ missing: [], unanswered: [] })).toBeNull()
+        expect(blockedBy(undefined)).toBeNull()
+    })
+})
