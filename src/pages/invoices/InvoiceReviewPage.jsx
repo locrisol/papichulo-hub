@@ -8,7 +8,7 @@ import { fmtMoney, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import {
-    matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack, packReadings,
+    matchLines, pilesOf, storedLine, lineCategory, samePrice, unitsForPack, packReadings, unitsPatch,
 } from '@/lib/invoiceImport'
 import { storedTotals, mainCategory } from '@/lib/invoiceCategories'
 import { acceptPrice, movePreferred, codeRow, ignoreCode, ownedByAnother, newGroupId } from '@/lib/priceEvents'
@@ -179,6 +179,19 @@ export default function InvoiceReviewPage() {
 
     const piles = useMemo(() => pilesOf(rows), [rows])
     const waiting = rows.length
+
+    // Nothing to decide, but a line that only matched once its pack was read
+    // again keeps that reading, so the weekly report prices it the same way.
+    // See unitsPatch.
+    async function clearUnchanged(list) {
+        for (const row of list) {
+            const patch = unitsPatch(row)
+            if (!patch) continue
+            const { error: e1 } = await supabase.from('invoice_lines').update(patch).eq('id', row.stored.id)
+            if (e1) return friendlyError(e1)
+        }
+        return decide(list.map(r => r.stored.id), 'matched')
+    }
 
     async function decide(ids, decision) {
         const { error: e1 } = await supabase.from('invoice_lines')
@@ -639,9 +652,7 @@ export default function InvoiceReviewPage() {
                                     <button
                                         type="button"
                                         disabled={!!busy}
-                                        onClick={() => run('clear', () => decide(
-                                            piles.unchanged.map(r => r.stored.id), 'matched',
-                                        ))}
+                                        onClick={() => run('clear', () => clearUnchanged(piles.unchanged))}
                                         className={primaryButton('sm', 'good')}
                                     >
                                         {busy === 'clear' ? 'Clearing...' : 'Nothing to decide, clear them'}

@@ -4,7 +4,7 @@ import {
     codeSuccessor, unitsWanted, matchLines, pilesOf, documentTotals,
     linePayload, invoicePayload, documentBlocks, storedLine,
     fillInPlan, fillInPayload, fillInClaim, creditOnHandEntry, documentTotal, lineCost,
-    samePrice, packReadings, unitsForPack, byPieceWeight,
+    samePrice, packReadings, unitsForPack, byPieceWeight, sameMeasure, unitsPatch,
 } from '@/lib/invoiceImport'
 
 const SUPPLIER = { id: 's1', name: 'Test Supplier', category: 'food' }
@@ -312,6 +312,63 @@ describe('how many units are in a case', () => {
 
     it('says nothing when the pack size could not be read', () => {
         expect(unitsWanted(null, { unit: 'KG' })).toBeNull()
+    })
+})
+
+// His rule, the whole project over: a litre is costed as a kilo. The review of
+// 27 September read "1X2 LT" of a mayonnaise counted in kilos as one of
+// something at 11.49, and asked whether the pack had changed from two to one.
+describe('kilos and litres', () => {
+    const MAYO = { id: 'mayo', name: 'Vegan Mayonnaise', unit: 'KG' }
+    const mayoPrice = price({
+        id: 'pm', product_id: 'mayo', products: MAYO, supplier_code: '483827',
+        price_per_case: 11.49, units_per_case: 2, price_per_unit: 5.745,
+    })
+    const mayoLine = over => line({
+        code: '483827', description: 'HELLMANNS VEGAN MAYONNAISE', pack_size: '1X2 LT',
+        pack: { count: 1, size: 2, unit: 'Litre', total: 2, printed: '1X2 LT' },
+        cases: 1, price_per_case: 11.49, value: 11.49, ...over,
+    })
+
+    it('are one measure, and nothing else is', () => {
+        expect(sameMeasure('KG', 'Litre')).toBe(true)
+        expect(sameMeasure('Litre', 'KG')).toBe(true)
+        expect(sameMeasure('KG', 'Units')).toBe(false)
+        expect(sameMeasure(null, null)).toBe(true)
+    })
+
+    it('reads two litres as two kilos', () => {
+        expect(unitsWanted({ count: 1, size: 2, unit: 'Litre', total: 2 }, MAYO)).toBe(2)
+        expect(unitsWanted({ count: 6, size: 1, unit: 'Litre', total: 6 }, { unit: 'KG' })).toBe(6)
+    })
+
+    it('is the same price as the Hub has, on import', () => {
+        const [row] = matchLines({ lines: [mayoLine()], prices: [mayoPrice], supplier: SUPPLIER })
+        expect(row.pile).toBe('unchanged')
+        expect(row.wantedUnits).toBe(2)
+        expect(row.packMoved).toBe(false)
+    })
+
+    // The two lines of 25 and 26 September were stored as one before this.
+    it('puts right a line stored as one of something, in the review', () => {
+        const stored = {
+            id: 'l25', line_no: 1, supplier_code: '483827', raw_description: 'HELLMANNS VEGAN MAYONNAISE',
+            pack_size: '1X2 LT', units_per_case: 1, cases: 1, units: 0, price_per_case: 11.49, line_total: 11.49,
+        }
+        const [row] = matchLines({ lines: [storedLine(stored)], prices: [mayoPrice], supplier: SUPPLIER })
+        expect(row.pile).toBe('unchanged')
+        expect(unitsPatch({ ...row, stored })).toEqual({ units_per_case: 2, unit_price: 5.745, quantity: 2 })
+    })
+
+    it('rewrites nothing on a line already stored right', () => {
+        const stored = { id: 'l24', units_per_case: 2 }
+        expect(unitsPatch({ wantedUnits: 2, stored, line: mayoLine() })).toBeNull()
+    })
+
+    // A count somebody chose stays chosen: ten cabbages is not ten kilos.
+    it('leaves a count alone', () => {
+        const CABBAGE_KG = { unit: 'KG' }
+        expect(packReadings({ pack: { count: 10, unit: null, total: 10 }, pack_size: '1X10 EA' }, CABBAGE_KG)).toEqual([10])
     })
 })
 

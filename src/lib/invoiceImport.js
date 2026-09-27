@@ -259,6 +259,16 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
 // Matching the lines
 // ---------------------------------------------------------------------------
 
+// Kilos and litres are one measure here. His rule, the whole project over: a
+// litre is costed as a kilo. So "1X2 LT" of a mayonnaise the Hub counts in
+// kilos is two kilos, not one of something at 11.49; read as one, the review
+// on 27 September asked whether the pack had changed from two to one.
+export function sameMeasure(a, b) {
+    if (a === b) return true
+    const weight = u => u === 'KG' || u === 'Litre'
+    return weight(a) && weight(b)
+}
+
 // How many units the Hub should think are in this case.
 //
 // The invoice cannot say. "4X2.5 KG" is ten kilos and it is also four bags, and
@@ -267,8 +277,8 @@ export function codeSuccessor(line, codes, { onThisDocument = [], date = null } 
 // the pack's own unit is the better guess than a bare count.
 export function unitsWanted(pack, product) {
     if (!pack) return null
-    if (product?.unit && pack.unit && product.unit === pack.unit) return pack.total
-    if (product?.unit && pack.unit && product.unit !== pack.unit) return pack.count
+    if (product?.unit && pack.unit && sameMeasure(product.unit, pack.unit)) return pack.total
+    if (product?.unit && pack.unit) return pack.count
     return pack.unit ? pack.total : pack.count
 }
 
@@ -302,7 +312,15 @@ export function packReadings(line, product) {
     const items = printed?.unit === 'Units' && product?.unit && product.unit !== 'Units'
         ? printed.total
         : null
-    return [byPieceWeight(printed, product), first, items]
+    // The printed pack in the product's own measure, after whatever was stored.
+    // Two mayonnaise lines were stored as one of something before kilos and
+    // litres were one measure; this is the reading that makes them the price
+    // the Hub has, so the review can put them right. Only for weight against
+    // weight, so a count somebody chose, ten cabbages in a case, is not undone.
+    const measured = printed?.unit && product?.unit && sameMeasure(printed.unit, product.unit)
+        ? printed.total
+        : null
+    return [byPieceWeight(printed, product), first, measured, items]
         .filter((n, i, all) => n != null && n > 0 && all.indexOf(n) === i)
 }
 
@@ -312,7 +330,7 @@ export function byPieceWeight(printed, product) {
     const weight = num(product?.piece_weight)
     if (!(weight > 0) || !printed?.total || !product?.unit) return null
     if (printed.unit === 'Units' && product.unit !== 'Units') return to(printed.total * weight, 3)
-    if (printed.unit === 'KG' && product.unit === 'Units') return to(printed.total / weight, 3)
+    if (sameMeasure(printed.unit, 'KG') && product.unit === 'Units') return to(printed.total / weight, 3)
     return null
 }
 
@@ -359,8 +377,27 @@ export function unitsForPack(chosen, fromPackSize, toPackSize) {
     if (fromPackSize === toPackSize) return chosen
     const from = readPackSize(fromPackSize)
     const into = readPackSize(toPackSize)
-    if (!from?.total || !into?.total || from.unit !== into.unit) return chosen
+    if (!from?.total || !into?.total || !sameMeasure(from.unit, into.unit)) return chosen
     return to(num(chosen) * into.total / from.total, 3)
+}
+
+// What a stored line should be rewritten to once the review has read its pack
+// the way the product is counted, or nothing when it already says so.
+//
+// Clearing a line only marked it decided, and the weekly report prices a line
+// from what is stored on it. So a line that only matched once its pack was
+// read again kept the old reading, and the report would have priced the
+// mayonnaise at 11.49 a kilo for ever.
+export function unitsPatch(row) {
+    const units = row?.wantedUnits
+    if (!(units > 0) || !row?.stored || !row?.line) return null
+    const stored = row.stored.units_per_case
+    if (stored != null && Math.abs(num(stored) - units) < 0.0005) return null
+    return {
+        units_per_case: units,
+        unit_price: to(num(row.line.price_per_case) / units, 4),
+        quantity: to(num(row.line.cases) * units + num(row.line.units), 3),
+    }
 }
 
 // Every line, with what the Hub already knows about it.
