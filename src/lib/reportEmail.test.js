@@ -1382,8 +1382,11 @@ describe('delivery costed from the Monday to Sunday statement', () => {
         expect(mail.html).not.toContain('€800.00')
     })
 
-    it('gives the share it kept on its statement', () => {
-        expect(mail.html).toContain('24.24% of what it took')
+    // His words, 27 September: say what the percentage was worked out
+    // against, and that it runs Monday to Sunday.
+    it('gives the share it kept on its statement, against what and over which days', () => {
+        expect(mail.html).toContain('24.24% of the €3,300.00 it took Monday 31 August to Sunday 6 September, the days its statement covers')
+        expect(mail.html).toContain('17.27% of the €2,200.00 it took Monday 31 August to Sunday 6 September')
     })
 
     it('says why the two weeks differ, in words', () => {

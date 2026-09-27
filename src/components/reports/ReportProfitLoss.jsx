@@ -236,9 +236,14 @@ function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
             ? `Type its statement for ${statement}.`
             : row.rate == null
                 ? `Nothing taken ${statement}, so the statement counts as it stands.`
-                : `It kept ${fmtPct(row.rate)} of the ${fmtMoney(row.statementTaken)} it took ${statement}`
-                    + `${waiting ? ' so far' : ''}. The same share of the ${fmtMoney(row.weekTaken)} it took `
-                    + `this week is ${fmtMoney(row.cost)}.`
+                // The percentage first and what it was taken against, since
+                // that is the figure people ask about. His words, 27
+                // September: "the percentage is calculated against X amount
+                // and done Monday to Sunday as that's the way the cost reports
+                // comes like".
+                : `${fmtPct(row.rate)} is what it kept of the ${fmtMoney(row.statementTaken)} it took ${statement}`
+                    + `${waiting ? ' so far' : ''}, the days its statement covers. The same share of the `
+                    + `${fmtMoney(row.weekTaken)} it took this week, Sunday to Saturday, is ${fmtMoney(row.cost)}.`
 
     return (
         <Row
@@ -360,6 +365,7 @@ export default function ReportProfitLoss({
                     strong
                     tint="bg-app-bg"
                     label="Total"
+                    hint="The share beside it is of this week's net sales."
                     amount={figures.deliveryTotal}
                     share={net > 0 ? (figures.deliveryTotal / net) * 100 : null}
                 />

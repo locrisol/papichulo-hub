@@ -430,7 +430,13 @@ function salesAndCosts(section, f, charts) {
 // figure, which was the cost, and a share against what it took in our week.
 function deliveryOf(item, platform) {
     if (platform && platform.cost != null) {
-        return { cost: num(platform.cost), rate: platform.rate == null ? null : num(platform.rate) }
+        return {
+            cost: num(platform.cost),
+            rate: platform.rate == null ? null : num(platform.rate),
+            // What the share was worked out against: the platform's own
+            // takings over its statement's Monday to Sunday.
+            against: platform.statementTaken == null ? null : num(platform.statementTaken),
+        }
     }
     const sales = num(platform?.taken)
     return {
@@ -481,12 +487,20 @@ function profitAndLoss(section, f, charts) {
         // costs" into four. Splitting the tables took that string off the
         // overheads; this takes it off the platforms as well.
         const platform = platforms.find(p => p.id === item.key)
-        const { cost, rate } = deliveryOf(item, platform)
+        //
+        // Since 27 September it says what the share was taken against and
+        // over which days, his words: "the percentage is calculated against X
+        // amount and done Monday to Sunday as that's the way the cost reports
+        // comes". A report frozen before the statement week keeps saying what
+        // it said.
+        const { cost, rate, against } = deliveryOf(item, platform)
+        const over = against != null && f.statement?.words
+            ? `${pct(rate)} of the ${money(against)} it took ${escapeHtml(f.statement.words)}, the days its statement covers`
+            : `${pct(rate)} of what it took`
         rows.push(line({
             label: escapeHtml(item.label || 'Platform')
                 + (rate != null
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">`
-                        + `${pct(rate)} of what it took</span>`
+                    ? `<br /><span style="color:${MUTED};font-size:13px;">${over}</span>`
                     : ''),
             colour: platform?.colour,
             value: money(cost),
