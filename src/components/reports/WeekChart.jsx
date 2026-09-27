@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { shortDate } from '@/lib/dates'
 import {
-    RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside, segments, isMissing,
+    RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, aside, segments, isMissing,
     labelIndices, chartHeight,
 } from '@/lib/reportChart'
 import { segmentTrack, segmentButton } from '@/lib/controlStyles'
@@ -80,7 +80,7 @@ export default function WeekChart({
     const iw = W - PAD.left - PAD.right
     const ih = H - PAD.top - PAD.bottom
 
-    const { min, max } = scaleFor(shown, {
+    const { min, max, ticks } = scaleFor(shown, {
         stacked,
         lines: lines.map(s => s.key),
         zero,
@@ -177,7 +177,7 @@ export default function WeekChart({
                     role="img"
                     aria-label={`${series.map(s => s.label).join(', ')}, week by week`}
                 >
-                    {ticks(min, max).map(value => (
+                    {ticks.map(value => (
                         <g key={value}>
                             <line
                                 x1={PAD.left} y1={y(value)} x2={W - PAD.right} y2={y(value)}

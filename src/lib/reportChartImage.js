@@ -19,7 +19,7 @@
 
 import { shortDate } from '@/lib/dates'
 import {
-    inRange, fromFirstFigure, scaleFor, ticks, segments, isMissing, labelIndices, DEFAULT_RANGE,
+    inRange, fromFirstFigure, scaleFor, segments, isMissing, labelIndices, DEFAULT_RANGE,
 } from '@/lib/reportChart'
 import { num } from '@/lib/format'
 
@@ -154,7 +154,7 @@ export function drawChart(canvas, {
     const ih = height - PAD.top - PAD.bottom
     const base = top + PAD.top
 
-    const { min, max } = scaleFor(shown, {
+    const { min, max, ticks } = scaleFor(shown, {
         stacked,
         lines: series.filter(s => !stacked.includes(s.key)).map(s => s.key),
         zero,
@@ -165,7 +165,7 @@ export function drawChart(canvas, {
 
     // ---- gridlines, and the money down the side ----
     c.font = FONT(10)
-    for (const value of ticks(min, max)) {
+    for (const value of ticks) {
         const gy = Math.round(y(value)) + 0.5
         c.strokeStyle = RULE
         c.lineWidth = 1
