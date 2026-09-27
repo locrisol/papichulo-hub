@@ -1,11 +1,11 @@
 # Migrations
 
-**None in here, and the next one is `001`.**
+**`001` to `017` are in here, all run on live, and the next one is `018`.**
 
-The numbers start again because the folder is empty. They were only ever
-there to put the files in order, and there is nothing left for `016` to come
-after. Everything that has been through here is in git history and under the
-`pre-rewrite` tag, so a number used before is not a number lost.
+The numbers started again at `001` on 20 September, because the folder was
+empty then. They were only ever there to put the files in order. Everything
+that went through here before is in git history and under the `pre-rewrite`
+tag, so a number used before is not a number lost.
 
 The design lives in `../schema.sql`, written by hand and grouped by what each
 part is for. This folder is only for changes to a database that already exists,
@@ -51,10 +51,14 @@ the six prices two or three codes were sharing, widens the reasons for a
 delivery problem, lets a credit note nobody logged be given its reason as a
 label, adds how far recipes may drift before the report says so, and puts the
 Prices and suppliers section into every report still being written.
-`014` is not run yet. It lets a product say roughly what one piece weighs, so
+`014` is run on live. It lets a product say roughly what one piece weighs, so
 a case of ten cabbages can be priced by the kilo.
-`015` is not run yet and goes after `014`. It lets codes for the same thing
-that are bought either way be put in one group, each keeping its own price.
+`015` is run on live. It lets codes for the same thing that are bought either
+way be put in one group, each keeping its own price.
+`016` is run on live, and came in on its own pull request. It switches off a
+leaver's login the night after their last day, with a job at 00:05 UTC.
+`017` is run on live. It lets a document on a supplier's list be cleared off
+Still to download as not needed, without deleting it.
 
 ## What was here before
 
