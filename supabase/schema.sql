@@ -1110,6 +1110,141 @@ CREATE INDEX "idx_stock_take_lines_take" ON "public"."stock_take_lines" USING "b
 CREATE INDEX "idx_stock_take_lines_product" ON "public"."stock_take_lines" USING "btree" ("product_id");
 
 
+
+-- -- Checklists --------------------------------------------------------
+--
+-- The cleaning lists staff tick on the phone, asked for on 27 September 2026
+-- to replace Kitchtech. A list is categories, elements, and sub elements under
+-- an element, one level and no more. Only the things at the bottom are ticked:
+-- an element with things under it is done when they all are.
+--
+-- A round is one go at a list, started by anybody and open until everything
+-- is ticked, one open per list at a time. It counts in the week it finishes.
+--
+-- A tick is never changed once it is saved, by anybody. No update or delete
+-- policy, and a trigger refuses a change to who, when or which round even
+-- from the service role, which only ever says its photos were deleted.
+
+CREATE TABLE IF NOT EXISTS "public"."checklists" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "repeats" "text" NOT NULL,
+    "every_weeks" integer,
+    "starts_on" "date" DEFAULT (("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" NOT NULL,
+    "finish_by" "date",
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "checklists_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "checklists_repeats_check" CHECK (("repeats" = ANY (ARRAY['weeks'::"text", 'monthly'::"text", 'once'::"text"]))),
+    CONSTRAINT "checklists_every_weeks_check" CHECK (((("repeats" = 'weeks'::"text") = ("every_weeks" IS NOT NULL)) AND (("every_weeks" IS NULL) OR (("every_weeks" >= 1) AND ("every_weeks" <= 12))))),
+    CONSTRAINT "checklists_finish_by_check" CHECK ((("finish_by" IS NULL) OR (("repeats" = 'once'::"text") AND ("finish_by" >= "starts_on"))))
+);
+
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklists_restaurant" ON "public"."checklists" USING "btree" ("restaurant_id", "sort_order");
+
+COMMENT ON TABLE "public"."checklists" IS 'A list staff work through, like the weekly deep clean. Rounds of it are started by anybody and stay open until everything is ticked.';
+COMMENT ON COLUMN "public"."checklists"."repeats" IS 'weeks (every every_weeks weeks, counted from the week of starts_on), monthly (every calendar month) or once.';
+COMMENT ON COLUMN "public"."checklists"."starts_on" IS 'For a list every so many weeks, the week the count starts from. For a list done once, the day it is first due.';
+COMMENT ON COLUMN "public"."checklists"."finish_by" IS 'A list done once can say when it should be finished by. The weekly report says it is late after that day.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_categories" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "checklist_categories_has_a_name" CHECK (("btrim"("name") <> ''::"text"))
+);
+
+ALTER TABLE ONLY "public"."checklist_categories"
+    ADD CONSTRAINT "checklist_categories_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklist_categories_checklist" ON "public"."checklist_categories" USING "btree" ("checklist_id", "sort_order");
+
+COMMENT ON TABLE "public"."checklist_categories" IS 'The headings a list is split into, like Kitchen or Toilets. Taken off the list rather than deleted once anything under them has been ticked.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_tasks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "category_id" "uuid" NOT NULL,
+    "parent_id" "uuid",
+    "name" "text" NOT NULL,
+    "how_to" "text",
+    "needs_photo" boolean DEFAULT false NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "guide_photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    CONSTRAINT "checklist_tasks_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "checklist_tasks_not_its_own_parent" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id"))),
+    CONSTRAINT "checklist_tasks_a_few_pictures" CHECK (("cardinality"("guide_photos") <= 4))
+);
+
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklist_tasks_checklist" ON "public"."checklist_tasks" USING "btree" ("checklist_id", "sort_order");
+CREATE INDEX "idx_checklist_tasks_parent" ON "public"."checklist_tasks" USING "btree" ("parent_id");
+
+COMMENT ON TABLE "public"."checklist_tasks" IS 'An element of a list, or a sub element under one when parent_id is set. One level only. Only the ones with nothing under them are ticked.';
+COMMENT ON COLUMN "public"."checklist_tasks"."how_to" IS 'How to do it, shown under the name: use the blue roll and the green spray.';
+COMMENT ON COLUMN "public"."checklist_tasks"."guide_photos" IS 'Up to four pictures showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Each is kept until it is taken off the task, or the task or its list is.';
+COMMENT ON COLUMN "public"."checklist_tasks"."needs_photo" IS 'It cannot be ticked without a photo of it done.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_rounds" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "started_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "started_by" "uuid",
+    "started_by_name" "text",
+    "ended_at" timestamp with time zone,
+    "ended_by" "uuid",
+    "ended_by_name" "text",
+    CONSTRAINT "checklist_rounds_ends_after_it_starts" CHECK ((("ended_at" IS NULL) OR ("ended_at" >= "started_at")))
+);
+
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "checklist_rounds_one_open" ON "public"."checklist_rounds" USING "btree" ("checklist_id") WHERE ("ended_at" IS NULL);
+CREATE INDEX "idx_checklist_rounds_restaurant" ON "public"."checklist_rounds" USING "btree" ("restaurant_id", "started_at");
+
+COMMENT ON TABLE "public"."checklist_rounds" IS 'One go at a list, from Start until everything is ticked. One open at a time per list.';
+COMMENT ON COLUMN "public"."checklist_rounds"."ended_by" IS 'Null when it finished because everything was ticked. Set when a manager ended it with things left.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_ticks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "round_id" "uuid" NOT NULL,
+    "task_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "done_by" "uuid",
+    "done_by_name" "text" NOT NULL,
+    "done_at" timestamp with time zone NOT NULL,
+    "saved_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "photos_gone_at" timestamp with time zone,
+    CONSTRAINT "checklist_ticks_a_few_photos" CHECK (("cardinality"("photos") <= 4))
+);
+
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_once" UNIQUE ("round_id", "task_id");
+CREATE INDEX "idx_checklist_ticks_restaurant_done" ON "public"."checklist_ticks" USING "btree" ("restaurant_id", "done_at");
+CREATE INDEX "idx_checklist_ticks_task_done" ON "public"."checklist_ticks" USING "btree" ("task_id", "done_at");
+
+COMMENT ON TABLE "public"."checklist_ticks" IS 'Somebody did one thing on a list. Never changed once saved: no update or delete policy, and a trigger refuses a change to anything but the note that its photos were deleted.';
+COMMENT ON COLUMN "public"."checklist_ticks"."done_at" IS 'When it was ticked on the phone, which can be a while before Submit saved it. Never before the round started and never after it was saved.';
+COMMENT ON COLUMN "public"."checklist_ticks"."done_by_name" IS 'Who did it, as their account was named at the time. Kept here because an employee cannot read anybody else''s account.';
+COMMENT ON COLUMN "public"."checklist_ticks"."photos" IS 'Where its photos are in checklist-photos. The paths stay after the files are deleted, so it still says a photo was taken.';
+COMMENT ON COLUMN "public"."checklist_ticks"."photos_gone_at" IS 'When the nightly job deleted its photos.';
+
 -- -- The roster --------------------------------------------------------
 --
 -- Who is in, when, and who is not.
@@ -1288,7 +1423,7 @@ CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
-COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, prices_suppliers, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
+COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, prices_suppliers, online_sales, corporate_sales, people_ops, marketing, support_actions and cleaning. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
 COMMENT ON COLUMN "public"."report_sections"."title" IS 'What is shown. Free to change.';
 ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_pkey" PRIMARY KEY ("id");
@@ -1823,6 +1958,37 @@ ALTER TABLE ONLY "public"."stock_take_lines"
 ALTER TABLE ONLY "public"."stock_take_lines"
     ADD CONSTRAINT "stock_take_lines_stock_take_id_fkey" FOREIGN KEY ("stock_take_id") REFERENCES "public"."stock_takes"("id");
 
+-- -- Checklists --------------------------------------------------------
+
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_categories"
+    ADD CONSTRAINT "checklist_categories_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."checklist_categories"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "public"."checklist_tasks"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id");
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_started_by_fkey" FOREIGN KEY ("started_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_ended_by_fkey" FOREIGN KEY ("ended_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_round_id_fkey" FOREIGN KEY ("round_id") REFERENCES "public"."checklist_rounds"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "public"."checklist_tasks"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_done_by_fkey" FOREIGN KEY ("done_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+
 -- -- The roster --------------------------------------------------------
 
 ALTER TABLE ONLY "public"."roster_shifts"
@@ -2102,6 +2268,306 @@ begin
   return switched;
 end;
 $$;
+
+-- A sub element sits under an element of the same list, one level down, in
+-- the same category. Its guide pictures are in this restaurant's guides
+-- folder.
+create or replace function public.checklist_task_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    parent public.checklist_tasks;
+    place uuid;
+    picture text;
+begin
+    if not exists (select 1 from public.checklist_categories c
+                    where c.id = new.category_id and c.checklist_id = new.checklist_id) then
+        raise exception 'That category is on another list';
+    end if;
+
+    if new.parent_id is not null then
+        select * into parent from public.checklist_tasks where id = new.parent_id;
+        if not found or parent.checklist_id <> new.checklist_id then
+            raise exception 'A sub element has to be under an element of the same list';
+        end if;
+        if parent.parent_id is not null then
+            raise exception 'A sub element cannot have sub elements of its own';
+        end if;
+        new.category_id := parent.category_id;
+    end if;
+
+    if cardinality(new.guide_photos) > 0 then
+        select l.restaurant_id into place from public.checklists l where l.id = new.checklist_id;
+        foreach picture in array new.guide_photos loop
+            if left(picture, length(place::text || '/guides/')) <> place::text || '/guides/' then
+                raise exception 'A guide picture has to be in this restaurant''s folder';
+            end if;
+        end loop;
+    end if;
+
+    new.updated_at := now();
+    return new;
+end $$;
+
+-- An element moved to another category takes its sub elements with it. After
+-- the move rather than during it, so the guard above reads the new category
+-- when it checks each of them.
+create or replace function public.checklist_task_moved() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    update public.checklist_tasks
+       set category_id = new.category_id
+     where parent_id = new.id
+       and category_id <> new.category_id;
+    return null;
+end $$;
+
+-- Starting a round says who and when from the session, not from the phone. The
+-- only thing that changes afterwards is its end, and only once.
+create or replace function public.checklist_round_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    list public.checklists;
+begin
+    if tg_op = 'INSERT' then
+        select * into list from public.checklists where id = new.checklist_id;
+        if not found or not list.is_active then
+            raise exception 'That checklist is not in use';
+        end if;
+        new.restaurant_id := list.restaurant_id;
+        new.started_at := now();
+        new.ended_at := null;
+        new.ended_by := null;
+        new.ended_by_name := null;
+        if auth.uid() is not null then
+            new.started_by := auth.uid();
+            select full_name into new.started_by_name from public.users where id = auth.uid();
+        end if;
+        return new;
+    end if;
+
+    if old.ended_at is not null then
+        raise exception 'That round has already ended';
+    end if;
+
+    if row(new.checklist_id, new.restaurant_id, new.started_at, new.started_by, new.started_by_name)
+       is distinct from row(old.checklist_id, old.restaurant_id, old.started_at, old.started_by, old.started_by_name) then
+        raise exception 'Only the end of a round can change';
+    end if;
+
+    if new.ended_at is null then
+        new.ended_by := null;
+        new.ended_by_name := null;
+        return new;
+    end if;
+
+    new.ended_at := now();
+    -- finish_checklist_round says so when a round ends because everything
+    -- was ticked, which is the one end nobody chose.
+    if current_setting('checklists.finishing', true) = 'on' then
+        new.ended_by := null;
+        new.ended_by_name := null;
+    else
+        new.ended_by := auth.uid();
+        select full_name into new.ended_by_name from public.users where id = auth.uid();
+    end if;
+    return new;
+end $$;
+
+-- A tick is for something at the bottom of the list, on an open round, with
+-- the photos it needs, in that round's own folder. Who and when come from
+-- here.
+create or replace function public.checklist_tick_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    r public.checklist_rounds;
+    t public.checklist_tasks;
+    folder text;
+    p text;
+begin
+    if tg_op = 'UPDATE' then
+        -- The nightly job saying the photos are gone is the only change a
+        -- tick ever takes.
+        if row(new.round_id, new.task_id, new.restaurant_id, new.done_by, new.done_by_name,
+               new.done_at, new.saved_at, new.photos)
+           is distinct from row(old.round_id, old.task_id, old.restaurant_id, old.done_by, old.done_by_name,
+               old.done_at, old.saved_at, old.photos) then
+            raise exception 'A tick cannot be changed once it is saved';
+        end if;
+        return new;
+    end if;
+
+    select * into r from public.checklist_rounds where id = new.round_id;
+    if not found then
+        raise exception 'That round does not exist';
+    end if;
+    if r.ended_at is not null then
+        raise exception 'That round has ended, so nothing more can be ticked on it';
+    end if;
+
+    select * into t from public.checklist_tasks where id = new.task_id;
+    if not found or t.checklist_id <> r.checklist_id then
+        raise exception 'That is not on this checklist';
+    end if;
+    if not t.is_active then
+        raise exception '% is no longer on the list', t.name;
+    end if;
+    if exists (select 1 from public.checklist_tasks k where k.parent_id = t.id and k.is_active) then
+        raise exception '% is ticked through the things under it', t.name;
+    end if;
+    if t.needs_photo and cardinality(new.photos) = 0 then
+        raise exception '% needs a photo before it can be ticked', t.name;
+    end if;
+
+    folder := r.restaurant_id::text || '/rounds/' || r.id::text || '/';
+    foreach p in array new.photos loop
+        if left(p, length(folder)) <> folder then
+            raise exception 'A photo has to be taken for this round';
+        end if;
+    end loop;
+
+    new.restaurant_id := r.restaurant_id;
+    new.saved_at := now();
+    new.done_at := least(greatest(coalesce(new.done_at, now()), r.started_at), now());
+    new.photos_gone_at := null;
+    if auth.uid() is not null then
+        new.done_by := auth.uid();
+        select full_name into new.done_by_name from public.users where id = auth.uid();
+    end if;
+    return new;
+end $$;
+
+-- How many things at the bottom of the list a round still has to tick. What is
+-- on the list is what is on it now: something taken off does not hold a round
+-- open, and something added joins the round in progress.
+create or replace function public.checklist_left(round uuid) returns integer
+    language sql stable
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select count(*)::integer
+      from public.checklist_rounds r
+      join public.checklist_tasks t on t.checklist_id = r.checklist_id
+      join public.checklist_categories c on c.id = t.category_id
+      left join public.checklist_tasks up on up.id = t.parent_id
+     where r.id = round
+       and t.is_active
+       and c.is_active
+       and (up.id is null or up.is_active)
+       and not exists (select 1 from public.checklist_tasks k where k.parent_id = t.id and k.is_active)
+       and not exists (select 1 from public.checklist_ticks d where d.round_id = r.id and d.task_id = t.id)
+$$;
+
+-- Ends a round when nothing is left. The last tick calls it through the
+-- trigger below; the app calls it too, for a round that has nothing left
+-- because a manager took the last thing off the list.
+create or replace function public.finish_checklist_round(round uuid) returns boolean
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    ended integer;
+begin
+    if auth.uid() is not null and not exists (
+        select 1 from public.checklist_rounds r
+         where r.id = round
+           and (public.get_my_role() = 'super_admin' or r.restaurant_id = public.get_my_restaurant_id())
+    ) then
+        return false;
+    end if;
+
+    if public.checklist_left(round) > 0 then
+        return false;
+    end if;
+
+    perform set_config('checklists.finishing', 'on', true);
+    update public.checklist_rounds set ended_at = now() where id = round and ended_at is null;
+    get diagnostics ended = row_count;
+    perform set_config('checklists.finishing', '', true);
+    return ended > 0;
+end $$;
+
+create or replace function public.checklist_tick_finishes() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    perform public.finish_checklist_round(new.round_id);
+    return null;
+end $$;
+
+-- Which photos the nightly job deletes. His rules, 27 September: a list keeps
+-- the photos of its last finished round and of the one in progress, so there
+-- are never two old rounds and a new one all holding pictures. A list done
+-- once keeps its photos two weeks after it is finished. A guide picture never
+-- expires: it goes when it is taken off its task, when its task is deleted or
+-- taken off the list, or when the whole list is. And a photo taken and never
+-- submitted goes after a day, which is also the grace every file gets so
+-- nothing is deleted between being uploaded and being saved.
+create or replace function public.checklist_photos_due() returns setof text
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    with ranked as (
+        select r.id, r.ended_at, l.repeats,
+               row_number() over (partition by r.checklist_id, (r.ended_at is null)
+                                  order by r.ended_at desc, r.started_at desc, r.id desc) as n
+          from public.checklist_rounds r
+          join public.checklists l on l.id = r.checklist_id
+    ), old_rounds as (
+        select id from ranked
+         where ended_at is not null
+           and (n > 1 or (repeats = 'once' and ended_at < now() - interval '14 days'))
+    )
+    select unnest(t.photos)
+      from public.checklist_ticks t
+     where t.round_id in (select id from old_rounds)
+       and t.photos_gone_at is null
+       and cardinality(t.photos) > 0
+    union
+    select o.name
+      from storage.objects o
+     where o.bucket_id = 'checklist-photos'
+       and o.created_at < now() - interval '1 day'
+       and ((split_part(o.name, '/', 2) = 'rounds'
+             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos)))
+         or (split_part(o.name, '/', 2) = 'guides'
+             and not exists (select 1
+                               from public.checklist_tasks k
+                               join public.checklists l on l.id = k.checklist_id
+                              where o.name = any (k.guide_photos)
+                                and k.is_active
+                                and l.is_active)))
+$$;
+
+-- And what it says afterwards, so the tick shows the photo was deleted rather
+-- than never taken, and a task taken off the list stops pointing at guide
+-- pictures that are no longer there.
+create or replace function public.checklist_photos_removed(names text[]) returns integer
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    marked integer;
+begin
+    update public.checklist_ticks
+       set photos_gone_at = now()
+     where photos && names
+       and photos_gone_at is null;
+    get diagnostics marked = row_count;
+
+    update public.checklist_tasks
+       set guide_photos = array(select p from unnest(guide_photos) as p where p <> all (names))
+     where guide_photos && names;
+
+    return marked;
+end $$;
 
 CREATE OR REPLACE FUNCTION "public"."brief"("v" "jsonb") RETURNS "jsonb"
     LANGUAGE "sql" IMMUTABLE
@@ -2412,6 +2878,10 @@ end;
 $$;
 
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
+COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
+COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted. Nothing younger than a day.';
+COMMENT ON FUNCTION "public"."checklist_photos_removed"("names" "text"[]) IS 'Marks the ticks whose photos the nightly job has just deleted, and clears a guide picture it deleted off the task taken off the list.';
+COMMENT ON FUNCTION "public"."finish_checklist_round"("round" "uuid") IS 'Ends a round when everything on its list is ticked. Returns whether it did. Safe to call any time: it does nothing to a round with something left or one already ended.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
 COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
@@ -2419,6 +2889,22 @@ COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'W
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_photos_due"() to service_role;
+revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_photos_removed"("names" "text"[]) to service_role;
+revoke all on function "public"."checklist_round_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_round_guard"() to service_role;
+revoke all on function "public"."checklist_task_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_task_guard"() to service_role;
+revoke all on function "public"."checklist_task_moved"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_task_moved"() to service_role;
+revoke all on function "public"."checklist_tick_finishes"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_tick_finishes"() to service_role;
+revoke all on function "public"."checklist_tick_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_tick_guard"() to service_role;
+revoke all on function "public"."finish_checklist_round"("round" "uuid") from public, anon;
+grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
@@ -2725,6 +3211,60 @@ CREATE POLICY "stock_take_lines_write_manager" ON "public"."stock_take_lines" TO
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text")))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text"))))));
+
+
+-- -- Checklists --------------------------------------------------------
+--
+-- Everybody at the restaurant reads its lists and works through them: starts
+-- a round and ticks. Managers and above make the lists, end a round early,
+-- and delete a round started by mistake, which the ticks' foreign key only
+-- allows while nothing on it is ticked. Nobody changes or deletes a tick.
+
+ALTER TABLE "public"."checklists" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklists_select" ON "public"."checklists" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklists_write" ON "public"."checklists" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."checklist_categories" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_categories_select" ON "public"."checklist_categories" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))));
+
+CREATE POLICY "checklist_categories_write" ON "public"."checklist_categories" TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
+
+ALTER TABLE "public"."checklist_tasks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_tasks_select" ON "public"."checklist_tasks" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))));
+
+CREATE POLICY "checklist_tasks_write" ON "public"."checklist_tasks" TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
+
+ALTER TABLE "public"."checklist_rounds" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_rounds_select" ON "public"."checklist_rounds" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_rounds_start" ON "public"."checklist_rounds" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_rounds_end" ON "public"."checklist_rounds" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+CREATE POLICY "checklist_rounds_delete" ON "public"."checklist_rounds" FOR DELETE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."checklist_ticks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_ticks_select" ON "public"."checklist_ticks" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_ticks_insert" ON "public"."checklist_ticks" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 
 -- -- The roster --------------------------------------------------------
@@ -3059,12 +3599,25 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
 
+-- The day each thing on a checklist was last done. The third kind, and the
+-- opposite of the two above: it is a security invoker view, so it reads
+-- through the ticks' own row level security and needs no where clause.
+CREATE OR REPLACE VIEW "public"."checklist_last_done" WITH ("security_invoker"='true') AS
+ SELECT "task_id",
+    "max"("done_at") AS "done_at"
+   FROM "public"."checklist_ticks"
+  GROUP BY "task_id";
+
+COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticked. Reads through the ticks'' own row level security.';
+
 -- Who may read them, stated rather than inherited from whatever the default
 -- privileges happen to be.
 grant select on public.roster_colleagues to authenticated;
 grant select on public.roster_away      to authenticated;
 revoke all on public.roster_colleagues from anon, public;
 revoke all on public.roster_away      from anon, public;
+grant select on public.checklist_last_done to authenticated;
+revoke all on public.checklist_last_done from anon, public;
 
 grant select on public.public_menu_categories to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
@@ -3199,6 +3752,56 @@ create policy timesheet_hours_read on storage.objects
              and split_part(name, '/', 1) = get_my_restaurant_id()::text))
   );
 
+
+
+-- The checklist photos.
+--
+-- Private. They are pictures of the kitchen and now and then of whoever is
+-- in it, and the Hub shows them through signed addresses that expire. The
+-- first folder is the restaurant, the second is guides (the pictures a
+-- manager puts on a task, kept for as long as the task is) or rounds (what
+-- staff took, deleted by the nightly job). Staff add to rounds; only
+-- managers add or take away guides. Nobody but the job deletes a round's
+-- photo, since that is the proof.
+--
+-- The bucket row is in seed.sql: 3MB and JPEG only, because the phone
+-- shrinks every photo to a few hundred KB before it leaves.
+
+drop policy if exists checklist_photos_read on storage.objects;
+create policy checklist_photos_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'checklist-photos'
+    and ((get_my_role() = 'super_admin')
+         or split_part(name, '/', 1) = get_my_restaurant_id()::text)
+  );
+
+drop policy if exists checklist_photos_write on storage.objects;
+create policy checklist_photos_write on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'checklist-photos'
+    and ((get_my_role() = 'super_admin')
+         or (split_part(name, '/', 1) = get_my_restaurant_id()::text
+             and (split_part(name, '/', 2) = 'rounds'
+                  or (split_part(name, '/', 2) = 'guides'
+                      and get_my_role() in ('store_manager', 'owner')))))
+  );
+
+drop policy if exists checklist_photos_remove on storage.objects;
+create policy checklist_photos_remove on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'checklist-photos'
+    and split_part(name, '/', 2) = 'guides'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
 -- ======================================================================
 -- What watches it all
 -- ======================================================================
@@ -3224,6 +3827,12 @@ CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
+CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();
+CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" ON "public"."checklist_tasks" FOR EACH ROW WHEN ((("new"."parent_id" IS NULL) AND ("old"."category_id" IS DISTINCT FROM "new"."category_id"))) EXECUTE FUNCTION "public"."checklist_task_moved"();
+CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_rounds" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_round_guard"();
+CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
+CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
 
 -- The audit triggers, put on by the function rather than listed here. There
 -- are sixty six of them and they are all the same two.

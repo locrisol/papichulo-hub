@@ -29,6 +29,8 @@ import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
 import ReportPrices from '@/components/reports/ReportPrices'
 import usePriceWeek from '@/components/reports/usePriceWeek'
+import useCleaningWeek from '@/components/reports/useCleaningWeek'
+import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
 import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
@@ -142,6 +144,14 @@ export default function ReportPage() {
         threshold: activeRestaurant?.recipe_gap_percent == null ? undefined : num(activeRestaurant.recipe_gap_percent),
         enabled: report?.status === 'draft',
         refresh: priceRefresh,
+    })
+
+    // The checklists as they stood on Saturday night. Live on a draft, frozen
+    // with everything else when it goes out, the same as the prices.
+    const liveCleaning = useCleaningWeek({
+        restaurantId: report?.restaurant_id,
+        weekStart: report?.week_start,
+        enabled: report?.status === 'draft',
     })
 
     // Up here rather than beside the charts, because publishing needs them to
@@ -663,6 +673,9 @@ export default function ReportPage() {
             // The price section exactly as it stood, words and all, because
             // the mail cannot work any of it out for itself.
             prices: livePrices.ready ? livePrices.data : null,
+            // The checklists, words and all, with the paths of the week's
+            // photos so the page can still show them while they are kept.
+            cleaning: liveCleaning.ready ? liveCleaning.data : null,
             paperwork: {
                 food,
                 // Frozen with whether a renewal had been applied for, because
@@ -673,9 +686,16 @@ export default function ReportPage() {
         })
     }
 
-    // The price section is frozen with everything else, so it has to have
-    // finished reading, and be this week's, before anything goes out.
-    function pricesNotReady() {
+    // The price section and the checklists are frozen with everything else,
+    // so both have to have finished reading, and be this week's, before
+    // anything goes out.
+    function stillReading() {
+        if (sections.some(s => s.key === 'cleaning') && !liveCleaning.ready) {
+            setError(liveCleaning.error
+                ? `The checklists could not be read, so this cannot go out yet: ${liveCleaning.error}`
+                : 'The checklists are still being read. Give it a moment and press it again.')
+            return true
+        }
         if (!sections.some(s => s.key === 'prices_suppliers')) return false
         if (livePrices.ready) return false
         setError(livePrices.error
@@ -687,7 +707,7 @@ export default function ReportPage() {
     async function publish() {
         const check = publishCheck(sections, figures, deliveryHeld)
         if (check.blockers.length > 0) return
-        if (pricesNotReady()) return
+        if (stillReading()) return
 
         const first = (report.send_count || 0) === 0
         const ok = await confirm({
@@ -785,7 +805,7 @@ export default function ReportPage() {
     // sends a test to whoever is logged in, which is a rule a browser cannot
     // talk it out of.
     async function testSend() {
-        if (pricesNotReady()) return
+        if (stillReading()) return
         setMailed(null)
         setSaving(true)
         try {
@@ -831,12 +851,21 @@ export default function ReportPage() {
     // sent changes.
     async function addSection(title) {
         const taken = sections.map(s => s.key)
-        return write(() => supabase.from('report_sections').insert({
-            report_id: report.id,
-            key: sectionKey(title, taken),
-            title,
-            sort_order: sections.length,
-        }))
+        // Cleaning stays last, which is where he asked for it, so a section
+        // added now goes in just before it.
+        const last = sections.find(s => s.key === 'cleaning')
+        return write(async () => {
+            if (last) {
+                const moved = await supabase.from('report_sections').update({ sort_order: sections.length }).eq('id', last.id)
+                if (moved.error) return moved
+            }
+            return supabase.from('report_sections').insert({
+                report_id: report.id,
+                key: sectionKey(title, taken),
+                title,
+                sort_order: last ? last.sort_order : sections.length,
+            })
+        })
     }
 
     async function renameSection(sectionId, title) {
@@ -1245,7 +1274,7 @@ export default function ReportPage() {
             {sections.filter(s => s.key !== 'sales_costs').map(section => {
                 const built = [
                     'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
-                    'people_ops', 'marketing', 'support_actions',
+                    'people_ops', 'marketing', 'support_actions', 'cleaning',
                 ].includes(section.key)
                 return (
                     <div key={section.id} className={card}>
@@ -1300,6 +1329,12 @@ export default function ReportPage() {
                                             paperwork={paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
                                             asOf={todayISO()}
+                                        />
+                                    )}
+                                    {section.key === 'cleaning' && (
+                                        <ReportCleaning
+                                            cleaning={report.status === 'published' ? report.figures?.cleaning : liveCleaning.data}
+                                            published={report.status === 'published'}
                                         />
                                     )}
                                     {section.key === 'support_actions' && (

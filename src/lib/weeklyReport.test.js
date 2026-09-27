@@ -91,8 +91,14 @@ describe('the sections a new week starts with', () => {
     it('adds a built-in section last week did not have, straight after the one it follows', () => {
         expect(sectionsFor(LAST_WEEK).map(s => s.key)).toEqual([
             'sales_costs', 'profit_loss', 'prices_suppliers', 'priorities', 'online_sales',
-            'corporate_sales', 'people_ops', 'marketing', 'support_actions',
+            'corporate_sales', 'people_ops', 'marketing', 'support_actions', 'cleaning',
         ])
+    })
+
+    // Cleaning arrived on 27 September, and he asked for it at the end.
+    it('puts Cleaning last, after a section of their own at the end', () => {
+        const withOwn = [...LAST_WEEK, { key: 'follow_up', title: 'Follow up' }]
+        expect(sectionsFor(withOwn).map(s => s.key).slice(-2)).toEqual(['follow_up', 'cleaning'])
     })
 
     it('keeps a renamed heading and a section of their own', () => {
@@ -108,9 +114,9 @@ describe('the sections a new week starts with', () => {
 })
 
 describe('isOwnSection', () => {
-    it('says no to every one of the eight the report comes with', () => {
+    it('says no to every one of the nine the report comes with', () => {
         for (const key of ['sales_costs', 'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
-            'people_ops', 'marketing', 'support_actions']) {
+            'people_ops', 'marketing', 'support_actions', 'cleaning']) {
             expect(isOwnSection({ key })).toBe(false)
         }
     })

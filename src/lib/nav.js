@@ -39,6 +39,9 @@ export const navItems = [
     { path: '/invoices/claims', label: 'Delivery problems', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste', label: 'Waste', icon: 'waste', section: 'Operations', roles: ALL_ROLES },
     { path: '/waste/summary', label: 'Waste summary', icon: 'waste', section: 'Operations', roles: MANAGERS },
+    // Everybody, because the people cleaning are the ones ticking. Setting the
+    // lists up and the reports on them are reached from inside, managers only.
+    { path: '/checklists', label: 'Checklists', icon: 'check', section: 'Operations', roles: ALL_ROLES },
 
     // { path: '/catalogue', label: 'Products', icon: 'cat', section: 'Inventory' },
     { path: '/catalogue/products', label: 'Products', icon: 'cat', section: 'Catalogue', roles: MANAGERS },

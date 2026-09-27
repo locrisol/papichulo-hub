@@ -60,6 +60,43 @@ describe('Modal', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
+    // Selecting text in a box and letting go of the mouse a little outside the
+    // dialog is a click on the overlay as far as the browser is concerned, and
+    // it closed the dialog with everything typed in it.
+    it('stays open when a press inside is let go over the overlay', async () => {
+        const onClose = vi.fn()
+        const user = userEvent.setup()
+        render(
+            <Modal title="x" onClose={onClose}>
+                <input aria-label="Notes" defaultValue="Some words" />
+            </Modal>,
+        )
+
+        await user.pointer([
+            { keys: '[MouseLeft>]', target: screen.getByRole('textbox', { name: 'Notes' }) },
+            { target: screen.getByRole('dialog') },
+            { keys: '[/MouseLeft]' },
+        ])
+        expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('stays open when a press on the overlay is let go inside', async () => {
+        const onClose = vi.fn()
+        const user = userEvent.setup()
+        render(
+            <Modal title="x" onClose={onClose}>
+                <input aria-label="Notes" />
+            </Modal>,
+        )
+
+        await user.pointer([
+            { keys: '[MouseLeft>]', target: screen.getByRole('dialog') },
+            { target: screen.getByRole('textbox', { name: 'Notes' }) },
+            { keys: '[/MouseLeft]' },
+        ])
+        expect(onClose).not.toHaveBeenCalled()
+    })
+
     it('stops the page behind it scrolling, and lets it go again', () => {
         const { unmount } = render(<Modal title="x" onClose={() => {}}>y</Modal>)
         expect(document.body.style.overflow).toBe('hidden')

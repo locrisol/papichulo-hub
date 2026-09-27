@@ -430,7 +430,13 @@ function salesAndCosts(section, f, charts) {
 // figure, which was the cost, and a share against what it took in our week.
 function deliveryOf(item, platform) {
     if (platform && platform.cost != null) {
-        return { cost: num(platform.cost), rate: platform.rate == null ? null : num(platform.rate) }
+        return {
+            cost: num(platform.cost),
+            rate: platform.rate == null ? null : num(platform.rate),
+            // What the share was worked out against: the platform's own
+            // takings over its statement's Monday to Sunday.
+            against: platform.statementTaken == null ? null : num(platform.statementTaken),
+        }
     }
     const sales = num(platform?.taken)
     return {
@@ -481,12 +487,20 @@ function profitAndLoss(section, f, charts) {
         // costs" into four. Splitting the tables took that string off the
         // overheads; this takes it off the platforms as well.
         const platform = platforms.find(p => p.id === item.key)
-        const { cost, rate } = deliveryOf(item, platform)
+        //
+        // Since 27 September it says what the share was taken against and
+        // over which days, his words: "the percentage is calculated against X
+        // amount and done Monday to Sunday as that's the way the cost reports
+        // comes". A report frozen before the statement week keeps saying what
+        // it said.
+        const { cost, rate, against } = deliveryOf(item, platform)
+        const over = against != null && f.statement?.words
+            ? `${pct(rate)} of the ${money(against)} it took ${escapeHtml(f.statement.words)}, the days its statement covers`
+            : `${pct(rate)} of what it took`
         rows.push(line({
             label: escapeHtml(item.label || 'Platform')
                 + (rate != null
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">`
-                        + `${pct(rate)} of what it took</span>`
+                    ? `<br /><span style="color:${MUTED};font-size:13px;">${over}</span>`
                     : ''),
             colour: platform?.colour,
             value: money(cost),
@@ -771,6 +785,63 @@ function supportActions(section, weekStart) {
     })
 
     return heading(section.title, section.number) + figures(rows) + comments(sectionComments(section))
+}
+
+// The checklists as they stood on Saturday night, one card each, the way the
+// paperwork is laid out.
+//
+// Every word comes frozen from the app (weekCleaning in checklists.js),
+// because nothing outside this folder is deployed with it. A card says what
+// the list came to and, when it warns, what was left and when each of those
+// was last done. No photos: his answer on 27 September was the Hub page only,
+// since a picture in a mail breaks once the nightly job deletes it and thirty
+// of them make a heavy mail. So the mail says how many there were and where to
+// see them.
+const LEFT_IN_MAIL = 12
+
+function cleaningCard(list) {
+    const warn = list.lines.some(l => l.warn)
+    const tone = warn ? RED : list.lines.every(l => l.state === 'done') ? GREEN : AMBER
+    const lines = list.lines.map(line => {
+        const colour = line.warn ? RED : line.state === 'done' ? GREEN : INK
+        let out = `<div style="margin-top:8px;font-family:${FONT};font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
+        if (line.warn && line.left?.length) {
+            // Missed two rounds running is the thing worth a manager's eye,
+            // so it is said in red.
+            const shown = line.left.slice(0, LEFT_IN_MAIL)
+                .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`
+                    + (t.again ? `<span style="color:${RED};font-weight:700;">, not done the time before either</span>` : ''))
+            if (line.left.length > LEFT_IN_MAIL) shown.push(`<span style="color:${MUTED};">and ${line.left.length - LEFT_IN_MAIL} more, on the Hub</span>`)
+            out += `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
+        }
+        return out
+    }).join('')
+    const photos = list.photos?.length
+        ? `<div style="margin-top:10px;font-family:${FONT};font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
+        : ''
+
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <div style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
+                <div style="margin-top:2px;font-family:${FONT};font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
+            </td></tr>
+            <tr><td style="padding:2px 14px 14px;">${lines}${photos}</td></tr>
+        </table>
+    </td></tr>`
+}
+
+function cleaningSection(section, f) {
+    const c = f.cleaning
+    const written = comments(sectionComments(section))
+    if (!c) return heading(section.title, section.number) + note('The checklists were not read for this week.') + written
+    if (!c.lists?.length) return heading(section.title, section.number) + note('No checklists were due this week.') + written
+    const total = (c.byDay || []).reduce((sum, n) => sum + n, 0)
+    return heading(section.title, section.number)
+        + c.lists.map(cleaningCard).join('')
+        + (total ? note(`${total} ${total === 1 ? 'thing' : 'things'} ticked this week. ${c.busiest || ''}`.trim()) : '')
+        + written
 }
 
 // A section somebody added. It has no figures of its own, only what was written
@@ -1092,6 +1163,7 @@ export function reportEmail({
         people_ops: s => peopleAndOps(s, f),
         marketing: s => ownSection(s),
         support_actions: s => supportActions(s, weekStart),
+        cleaning: s => cleaningSection(s, f),
     }
 
     // Numbered in the order they are drawn, which is the order they are read
@@ -1251,6 +1323,22 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 group('Runs out soon:', state.expiring)
                 group('Nothing on file:', state.missing)
             }
+        } else if (section.key === 'cleaning') {
+            const c = f.cleaning
+            if (!c?.lists?.length) out.push(c ? '  No checklists were due this week.' : '  The checklists were not read for this week.')
+            for (const list of c?.lists || []) {
+                out.push(`  ${list.name} (${list.repeats})`)
+                for (const line of list.lines) {
+                    out.push(`    ${line.words}`)
+                    if (line.warn) {
+                        for (const t of line.left || []) {
+                            out.push(`      - ${t.label}, ${t.lastDoneWords}${t.again ? ', not done the time before either' : ''}`)
+                        }
+                    }
+                }
+                if (list.photos?.length) out.push(`    ${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.`)
+            }
+            if (c?.busiest) out.push(`  ${c.busiest}`)
         } else if (section.key === 'support_actions') {
             const open = of(section, 'action').filter(a => !a.done_on)
             if (open.length === 0) out.push('  Nothing outstanding.')
