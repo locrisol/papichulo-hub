@@ -1,4 +1,5 @@
-import { fmtMoney } from '@/lib/format'
+import { fmtMoney, fmtPct } from '@/lib/format'
+import { accountColour } from '@/lib/reportCharts'
 import AutoTextarea from '@/components/ui/AutoTextarea'
 
 // Corporate sales.
@@ -12,6 +13,11 @@ import AutoTextarea from '@/components/ui/AutoTextarea'
 // That note is kept against the platform rather than as a section comment, so
 // it sits on the line it belongs to and follows into the mail beside its own
 // figure.
+//
+// Each account wears the colour its line has on the Corporate sales chart just
+// above, on its edge, its square and its bar, the way the online platforms
+// wear their brand. It was dark green throughout, and he said the whole
+// section looked black (27 September).
 
 export default function ReportCorporateSales({ platforms, taken, notes, canEdit, onSaveNote }) {
     const total = platforms.reduce((t, p) => t + (taken[p.id] || 0), 0)
@@ -20,7 +26,6 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
     // on this section the size is the story: Feedr arriving and passing Lunch
     // Team is the sort of thing that should not need looking for.
     const ordered = platforms.slice().sort((a, b) => (taken[b.id] || 0) - (taken[a.id] || 0))
-    const most = ordered.length ? (taken[ordered[0].id] || 0) : 0
 
     return (
         <div>
@@ -32,23 +37,44 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
             <div className="space-y-3">
                 {ordered.map(p => {
                     const amount = taken[p.id] || 0
+                    const share = total > 0 ? (amount / total) * 100 : 0
                     const note = notes.get(p.id)
+                    const colour = accountColour(platforms, p.id)
                     return (
-                        <div key={p.id} className="rounded-lg border border-border bg-white p-3">
+                        <div
+                            key={p.id}
+                            className="rounded-xl border border-border border-l-4 bg-app-bg p-4"
+                            style={{ borderLeftColor: colour }}
+                        >
                             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                                <span className="font-semibold text-sm text-gray-900">{p.name}</span>
-                                <span className="text-sm font-bold tabular-nums text-sidebar">
-                                    {fmtMoney(amount)}
+                                <span className="flex items-center gap-2 font-bold text-base text-gray-900">
+                                    <span
+                                        className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                        style={{ background: colour }}
+                                        aria-hidden="true"
+                                    />
+                                    {p.name}
+                                </span>
+                                <span className="tabular-nums">
+                                    {total > 0 && <span className="text-xs text-muted mr-2">{fmtPct(share)}</span>}
+                                    <span className="font-serif text-lg font-bold text-sidebar">{fmtMoney(amount)}</span>
                                 </span>
                             </div>
 
-                            {/* A bar rather than a percentage. The question here
-                                is which of these is the big one, and a bar
-                                answers it without anybody reading a number. */}
-                            <div className="h-1.5 bg-app-bg rounded-full overflow-hidden my-2">
+                            {/* How much of the total this one was. It was sized
+                                against the biggest account, so the biggest always
+                                filled the bar, and under the total that read as if
+                                it were all of it: his catch, 27 September. The
+                                share is written beside the money for the same
+                                reason. */}
+                            <div
+                                className="h-2 bg-white border border-border rounded-full overflow-hidden my-2.5"
+                                role="img"
+                                aria-label={`${p.name}: ${fmtPct(share)} of corporate orders`}
+                            >
                                 <div
-                                    className="h-full bg-sidebar rounded-full transition-all duration-500"
-                                    style={{ width: most > 0 ? `${(amount / most) * 100}%` : '0%' }}
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${share}%`, background: colour }}
                                 />
                             </div>
 
@@ -59,7 +85,7 @@ export default function ReportCorporateSales({ platforms, taken, notes, canEdit,
                                         const text = e.target.value.trim()
                                         if (text !== (note?.note || '')) onSaveNote(p, text)
                                     }}
-                                    placeholder="Who it was for"
+                                    placeholder={`Add a comment for ${p.name}`}
                                     className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 text-sm shadow-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
                                 />
                             ) : note?.note ? (

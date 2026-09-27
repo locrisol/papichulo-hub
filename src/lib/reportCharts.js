@@ -29,6 +29,14 @@ const PACKAGING = '#2A8F52'
 // set, ordered so the biggest is the darkest.
 const CORPORATE_COLOURS = ['#1F4E5F', '#BC552B', '#2A8F52', '#8AA9B4', '#96600A', '#6B6459']
 
+// The colour a corporate account's line has on the chart, so anything else on
+// the report that stands for the account can wear the same one. `platforms` in
+// the order the chart is given them, which is the order in settings.
+export function accountColour(platforms, id) {
+    const at = (platforms || []).findIndex(p => p.id === id)
+    return CORPORATE_COLOURS[Math.max(at, 0) % CORPORATE_COLOURS.length]
+}
+
 // A line per platform, plus their total.
 //
 // Lines rather than a stack. A stack says the parts add up to something worth
