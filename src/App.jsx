@@ -68,6 +68,10 @@ const CalendarPage = lazy(() => import('@/pages/diary/CalendarPage'))
 const EmployeesPage = lazy(() => import('@/pages/team/EmployeesPage'))
 const RosterPage = lazy(() => import('@/pages/roster/RosterPage'))
 const MyShiftsPage = lazy(() => import('@/pages/roster/MyShiftsPage'))
+const ChecklistsPage = lazy(() => import('@/pages/checklists/ChecklistsPage'))
+const ChecklistRoundPage = lazy(() => import('@/pages/checklists/ChecklistRoundPage'))
+const ChecklistEditPage = lazy(() => import('@/pages/checklists/ChecklistEditPage'))
+const ChecklistsReportPage = lazy(() => import('@/pages/checklists/ChecklistsReportPage'))
 
 
 
@@ -120,6 +124,14 @@ export default function App() {
                 {/* Anyone logs waste; only managers see the week. */}
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />
                 <Route path="/waste/summary" element={<RequireRole allowed={MANAGERS}><WasteSummaryPage /></RequireRole>} />
+
+                {/* Everybody works through a checklist. Making one, and the
+                    reports on how the cleaning is going, are managers only. */}
+                <Route path="/checklists" element={<RequireRole allowed={ALL_ROLES}><ChecklistsPage /></RequireRole>} />
+                <Route path="/checklists/rounds/:id" element={<RequireRole allowed={ALL_ROLES}><ChecklistRoundPage /></RequireRole>} />
+                <Route path="/checklists/new" element={<RequireRole allowed={MANAGERS}><ChecklistEditPage /></RequireRole>} />
+                <Route path="/checklists/:id/edit" element={<RequireRole allowed={MANAGERS}><ChecklistEditPage /></RequireRole>} />
+                <Route path="/checklists/report" element={<RequireRole allowed={MANAGERS}><ChecklistsReportPage /></RequireRole>} />
 
                 {/* The catalogue is managers only, because every one of these
                     screens shows what we pay. An employee counting stock sees
