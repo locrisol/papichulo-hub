@@ -346,3 +346,24 @@ describe('what is still to download', () => {
         expect(stillMissing(null, held)).toEqual([])
     })
 })
+
+// Cleared as not needed on Still to download, 27 September.
+describe('documents cleared as not needed', () => {
+    const recorded = [
+        { supplier_id: 's1', document_id: 'A1', document_date: '2026-08-28', document_type: 'invoice', value: '14.10', not_needed_at: '2026-09-27T01:00:00Z' },
+        { supplier_id: 's1', document_id: 'A2', document_date: '2026-09-14', document_type: 'invoice', value: '20.00' },
+    ]
+
+    it('are left off what is still to download', () => {
+        expect(stillMissing(recorded, []).map(r => r.document_id)).toEqual(['A2'])
+    })
+
+    it('can be listed on their own, to be put back', () => {
+        expect(stillMissing(recorded, [], { cleared: true }).map(r => r.document_id)).toEqual(['A1'])
+    })
+
+    it('are not listed as cleared once they are in the Hub after all', () => {
+        const held = [{ id: 'i1', supplier_id: 's1', invoice_number: 'A1', invoice_date: '2026-08-28', total_amount: 14.1 }]
+        expect(stillMissing(recorded, held, { cleared: true })).toEqual([])
+    })
+})

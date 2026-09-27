@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
 
 // What the lists say exists and the Hub does not have, as it reads on screen.
@@ -17,9 +17,9 @@ const { default: StillMissing } = await import('./StillMissing')
 const SUPPLIER = { id: 's1', name: 'Test Supplier' }
 
 const RECORDED = [
-    { supplier_id: 's1', document_id: '45448455', order_reference: null, document_date: '2026-08-23', document_type: 'invoice', value: '163.03' },
-    { supplier_id: 's1', document_id: '45612214', order_reference: null, document_date: '2026-09-14', document_type: 'invoice', value: '102.43' },
-    { supplier_id: 's1', document_id: 'C45620001', order_reference: '45612214', document_date: '2026-09-15', document_type: 'credit', value: '-102.43' },
+    { id: 'd1', supplier_id: 's1', document_id: '45448455', order_reference: null, document_date: '2026-08-23', document_type: 'invoice', value: '163.03' },
+    { id: 'd2', supplier_id: 's1', document_id: '45612214', order_reference: null, document_date: '2026-09-14', document_type: 'invoice', value: '102.43' },
+    { id: 'd3', supplier_id: 's1', document_id: 'C45620001', order_reference: '45612214', document_date: '2026-09-15', document_type: 'credit', value: '-102.43' },
 ]
 
 function answers({ recorded = RECORDED, held = [] } = {}) {
@@ -66,5 +66,36 @@ describe('still to download', () => {
 
         expect(await screen.findByText(/Nothing to check against yet/)).toBeInTheDocument()
         expect(screen.getByRole('link', { name: 'Paste a list' })).toHaveAttribute('href', '/invoices/documents')
+    })
+
+    // His ask, 27 September: nine documents from before 12 September, the
+    // weeks kept as typed totals, meant the list could never empty itself.
+    it('clears the list by marking what is on it not needed, not by deleting it', async () => {
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+        fireEvent.click(await screen.findByRole('button', { name: 'Clear the list' }))
+
+        await waitFor(() => {
+            const writes = db.from.mock.results.map(r => r.value).filter(q => q.update.mock.calls.length)
+            expect(writes).toHaveLength(1)
+            expect(writes[0].update).toHaveBeenCalledWith({ not_needed_at: expect.any(String) })
+            expect(writes[0].in).toHaveBeenCalledWith('id', ['d1', 'd2', 'd3'])
+            expect(writes[0].delete).not.toHaveBeenCalled()
+        })
+    })
+
+    it('leaves a cleared document off, and offers to put it back', async () => {
+        answers({ recorded: RECORDED.map(r => (r.id === 'd1' ? { ...r, not_needed_at: '2026-09-27T01:00:00Z' } : r)) })
+        renderWithRouter(<StillMissing restaurantId="r1" />)
+
+        expect(await screen.findByText('45612214')).toBeInTheDocument()
+        expect(screen.queryByText('45448455')).toBeNull()
+        expect(screen.getByText('1 document cleared as not needed.')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Put them back' }))
+        await waitFor(() => {
+            const writes = db.from.mock.results.map(r => r.value).filter(q => q.update.mock.calls.length)
+            expect(writes[0].update).toHaveBeenCalledWith({ not_needed_at: null })
+            expect(writes[0].in).toHaveBeenCalledWith('id', ['d1'])
+        })
     })
 })

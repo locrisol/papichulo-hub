@@ -5,7 +5,7 @@ import { fmtMoney } from '@/lib/format'
 import { shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { stillMissing } from '@/lib/supplierDocuments'
-import { card, cardHeader, badge, hintClass } from '@/lib/controlStyles'
+import { card, cardHeader, badge, hintClass, rowButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // What the suppliers' own lists say exists and the Hub still does not have.
@@ -19,9 +19,17 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // question matters, straight after uploading a batch, and on the supplier list
 // screen so the check is there without pasting anything. One list in both
 // places, so they cannot disagree.
+//
+// **Clear the list** marks what is on it as not needed rather than deleting
+// it: nine documents from before 12 September, the weeks he kept as typed
+// totals, meant it could never empty itself. See not_needed_at. Anything
+// cleared by mistake is put back from the same place, and anything new on a
+// list pasted later still shows.
 export default function StillMissing({ restaurantId, refresh = 0, pasteLink = false }) {
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
+    const [busy, setBusy] = useState('')
+    const [again, setAgain] = useState(0)
 
     useEffect(() => {
         if (!restaurantId) return
@@ -31,7 +39,7 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
             setError('')
             const [recorded, held, suppliers] = await Promise.all([
                 supabase.from('supplier_documents')
-                    .select('supplier_id, document_id, order_reference, document_date, document_type, value')
+                    .select('id, supplier_id, document_id, order_reference, document_date, document_type, value, not_needed_at')
                     .eq('restaurant_id', restaurantId),
                 supabase.from('invoices')
                     .select('id, supplier_id, invoice_number, invoice_date, total_amount')
@@ -52,9 +60,21 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
 
         load()
         return () => { alive = false }
-    }, [restaurantId, refresh])
+    }, [restaurantId, refresh, again])
 
     const missing = useMemo(() => (data ? stillMissing(data.recorded, data.held) : []), [data])
+    const cleared = useMemo(() => (data ? stillMissing(data.recorded, data.held, { cleared: true }) : []), [data])
+
+    async function mark(rows, when, key) {
+        setBusy(key)
+        setError('')
+        const { error: e1 } = await supabase.from('supplier_documents')
+            .update({ not_needed_at: when })
+            .in('id', rows.map(r => r.id))
+        setBusy('')
+        if (e1) { setError(friendlyError(e1)); return }
+        setAgain(n => n + 1)
+    }
 
     if (error) return <ErrorBanner className="mb-6">{error}</ErrorBanner>
     if (!data) return null
@@ -87,7 +107,9 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
 
                 {data.recorded.length > 0 && missing.length === 0 && (
                     <p className="text-sm text-muted italic">
-                        Everything on the lists you have recorded is in the Hub.
+                        {cleared.length
+                            ? 'Everything else on the lists you have recorded is in the Hub.'
+                            : 'Everything on the lists you have recorded is in the Hub.'}
                     </p>
                 )}
 
@@ -121,9 +143,34 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
                         </ul>
                         <p className={hintClass}>
                             Oldest first. Download these off the supplier&apos;s own site and upload them
-                            here, and each one drops off this list as it goes in.
+                            here, and each one drops off this list as it goes in. Clear the list for
+                            anything you are not going to download.
                         </p>
+                        <button
+                            type="button"
+                            disabled={!!busy}
+                            onClick={() => mark(missing, new Date().toISOString(), 'clear')}
+                            className={`${rowButton()} mt-3`}
+                        >
+                            {busy === 'clear' ? 'Clearing...' : 'Clear the list'}
+                        </button>
                     </>
+                )}
+
+                {cleared.length > 0 && (
+                    <p className="text-sm text-muted mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span>
+                            {cleared.length} {cleared.length === 1 ? 'document' : 'documents'} cleared as not needed.
+                        </span>
+                        <button
+                            type="button"
+                            disabled={!!busy}
+                            onClick={() => mark(cleared, null, 'back')}
+                            className={rowButton()}
+                        >
+                            {busy === 'back' ? 'Putting back...' : 'Put them back'}
+                        </button>
+                    </p>
                 )}
             </div>
         </div>

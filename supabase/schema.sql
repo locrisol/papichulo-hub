@@ -848,10 +848,12 @@ CREATE TABLE IF NOT EXISTS "public"."supplier_documents" (
     "value" numeric(10,2) NOT NULL,
     "invoice_id" "uuid",
     "first_seen_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "not_needed_at" timestamp with time zone,
     CONSTRAINT "supplier_documents_type_check" CHECK (("document_type" IN ('invoice', 'credit')))
 );
 
 COMMENT ON TABLE "public"."supplier_documents" IS 'The supplier portal list, pasted in. What exists, against what we hold. Document numbers do not run in date order, so never sort or page on one.';
+COMMENT ON COLUMN "public"."supplier_documents"."not_needed_at" IS 'When somebody cleared this document off Still to download as not needed, from before the Hub read invoices or otherwise never going to be downloaded. Empty means still wanted. It stays recorded, and pasting the list again leaves this alone.';
 COMMENT ON COLUMN "public"."supplier_documents"."order_reference" IS 'On a credit this is the invoice it credits. On an invoice it is empty, which is how the two halves of a pair find each other.';
 
 ALTER TABLE ONLY "public"."supplier_documents"

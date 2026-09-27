@@ -359,7 +359,12 @@ export function creditDelays(pairs) {
 //
 // Oldest first, because the one that has been missing longest is the one most
 // likely to have been forgotten rather than still on its way.
-export function stillMissing(recorded, held) {
+//
+// A document somebody cleared as not needed (`not_needed_at`) is left off, and
+// `cleared: true` gives just those instead, so they can be put back. Either way
+// it still counts in working out what everything else is: a cleared credit is
+// still the credit that settles its invoice.
+export function stillMissing(recorded, held, { cleared = false } = {}) {
     const bySupplier = new Map()
     for (const row of recorded || []) {
         if (!bySupplier.has(row.supplier_id)) bySupplier.set(row.supplier_id, [])
@@ -371,7 +376,8 @@ export function stillMissing(recorded, held) {
         const mine = (held || []).filter(h => h.supplier_id === supplierId)
         const status = documentStatus(rows, mine)
         for (const row of rows) {
-            if (status.get(row.document_id)?.status === 'missing') out.push(row)
+            if (status.get(row.document_id)?.status !== 'missing') continue
+            if (!!row.not_needed_at === cleared) out.push(row)
         }
     }
 
