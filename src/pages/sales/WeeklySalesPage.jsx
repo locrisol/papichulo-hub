@@ -46,6 +46,9 @@ function draftKey(restaurantId, weekStart) {
     return `salesWeekDraft:${restaurantId}:${weekStart}`
 }
 
+// The blocks Tab moves across rather than down. See handleGridKeyDown.
+const ACROSS_BLOCKS = new Set(['online_platform'])
+
 // Fields compared when deciding whether a draft genuinely differs from what is
 // already stored. A draft matching the database is not an unsaved change.
 const DRAFT_FIELDS = ['gross', 'net', 'staffFood']
@@ -557,35 +560,47 @@ export default function WeeklySalesPage() {
 
     // ---- keyboard -------------------------------------------------------
 
-    // Tab normally moves across the row. In a grid like this it is more natural
-    // to move down the same day's column, so jump to the next input carrying the
-    // same data-col value. Shift+Tab goes back up.
     // Tab moves down the block you are in, and at the bottom of it carries on
     // into the same block on the next day rather than dropping into the block
-    // below.
+    // below. Shift+Tab goes back.
     //
     // It used to walk the whole column, so finishing Uber Eats put you in
     // Clockmeal, which is a different record entirely. You fill one block across
     // the week, not one day top to bottom, so this follows how it is actually
     // used.
+    //
+    // **Except the online platforms, which go across.** Asked for on 27
+    // September: those are typed a platform at a time, Sunday to Saturday, and
+    // then the next platform. Only that block; the till's rows and Corporate
+    // still go down. The boxes are in the page row by row, left to right, so
+    // the next one in the page is the next day, and after Saturday it is the
+    // next platform's Sunday. A closed day's boxes are disabled and skipped.
     function handleGridKeyDown(e) {
         if (e.key !== 'Tab') return
         const { block, col } = e.target.dataset || {}
         if (block == null || col == null) return
 
         e.preventDefault()
-
-        const inBlock = c => Array.from(document.querySelectorAll(
-            `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
-        ))
-
-        const here = inBlock(col)
         const step = e.shiftKey ? -1 : 1
-        let next = here[here.indexOf(e.target) + step]
 
-        if (!next) {
-            const neighbour = inBlock(Number(col) + step)
-            next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+        let next
+        if (ACROSS_BLOCKS.has(block)) {
+            const boxes = Array.from(document.querySelectorAll(
+                `input[data-block="${block}"]:not([disabled])`
+            ))
+            next = boxes[boxes.indexOf(e.target) + step]
+        } else {
+            const inBlock = c => Array.from(document.querySelectorAll(
+                `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
+            ))
+
+            const here = inBlock(col)
+            next = here[here.indexOf(e.target) + step]
+
+            if (!next) {
+                const neighbour = inBlock(Number(col) + step)
+                next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+            }
         }
 
         if (next) {
