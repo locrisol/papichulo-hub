@@ -537,6 +537,28 @@ ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_name_key" UNIQUE ("restaurant_id", "name");
 CREATE INDEX "idx_sales_platforms_restaurant" ON "public"."sales_platforms" USING "btree" ("restaurant_id");
 
+-- What the till calls a row of the receipt, answered once when its weekly
+-- report is read in: CASH is Cash Sales, Credit Card is Card. Only "this is our
+-- row" is kept. Money put under another row because it was rung up by mistake
+-- is one file's mistake and is asked again, or the next mistake would go
+-- somewhere without anybody seeing it.
+CREATE TABLE IF NOT EXISTS "public"."sales_tender_names" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "tender_key" "text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "sales_tender_names_has_a_name" CHECK (("btrim"("name") <> ''::"text"))
+);
+
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_once" UNIQUE ("restaurant_id", "name");
+
+COMMENT ON TABLE "public"."sales_tender_names" IS 'What the till calls a row of the sales receipt, answered once when its weekly report is read in: CASH is Cash Sales, Credit Card is Card. Money put under a row just this once is never kept here.';
+
 CREATE TABLE IF NOT EXISTS "public"."petty_cash_entries" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
@@ -1692,6 +1714,10 @@ ALTER TABLE ONLY "public"."sales_tenders"
     ADD CONSTRAINT "sales_tenders_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_tender_fk" FOREIGN KEY ("restaurant_id", "tender_key") REFERENCES "public"."sales_tenders"("restaurant_id", "key") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."petty_cash_entries"
     ADD CONSTRAINT "petty_cash_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."petty_cash_entries"
@@ -2554,6 +2580,10 @@ ALTER TABLE "public"."sales_platforms" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "sales_platforms_select" ON "public"."sales_platforms" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "sales_platforms_write" ON "public"."sales_platforms" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."sales_tender_names" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "sales_tender_names_all" ON "public"."sales_tender_names" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."petty_cash_entries" ENABLE ROW LEVEL SECURITY;
 

@@ -423,6 +423,22 @@ function salesAndCosts(section, f, charts) {
         + comments(sectionComments(section))
 }
 
+// What a platform cost the week, and the share it kept.
+//
+// Since figures version 2 the platform carries both, worked out from its
+// Monday to Sunday statement. A report frozen before that has only the typed
+// figure, which was the cost, and a share against what it took in our week.
+function deliveryOf(item, platform) {
+    if (platform && platform.cost != null) {
+        return { cost: num(platform.cost), rate: platform.rate == null ? null : num(platform.rate) }
+    }
+    const sales = num(platform?.taken)
+    return {
+        cost: num(item.amount),
+        rate: sales > 0 ? (num(item.amount) / sales) * 100 : null,
+    }
+}
+
 function profitAndLoss(section, f, charts) {
     const overheads = of(section, 'overhead')
     const delivery = of(section, 'delivery')
@@ -465,15 +481,15 @@ function profitAndLoss(section, f, charts) {
         // costs" into four. Splitting the tables took that string off the
         // overheads; this takes it off the platforms as well.
         const platform = platforms.find(p => p.id === item.key)
-        const sales = num(platform?.taken)
+        const { cost, rate } = deliveryOf(item, platform)
         rows.push(line({
             label: escapeHtml(item.label || 'Platform')
-                + (sales > 0
+                + (rate != null
                     ? `<br /><span style="color:${MUTED};font-size:13px;">`
-                        + `${pct((num(item.amount) / sales) * 100)} of what it took</span>`
+                        + `${pct(rate)} of what it took</span>`
                     : ''),
             colour: platform?.colour,
-            value: money(item.amount),
+            value: money(cost),
             indent: true,
         }))
     }
@@ -488,6 +504,11 @@ function profitAndLoss(section, f, charts) {
     // side of that box rather than three screens past it.
     return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
         + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
+        + (delivery.length > 0 && f.statement?.words
+            ? note('The platforms bill Monday to Sunday, a day behind our week. Each share is what '
+                + `the platform kept on its statement for ${f.statement.words}, and the cost is that `
+                + 'share of what it took this week.')
+            : '')
         + chart(charts.delivery, 'What each platform has cost, week by week.')
         + bigFigure({
             label: 'Net earnings',
@@ -1186,7 +1207,10 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
         } else if (section.key === 'profit_loss') {
             for (const item of of(section, 'overhead')) out.push(share(item.label, item.amount, null))
             out.push(share('Fixed overheads', f.standing, null))
-            for (const item of of(section, 'delivery')) out.push(share(item.label, item.amount, null))
+            for (const item of of(section, 'delivery')) {
+                const platform = (f.platforms || []).find(p => p.id === item.key)
+                out.push(share(item.label, deliveryOf(item, platform).cost, null))
+            }
             out.push(share('Third party delivery costs', f.deliveryTotal, null))
             out.push(share('Net earnings', f.earnings, f.earningsPct))
         } else if (section.key === 'prices_suppliers') {

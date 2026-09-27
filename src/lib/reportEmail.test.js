@@ -1357,3 +1357,47 @@ describe('nothing in the mail is too wide for a phone', () => {
         expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })
+
+// Since 27 September the figure typed is the platform's Monday to Sunday
+// statement, and the week is charged the share it kept applied to what it
+// took in our week. The mail has to print that cost, not the statement.
+describe('delivery costed from the Monday to Sunday statement', () => {
+    const costed = {
+        ...figures,
+        version: 2,
+        deliveryTotal: 1111.11,
+        statement: { from: '2026-08-31', to: '2026-09-06', words: 'Monday 31 August to Sunday 6 September' },
+        platforms: [
+            { ...figures.platforms[0], statement: 800, statementTaken: 3300, weekTaken: 3200, rate: 24.2424, cost: 775.76 },
+            { ...figures.platforms[1], statement: 380, statementTaken: 2200, weekTaken: 2100, rate: 17.2727, cost: 362.73 },
+            figures.platforms[2],
+        ],
+    }
+    const mail = reportEmail({ ...base, figures: costed })
+
+    it('prints what each platform cost this week, not its statement', () => {
+        expect(mail.html).toContain('€775.76')
+        expect(mail.html).toContain('€362.73')
+        expect(mail.html).not.toContain('€800.00')
+    })
+
+    it('gives the share it kept on its statement', () => {
+        expect(mail.html).toContain('24.24% of what it took')
+    })
+
+    it('says why the two weeks differ, in words', () => {
+        expect(mail.html).toContain('The platforms bill Monday to Sunday, a day behind our week.')
+        expect(mail.html).toContain('Monday 31 August to Sunday 6 September')
+    })
+
+    it('puts the same cost in the plain text', () => {
+        expect(mail.text).toContain('775.76')
+    })
+
+    it('keeps a report frozen before this saying what it said', () => {
+        const old = reportEmail(base)
+        expect(old.html).toContain('€800.00')
+        expect(old.html).toContain('25.00% of what it took')
+        expect(old.html).not.toContain('The platforms bill Monday to Sunday')
+    })
+})

@@ -10,6 +10,7 @@ import { tableCard, tableHeadRow, tableHeadCell, badge, secondaryButton } from '
 import {
     reportableWeeks,
     weekReadiness,
+    blockedBy,
     carriedItems,
     sectionsFor,
     DEFAULT_OVERHEADS,
@@ -82,6 +83,27 @@ function unansweredWords(waiting) {
     return said.join(' ')
 }
 
+// What a blocked week says about itself, in the badge and in the sentence
+// under it. Both follow blockedBy, so neither can name the one that is done.
+const BLOCKED_LABEL = {
+    sales: 'Sales not finished',
+    timesheet: 'Timesheet not finished',
+}
+
+function blockedWords(readiness) {
+    return blockedBy(readiness) === 'sales'
+        ? missingWords(readiness.missing)
+        : unansweredWords(readiness.unanswered)
+}
+
+function BlockedBadge({ readiness }) {
+    return (
+        <span className={`${badge} bg-accent-light text-accent-ink`}>
+            {BLOCKED_LABEL[blockedBy(readiness)]}
+        </span>
+    )
+}
+
 // The days that were entered and do not add up. Said, never enforced.
 function varianceWords(unbalanced) {
     return unbalanced
@@ -106,10 +128,8 @@ function WeekAction({ week, blocked, canWrite, starting, onOpen, onStart, onSale
         )
     }
     if (blocked) {
-        // Sent to whichever one is actually in the way. Sales first: a week
-        // with no figures at all is the bigger hole, and the timesheet is
-        // easier to finish once the days are there.
-        const toSales = week.readiness.missing.length > 0
+        // Sent to whichever one is actually in the way. See blockedBy.
+        const toSales = blockedBy(week.readiness) === 'sales'
         return (
             <button
                 onClick={toSales ? onSales : onTimesheet}
@@ -404,7 +424,7 @@ export default function ReportsListPage() {
                                 </div>
                                 <div className="flex-shrink-0">
                                     {blocked
-                                        ? <span className={`${badge} bg-accent-light text-accent-ink`}>Sales not finished</span>
+                                        ? <BlockedBadge readiness={week.readiness} />
                                         : <StateBadge report={week.report} />}
                                 </div>
                             </div>
@@ -420,7 +440,7 @@ export default function ReportsListPage() {
 
                             {blocked && (
                                 <p className="mt-2 text-sm text-accent-ink">
-                                    {missingWords(week.readiness.missing)}
+                                    {blockedWords(week.readiness)}
                                 </p>
                             )}
                             {off.length > 0 && (
@@ -479,7 +499,7 @@ export default function ReportsListPage() {
                                         </td>
                                         <td className="px-5 py-3">
                                             {blocked
-                                                ? <span className={`${badge} bg-accent-light text-accent-ink`}>Sales not finished</span>
+                                                ? <BlockedBadge readiness={week.readiness} />
                                                 : <StateBadge report={week.report} />}
                                         </td>
                                         <td className="px-5 py-3 text-right whitespace-nowrap">
@@ -501,9 +521,7 @@ export default function ReportsListPage() {
                                             <td colSpan={5} className="px-5 pb-3 text-sm">
                                                 {blocked && (
                                                     <span className="text-accent-ink">
-                                                        {week.readiness.missing.length > 0
-                                                            ? missingWords(week.readiness.missing)
-                                                            : unansweredWords(week.readiness.unanswered)}
+                                                        {blockedWords(week.readiness)}
                                                     </span>
                                                 )}
                                                 {off.length > 0 && (
@@ -526,7 +544,7 @@ export default function ReportsListPage() {
 
             <p className="text-sm text-muted px-1">
                 {canWrite
-                    ? 'A week can be started once every one of its days has been entered or marked closed. A day that does not add up against the till is noted, not enforced.'
+                    ? 'A week can be started once every one of its days has been entered or marked closed, and every rostered shift has something said on the timesheet. A day that does not add up against the till is noted, not enforced.'
                     : 'Reports are written by the store manager. This is the same list they see, so any week can be read here without going back through a mailbox.'}
             </p>
         </div>

@@ -11,7 +11,10 @@ import { resolveTarget, statusFor } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
-import { reportFigures, sectionKey, publishCheck, figuresToStore } from '@/lib/weeklyReport'
+import {
+    reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
+    deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords,
+} from '@/lib/weeklyReport'
 import { paperworkFor } from '@/lib/reportPeople'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
@@ -104,6 +107,9 @@ export default function ReportPage() {
     const [platforms, setPlatforms] = useState([])
     const [employees, setEmployees] = useState([])
     const [taken, setTaken] = useState({})
+    // The week's days and the Sunday after it, for the delivery platforms,
+    // whose statements run Monday to Sunday. See statementWeek.
+    const [around, setAround] = useState([])
     // The weeks behind this one, for the charts. Read once, from the same
     // tables the figures come from, so a line and a card can never differ.
     const [history, setHistory] = useState([])
@@ -144,6 +150,44 @@ export default function ReportPage() {
     // Called catering in the database since 015, corporate everywhere a person
     // reads it.
     const corporatePlatforms = platforms.filter(p => p.bucket === 'catering')
+
+    // Each online platform's statement and what it cost in our week.
+    //
+    // A draft works it out live. A sent report shows what it was sent with,
+    // and one sent before the statement week existed (figures version 1) shows
+    // what it said then: the typed figure as the cost, against our own week.
+    const plItems = sections.find(s => s.key === 'profit_loss')?.items || []
+    const frozenOnline = (figures?.platforms || []).filter(p => p.bucket === 'online_platform')
+    const delivery = !report ? []
+        : report.status !== 'published'
+            ? deliveryRows({ platforms: onlinePlatforms, items: plItems, days: around, weekStart: report.week_start })
+            : num(figures?.version) >= 2
+                ? frozenOnline.map(p => ({
+                    platform: { id: p.id, name: p.name },
+                    statement: p.statement ?? null,
+                    statementTaken: num(p.statementTaken),
+                    weekTaken: num(p.weekTaken ?? p.taken),
+                    rate: p.rate ?? null,
+                    cost: num(p.cost),
+                    typed: p.statement != null,
+                }))
+                : onlinePlatforms.map(p => {
+                    const item = plItems.find(i => i.kind === 'delivery' && i.key === p.id)
+                    const took = num(frozenOnline.find(f => f.id === p.id)?.taken)
+                    return {
+                        platform: p,
+                        statement: item ? num(item.amount) : null,
+                        statementTaken: took,
+                        weekTaken: took,
+                        rate: platformShare(item?.amount, took),
+                        cost: num(item?.amount),
+                        typed: !!item,
+                        legacy: true,
+                    }
+                })
+    const deliveryHeld = report?.status === 'draft'
+        ? deliveryBlockers({ weekStart: report.week_start, rows: delivery, days: around })
+        : []
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
 
     // How the last send went, so somebody who presses publish is told whether
@@ -199,6 +243,30 @@ export default function ReportPage() {
             const weekStart = head.week_start
             const end = addDays(weekStart, 6)
 
+            // Every active platform, both buckets, and what each took.
+            // platform_sales is keyed by platform name rather than id, which is
+            // a known weakness of that table, so the name is what has to be
+            // matched on. Everything the report itself stores is keyed by id.
+            //
+            // Read to the Sunday after the week, not to its Saturday, because
+            // that Sunday is the last day of the delivery platforms' statements
+            // and what each one kept is worked out over their week.
+            const [plats, days2] = await Promise.all([
+                supabase.from('sales_platforms')
+                    .select('id, name, bucket, is_active, sort_order')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .eq('is_active', true)
+                    .order('sort_order'),
+                supabase.from('sales_records')
+                    .select('sale_date, platform_sales, is_closed')
+                    .eq('restaurant_id', head.restaurant_id)
+                    .gte('sale_date', weekStart).lte('sale_date', addDays(end, 1)),
+            ])
+
+            const activePlatforms = plats.data || []
+            setPlatforms(activePlatforms)
+            setAround(days2.data || [])
+
             // A published report reads the figures frozen into it. A draft
             // reads them live, so it is always current while it is being
             // written.
@@ -228,33 +296,23 @@ export default function ReportPage() {
                 if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
                 const all = (head.report_sections || []).flatMap(s => s.report_items || [])
+                // What each platform cost in our week, from its statement and
+                // the share it kept over its own. The same rows the section
+                // draws, so the total there and the one here are one sum.
+                const rows = deliveryRows({
+                    platforms: activePlatforms.filter(p => p.bucket === 'online_platform'),
+                    items: all,
+                    days: days2.data || [],
+                    weekStart,
+                })
                 setFigures(reportFigures({
                     days: days.data || [],
                     spend: spend.data || [],
                     labour: labour.data || [],
                     overheads: all.filter(i => i.kind === 'overhead'),
-                    delivery: all.filter(i => i.kind === 'delivery'),
+                    delivery: rows.map(r => ({ amount: r.cost })),
                 }))
             }
-
-            // Every active platform, both buckets, and what each took.
-            // platform_sales is keyed by platform name rather than id, which is
-            // a known weakness of that table, so the name is what has to be
-            // matched on. Everything the report itself stores is keyed by id.
-            const [plats, days2] = await Promise.all([
-                supabase.from('sales_platforms')
-                    .select('id, name, bucket, is_active, sort_order')
-                    .eq('restaurant_id', head.restaurant_id)
-                    .eq('is_active', true)
-                    .order('sort_order'),
-                supabase.from('sales_records')
-                    .select('platform_sales')
-                    .eq('restaurant_id', head.restaurant_id)
-                    .gte('sale_date', weekStart).lte('sale_date', end),
-            ])
-
-            const activePlatforms = plats.data || []
-            setPlatforms(activePlatforms)
 
             const [ownerRows, place] = await Promise.all([
                 supabase.from('users')
@@ -273,10 +331,10 @@ export default function ReportPage() {
             setOwners(ownerRows.data || [])
             setExtras(place.data?.report_recipients || [])
 
+            // Our week only. The days read above run a day past it.
             const totals = {}
             for (const p of activePlatforms) {
-                totals[p.id] = (days2.data || []).reduce(
-                    (t, d) => t + num(d.platform_sales?.[p.name]), 0)
+                totals[p.id] = platformTaken(days2.data, p.name, weekStart, end)
             }
             setTaken(totals)
 
@@ -290,10 +348,12 @@ export default function ReportPage() {
             const yearFrom = weekStarts[0]
 
             const [hDays, hSpend, hLabour, hReports] = await Promise.all([
+                // A day past the week, for this week's platform statements.
+                // It lands in a week the charts do not draw.
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
-                    .gte('sale_date', yearFrom).lte('sale_date', end),
+                    .gte('sale_date', yearFrom).lte('sale_date', addDays(end, 1)),
                 supabase.from('invoice_cost_by_category')
                     .select('cost_date, category, amount')
                     .eq('restaurant_id', head.restaurant_id)
@@ -334,11 +394,23 @@ export default function ReportPage() {
                 const standing = items
                     .filter(i => i.kind === 'overhead')
                     .reduce((t, i) => t + num(i.amount), 0)
+                // Each statement costed the same way as this week's, so a
+                // line on the chart and the figure on the card cannot differ.
+                // Every week, including the ones already sent: what was typed
+                // was always the platform's Monday to Sunday statement. A sent
+                // report keeps the figures it went out with either way.
                 const delivery = {}
                 let deliveryTotal = 0
+                const { from, to } = statementWeek(r.week_start)
                 for (const i of items.filter(i => i.kind === 'delivery')) {
-                    delivery[i.key] = num(i.amount)
-                    deliveryTotal += num(i.amount)
+                    const name = activePlatforms.find(p => p.id === i.key)?.name || i.label
+                    const { cost } = deliveryCost({
+                        statement: i.amount,
+                        statementTaken: platformTaken(hDays.data, name, from, to),
+                        weekTaken: platformTaken(hDays.data, name, r.week_start, addDays(r.week_start, 6)),
+                    })
+                    delivery[i.key] = cost
+                    deliveryTotal += cost
                 }
                 reported.set(r.week_start, { standing, delivery, deliveryTotal })
             }
@@ -564,6 +636,10 @@ export default function ReportPage() {
             platforms: platforms.map(p => ({
                 id: p.id, name: p.name, bucket: p.bucket,
                 taken: taken[p.id] || 0,
+                // An online platform's statement, what it took over the
+                // statement's week and over ours, the share it kept and what
+                // that cost us. The mail cannot work any of it out.
+                ...deliveryFrozen(delivery.find(r => r.platform.id === p.id)),
                 // Both shades. `mark` paints the edge of the platform's block,
                 // `ink` is the same colour taken down until it reads as
                 // lettering. The mail cannot work them out for itself: only
@@ -579,6 +655,11 @@ export default function ReportPage() {
             // rather than the one set today; freezing it means a target changed
             // in October cannot repaint a report sent in September.
             targets,
+            // Which days the statements covered, in words, for the mail.
+            statement: {
+                ...statementWeek(report.week_start),
+                words: statementWords(report.week_start),
+            },
             // The price section exactly as it stood, words and all, because
             // the mail cannot work any of it out for itself.
             prices: livePrices.ready ? livePrices.data : null,
@@ -604,7 +685,7 @@ export default function ReportPage() {
     }
 
     async function publish() {
-        const check = publishCheck(sections, figures)
+        const check = publishCheck(sections, figures, deliveryHeld)
         if (check.blockers.length > 0) return
         if (pricesNotReady()) return
 
@@ -1001,7 +1082,7 @@ export default function ReportPage() {
 
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
-    const check = publishCheck(sections, figures)
+    const check = publishCheck(sections, figures, deliveryHeld)
 
     return (
         <div className="space-y-4">
@@ -1182,8 +1263,9 @@ export default function ReportPage() {
                                         <ReportProfitLoss
                                             section={section}
                                             figures={figures}
-                                            platforms={onlinePlatforms}
-                                            taken={taken}
+                                            rows={delivery}
+                                            statement={statementWords(week)}
+                                            waiting={!around.some(d => d.sale_date === statementWeek(week).to)}
                                             canEdit={canEdit}
                                             onSaveOverhead={saveOverhead}
                                             onSaveDelivery={saveDelivery}
@@ -1402,4 +1484,17 @@ function AddSection({ onAdd }) {
             </p>
         </div>
     )
+}
+
+// What a platform's row adds to the frozen figures. Nothing for a platform
+// with no row, which is every corporate one.
+function deliveryFrozen(row) {
+    if (!row) return {}
+    return {
+        statement: row.statement,
+        statementTaken: row.statementTaken,
+        weekTaken: row.weekTaken,
+        rate: row.rate,
+        cost: row.cost,
+    }
 }

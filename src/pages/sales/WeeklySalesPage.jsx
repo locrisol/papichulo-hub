@@ -17,6 +17,7 @@ import {
     bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import SalesImportDialog from '@/components/sales/SalesImportDialog'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -44,6 +45,9 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 function draftKey(restaurantId, weekStart) {
     return `salesWeekDraft:${restaurantId}:${weekStart}`
 }
+
+// The blocks Tab moves across rather than down. See handleGridKeyDown.
+const ACROSS_BLOCKS = new Set(['online_platform'])
 
 // Fields compared when deciding whether a draft genuinely differs from what is
 // already stored. A draft matching the database is not an unsaved change.
@@ -99,6 +103,7 @@ export default function WeeklySalesPage() {
 
     // True once something has been edited but not yet saved.
     const [dirty, setDirty] = useState(false)
+    const [importing, setImporting] = useState(false)
 
     // Working copy of the week, keyed by date.
     const [days, setDays] = useState({})
@@ -320,6 +325,17 @@ export default function WeeklySalesPage() {
                 platformValues: { ...prev[date].platformValues, [platformName]: value },
             },
         }))
+    }
+
+    // The till's report, read in. It lands in the boxes exactly as if it had
+    // been typed, so the week is still checked by the Reconciliation row and
+    // still saved with Save week, and nothing is written until it is.
+    function fillFromTill(filled) {
+        setDirty(true)
+        setDays(prev => ({ ...prev, ...filled }))
+        setImporting(false)
+        setFormProblem('')
+        setSuccess("The till's report is in. Check the week, then press Save week.")
     }
 
     function toggleClosed(date) {
@@ -544,35 +560,47 @@ export default function WeeklySalesPage() {
 
     // ---- keyboard -------------------------------------------------------
 
-    // Tab normally moves across the row. In a grid like this it is more natural
-    // to move down the same day's column, so jump to the next input carrying the
-    // same data-col value. Shift+Tab goes back up.
     // Tab moves down the block you are in, and at the bottom of it carries on
     // into the same block on the next day rather than dropping into the block
-    // below.
+    // below. Shift+Tab goes back.
     //
     // It used to walk the whole column, so finishing Uber Eats put you in
     // Clockmeal, which is a different record entirely. You fill one block across
     // the week, not one day top to bottom, so this follows how it is actually
     // used.
+    //
+    // **Except the online platforms, which go across.** Asked for on 27
+    // September: those are typed a platform at a time, Sunday to Saturday, and
+    // then the next platform. Only that block; the till's rows and Corporate
+    // still go down. The boxes are in the page row by row, left to right, so
+    // the next one in the page is the next day, and after Saturday it is the
+    // next platform's Sunday. A closed day's boxes are disabled and skipped.
     function handleGridKeyDown(e) {
         if (e.key !== 'Tab') return
         const { block, col } = e.target.dataset || {}
         if (block == null || col == null) return
 
         e.preventDefault()
-
-        const inBlock = c => Array.from(document.querySelectorAll(
-            `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
-        ))
-
-        const here = inBlock(col)
         const step = e.shiftKey ? -1 : 1
-        let next = here[here.indexOf(e.target) + step]
 
-        if (!next) {
-            const neighbour = inBlock(Number(col) + step)
-            next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+        let next
+        if (ACROSS_BLOCKS.has(block)) {
+            const boxes = Array.from(document.querySelectorAll(
+                `input[data-block="${block}"]:not([disabled])`
+            ))
+            next = boxes[boxes.indexOf(e.target) + step]
+        } else {
+            const inBlock = c => Array.from(document.querySelectorAll(
+                `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
+            ))
+
+            const here = inBlock(col)
+            next = here[here.indexOf(e.target) + step]
+
+            if (!next) {
+                const neighbour = inBlock(Number(col) + step)
+                next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+            }
         }
 
         if (next) {
@@ -867,13 +895,24 @@ export default function WeeklySalesPage() {
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>
                 </div>
-                {/* Switch to the single-day form, for phone use */}
-                <button
-                    onClick={() => navigate('/sales?view=day')}
-                    className={secondaryButton}
-                >
-                    Day view
-                </button>
+                {/* The till's report first, the same words the Timesheet
+                    uses for the same kind of file, then the switch to the
+                    single day form for phone use. */}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setImporting(true)}
+                        className={secondaryButton}
+                    >
+                        Upload the till&apos;s report
+                    </button>
+                    <button
+                        onClick={() => navigate('/sales?view=day')}
+                        className={secondaryButton}
+                    >
+                        Day view
+                    </button>
+                </div>
             </div>
 
             {/* Phone only.
@@ -1100,6 +1139,22 @@ export default function WeeklySalesPage() {
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
+
+            {importing && (
+                <SalesImportDialog
+                    restaurantId={restaurantId}
+                    restaurantName={activeRestaurant?.name}
+                    weekStart={weekStart}
+                    days={days}
+                    tenders={tenders}
+                    shownTenders={shownTenders}
+                    trackingPlatforms={cateringPlatforms}
+                    loading={loading}
+                    onGoToWeek={goToWeek}
+                    onFill={fillFromTill}
+                    onClose={() => setImporting(false)}
+                />
+            )}
         </div>
     )
 }

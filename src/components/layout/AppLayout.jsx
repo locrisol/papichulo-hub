@@ -278,7 +278,17 @@ export default function AppLayout({ children }) {
                     ref={mainRef}
                     // Room at the bottom on a phone so the last card clears the
                     // way back up rather than sitting under it.
-                    className="flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
+                    //
+                    // relative, so anything absolutely placed inside a page is
+                    // placed inside this box. Without it, something with no
+                    // positioned parent of its own (a label kept for screen
+                    // readers, the report's reason box) was placed against the
+                    // whole browser page instead, at the spot it has far down
+                    // the report, and stretched the page to reach it: a second
+                    // scrollbar beside this one, onto nothing but white. The
+                    // outer box's overflow-hidden does not stop that, because
+                    // it is not positioned either.
+                    className="relative flex-1 md:overflow-y-auto p-4 pb-24 md:p-7 md:pb-7"
                 >
                     {/* Which of the two is scrolling, handed down rather than
                         hunted for, so a page can remember where somebody was. */}

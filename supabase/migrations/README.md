@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `017` are in here, all run on live, and the next one is `018`.**
+**`001` to `018` are in here. `001` to `017` are run on live, `018` is not yet, and the next one is `019`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -59,6 +59,9 @@ way be put in one group, each keeping its own price.
 leaver's login the night after their last day, with a job at 00:05 UTC.
 `017` is run on live. It lets a document on a supplier's list be cleared off
 Still to download as not needed, without deleting it.
+`018` is **not run yet**. It adds `sales_tender_names`, where the weekly
+sales import keeps what the till calls a row of the receipt (CASH is Cash
+Sales, Credit Card is Card), answered once.
 
 ## What was here before
 
