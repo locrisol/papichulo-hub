@@ -7,6 +7,7 @@ import {
 } from '../../supabase/functions/weekly-report-email/email'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
+import { priceWeek } from '@/lib/invoiceReport'
 
 const figures = {
     net: 14750, gross: 16450,
@@ -1225,5 +1226,134 @@ describe('the people section, with renewals', () => {
             mail.html.indexOf('Food safety certificates'),
             mail.html.indexOf('Right to work'))
         expect(people).not.toContain('Renewal')
+    })
+})
+
+// The price section is worked out in the app and frozen onto the report, and
+// the mail only lays it out. So the test freezes a real one the way publishing
+// does and hands it over, which is what holds the two halves to one shape.
+describe('prices and suppliers', () => {
+    const line = (code, name, date, perCase, over = {}) => ({
+        id: `${code}-${date}`, invoice_id: `i-${date}`, supplier_code: code, product_id: name,
+        products: { id: name, name, unit: 'KG' }, price_id: null, raw_description: name.toUpperCase(),
+        pack_size: '1X6 KG', units_per_case: 6, price_per_case: perCase, cases: 1, units: 0, line_no: 1,
+        line_total: perCase, decision: 'matched',
+        invoices: { id: `i-${date}`, invoice_number: `N${date}`, invoice_date: date, supplier_id: 's1', document_type: 'invoice', total_amount: perCase },
+        ...over,
+    })
+    const prices = priceWeek({
+        weekStart: '2026-09-13',
+        weekEnd: '2026-09-19',
+        lines: [line('T', 'Tomatoes', '2026-09-10', 11.75), line('T', 'Tomatoes', '2026-09-17', 8.6)],
+        credits: [{
+            id: 'c1', invoice_number: 'C45627172', invoice_date: '2026-09-15', total_amount: -9.27,
+            credit_of_invoice_id: null, credit_reason: 'quality', invoice_lines: [{ raw_description: 'RED ONIONS' }],
+        }],
+        claims: [{ id: 'k1', what: 'Bowls charged 49.73', kind: 'price', amount: 24.75, credited_amount: 0, status: 'open', raised_on: '2026-09-24' }],
+        documents: [
+            { document_type: 'invoice', total_amount: 8.6, suppliers: { name: 'Sysco Ireland' }, invoice_lines: [{ count: 1 }] },
+            { document_type: 'invoice', total_amount: 98.5, suppliers: { name: 'BWG Foodservice' }, invoice_lines: [{ count: 0 }] },
+        ],
+        threshold: 5,
+        today: '2026-09-25',
+    })
+    const withPrices = [
+        sections[0], sections[1],
+        { key: 'prices_suppliers', title: 'Prices and suppliers', sort_order: 2, items: [] },
+        ...sections.slice(2).map(s => ({ ...s, sort_order: s.sort_order + 1 })),
+    ]
+    const mail = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices } })
+
+    it('comes third, after the profit and loss', () => {
+        expect(mail.html.indexOf('Prices and suppliers')).toBeGreaterThan(mail.html.indexOf('Weekly profit and loss'))
+        expect(mail.html.indexOf('Prices and suppliers')).toBeLessThan(mail.html.indexOf('Online sales'))
+    })
+
+    it('opens with the four figures', () => {
+        for (const label of ['Same product, new price', 'Bought as something else', 'Recipes out of line', 'Came back']) {
+            expect(mail.html).toContain(label)
+        }
+        expect(mail.html).toContain('-€3.15')
+    })
+
+    // A headline a kind, what kind of thing it is in bold: his choice for the
+    // mail on 26 September.
+    it('says the week a headline a kind, with the kind in bold', () => {
+        expect(prices.words[0]).toMatch(/^Cheaper on the same code: /)
+        expect(mail.html).toContain('>Cheaper on the same code:</strong>')
+    })
+
+    it('lists each price that moved with what it was worth', () => {
+        expect(mail.html).toContain('€11.75 to €8.60 a case')
+        expect(mail.html).toContain('-26.8%')
+    })
+
+    it('opens by saying which suppliers it was read from, before the figures', () => {
+        const at = mail.html.indexOf('>Read from:</strong>')
+        expect(at).toBeGreaterThan(mail.html.indexOf('Prices and suppliers'))
+        expect(at).toBeLessThan(mail.html.indexOf('Same product, new price'))
+        expect(mail.html).toContain('BWG Foodservice was typed in as a total (1 invoice, €98.50)')
+        expect(mail.text).toContain('Read from: Sysco Ireland (1 invoice).')
+    })
+
+    it('leaves the line out of a report frozen before it existed', () => {
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, readFrom: undefined } } })
+        expect(old.html).not.toContain('Read from:')
+    })
+
+    // So the total beside it can be checked by multiplying, the same line
+    // the page shows.
+    it('says how many came at the new price and what each one came to', () => {
+        expect(prices.moves[0].split).toBe('1 case, €3.15 less each')
+        expect(mail.html).toContain('1 case, €3.15 less each')
+        expect(mail.text).toContain('-€3.15 (1 case, €3.15 less each)')
+    })
+
+    it('says why things came back and what is still owed', () => {
+        expect(mail.html).toContain('Bad quality')
+        expect(mail.html).toContain('Still waiting on a credit')
+        expect(mail.html).toContain('Bowls charged 49.73')
+    })
+
+    it('carries it in the plain copy too', () => {
+        expect(mail.text).toContain('PRICES AND SUPPLIERS')
+        expect(mail.text).toContain('Tomatoes: €11.75 to €8.60 a case, -26.8%, -€3.15')
+        expect(mail.text.split('\n').every(l => l === l.replace(/\s+$/, ''))).toBe(true)
+    })
+
+    it('says so when a report went out without the prices read', () => {
+        const none = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: null } })
+        expect(none.html).toContain('Prices were not read for this week.')
+        expect(none.text).toContain('Prices were not read for this week.')
+    })
+
+    it('numbers the sections on in order', () => {
+        expect(mail.html).toMatch(/>3<\/td><td style="padding-left:12px;[^"]*">Prices and suppliers</)
+    })
+})
+
+// A cell that cannot wrap is as wide as its longest line whatever the screen.
+// "4.2 out of 5 (no change)" on one line held the whole mail wider than a
+// phone, and the Gmail app answers a mail wider than the screen by shrinking
+// every box in it to its own words: on 27 September titles ran into their
+// money and minus signs came off their figures, all down the mail. Money, a
+// share, a rating, a count and a move all fit in sixteen characters.
+describe('nothing in the mail is too wide for a phone', () => {
+    const cannotWrap = html => [...html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+        .flatMap(m => m[1].split(/<br\s*\/?>/))
+        .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+
+    it('puts a rating that moved over two lines', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).toMatch(/4\.6&nbsp;out&nbsp;of&nbsp;5<br \/><span[^>]*>\(up from 4\.4\)/)
+        expect(mail.html).toMatch(/4\.8&nbsp;out&nbsp;of&nbsp;5<br \/><span[^>]*>\(no change\)/)
+    })
+
+    it('has no line that cannot wrap longer than sixteen characters', () => {
+        const lines = cannotWrap(reportEmail(base).html)
+        // Found something before saying anything about what was found.
+        expect(lines.length).toBeGreaterThan(10)
+        expect(lines).toContain('4.6 out of 5')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })

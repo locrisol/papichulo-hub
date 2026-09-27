@@ -90,12 +90,12 @@ describe('the shared helpers are declared in one place', () => {
 })
 
 describe('every file in lib has a test', () => {
-    // A ratchet, not a rule. These nine have no test today and that is the
-    // state of things; what this stops is a tenth. Take one off the list
+    // A ratchet, not a rule. These eight have no test today and that is the
+    // state of things; what this stops is a ninth. Take one off the list
     // when you write its test, and the list can only ever get shorter.
     const NO_TEST_YET = [
         'access', 'controlStyles', 'donut', 'productPrice', 'reportCharts',
-        'stockTakePdf', 'supabase',
+        'stockTakePdf',
         'timeOffPdf', 'wasteReasons',
     ]
 
@@ -232,6 +232,38 @@ describe('labour is read from the view, never from the frozen table', () => {
 
     it('nothing asks the table for figures', () => {
         expect(reads, 'read labour_by_day: the table is the archive half only').toEqual([])
+    })
+})
+
+describe('what a week cost is read from the view, never from the invoices', () => {
+    // The same rule as labour, and it arrived the same way.
+    //
+    // Three screens asked the invoices table for `total_amount, category` and
+    // added up by category: the cost dashboard, the week's figures on the
+    // report, and the twelve month chart. One category on an invoice header
+    // cannot hold a delivery that came mixed, a parsed invoice knows the answer
+    // line by line, and money claimed back at the door was never spent at all.
+    // invoice_cost_by_category holds all three ideas and the table holds none
+    // of them.
+    //
+    // A select naming both columns is the shape of a total. `select('*')` is
+    // not caught and is not meant to be: the entry and history screens read a
+    // whole invoice to put it in a form, which is a different job.
+    const reads = sourcePaths.filter(p => (
+        /\.from\('invoices'\)[\s\S]{0,400}?\.select\(/.test(sources[p])
+    ))
+
+    it('has screens reading invoices at all', () => {
+        expect(reads.length).toBeGreaterThan(0)
+    })
+
+    it.each(reads)('%s does not total invoices by category', path => {
+        const totals = [...sources[path].matchAll(/\.from\('invoices'\)[\s\S]{0,400}?\.select\(([^)]*)\)/g)]
+            .map(m => m[1])
+            .filter(list => !list.includes('*') && list.includes('category')
+                && /total_amount|amount/.test(list))
+
+        expect(totals, 'read invoice_cost_by_category for a total').toEqual([])
     })
 })
 

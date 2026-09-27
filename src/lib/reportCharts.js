@@ -29,6 +29,14 @@ const PACKAGING = '#2A8F52'
 // set, ordered so the biggest is the darkest.
 const CORPORATE_COLOURS = ['#1F4E5F', '#BC552B', '#2A8F52', '#8AA9B4', '#96600A', '#6B6459']
 
+// The colour a corporate account's line has on the chart, so anything else on
+// the report that stands for the account can wear the same one. `platforms` in
+// the order the chart is given them, which is the order in settings.
+export function accountColour(platforms, id) {
+    const at = (platforms || []).findIndex(p => p.id === id)
+    return CORPORATE_COLOURS[Math.max(at, 0) % CORPORATE_COLOURS.length]
+}
+
 // A line per platform, plus their total.
 //
 // Lines rather than a stack. A stack says the parts add up to something worth
@@ -74,7 +82,6 @@ export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {
             + 'Weeks with no report are left as gaps rather than drawn as nothing.',
         mailCaption: 'What each platform has cost, week by week.',
         pageHeading: true,
-        height: 210,
         format: fmtMoney,
         formatAxis: axis,
         empty: 'No week has had its delivery costs entered yet. This fills in as reports are written.',
@@ -101,7 +108,6 @@ export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {
             + 'are on one chart rather than two scales on one axis.',
         mailCaption: 'Net earnings, week by week.',
         pageHeading: true,
-        height: 210,
         // Earnings can be negative and a scale forced to nought would flatten a
         // bad week into the floor, which is the week worth seeing clearly.
         zero: false,
@@ -117,7 +123,6 @@ export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {
         caption: 'What each platform took, week by week. The tracking rows from weekly sales, '
             + 'not the till, since that is what a platform statement is reconciled against.',
         mailCaption: 'What each platform took, week by week.',
-        height: 210,
         shareOf: 'onlineTotal',
         format: fmtMoney,
         formatAxis: axis,
@@ -131,7 +136,6 @@ export function chartSpecs({ onlinePlatforms = [], corporatePlatforms = [] } = {
         caption: 'Which of them is growing. Feedr arriving and passing Lunch Team is the sort '
             + 'of thing a single week cannot show.',
         mailCaption: 'Corporate sales, week by week.',
-        height: 210,
         shareOf: 'corporateTotal',
         format: fmtMoney,
         formatAxis: axis,

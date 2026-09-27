@@ -124,6 +124,11 @@ export function removeNth(list, name, n) {
 
 // A key for drawing each one, since the name is no longer enough to tell two
 // apart and React warns, and then misdraws, when two siblings share one.
+//
+// **For drawing only, never for a row being edited.** It carries the time, so
+// a row whose time is being typed gets a new key the moment the time is whole,
+// and the box is thrown away under the cursor: 11:15 came out as 11:01. A row
+// being edited is keyed by where it sits.
 export function extraKey(extra, index) {
     return `${index}:${extra?.time || ''}:${extra?.name || ''}`
 }

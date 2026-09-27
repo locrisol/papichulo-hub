@@ -5,6 +5,7 @@
 
 import { weekDates, weekStartOf, todayISO, addDays } from '@/lib/dates'
 import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
+import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
 //
@@ -14,6 +15,7 @@ import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
 export const DEFAULT_SECTIONS = [
     { key: 'sales_costs', title: 'Sales and costs' },
     { key: 'profit_loss', title: 'Weekly profit and loss' },
+    { key: 'prices_suppliers', title: 'Prices and suppliers' },
     { key: 'online_sales', title: 'Online sales' },
     { key: 'corporate_sales', title: 'Corporate sales' },
     { key: 'people_ops', title: 'People and operations' },
@@ -45,7 +47,7 @@ export const DEFAULT_OVERHEADS = [
 //
 // One question, because the answer settles both of the things that can be done
 // to a section. Its own can be renamed and dropped, since a heading somebody
-// typed is theirs to change or be rid of. The seven built in can be neither: a
+// typed is theirs to change or be rid of. The eight built in can be neither: a
 // report missing its profit and loss is not a shorter report, it is a broken
 // one, and a heading that says one thing in August and another in September
 // makes two weeks harder to read rather than one easier.
@@ -54,6 +56,28 @@ export const DEFAULT_OVERHEADS = [
 // what a quiet week looks like.
 export function isOwnSection(section) {
     return !DEFAULT_SECTIONS.some(d => d.key === section?.key)
+}
+
+// The sections a new week starts with.
+//
+// Last week's list, so a section somebody added keeps appearing and a heading
+// somebody renamed keeps its new name. **Plus any built-in one it is missing**,
+// in its place: a built-in section cannot be dropped, so one that is missing
+// is one the report did not have yet when last week was written, the way
+// Prices and suppliers arrived in September. It goes straight after the
+// built-in section it follows in the default list, and the week before's
+// own sections stay where they were.
+export function sectionsFor(previous) {
+    if (!previous?.length) return DEFAULT_SECTIONS.map(s => ({ key: s.key, title: s.title }))
+
+    const out = previous.map(s => ({ key: s.key, title: s.title }))
+    DEFAULT_SECTIONS.forEach((wanted, i) => {
+        if (out.some(s => s.key === wanted.key)) return
+        const before = DEFAULT_SECTIONS.slice(0, i).reverse().find(d => out.some(s => s.key === d.key))
+        const at = before ? out.findIndex(s => s.key === before.key) + 1 : 0
+        out.splice(at, 0, { key: wanted.key, title: wanted.title })
+    })
+    return out
 }
 
 // A key for a section somebody typed the title of.
@@ -155,7 +179,7 @@ export function reportableWeeks(count = 12, today = todayISO()) {
 //
 // Closed days are left out of the totals: they have no sales and would only
 // drag the denominator down.
-export function reportFigures({ days = [], invoices = [], labour = [], overheads = [], delivery = [] }) {
+export function reportFigures({ days = [], spend = [], labour = [], overheads = [], delivery = [] }) {
     const trading = days.filter(d => !d.is_closed)
     // How many days of labour were entered, not just what they came to. Nought
     // and nought are the same number and mean completely different things: a
@@ -165,16 +189,12 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
     const net = trading.reduce((t, d) => t + num(d.net_sales), 0)
     const gross = trading.reduce((t, d) => t + num(d.gross_sales), 0)
 
-    const food = invoices
-        .filter(i => i.category === 'food')
-        .reduce((t, i) => t + num(i.total_amount), 0)
-
-    // Packaging and cleaning are added together, matching the report as it has
-    // always been written. They are stored apart, so splitting them later is a
-    // change here rather than a migration.
-    const packaging = invoices
-        .filter(i => i.category === 'packaging' || i.category === 'cleaning')
-        .reduce((t, i) => t + num(i.total_amount), 0)
+    // Out of invoice_cost_by_category rather than off the invoices themselves.
+    // The view splits a mixed delivery the way the money actually went, and it
+    // takes off anything claimed back at the door that has not been credited
+    // yet, because money asked back was never spent.
+    const food = spendOn(spend, FOOD)
+    const packaging = spendOn(spend, PACKAGING)
 
     const labourCost = labour.reduce((t, l) => t + num(l.labour_cost), 0)
 
@@ -213,10 +233,21 @@ export function reportFigures({ days = [], invoices = [], labour = [], overheads
 
         tradingDays: trading.length,
         labourDays,
-        foodInvoices: invoices.filter(i => i.category === 'food').length,
-        packagingInvoices: invoices.filter(
-            i => i.category === 'packaging' || i.category === 'cleaning').length,
+        // Whether anything at all was spent, which is a different question
+        // from what it came to. A claim does not count here: it comes off a
+        // week, it never puts anything into one, and a week with nothing but a
+        // claim on it is still a week with no invoices in it.
+        foodEntries: onPaper(spend, FOOD).length,
+        packagingEntries: onPaper(spend, PACKAGING).length,
     }
+}
+
+// Rows that came off a piece of paper.
+//
+// The cost view carries claims as well, as a negative against the week they
+// happened in, and a claim is not evidence that anything was bought.
+function onPaper(spend, cats) {
+    return (spend || []).filter(r => cats.includes(r.category) && r.came_from !== 'claim')
 }
 
 // What is missing before this week can be believed.
@@ -240,11 +271,11 @@ export function figureGaps(figures) {
             + 'so labour is lower than it really was.')
     }
 
-    if (figures.foodInvoices === 0) {
+    if (figures.foodEntries === 0) {
         out.push('No food invoices are dated in this week.')
     }
 
-    if (figures.packagingInvoices === 0) {
+    if (figures.packagingEntries === 0) {
         out.push('No packaging or cleaning invoices are dated in this week.')
     }
 

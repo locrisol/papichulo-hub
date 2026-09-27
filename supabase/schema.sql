@@ -74,9 +74,6 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "packaging_cost_target" numeric(5,2) DEFAULT 2.50,
     "hourly_rate" numeric(6,2) DEFAULT 15.00,
     "report_recipients" "text"[],
-    -- The payroll list, and nobody is on it by role. See the comment below.
-    "timesheet_recipients" "text"[],
-    "pay_period_start" "date",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "slug" character varying(100) NOT NULL,
@@ -92,6 +89,11 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "watch_city_events" boolean DEFAULT true NOT NULL,
     "latitude" numeric(9,6),
     "longitude" numeric(9,6),
+    "timesheet_recipients" "text"[],
+    "pay_period_start" "date",
+    "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
+    -- The payroll list, and nobody is on it by role. See the comment below.,
+    CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
@@ -100,6 +102,7 @@ COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded b
 COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
 COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
+COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -252,15 +255,18 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "also_in" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "category" "text" DEFAULT 'ingredient'::"text" NOT NULL,
     "held_for" "text",
+    "piece_weight" numeric(10,3),
     CONSTRAINT "products_also_in_known" CHECK (("also_in" <@ ARRAY['Freezer'::"text", 'Cold Room'::"text", 'Dry'::"text", 'Packaging'::"text", 'Cleaning'::"text"])),
     CONSTRAINT "products_category_known" CHECK (("category" = ANY (ARRAY['ingredient'::"text", 'drink'::"text"]))),
     CONSTRAINT "products_count_frequency_check" CHECK ((("count_frequency" IS NULL) OR ("count_frequency" = ANY (ARRAY['daily'::"text", 'weekly'::"text", 'monthly'::"text"])))),
     CONSTRAINT "products_section_check" CHECK (("section" IN ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))),
-    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre')))
+    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre'))),
+    CONSTRAINT "products_piece_weight_positive" CHECK (("piece_weight" IS NULL OR "piece_weight" > (0)::numeric))
 );
 
 COMMENT ON COLUMN "public"."products"."also_in" IS 'The other places this product turns up, on top of its own section. It only affects where it appears on a stock take: the section is still what the product is, and the costing and the reports read that and never this. Empty for nearly everything.';
 COMMENT ON COLUMN "public"."products"."category" IS 'What kind of thing this is, as opposed to where it is kept, which is the section. ingredient is anything that can go into a recipe and is the default. drink is counted on a stock take like everything else but is never offered as an ingredient in a MIX. Menu items are not filtered by this: a can of Coke is a real line on a menu.';
+COMMENT ON COLUMN "public"."products"."piece_weight" IS 'Roughly what one piece weighs, for something sold by the piece and counted by weight, or the other way round: a cabbage, a lime, an avocado. In the product''s own unit, kilos or litres; in kilos for something counted in units. Only an estimate, used to turn a case of ten into kilos and back. Empty means nobody has said.';
 COMMENT ON COLUMN "public"."products"."held_for" IS 'Who this stock belongs to, when it is not ours. Empty for almost everything. Set it and the product is still counted on a stock take exactly as it always was, and the report splits its section into theirs, ours and the two together. It is deliberately not a section: where a thing is kept and whose it is are different questions, and merging them would make a combined total impossible.';
 ALTER TABLE ONLY "public"."products"
     ADD CONSTRAINT "products_pkey" PRIMARY KEY ("id");
@@ -282,10 +288,12 @@ CREATE TABLE IF NOT EXISTS "public"."product_supplier_prices" (
     CONSTRAINT "product_supplier_prices_purchase_type_check" CHECK (("purchase_type" IN ('case', 'loose')))
 );
 
+COMMENT ON COLUMN "public"."product_supplier_prices"."supplier_code" IS 'The supplier''s code this price is for. Each code has a price of its own, because two codes are two versions of a product even in the same pack, and one of them costing more is not the other one going up. supplier_codes is the authority on which row a code means; this is kept in step with it.';
+
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."product_supplier_prices"
-    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case");
+    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case", "supplier_code");
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 
@@ -569,6 +577,13 @@ ALTER TABLE ONLY "public"."predictions"
 -- The other half of the week: what came in the door, what the hours came
 -- to, and what went in the bin.
 
+-- A document, which is usually an invoice and is sometimes a credit note.
+--
+-- A credit note is a row here with a negative total rather than a second kind
+-- of thing. It lands in a week the way any other document does, it reduces the
+-- food cost the way it reduces the bill, and the list on screen reads the way
+-- the supplier's own portal does. The only extra fact it carries is which
+-- invoice it credits.
 CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
@@ -582,15 +597,41 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "notes" "text",
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"(),
+    "invoice_number" "text",
+    "document_type" "text" DEFAULT 'invoice'::"text" NOT NULL,
+    "credit_of_invoice_id" "uuid",
+    "counts_in_cost" boolean DEFAULT true NOT NULL,
+    "credit_reason" "text",
     CONSTRAINT "invoices_category_check" CHECK (("category" IN ('food', 'packaging', 'cleaning', 'other'))),
-    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted')))
+    CONSTRAINT "invoices_document_type_check" CHECK (("document_type" IN ('invoice', 'credit'))),
+    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted', 'parsed'))),
+    CONSTRAINT "invoices_credit_reason_check" CHECK (("credit_reason" IS NULL OR "credit_reason" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else')))
 );
+
+COMMENT ON COLUMN "public"."invoices"."invoice_number" IS 'The number printed on the document. Null for everything entered by hand off a total, which is eight months of them.';
+COMMENT ON COLUMN "public"."invoices"."credit_reason" IS 'Why a credit note came back, given afterwards for the part nobody logged at the door. A label and nothing else: it moves no money and no week. Logging a claim for it now would take the money off the week the delivery happened, which may be a report already sent.';
+COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. A credit with no claim behind it counts on its own date.';
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_invoices_restaurant_date" ON "public"."invoices" USING "btree" ("restaurant_id", "invoice_date");
 CREATE INDEX "idx_invoices_supplier" ON "public"."invoices" USING "btree" ("supplier_id");
+CREATE INDEX "idx_invoices_credit_of" ON "public"."invoices" USING "btree" ("credit_of_invoice_id") WHERE ("credit_of_invoice_id" IS NOT NULL);
+-- The same document cannot arrive twice for one supplier at one restaurant.
+-- Partial, because everything entered by hand has no number and they are not
+-- all duplicates of each other.
+CREATE UNIQUE INDEX "invoices_document_once" ON "public"."invoices" USING "btree" ("restaurant_id", "supplier_id", "invoice_number") WHERE ("invoice_number" IS NOT NULL);
 
+-- One line off a document.
+--
+-- Two quantity columns because the paper has two, and a claim is made in the
+-- same shape: one case ordered and one unit delivered is a different sentence
+-- to four trays with one sent back.
+--
+-- The pack size is kept as printed and as parsed. "4X2.5 KG" is what somebody
+-- reading the screen against the paper needs to see and 4 is what the
+-- arithmetic needs. units_per_case is null when it cannot be read, which is a
+-- real answer and better than a confident 1.
 CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "invoice_id" "uuid" NOT NULL,
@@ -599,14 +640,226 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "quantity" numeric(10,3),
     "unit_price" numeric(10,4),
     "line_total" numeric(10,2),
-    "price_changed" boolean DEFAULT false,
-    "previous_price" numeric(10,4),
-    "price_change_confirmed" boolean DEFAULT false
+    "supplier_code" "text",
+    "line_no" integer,
+    "cases" numeric(10,3),
+    "units" numeric(10,3),
+    "pack_size" "text",
+    "units_per_case" numeric(10,3),
+    "price_per_case" numeric(10,4),
+    "storage" "text",
+    "category" "text",
+    "price_id" "uuid",
+    "decision" "text",
+    "decided_at" timestamp with time zone,
+    "decided_by" "uuid",
+    "vat_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    "deposit_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT "invoice_lines_category_check" CHECK (("category" IS NULL OR "category" IN ('food', 'packaging', 'cleaning', 'other'))),
+    CONSTRAINT "invoice_lines_decision_check" CHECK (("decision" IS NULL OR "decision" IN ('accepted', 'rejected', 'ignored', 'matched'))),
+    CONSTRAINT "invoice_lines_storage_check" CHECK (("storage" IS NULL OR "storage" IN ('ambient', 'chilled', 'frozen')))
 );
+
+COMMENT ON COLUMN "public"."invoice_lines"."decision" IS 'Whether somebody has looked at this line yet and what they said. The review works out what needs a decision by comparing the line against the price row, which answers itself once a price is accepted. Rejecting does not: the difference is still there next week, so saying no once has to stick.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."vat_amount" IS 'This line''s share of the VAT on its document, from the VAT table at the foot, shared over the lines taxed at each code so the shares add up to what was printed. The cost view adds it to line_total. The price columns stay as printed, without it.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."deposit_amount" IS 'This line''s share of the container deposit on its document, on the drinks that carry one. The cost view adds it to line_total, so the food cost takes what the invoice charged.';
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btree" ("invoice_id");
+CREATE INDEX "idx_invoice_lines_code" ON "public"."invoice_lines" USING "btree" ("supplier_code") WHERE ("supplier_code" IS NOT NULL);
+CREATE INDEX "idx_invoice_lines_product" ON "public"."invoice_lines" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
+CREATE INDEX "idx_invoice_lines_waiting" ON "public"."invoice_lines" USING "btree" ("invoice_id") WHERE ("decision" IS NULL);
+
+-- The account number a supplier prints on a document, and which restaurant it
+-- means.
+--
+-- This guards the worst failure in the whole feature. Suppliers are shared
+-- between restaurants: the table has no restaurant_id and Sysco is one row for
+-- both shops. So a file dropped on the import screen says nothing about whose
+-- costs it belongs in except through the account number printed on it, and
+-- importing one restaurant's delivery into the other's food cost would be
+-- silent, wrong in both weeks and nearly impossible to find afterwards.
+--
+-- An account number the Hub has never seen stops the import and asks once.
+CREATE TABLE IF NOT EXISTS "public"."supplier_accounts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "account_no" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+COMMENT ON TABLE "public"."supplier_accounts" IS 'The account number a supplier prints on a document, and which restaurant it means. Suppliers are shared between restaurants, so this is the only reliable link from a file to a set of costs.';
+
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_accounts_once" ON "public"."supplier_accounts" USING "btree" ("supplier_id", "account_no");
+CREATE INDEX "idx_supplier_accounts_lookup" ON "public"."supplier_accounts" USING "btree" ("account_no");
+
+-- Every code a supplier has ever printed at a restaurant.
+--
+-- It points at a price row rather than at a product, because a code is one pack
+-- of one product from one supplier, and that is exactly what a
+-- product_supplier_prices row is.
+--
+-- last_seen_on is what lets the Hub say "497870 has not appeared since 12
+-- August and 497871 turned up last week with almost the same description".
+-- A supplier renumbering something is otherwise a new product appearing beside
+-- an old one that quietly stops, and nobody notices for a year.
+--
+-- ignored is for what is on an invoice and is not stock: a delivery charge, a
+-- crate deposit, a fuel surcharge. They have codes and they would turn up in
+-- the new pile every week until somebody could say no.
+CREATE TABLE IF NOT EXISTS "public"."supplier_codes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_code" "text" NOT NULL,
+    "price_id" "uuid",
+    "last_description" "text",
+    "pack_size" "text",
+    "first_seen_on" "date",
+    "last_seen_on" "date",
+    "ignored" boolean DEFAULT false NOT NULL,
+    "ignored_reason" "text",
+    "replaces_code" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "alternate_group" "uuid"
+);
+
+COMMENT ON TABLE "public"."supplier_codes" IS 'Every code a supplier has ever printed at a restaurant, and the price row it means. Points at a price rather than a product because a code is one pack of one product from one supplier, which is what a price row is. last_seen_on is what powers noticing a code has been replaced.';
+
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_codes_once" ON "public"."supplier_codes" USING "btree" ("supplier_id", "restaurant_id", "supplier_code");
+CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+-- A price row belongs to one code. Two codes are two versions of a product,
+-- each with its own price, even when they come in the same pack.
+CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
+COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
+
+-- What a product's cost did, and why. The decision log, as against the evidence.
+--
+-- An invoice proves what a supplier charged. It proves nothing about what the
+-- Hub should cost a dish at, because that follows the preferred price, and the
+-- preferred price moves when somebody decides to buy elsewhere. That decision
+-- has no document behind it, so it needs a record of its own or the product's
+-- own line on the graph cannot be explained.
+--
+-- Per unit and not per case, because that is what everything downstream costs
+-- from and because two suppliers' pack sizes cannot be compared any other way.
+--
+-- Added to, never rewritten, which is what keeps a published report true.
+CREATE TABLE IF NOT EXISTS "public"."product_price_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "price_id" "uuid",
+    "at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "price_per_unit" numeric(10,4) NOT NULL,
+    "previous_per_unit" numeric(10,4),
+    "reason" "text" NOT NULL,
+    "invoice_line_id" "uuid",
+    "changed_by" "uuid",
+    "note" "text",
+    CONSTRAINT "product_price_events_reason_check" CHECK (("reason" IN ('invoice', 'by_hand', 'preferred_moved', 'created')))
+);
+
+COMMENT ON TABLE "public"."product_price_events" IS 'What a product cost per unit, and why it changed. An invoice moving a supplier price and somebody choosing a different supplier are two different events and only one of them has a document behind it.';
+
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_price_events_product" ON "public"."product_price_events" USING "btree" ("restaurant_id", "product_id", "at");
+
+-- What was wrong with the delivery.
+--
+-- **The claim is the reason. The credit is the money.**
+--
+-- The supplier never credits unless it is asked for at the door, so there are
+-- no surprise credits and they never credit more than was asked. But a credit
+-- note says 74.26 came back on bay leaves and never says why: short, rotten,
+-- sent back, or the wrong thing entirely. The reason is the whole of the
+-- conversation worth having with a supplier.
+--
+-- The other direction is the one that earns its keep. If two trays are queried
+-- at the door and no credit ever comes, nothing in the Hub would know, because
+-- the Hub only sees documents and there is no document for something that did
+-- not happen. Credits ran at 6% of spend over the month this was designed
+-- against, so the forgotten ones are real money.
+--
+-- So a claim can exist before any invoice does. A note taken at the door
+-- carries the docket number off the paper the driver leaves, and is matched to
+-- its line when the document is imported, which is usually the same week.
+CREATE TABLE IF NOT EXISTS "public"."invoice_line_claims" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_id" "uuid",
+    "invoice_id" "uuid",
+    "invoice_line_id" "uuid",
+    "docket_number" "text",
+    "what" "text",
+    "kind" "text" NOT NULL,
+    "cases" numeric(10,3) DEFAULT 0 NOT NULL,
+    "units" numeric(10,3) DEFAULT 0 NOT NULL,
+    "amount" numeric(10,2),
+    "credited_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    "status" "text" DEFAULT 'open'::"text" NOT NULL,
+    "raised_on" "date" NOT NULL,
+    "raised_by" "uuid",
+    "settled_on" "date",
+    "credit_invoice_id" "uuid",
+    "counted_week" "date",
+    "note" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else', 'other'))),
+    CONSTRAINT "invoice_line_claims_status_check" CHECK (("status" IN ('open', 'settled', 'refused', 'void')))
+);
+
+COMMENT ON TABLE "public"."invoice_line_claims" IS 'What was wrong with a delivery, and how much of it has come back. Raised at the door before any document exists, or against a line when a credit note turns up and the Hub asks why. The balance is amount less credited_amount, because a credit can partly settle an ask.';
+COMMENT ON COLUMN "public"."invoice_line_claims"."kind" IS 'Why. The supplier''s side: not_delivered, short, damaged, quality, out_of_date, warm, wrong_item, price. Ours: mistake, ordered by mistake. something_else says what in the note. other is never picked: it is what a credit note gets when nobody logged anything for it.';
+COMMENT ON COLUMN "public"."invoice_line_claims"."counted_week" IS 'The week this comes off, which is the week it happened in and not always the week the credit lands in. A week is open until its report is published; after that everything later belongs to the week it happened.';
+
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_claims_open" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "status", "raised_on");
+CREATE INDEX "idx_claims_line" ON "public"."invoice_line_claims" USING "btree" ("invoice_line_id") WHERE ("invoice_line_id" IS NOT NULL);
+CREATE INDEX "idx_claims_docket" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "docket_number") WHERE ("docket_number" IS NOT NULL);
+
+-- What the supplier says it sent us, off its own portal, pasted in.
+--
+-- Three things come out of it for nothing, and the first cannot be had any
+-- other way: comparing the documents we hold against the documents that exist
+-- catches an invoice that was never downloaded at all, which comparing PDFs to
+-- PDFs never can. The value is a third cross check on a parsed document. And
+-- pasting a fresh list can close an open claim by showing the credit has been
+-- issued.
+CREATE TABLE IF NOT EXISTS "public"."supplier_documents" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "document_id" "text" NOT NULL,
+    "order_reference" "text",
+    "document_date" "date" NOT NULL,
+    "document_type" "text" NOT NULL,
+    "value" numeric(10,2) NOT NULL,
+    "invoice_id" "uuid",
+    "first_seen_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "not_needed_at" timestamp with time zone,
+    CONSTRAINT "supplier_documents_type_check" CHECK (("document_type" IN ('invoice', 'credit')))
+);
+
+COMMENT ON TABLE "public"."supplier_documents" IS 'The supplier portal list, pasted in. What exists, against what we hold. Document numbers do not run in date order, so never sort or page on one.';
+COMMENT ON COLUMN "public"."supplier_documents"."not_needed_at" IS 'When somebody cleared this document off Still to download as not needed, from before the Hub read invoices or otherwise never going to be downloaded. Empty means still wanted. It stays recorded, and pasting the list again leaves this alone.';
+COMMENT ON COLUMN "public"."supplier_documents"."order_reference" IS 'On a credit this is the invoice it credits. On an invoice it is empty, which is how the two halves of a pair find each other.';
+
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_documents_once" ON "public"."supplier_documents" USING "btree" ("supplier_id", "restaurant_id", "document_id");
+CREATE INDEX "idx_supplier_documents_date" ON "public"."supplier_documents" USING "btree" ("restaurant_id", "document_date");
 
 CREATE TABLE IF NOT EXISTS "public"."labour_entries" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -729,15 +982,15 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
     "week_start" "date" NOT NULL,
-    -- When the till's report covering this week was last read in. While it is
-    -- set, a rostered shift with nothing against it is taken as not worked
-    -- rather than as an open question: the file answered it.
-    "imported_at" timestamp with time zone,
-    "imported_by" "uuid",
     "filed_at" timestamp with time zone,
     "filed_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
+    -- When the till's report covering this week was last read in. While it is,
+    -- set, a rostered shift with nothing against it is taken as not worked,
+    -- rather than as an open question: the file answered it.,
     CONSTRAINT "timesheet_weeks_starts_on_a_sunday" CHECK ((EXTRACT(dow FROM "week_start") = (0)::numeric))
 );
 
@@ -1013,7 +1266,7 @@ CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
-COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
+COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, prices_suppliers, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
 COMMENT ON COLUMN "public"."report_sections"."title" IS 'What is shown. Free to change.';
 ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_pkey" PRIMARY KEY ("id");
@@ -1451,15 +1704,59 @@ ALTER TABLE ONLY "public"."predictions"
 -- -- What it cost ------------------------------------------------------
 
 ALTER TABLE ONLY "public"."invoices"
-    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
-ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id");
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_credit_of_fkey" FOREIGN KEY ("credit_of_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id");
+    ADD CONSTRAINT "invoice_lines_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+    ADD CONSTRAINT "invoice_lines_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_decided_by_fkey" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_credit_invoice_id_fkey" FOREIGN KEY ("credit_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_raised_by_fkey" FOREIGN KEY ("raised_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."labour_entries"
@@ -2291,6 +2588,42 @@ CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" TO "authenticate
    FROM "public"."invoices" "i"
   WHERE (("i"."id" = "invoice_lines"."invoice_id") AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("i"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
+-- Everything that hangs off an invoice follows the invoice's own rule:
+-- managers and above, their own restaurant. An employee has no business
+-- reading what anything costs.
+ALTER TABLE "public"."supplier_accounts" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_accounts_all" ON "public"."supplier_accounts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."supplier_codes" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_codes_all" ON "public"."supplier_codes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."product_price_events" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "product_price_events_all" ON "public"."product_price_events" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."supplier_documents" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_documents_all" ON "public"."supplier_documents" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+-- Claims are the one table here an employee touches, and that is the whole
+-- point of taking the note at the door: the person signing for it knows within
+-- a minute and has forgotten by Friday.
+--
+-- They may raise one and read back the ones they raised. They may not read
+-- anybody else's, because a claim carries an amount once it has been matched to
+-- a line and what things cost is not an employee's business. They may not
+-- change one afterwards either: a note taken at the door is a record of what
+-- was said at the door.
+ALTER TABLE "public"."invoice_line_claims" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "invoice_line_claims_manage" ON "public"."invoice_line_claims" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+CREATE POLICY "invoice_line_claims_raise" ON "public"."invoice_line_claims" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() )) AND ("amount" IS NULL) AND ("credited_amount" = (0)::numeric) AND ("status" = 'open'::"text") AND ("invoice_line_id" IS NULL) AND ("credit_invoice_id" IS NULL)));
+
+CREATE POLICY "invoice_line_claims_read_own" ON "public"."invoice_line_claims" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() ))));
+
 ALTER TABLE "public"."labour_entries" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "labour_entries_select" ON "public"."labour_entries" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
@@ -2568,6 +2901,68 @@ UNION ALL
           WHERE (("t"."restaurant_id" = "l"."restaurant_id") AND ("t"."work_date" = "l"."entry_date") AND ("t"."hours" IS NOT NULL)))));
 
 COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for everything that asks: the cost dashboard, the report and the weekly report. The timesheet for every day it covers, and the frozen labour_entries archive for the months before it existed. Nothing writes to labour_entries any more.';
+
+-- What was spent, split the way the money actually was.
+--
+-- The labour_by_day pattern, for the same reason and in the same shape. Three
+-- screens asked the invoices table for `total_amount, category` and added up by
+-- category: the cost dashboard, the week's figures on the report, and the
+-- twelve month chart. One category per invoice cannot hold a delivery that came
+-- mixed, and a parsed invoice knows the answer line by line.
+--
+-- So the lines where there are lines, the header where there are not, and eight
+-- months of invoices typed off a total keep answering exactly as they did.
+--
+-- **An invoice costs what it charges, VAT and deposit included**, decided on 24
+-- September 2026: the typed ones were always entered at the amount payable, and
+-- a line counts its printed value plus its share of both. The prices stay as
+-- printed.
+--
+-- The third arm is the claims, and **the claim is the one place money coming
+-- back is taken off, always in the week the delivery happened**: the whole ask
+-- while it is open, what actually came back once it is settled. A credit note
+-- that settles a claim is kept and matched and does not count on its own, which
+-- is what counts_in_cost is for. It comes off once, and it never moves between
+-- weeks because the credit happened to be dated the Monday after.
+--
+-- security_invoker on purpose, the same case as labour_by_day: everything
+-- underneath already decides who sees what by restaurant and the view has
+-- nothing of its own to hide.
+CREATE OR REPLACE VIEW "public"."invoice_cost_by_category" WITH ("security_invoker"='true') AS
+ SELECT "i"."restaurant_id",
+    "i"."invoice_date" AS "cost_date",
+    "l"."category",
+    "sum"((("l"."line_total" + "l"."vat_amount") + "l"."deposit_amount")) AS "amount",
+    'lines'::"text" AS "came_from"
+   FROM ("public"."invoices" "i"
+     JOIN "public"."invoice_lines" "l" ON (("l"."invoice_id" = "i"."id")))
+  WHERE ("i"."counts_in_cost" AND ("l"."category" IS NOT NULL))
+  GROUP BY "i"."restaurant_id", "i"."invoice_date", "l"."category"
+UNION ALL
+ SELECT "i"."restaurant_id",
+    "i"."invoice_date" AS "cost_date",
+    "i"."category",
+    "i"."total_amount" AS "amount",
+    'header'::"text" AS "came_from"
+   FROM "public"."invoices" "i"
+  WHERE ("i"."counts_in_cost" AND (NOT (EXISTS ( SELECT 1
+           FROM "public"."invoice_lines" "l"
+          WHERE (("l"."invoice_id" = "i"."id") AND ("l"."category" IS NOT NULL))))))
+UNION ALL
+ SELECT "c"."restaurant_id",
+    "c"."counted_week" AS "cost_date",
+    COALESCE("l"."category", "i"."category", 'food'::"text") AS "category",
+    - CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END AS "amount",
+    'claim'::"text" AS "came_from"
+   FROM (("public"."invoice_line_claims" "c"
+     LEFT JOIN "public"."invoice_lines" "l" ON (("l"."id" = "c"."invoice_line_id")))
+     LEFT JOIN "public"."invoices" "i" ON (("i"."id" = "c"."invoice_id")))
+  WHERE (("c"."status" = ANY (ARRAY['open'::"text", 'settled'::"text", 'refused'::"text"]))
+     AND ("c"."counted_week" IS NOT NULL)
+     AND ("c"."amount" IS NOT NULL)
+     AND (CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END > (0)::numeric));
+
+COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. What each invoice charged, VAT and deposit included: its lines where it has them, each with its share of both, and the header where it does not. Claims come off as a deduction in the week the delivery happened: the whole ask while open, what came back once settled. A credit note that settles a claim does not count on its own.';
 
 CREATE OR REPLACE VIEW "public"."public_menu_categories" AS
  SELECT "id",

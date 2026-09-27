@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     RANGES, weeksBack, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
     segments, isMissing,
-    labelIndices,
+    labelIndices, chartHeight, CHART_MIN_H, CHART_MAX_H, roundScale,
 } from '@/lib/reportChart'
 
 describe('weeksBack', () => {
@@ -290,5 +290,68 @@ describe('labelIndices', () => {
 
     it('labels a single week', () => {
         expect(labelIndices(1, 9)).toEqual([0])
+    })
+})
+
+// He asked for taller charts on 27 September: a fixed 240 on a laptop was a
+// strip fifteen hundred wide and two hundred tall.
+describe('chartHeight', () => {
+    it('follows the width, to a ceiling on a wide screen', () => {
+        expect(chartHeight(800)).toBe(336)
+        expect(chartHeight(1550)).toBe(CHART_MAX_H)
+    })
+
+    it('keeps a readable shape on a phone', () => {
+        expect(chartHeight(340)).toBe(CHART_MIN_H)
+    })
+
+    it('is taller than it was everywhere', () => {
+        for (const width of [300, 400, 760, 1000, 1550]) expect(chartHeight(width)).toBeGreaterThan(240)
+    })
+})
+
+// His choice on 27 September: round gaps, three to six of them, instead of
+// four gaps of 350 or 1,200 and an earnings axis at €1,337.50 and €3,112.50.
+describe('roundScale', () => {
+    it('draws the week of 13 September the way he picked', () => {
+        expect(roundScale(4660, 16721).ticks).toEqual([0, 5000, 10000, 15000, 20000])
+        expect(roundScale(70, 1140).ticks).toEqual([0, 200, 400, 600, 800, 1000, 1200])
+        expect(roundScale(489, 3570, { zero: false }).ticks).toEqual([0, 1000, 2000, 3000, 4000])
+        expect(roundScale(0, 4050).ticks).toEqual([0, 1000, 2000, 3000, 4000, 5000])
+    })
+
+    // His condition for going ahead: when the sales grow past today's top, the
+    // axis grows by the same rule.
+    it('grows by the same rule however big the figures get', () => {
+        expect(roundScale(0, 22000).ticks).toEqual([0, 5000, 10000, 15000, 20000, 25000])
+        expect(roundScale(0, 38000).ticks).toEqual([0, 10000, 20000, 30000, 40000])
+        expect(roundScale(0, 120000).ticks).toEqual([0, 25000, 50000, 75000, 100000, 125000])
+    })
+
+    it('always has three to six round gaps that hold every figure', () => {
+        let checked = 0
+        for (let peak = 1; peak < 1e7; peak *= 1.013) {
+            for (const [low, zero] of [[0, true], [peak * 0.3, false], [-peak * 0.2, false]]) {
+                const { min, max, ticks: lines } = roundScale(low, peak, { zero })
+                const step = lines[1] - lines[0]
+                const lead = step / Math.pow(10, Math.floor(Math.log10(step)))
+                expect([1, 2, 2.5, 5].some(r => Math.abs(lead - r) < 1e-6)).toBe(true)
+                expect(lines.length - 1).toBeGreaterThanOrEqual(3)
+                expect(lines.length - 1).toBeLessThanOrEqual(6)
+                expect(max).toBeGreaterThanOrEqual(peak)
+                expect(min).toBeLessThanOrEqual(zero ? 0 : low)
+                checked += 1
+            }
+        }
+        // Found something before saying anything about what was found.
+        expect(checked).toBeGreaterThan(3000)
+    })
+
+    it('goes below nought for a week that lost money, on a round figure', () => {
+        expect(roundScale(-800, 2500, { zero: false }).ticks).toEqual([-1000, 0, 1000, 2000, 3000])
+    })
+
+    it('fits the axis to the figures where the chart asks, still on round figures', () => {
+        expect(roundScale(2210, 3600, { zero: false }).ticks).toEqual([2000, 2500, 3000, 3500, 4000])
     })
 })

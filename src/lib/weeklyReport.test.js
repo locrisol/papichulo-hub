@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     sectionKey,
     isOwnSection,
+    sectionsFor,
     weekReadiness,
     weekIsOver,
     reportableWeeks,
@@ -60,9 +61,46 @@ describe('sectionKey', () => {
     })
 })
 
+describe('the sections a new week starts with', () => {
+    const LAST_WEEK = [
+        { key: 'sales_costs', title: 'Sales and costs' },
+        { key: 'profit_loss', title: 'P and L' },
+        { key: 'priorities', title: 'Priorities' },
+        { key: 'online_sales', title: 'Online sales' },
+        { key: 'corporate_sales', title: 'Corporate sales' },
+        { key: 'people_ops', title: 'People and operations' },
+        { key: 'marketing', title: 'Marketing and sales development' },
+        { key: 'support_actions', title: 'Support / actions needed' },
+    ]
+
+    it('is the built-in list for a restaurant that has never written one', () => {
+        expect(sectionsFor(null).map(s => s.key)[2]).toBe('prices_suppliers')
+    })
+
+    // Prices and suppliers arrived in September, after every restaurant had
+    // a week to copy from.
+    it('adds a built-in section last week did not have, straight after the one it follows', () => {
+        expect(sectionsFor(LAST_WEEK).map(s => s.key)).toEqual([
+            'sales_costs', 'profit_loss', 'prices_suppliers', 'priorities', 'online_sales',
+            'corporate_sales', 'people_ops', 'marketing', 'support_actions',
+        ])
+    })
+
+    it('keeps a renamed heading and a section of their own', () => {
+        const next = sectionsFor(LAST_WEEK)
+        expect(next.find(s => s.key === 'profit_loss').title).toBe('P and L')
+        expect(next.find(s => s.key === 'priorities').title).toBe('Priorities')
+    })
+
+    it('changes nothing once it has them all', () => {
+        const once = sectionsFor(LAST_WEEK)
+        expect(sectionsFor(once)).toEqual(once)
+    })
+})
+
 describe('isOwnSection', () => {
-    it('says no to every one of the seven the report comes with', () => {
-        for (const key of ['sales_costs', 'profit_loss', 'online_sales', 'corporate_sales',
+    it('says no to every one of the eight the report comes with', () => {
+        for (const key of ['sales_costs', 'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
             'people_ops', 'marketing', 'support_actions']) {
             expect(isOwnSection({ key })).toBe(false)
         }
@@ -173,17 +211,19 @@ describe('reportFigures', () => {
     const days = [
         { sale_date: '2026-08-09', net_sales: 14180.03, gross_sales: 15491.53, is_closed: false },
     ]
-    const invoices = [
-        { category: 'food', total_amount: 4013.85 },
-        { category: 'packaging', total_amount: 1080.43 },
-        { category: 'other', total_amount: 500 },
+    // Rows out of invoice_cost_by_category, which is what the report reads
+    // now: a date, a category, an amount, and where the answer came from.
+    const spend = [
+        { cost_date: '2026-08-09', category: 'food', amount: 4013.85, came_from: 'lines' },
+        { cost_date: '2026-08-09', category: 'packaging', amount: 1080.43, came_from: 'header' },
+        { cost_date: '2026-08-09', category: 'other', amount: 500, came_from: 'header' },
     ]
     const labour = [{ labour_cost: 3965.42 }]
     const overheads = [{ amount: 865 }, { amount: 346 }]
     const delivery = [{ amount: 660.24 }, { amount: 383.99 }, { amount: 124.14 }]
 
     it('works the week out against net sales', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.net).toBeCloseTo(14180.03, 2)
         expect(f.foodPct).toBeCloseTo(28.31, 2)
         expect(f.labourPct).toBeCloseTo(27.96, 2)
@@ -191,13 +231,13 @@ describe('reportFigures', () => {
     })
 
     it('also carries the gross percentages, which is what the mail used to quote', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.foodPctGross).toBeCloseTo(25.91, 2)
         expect(f.labourPctGross).toBeCloseTo(25.60, 2)
     })
 
     it('leaves an invoice that is neither food nor packaging out of both', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.food).toBeCloseTo(4013.85, 2)
         expect(f.packaging).toBeCloseTo(1080.43, 2)
     })
@@ -205,25 +245,25 @@ describe('reportFigures', () => {
     it('adds cleaning in with packaging', () => {
         const f = reportFigures({
             days, labour, overheads, delivery,
-            invoices: [...invoices, { category: 'cleaning', total_amount: 100 }],
+            spend: [...spend, { cost_date: '2026-08-09', category: 'cleaning', amount: 100, came_from: 'lines' }],
         })
         expect(f.packaging).toBeCloseTo(1180.43, 2)
     })
 
     it('adds the delivery lines up rather than taking a total', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.deliveryTotal).toBeCloseTo(1168.37, 2)
         expect(f.overhead).toBeCloseTo(2379.37, 2)
     })
 
     it('gives the total cost of sales the spreadsheet quotes', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.costOfSales).toBeCloseTo(9059.70, 2)
         expect(f.costOfSalesPct).toBeCloseTo(63.89, 2)
     })
 
     it('works down to net earnings', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.grossMargin).toBeCloseTo(9085.75, 2)
         expect(f.grossProfit).toBeCloseTo(5120.33, 2)
         expect(f.earnings).toBeCloseTo(2740.96, 2)
@@ -232,14 +272,14 @@ describe('reportFigures', () => {
     it('leaves closed days out of the totals', () => {
         const f = reportFigures({
             days: [...days, { sale_date: '2026-08-10', net_sales: 0, gross_sales: 0, is_closed: true }],
-            invoices, labour, overheads, delivery,
+            spend, labour, overheads, delivery,
         })
         expect(f.tradingDays).toBe(1)
         expect(f.net).toBeCloseTo(14180.03, 2)
     })
 
     it('says nothing rather than dividing by nothing on a week with no sales', () => {
-        const f = reportFigures({ days: [], invoices: [], labour: [], overheads: [], delivery: [] })
+        const f = reportFigures({ days: [], spend: [], labour: [], overheads: [], delivery: [] })
         expect(f.net).toBe(0)
         expect(f.foodPct).toBe(null)
         expect(f.earningsPct).toBe(null)
@@ -252,9 +292,9 @@ describe('figureGaps', () => {
             { sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false },
             { sale_date: '2026-08-10', net_sales: 2000, gross_sales: 2185, is_closed: false },
         ],
-        invoices: [
-            { category: 'food', total_amount: 1000 },
-            { category: 'packaging', total_amount: 300 },
+        spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 1000, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 300, came_from: 'header' },
         ],
         labour: [{ labour_cost: 500 }, { labour_cost: 500 }],
     }
@@ -281,9 +321,20 @@ describe('figureGaps', () => {
     })
 
     it('names each kind of invoice that is missing', () => {
-        const out = figureGaps(reportFigures({ ...week, invoices: [] }))
+        const out = figureGaps(reportFigures({ ...week, spend: [] }))
         expect(out.some(g => g.includes('food invoices'))).toBe(true)
         expect(out.some(g => g.includes('packaging or cleaning'))).toBe(true)
+    })
+
+    // A claim comes off a week and never puts anything into one, so a week with
+    // nothing on it but money asked back is still a week with no invoices in
+    // it. Counting the claim would have quietly turned the warning off.
+    it('does not count a claim as an invoice', () => {
+        const out = figureGaps(reportFigures({
+            ...week,
+            spend: [{ cost_date: '2026-08-09', category: 'food', amount: -40, came_from: 'claim' }],
+        }))
+        expect(out.some(g => g.includes('food invoices'))).toBe(true)
     })
 
     it('is quiet about a closed day, which was never going to have hours', () => {
@@ -455,7 +506,10 @@ describe('publishCheck', () => {
     }]
     const full = reportFigures({
         days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
-        invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+        spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 500, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 100, came_from: 'header' },
+        ],
         labour: [{ labour_cost: 500 }],
     })
 
@@ -475,7 +529,10 @@ describe('publishCheck', () => {
     it('warns about a week with no hours rather than refusing it', () => {
         const out = publishCheck(clean, reportFigures({
             days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
-            invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+            spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 500, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 100, came_from: 'header' },
+        ],
             labour: [],
         }))
         expect(out.blockers).toEqual([])

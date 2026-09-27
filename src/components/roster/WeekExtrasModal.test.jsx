@@ -79,6 +79,15 @@ describe('more than one of the same on a day, a week at a time', () => {
         ])
     })
 
+    it('keeps the same box while a time is being typed into it', async () => {
+        draw()
+        await waitFor(() => expect(grid().getAllByLabelText('Feedr time on 2026-09-30')).toHaveLength(1))
+        fireEvent.click(grid().getByRole('button', { name: 'Another Feedr on 2026-09-30' }))
+        const box = grid().getAllByLabelText('Feedr time on 2026-09-30')[1]
+        fireEvent.change(box, { target: { value: '11:01' } })
+        expect(grid().getAllByLabelText('Feedr time on 2026-09-30')[1]).toBe(box)
+    })
+
     it('still puts one on an empty day at the usual time', async () => {
         draw()
         await waitFor(() => expect(grid().getAllByLabelText('Feedr time on 2026-09-30')).toHaveLength(1))

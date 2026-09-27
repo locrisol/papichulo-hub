@@ -12,6 +12,7 @@ import { tableHeadRow, tableCard, badge, card, rowButton, pageTitle, primaryButt
 import { useConfirm } from '@/context/confirm'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import ProductPriceHistory from '@/components/inventory/ProductPriceHistory'
 
 // Every price we can buy one product at, for the restaurant you are working in.
 //
@@ -304,6 +305,16 @@ export default function ProductPricesPage() {
             {error && (
                 <ErrorBanner className="mb-4">{error}</ErrorBanner>
             )}
+
+            {/* Above the list on purpose. The rows below say what a thing
+                costs today, and the only question anybody opens this screen
+                with is whether that has moved. */}
+            <ProductPriceHistory
+                productId={id}
+                restaurantId={activeRestaurant?.id}
+                product={product}
+                suppliers={suppliers}
+            />
 
             <div className="bg-blue-50 text-blue-700 text-xs rounded-lg p-3 mb-4">
                 Case and loose prices for the same supplier are saved as separate records. Add both if your supplier offers both options. Case prices are sometimes cheaper per unit and sometimes more expensive, so it pays to compare and pick the preferred one yourself.

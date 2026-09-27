@@ -14,6 +14,7 @@ import { useState as useLocalState } from 'react'
 import { reportFigures, sectionKey, publishCheck, figuresToStore } from '@/lib/weeklyReport'
 import { paperworkFor } from '@/lib/reportPeople'
 import { weeksBack, byWeek } from '@/lib/reportChart'
+import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs } from '@/lib/reportCharts'
 import { brandFor } from '@/lib/platformBrand'
 import { uploadCharts, sendReport, sendWords } from '@/lib/reportMail'
@@ -23,6 +24,11 @@ import ReportOnlineSales from '@/components/reports/ReportOnlineSales'
 import ReportCorporateSales from '@/components/reports/ReportCorporateSales'
 import ReportPaperwork from '@/components/reports/ReportPaperwork'
 import ReportActions from '@/components/reports/ReportActions'
+import ReportPrices from '@/components/reports/ReportPrices'
+import usePriceWeek from '@/components/reports/usePriceWeek'
+import { claimActions } from '@/lib/invoiceReport'
+import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
+import { claimKind } from '@/lib/invoiceClaims'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
@@ -116,6 +122,22 @@ export default function ReportPage() {
     const isStoreManager = can(user, RESTAURANT_CONFIG)
     const canEdit = isStoreManager && report?.status === 'draft'
 
+    // Prices and suppliers. Read live while the report is a draft and frozen
+    // with everything else when it goes out, so a price accepted next week
+    // cannot change what people were sent. Its own reload, because a decision
+    // in it changes prices and not the report, and reading the whole page
+    // again for that would be half a year of invoice lines for nothing.
+    const [priceRefresh, setPriceRefresh] = useState(0)
+    const [priceBusy, setPriceBusy] = useState('')
+    const [priceSaid, setPriceSaid] = useState('')
+    const livePrices = usePriceWeek({
+        restaurantId: report?.restaurant_id,
+        weekStart: report?.week_start,
+        threshold: activeRestaurant?.recipe_gap_percent == null ? undefined : num(activeRestaurant.recipe_gap_percent),
+        enabled: report?.status === 'draft',
+        refresh: priceRefresh,
+    })
+
     // Up here rather than beside the charts, because publishing needs them to
     // draw the pictures and publishing is defined before the page is.
     const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
@@ -183,15 +205,17 @@ export default function ReportPage() {
             if (head.status === 'published' && head.figures) {
                 setFigures(head.figures)
             } else {
-                const [days, invoices, labour] = await Promise.all([
+                const [days, spend, labour] = await Promise.all([
                     supabase.from('sales_records')
                         .select('sale_date, net_sales, gross_sales, is_closed')
                         .eq('restaurant_id', head.restaurant_id)
                         .gte('sale_date', weekStart).lte('sale_date', end),
-                    supabase.from('invoices')
-                        .select('total_amount, category')
+                    // The view, not the invoices: see the comment on the
+                    // same read in the cost dashboard.
+                    supabase.from('invoice_cost_by_category')
+                        .select('cost_date, category, amount, came_from')
                         .eq('restaurant_id', head.restaurant_id)
-                        .gte('invoice_date', weekStart).lte('invoice_date', end),
+                        .gte('cost_date', weekStart).lte('cost_date', end),
                     // The view rather than the frozen table: see the
                     // comment on the same read in the cost dashboard.
                     supabase.from('labour_by_day')
@@ -200,13 +224,13 @@ export default function ReportPage() {
                         .gte('entry_date', weekStart).lte('entry_date', end),
                 ])
 
-                const failed = days.error || invoices.error || labour.error
+                const failed = days.error || spend.error || labour.error
                 if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
                 const all = (head.report_sections || []).flatMap(s => s.report_items || [])
                 setFigures(reportFigures({
                     days: days.data || [],
-                    invoices: invoices.data || [],
+                    spend: spend.data || [],
                     labour: labour.data || [],
                     overheads: all.filter(i => i.kind === 'overhead'),
                     delivery: all.filter(i => i.kind === 'delivery'),
@@ -265,15 +289,15 @@ export default function ReportPage() {
             const weekStarts = weeksBack(weekStart)
             const yearFrom = weekStarts[0]
 
-            const [hDays, hInvoices, hLabour, hReports] = await Promise.all([
+            const [hDays, hSpend, hLabour, hReports] = await Promise.all([
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', yearFrom).lte('sale_date', end),
-                supabase.from('invoices')
-                    .select('invoice_date, total_amount, category')
+                supabase.from('invoice_cost_by_category')
+                    .select('cost_date, category, amount')
                     .eq('restaurant_id', head.restaurant_id)
-                    .gte('invoice_date', yearFrom).lte('invoice_date', end),
+                    .gte('cost_date', yearFrom).lte('cost_date', end),
                 supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)
@@ -290,11 +314,11 @@ export default function ReportPage() {
             const netWeeks = byWeek(trading, 'sale_date', d => d.net_sales)
             const grossWeeks = byWeek(trading, 'sale_date', d => d.gross_sales)
             const foodWeeks = byWeek(
-                (hInvoices.data || []).filter(i => i.category === 'food'),
-                'invoice_date', i => i.total_amount)
+                (hSpend.data || []).filter(r => FOOD.includes(r.category)),
+                'cost_date', r => r.amount)
             const packWeeks = byWeek(
-                (hInvoices.data || []).filter(i => ['packaging', 'cleaning'].includes(i.category)),
-                'invoice_date', i => i.total_amount)
+                (hSpend.data || []).filter(r => PACKAGING.includes(r.category)),
+                'cost_date', r => r.amount)
             const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
 
             // Each platform's own weekly line, and the two totals.
@@ -555,6 +579,9 @@ export default function ReportPage() {
             // rather than the one set today; freezing it means a target changed
             // in October cannot repaint a report sent in September.
             targets,
+            // The price section exactly as it stood, words and all, because
+            // the mail cannot work any of it out for itself.
+            prices: livePrices.ready ? livePrices.data : null,
             paperwork: {
                 food,
                 // Frozen with whether a renewal had been applied for, because
@@ -565,9 +592,21 @@ export default function ReportPage() {
         })
     }
 
+    // The price section is frozen with everything else, so it has to have
+    // finished reading, and be this week's, before anything goes out.
+    function pricesNotReady() {
+        if (!sections.some(s => s.key === 'prices_suppliers')) return false
+        if (livePrices.ready) return false
+        setError(livePrices.error
+            ? `The prices could not be read, so this cannot go out yet: ${livePrices.error}`
+            : 'The prices are still being read. Give it a moment and press it again.')
+        return true
+    }
+
     async function publish() {
         const check = publishCheck(sections, figures)
         if (check.blockers.length > 0) return
+        if (pricesNotReady()) return
 
         const first = (report.send_count || 0) === 0
         const ok = await confirm({
@@ -665,6 +704,7 @@ export default function ReportPage() {
     // sends a test to whoever is logged in, which is a rule a browser cannot
     // talk it out of.
     async function testSend() {
+        if (pricesNotReady()) return
         setMailed(null)
         setSaving(true)
         try {
@@ -738,6 +778,195 @@ export default function ReportPage() {
             opened_on: weekStart,
             sort_order: section.items.filter(i => i.kind === 'action').length,
         }))
+    }
+
+    // The claims that are still owed, onto the support list.
+    //
+    // An action already carries from week to week until somebody ticks it, so
+    // nothing new has to be built to make a claim stay in front of people: it
+    // is added once, keyed by the claim, and crossed off when the credit lands.
+    async function putClaimsOnList(jobs) {
+        const section = sections.find(s => s.key === 'support_actions')
+        if (!section) return 'This report has no support section to put them on.'
+
+        const at = section.items.filter(i => i.kind === 'action').length
+        if (jobs.add.length) {
+            const { error: e1 } = await supabase.from('report_items').insert(
+                jobs.add.map((job, i) => ({ ...job, section_id: section.id, sort_order: at + i })),
+            )
+            if (e1) return friendlyError(e1)
+        }
+
+        if (jobs.tick.length) {
+            const { error: e2 } = await supabase.from('report_items')
+                .update({ done_on: todayISO() })
+                .in('id', jobs.tick.map(item => item.id))
+            if (e2) return friendlyError(e2)
+        }
+
+        setRefresh(n => n + 1)
+        return null
+    }
+
+    // ---- the decisions in the price section ----
+    //
+    // Each one changes what recipes cost or what a code means, never the
+    // report, so each is asked about first and then only the price section is
+    // read again.
+    async function decidePrice(key, question, work, done) {
+        const ok = await confirm(question)
+        if (!ok) return
+        setPriceBusy(key)
+        setPriceSaid('')
+        setError('')
+        const failed = await work()
+        setPriceBusy('')
+        if (failed) { setError(failed); return }
+        setPriceSaid(done)
+        setPriceRefresh(n => n + 1)
+    }
+
+    function costFrom(item, key) {
+        const row = livePrices.prices.find(p => p.id === item.priceId)
+        return decidePrice(key, {
+            title: `Cost ${item.name} from what we pay?`,
+            message: `Every recipe with ${item.name} in it will cost it at ${fmtMoney(item.paid)} ${item.unit} `
+                + `instead of ${fmtMoney(item.recipe)}, the price on the invoice of ${shortDate(item.paidOn)}.`,
+            confirmLabel: 'Cost from it',
+        }, async () => {
+            const out = costFromPaid(item, row, {
+                restaurantId: report.restaurant_id, userId: user?.id, at: new Date().toISOString(),
+            })
+            if (!out) return 'That price is not in the Hub any more. Reload the page.'
+            const { error: e1 } = await supabase.from('product_supplier_prices').update(out.patch).eq('id', out.priceId)
+            if (e1) return friendlyError(e1)
+            const { error: e2 } = await supabase.from('product_price_events').insert(out.event)
+            return e2 ? friendlyError(e2) : null
+        }, `${item.name} is costed from ${fmtMoney(item.paid)} ${item.unit} now.`)
+    }
+
+    function makeUsual(item, key) {
+        const to = livePrices.prices.find(p => p.id === item.priceId)
+        const from = livePrices.prices.find(p => p.id === item.fromPriceId)
+        return decidePrice(key, {
+            title: `Make ${item.bought} the usual one?`,
+            message: `Recipes with ${item.name} in them will cost it at ${fmtMoney(item.rowPer)} ${item.unit}, `
+                + `the price the Hub has for ${item.bought} (code ${item.code}), and the report will compare `
+                + 'everything else with it from now on. If that price is not what is paid now, the report '
+                + 'says so next.',
+            confirmLabel: 'Make it the usual one',
+        }, async () => {
+            if (!to || to.price_per_unit == null) return 'That price is not in the Hub any more. Reload the page.'
+            const move = movePreferred({ id: item.productId }, to, {
+                restaurantId: report.restaurant_id, userId: user?.id, from, at: new Date().toISOString(),
+            })
+            if (move.off) {
+                const { error: e1 } = await supabase.from('product_supplier_prices')
+                    .update({ is_preferred: false }).eq('id', move.off)
+                if (e1) return friendlyError(e1)
+            }
+            const { error: e2 } = await supabase.from('product_supplier_prices')
+                .update({ is_preferred: true }).eq('id', move.on)
+            if (e2) return friendlyError(e2)
+            const { error: e3 } = await supabase.from('product_price_events').insert({
+                ...move.event, note: `Bought as ${item.bought} three times in a row`,
+            })
+            return e3 ? friendlyError(e3) : null
+        }, `${item.name} is costed from ${item.bought} now.`)
+    }
+
+    function renumber(item, key) {
+        const plan = renumberPlan(item)
+        return decidePrice(key, {
+            title: 'The same thing under a new number?',
+            message: `${item.bought} (code ${item.code}) and the ${item.name} usually bought`
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one, with one price and one price `
+                + 'history. What recipes cost it at does not change here: if the price moved, it shows as a price '
+                + 'change from now on.',
+            confirmLabel: 'They are the same',
+        }, async () => {
+            if (!plan) return 'The Hub cannot join these two. Match the code in the review instead.'
+            if (plan.moveLines) {
+                const { error: e1 } = await supabase.from('invoice_lines')
+                    .update({ price_id: plan.moveLines.to }).eq('price_id', plan.moveLines.from)
+                if (e1) return friendlyError(e1)
+            }
+            if (plan.release) {
+                const { error: e2 } = await supabase.from('supplier_codes')
+                    .update({ price_id: null }).eq('id', plan.release)
+                if (e2) return friendlyError(e2)
+            }
+            // Asked to say what it removed, because a removal the database
+            // quietly declines comes back with no error and nothing gone, and
+            // the green peppers were left with a price nobody pointed at.
+            if (plan.drop) {
+                const { data: gone, error: e3 } = await supabase.from('product_supplier_prices')
+                    .delete().eq('id', plan.drop).select('id')
+                if (e3) return friendlyError(e3)
+                if (!gone?.length) {
+                    return "The code was joined, but its old price could not be removed. It is on the product's "
+                        + 'prices page and nothing uses it: delete it there.'
+                }
+            }
+            const { error: e4 } = await supabase.from('supplier_codes').update(plan.point.patch).eq('id', plan.point.id)
+            if (e4) return friendlyError(e4)
+            if (plan.rowCode) {
+                const { error: e5 } = await supabase.from('product_supplier_prices')
+                    .update({ supplier_code: plan.rowCode.supplier_code }).eq('id', plan.rowCode.id)
+                if (e5) return friendlyError(e5)
+            }
+            return null
+        }, `${item.bought} and the usual ${item.name} are one version now.`)
+    }
+
+    // The same thing bought either way. Nothing is moved or removed: the two
+    // codes go in one group and each keeps its own price.
+    function buyBoth(item, key) {
+        const plan = alternatePlan(item, newGroupId())
+        return decidePrice(key, {
+            title: 'Same thing, you usually buy both?',
+            message: `${item.bought} (code ${item.code}) and ${item.usualName}`
+                + `${item.usualCode ? ` (code ${item.usualCode})` : ''} become one product bought either way. `
+                + 'Each keeps its own price, neither is listed as bought instead of the other again, and recipes are '
+                + 'checked against what they cost on average.',
+            confirmLabel: 'We buy both',
+        }, async () => {
+            if (!plan) return 'The Hub cannot group these two. The usual price has no code on it.'
+            const { error: e1 } = await supabase.from('supplier_codes')
+                .update({ alternate_group: plan.group }).in('id', plan.rows)
+            if (e1) return friendlyError(e1)
+            if (plan.fold) {
+                const { error: e2 } = await supabase.from('supplier_codes')
+                    .update({ alternate_group: plan.group }).eq('alternate_group', plan.fold)
+                if (e2) return friendlyError(e2)
+            }
+            return null
+        }, `${item.name} is bought either way now.`)
+    }
+
+    // A label on the credit note and nothing else. Logging a claim for it now
+    // would take its money off the week the delivery happened, which may be a
+    // report already sent.
+    function giveReason(item, reason, key) {
+        const label = claimKind(reason).label
+        return decidePrice(key, {
+            title: `${label}?`,
+            message: `${item.what} (${item.number || 'credit note'}) will say ${label.toLowerCase()} `
+                + 'on this report and every one after. No money moves and no week changes.',
+            confirmLabel: 'Give the reason',
+        }, async () => {
+            const { error: e1 } = await supabase.from('invoices').update({ credit_reason: reason }).eq('id', item.id)
+            return e1 ? friendlyError(e1) : null
+        }, 'Saved.')
+    }
+
+    async function listClaims(jobs) {
+        setPriceBusy('list')
+        setPriceSaid('')
+        const failed = await putClaimsOnList(jobs)
+        setPriceBusy('')
+        if (failed) { setError(failed); return }
+        setPriceSaid('The support list has them now, and they stay on it until they are ticked.')
     }
 
     async function addRefund(platform) {
@@ -934,7 +1163,7 @@ export default function ReportPage() {
                 report is visible while it fills in. */}
             {sections.filter(s => s.key !== 'sales_costs').map(section => {
                 const built = [
-                    'profit_loss', 'online_sales', 'corporate_sales',
+                    'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
                     'people_ops', 'marketing', 'support_actions',
                 ].includes(section.key)
                 return (
@@ -965,6 +1194,24 @@ export default function ReportPage() {
                                         <PageChart spec={specs.delivery} rows={history} />
                                         <PageChart spec={specs.earnings} rows={history} />
                                         </>
+                                    )}
+                                    {section.key === 'prices_suppliers' && (
+                                        <PricesBlock
+                                            report={report}
+                                            live={livePrices}
+                                            canEdit={canEdit}
+                                            busy={priceBusy}
+                                            said={priceSaid}
+                                            supportSection={sections.find(s => s.key === 'support_actions')}
+                                            handlers={{
+                                                onCostFrom: costFrom,
+                                                onMakeUsual: makeUsual,
+                                                onRenumber: renumber,
+                                                onGiveReason: giveReason,
+                                                onBuyBoth: buyBoth,
+                                                onPutOnList: listClaims,
+                                            }}
+                                        />
                                     )}
                                     {section.key === 'people_ops' && (
                                         <ReportPaperwork
@@ -1046,6 +1293,38 @@ export default function ReportPage() {
 
             {canEdit && <AddSection onAdd={addSection} />}
         </div>
+    )
+}
+
+// The price section, live or frozen.
+//
+// A report that has gone out shows what it said when it went, and nothing on
+// it can be decided any more: the buttons belong to a week still being
+// written. One sent before the section existed has nothing frozen, and says
+// so rather than showing today's prices under last month's heading.
+function PricesBlock({ report, live, canEdit, busy, said, supportSection, handlers }) {
+    const published = report.status === 'published'
+    const section = published ? report.figures?.prices : live.data
+
+    if (published && !section) {
+        return <p className="text-sm text-muted">This report went out before prices had a section of their own.</p>
+    }
+    if (!published && live.error) return <ErrorBanner>{live.error}</ErrorBanner>
+    if (!section) return <p className="text-sm text-muted">Reading the invoices for the week.</p>
+
+    const jobs = canEdit ? claimActions(live.claims, supportSection?.items, report.week_start) : null
+    return (
+        <>
+            {said && <p className="text-sm text-green-700 mb-3" aria-live="polite">{said}</p>}
+            <ReportPrices
+                section={section}
+                canDecide={canEdit}
+                canEdit={canEdit}
+                busy={busy}
+                jobs={jobs}
+                {...handlers}
+            />
+        </>
     )
 }
 

@@ -43,6 +43,7 @@ export default function RestaurantPage() {
 
     const [formData, setFormData] = useState({
         hourly_rate: '',
+        recipe_gap_percent: '',
         mail_from: '',
         google_calendar_id: '',
         pay_period_start: '',
@@ -82,6 +83,9 @@ export default function RestaurantPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setFormData({
             hourly_rate: parseFloat(activeRestaurant.hourly_rate).toFixed(2) || '',
+            recipe_gap_percent: activeRestaurant.recipe_gap_percent == null
+                ? '5'
+                : String(Number(activeRestaurant.recipe_gap_percent)),
             mail_from: activeRestaurant.mail_from || '',
             google_calendar_id: activeRestaurant.google_calendar_id || '',
             pay_period_start: activeRestaurant.pay_period_start || '',
@@ -265,6 +269,40 @@ export default function RestaurantPage() {
                                 )
                             })}
                         </div>
+                    </div>
+
+                    {/* How far recipes can drift from what we pay before the
+                        weekly report lists them. Beside the targets because it
+                        is the same kind of line: a figure somebody chose that
+                        decides what gets called out. Saved straight onto the
+                        restaurant and read by the next report written, which is
+                        right for it: a report that has gone out froze the one
+                        it was checked against. */}
+                    <div className={`${card} p-6 mb-4`}>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-4">Prices on the weekly report</h3>
+                        <label className={labelClass} htmlFor="recipe-gap">
+                            List a product when recipes are this far off what we pay (%)
+                        </label>
+                        <input
+                            id="recipe-gap"
+                            {...numberField({
+                                value: formData.recipe_gap_percent,
+                                onChange: v => setFormData({ ...formData, recipe_gap_percent: v }),
+                            })}
+                            onBlur={() => {
+                                const gap = parseFloat(formData.recipe_gap_percent)
+                                if (isNaN(gap) || gap < 0 || gap > 100) return
+                                // The database hands a numeric back as text, so
+                                // "5.00" and 5 are the same answer.
+                                if (Number(activeRestaurant?.recipe_gap_percent) === gap) return
+                                save({ recipe_gap_percent: gap }, 'recipe_gap_percent')
+                            }}
+                            className="w-full sm:w-32 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                        <p className="text-xs text-muted mt-1">
+                            Either way, dearer or cheaper. A product stays on every report until what recipes
+                            cost it at is closer than this to what was last paid for the one usually bought.
+                        </p>
                     </div>
 
                     {/* Everything saved straight onto the restaurant row, each box
