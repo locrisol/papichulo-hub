@@ -511,8 +511,9 @@ export default function InvoicesPage() {
                                                 className={`border-b border-border last:border-b-0 border-l-4 px-3 py-2.5 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}
                                             >
                                                 <div className="flex items-baseline justify-between gap-3">
-                                                    <span className="text-sm font-medium text-gray-900">
+                                                    <span className="text-sm font-medium text-gray-900 min-w-0">
                                                         {inv.suppliers?.name || 'Unknown supplier'}
+                                                        <DocumentNumber invoice={inv} />
                                                     </span>
                                                     <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
                                                         {fmtMoney(inv.total_amount)}
@@ -555,6 +556,7 @@ export default function InvoicesPage() {
                                                 <tr className={`border-b border-border last:border-b-0 border-l-4 ${cat.stripe} ${isEditing ? 'bg-gray-50' : ''}`}>
                                                     <td className="px-3 py-2 text-gray-900">
                                                         {inv.suppliers?.name || 'Unknown supplier'}
+                                                        <DocumentNumber invoice={inv} />
                                                         {inv.notes && <span className="block text-xs text-muted">{inv.notes}</span>}
                                                     </td>
                                                     <td className="px-3 py-2 w-32">
@@ -612,5 +614,18 @@ export default function InvoicesPage() {
                 </Modal>
             )}
         </>
+    )
+}
+
+// The number off the top of the page, for a document that was read in rather
+// than typed as a total. A typed one has none, so it says nothing rather than
+// something empty. It is what the supplier's portal and the paper both go by,
+// so it is the thing to look for when checking one against the other.
+function DocumentNumber({ invoice }) {
+    if (!invoice.invoice_number) return null
+    return (
+        <span className="block text-xs font-normal text-muted tabular-nums">
+            {invoice.document_type === 'credit' ? 'Credit note' : 'Invoice'} {invoice.invoice_number}
+        </span>
     )
 }
