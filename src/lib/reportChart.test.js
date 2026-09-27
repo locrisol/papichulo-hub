@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     RANGES, weeksBack, byWeek, inRange, fromFirstFigure, niceMax, niceMin, scaleFor, ticks, aside,
     segments, isMissing,
-    labelIndices,
+    labelIndices, chartHeight, CHART_MIN_H, CHART_MAX_H,
 } from '@/lib/reportChart'
 
 describe('weeksBack', () => {
@@ -290,5 +290,22 @@ describe('labelIndices', () => {
 
     it('labels a single week', () => {
         expect(labelIndices(1, 9)).toEqual([0])
+    })
+})
+
+// He asked for taller charts on 27 September: a fixed 240 on a laptop was a
+// strip fifteen hundred wide and two hundred tall.
+describe('chartHeight', () => {
+    it('follows the width, to a ceiling on a wide screen', () => {
+        expect(chartHeight(800)).toBe(336)
+        expect(chartHeight(1550)).toBe(CHART_MAX_H)
+    })
+
+    it('keeps a readable shape on a phone', () => {
+        expect(chartHeight(340)).toBe(CHART_MIN_H)
+    })
+
+    it('is taller than it was everywhere', () => {
+        for (const width of [300, 400, 760, 1000, 1550]) expect(chartHeight(width)).toBeGreaterThan(240)
     })
 })

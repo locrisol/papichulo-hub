@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { shortDate } from '@/lib/dates'
 import {
     RANGES, DEFAULT_RANGE, inRange, fromFirstFigure, scaleFor, ticks, aside, segments, isMissing,
-    labelIndices,
+    labelIndices, chartHeight,
 } from '@/lib/reportChart'
 import { segmentTrack, segmentButton } from '@/lib/controlStyles'
 import { num } from '@/lib/format'
@@ -30,7 +30,8 @@ import { num } from '@/lib/format'
 //
 // So the width is measured and the viewBox matches it. One pixel is one pixel
 // at any width, and the chart is short on a phone and wide on a laptop rather
-// than the same picture blown up.
+// than the same picture blown up. The height follows the width, to a ceiling:
+// see chartHeight.
 
 const PAD = { left: 58, right: 14, top: 12, bottom: 30 }
 // Narrow enough that a laptop does not get a chart half a screen tall, and the
@@ -46,7 +47,7 @@ const MIN_W = 300
 // knowing about Deliveroo's bill is what share of Deliveroo's own takings it
 // was, not what share of the bill it was.
 export default function WeekChart({
-    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, height = 240, empty,
+    rows, series, stacked = [], shareOf, format, formatAxis, zero = true, empty,
 }) {
     const [range, setRange] = useState(DEFAULT_RANGE)
     const [at, setAt] = useState(null)
@@ -75,7 +76,7 @@ export default function WeekChart({
         return <p className="text-sm text-muted italic">{empty || 'Nothing to draw yet.'}</p>
     }
 
-    const H = height
+    const H = chartHeight(W)
     const iw = W - PAD.left - PAD.right
     const ih = H - PAD.top - PAD.bottom
 

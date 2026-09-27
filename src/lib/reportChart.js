@@ -43,6 +43,23 @@ export const DEFAULT_RANGE = '12m'
 // re-read the key at every chart.
 export const CHART_TOTAL = '#2C6FCF'
 
+// How tall a chart on the page is, from how wide it is.
+//
+// It was a fixed 240, or 210 for the four under the sales chart, whatever the
+// width. On a laptop that is a strip fifteen hundred wide and two hundred tall,
+// and a week that cost four hundred euro more moved the line by a few pixels.
+// He asked for them taller on 27 September, holding up the Google Sheets charts
+// his old report sent, which are nearer two wide to one tall. That on a
+// fifteen hundred pixel page would be a chart taller than the screen, so it
+// follows the width to a ceiling: about twice what it was on a laptop, and a
+// floor that still leaves a phone a readable shape.
+export const CHART_MIN_H = 260
+export const CHART_MAX_H = 440
+
+export function chartHeight(width) {
+    return Math.round(Math.min(CHART_MAX_H, Math.max(CHART_MIN_H, num(width) * 0.42)))
+}
+
 
 // The last `count` weeks up to and including the week `upTo` falls in.
 //

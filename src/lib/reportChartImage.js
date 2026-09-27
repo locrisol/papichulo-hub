@@ -31,7 +31,16 @@ import { num } from '@/lib/format'
 // browser bundle to read one integer. A test holds the two together, which is
 // what stops them drifting.
 export const MAIL_WIDTH = 760
-const HEIGHT = 260
+
+// How tall the plot is drawn, axes included, before the title and the key.
+//
+// It was 260. On a phone the whole picture is shrunk to the screen, about 300
+// wide, so the plot came out under a hundred pixels tall and a week's rise was
+// a line one pixel thick. He asked for it taller on 27 September, holding up the
+// Google Sheets charts his old report sent. 400 gives the picture nearly their
+// shape, about 1.7 wide to one tall with the key, and on a phone about twice the
+// height of plot it had.
+const HEIGHT = 400
 
 // Two device pixels to the point. The picture is shown at the size it says it
 // is, rather than resized by a chat app the way the roster is, so three would
