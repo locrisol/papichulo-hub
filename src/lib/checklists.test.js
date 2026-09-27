@@ -176,7 +176,8 @@ describe('the Cleaning section of the weekly report', () => {
         const ticks = [tick('r1', 't2', '2026-09-21'), tick('r1', 't3', '2026-09-22'),
             tick('r1', 't4', '2026-09-22', '15:00', { photos: ['p/floor.jpg'] })]
         const [list] = cleaning(rounds, ticks).lists
-        expect(list.lines).toEqual([{ label: null, state: 'done', on: '2026-09-22', warn: false }])
+        expect(list.lines).toEqual([{ label: null, state: 'done', on: '2026-09-22', warn: false, words: `Done on Tuesday ${shortDate('2026-09-22')}.` }])
+        expect(list.all.map(r => r.lastDone)).toEqual([`Mon ${shortDate('2026-09-21')}`, `Tue ${shortDate('2026-09-22')}`, `Tue ${shortDate('2026-09-22')}`])
         expect(cleaningWords(list.lines[0])).toBe(`Done on Tuesday ${shortDate('2026-09-22')}.`)
         expect(list.photos).toEqual([{ path: 'p/floor.jpg', task: 'Mop the floor', by: 'Aoife', at: ticks[2].done_at, gone: false }])
         expect(list.ticked).toBe(3)
@@ -196,6 +197,8 @@ describe('the Cleaning section of the weekly report', () => {
             ['Mop the floor', '2026-09-08'],
         ])
         expect(cleaningWords(line)).toBe('Not finished: 1 of 3 done, 2 left.')
+        expect(line.words).toBe('Not finished: 1 of 3 done, 2 left.')
+        expect(line.left[1].lastDoneWords).toBe(`last done Tue ${shortDate('2026-09-08')}`)
     })
 
     it('says nobody started it', () => {
@@ -258,8 +261,9 @@ describe('the Cleaning section of the weekly report', () => {
 
     it('counts the week\'s ticks by day', () => {
         const rounds = [{ id: 'r1', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: null }]
-        const { byDay } = cleaning(rounds, [tick('r1', 't2', '2026-09-21'), tick('r1', 't3', '2026-09-21'), tick('r1', 't4', '2026-09-26')])
+        const { byDay, busiest } = cleaning(rounds, [tick('r1', 't2', '2026-09-21'), tick('r1', 't3', '2026-09-21'), tick('r1', 't4', '2026-09-26')])
         expect(byDay).toEqual([0, 2, 0, 0, 0, 0, 1])
+        expect(busiest).toBe('Most is done on Mondays (67%), and the least on Saturdays.')
     })
 })
 

@@ -292,6 +292,7 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             return leaves.filter(t => !ticked.has(t.id)).map(t => ({
                 id: t.id, name: t.name, ...where.get(t.id),
                 lastDone: lastDone.get(t.id) ? dayOf(lastDone.get(t.id)) : null,
+                lastDoneWords: lastDone.get(t.id) ? `last done ${doneDay(lastDone.get(t.id))}` : 'never done',
             }))
         }
         const verdict = (label, period, warnWhenNotDone) => {
@@ -330,17 +331,21 @@ export function weekCleaning({ lists, categories, tasks, rounds, ticks, weekStar
             id: list.id,
             name: list.name,
             repeats: repeatWords(list),
-            lines,
+            // The words go with the figures because the mail cannot work them
+            // out: nothing outside a function's own folder is deployed with it.
+            lines: lines.map(line => ({ ...line, words: cleaningWords(line) })),
+            // Every thing on the list with the day it was last done, as at
+            // Saturday night. His words: last done on every recurring task, in
+            // the weekly report too.
+            all: lastDoneRows(tree, lastDone).map(r => ({ label: r.label, category: r.category, lastDone: r.doneAt ? doneDay(r.doneAt) : null })),
             ticked: weekTicks.length,
             photos: weekTicks.flatMap(t => (t.photos || []).map(path => ({
                 path, task: where.get(t.task_id)?.label || '', by: t.done_by_name, at: t.done_at, gone: Boolean(t.photos_gone_at),
             }))),
         })
     }
-    return {
-        lists: out,
-        byDay: ticksByWeekday(known.filter(t => ms(t.done_at) >= start)),
-    }
+    const byDay = ticksByWeekday(known.filter(t => ms(t.done_at) >= start))
+    return { lists: out, byDay, busiest: busiestWords(byDay) }
 }
 
 function monthName(date) {

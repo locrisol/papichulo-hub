@@ -8,6 +8,7 @@ import {
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek } from '@/lib/invoiceReport'
+import { weekCleaning } from '@/lib/checklists'
 
 const figures = {
     net: 14750, gross: 16450,
@@ -1399,5 +1400,83 @@ describe('delivery costed from the Monday to Sunday statement', () => {
         expect(old.html).toContain('€800.00')
         expect(old.html).toContain('25.00% of what it took')
         expect(old.html).not.toContain('The platforms bill Monday to Sunday')
+    })
+})
+
+// The checklists section, built from what the app freezes with the report:
+// weekCleaning's output, words and all, since the mail cannot work any of it
+// out. Invented lists.
+describe('the cleaning section', () => {
+    const at = (day, time = '10:00') => new Date(`${day}T${time}:00`).toISOString()
+    const week = '2026-09-20'
+    const lists = [
+        { id: 'L1', name: 'Weekly Deep Clean', repeats: 'weeks', every_weeks: 1, starts_on: '2026-08-01', is_active: true, sort_order: 1 },
+        { id: 'L2', name: 'Toilet Checklist', repeats: 'weeks', every_weeks: 1, starts_on: '2026-08-01', is_active: true, sort_order: 2 },
+    ]
+    const categories = [
+        { id: 'c1', checklist_id: 'L1', name: 'Kitchen', sort_order: 1, is_active: true },
+        { id: 'c2', checklist_id: 'L2', name: 'Toilets', sort_order: 1, is_active: true },
+    ]
+    const tasks = [
+        { id: 't1', checklist_id: 'L1', category_id: 'c1', parent_id: null, name: 'Small toaster area', sort_order: 1, is_active: true },
+        { id: 't2', checklist_id: 'L1', category_id: 'c1', parent_id: 't1', name: 'Clean under the toaster', sort_order: 1, is_active: true },
+        { id: 't3', checklist_id: 'L1', category_id: 'c1', parent_id: 't1', name: 'Clean toaster sides', sort_order: 2, is_active: true },
+        { id: 't4', checklist_id: 'L2', category_id: 'c2', parent_id: null, name: 'Mop the floor', sort_order: 1, is_active: true, needs_photo: true },
+    ]
+    const rounds = [
+        { id: 'r1', checklist_id: 'L1', started_at: at('2026-09-21'), ended_at: null },
+        { id: 'r2', checklist_id: 'L2', started_at: at('2026-09-22'), ended_at: at('2026-09-22', '11:00'), ended_by: null },
+    ]
+    const ticks = [
+        { round_id: 'r1', task_id: 't2', done_at: at('2026-09-21'), done_by_name: 'Aoife', photos: [] },
+        { round_id: 'r2', task_id: 't4', done_at: at('2026-09-22', '11:00'), done_by_name: 'Aoife', photos: ['rest/rounds/r2/a.jpg', 'rest/rounds/r2/b.jpg'] },
+    ]
+    const cleaning = weekCleaning({ lists, categories, tasks, rounds, ticks, weekStart: week })
+    const withCleaning = {
+        ...base,
+        sections: [...sections, { key: 'cleaning', title: 'Cleaning', sort_order: 7, items: [] }],
+        figures: { ...figures, cleaning },
+    }
+
+    it('says what each list came to, and what was left with when it was last done', () => {
+        const { html } = reportEmail(withCleaning)
+        expect(html).toContain('Weekly Deep Clean')
+        expect(html).toContain('Not finished: 1 of 2 done, 1 left.')
+        expect(html).toContain('Small toaster area: Clean toaster sides')
+        expect(html).toContain('never done')
+        expect(html).toContain('Toilet Checklist')
+        expect(html).toMatch(/Done on Tuesday/)
+    })
+
+    it('says how many photos there were and where they are, and shows none of them', () => {
+        const { html } = reportEmail(withCleaning)
+        expect(html).toContain('2 photos taken this week, on the Hub.')
+        expect(html).not.toContain('rest/rounds/r2/a.jpg')
+    })
+
+    it('says which day most was done', () => {
+        const { html } = reportEmail(withCleaning)
+        expect(html).toContain('2 things ticked this week.')
+        expect(html).toContain('the least on')
+    })
+
+    it('says the same in the plain part', () => {
+        const { text } = reportEmail(withCleaning)
+        expect(text).toContain('CLEANING')
+        expect(text).toContain('  Weekly Deep Clean (Every week)')
+        expect(text).toContain('    Not finished: 1 of 2 done, 1 left.')
+        expect(text).toContain('      - Small toaster area: Clean toaster sides, never done')
+        expect(text).toContain('    2 photos taken this week, on the Hub.')
+    })
+
+    it('says so when there was nothing to report', () => {
+        const none = { ...withCleaning, figures: { ...figures, cleaning: { lists: [], byDay: [0, 0, 0, 0, 0, 0, 0], busiest: '' } } }
+        expect(reportEmail(none).html).toContain('No checklists were due this week.')
+    })
+
+    it('is the last section, numbered after the rest', () => {
+        const { html } = reportEmail(withCleaning)
+        expect(html.lastIndexOf('>8</td>')).toBeGreaterThan(html.indexOf('Support / actions needed'))
+        expect(html.indexOf('Cleaning')).toBeGreaterThan(html.indexOf('Support / actions needed'))
     })
 })

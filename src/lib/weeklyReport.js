@@ -21,6 +21,10 @@ export const DEFAULT_SECTIONS = [
     { key: 'people_ops', title: 'People and operations' },
     { key: 'marketing', title: 'Marketing and sales development' },
     { key: 'support_actions', title: 'Support / actions needed' },
+    // Asked for on 27 September: the state of each checklist, at the end of
+    // the report. atEnd because he said the end, so it goes after anything a
+    // restaurant added of its own rather than straight after the actions.
+    { key: 'cleaning', title: 'Cleaning', atEnd: true },
 ]
 
 // The overhead lines a first report offers. Every one of them is a guess at
@@ -74,7 +78,7 @@ export function sectionsFor(previous) {
     DEFAULT_SECTIONS.forEach((wanted, i) => {
         if (out.some(s => s.key === wanted.key)) return
         const before = DEFAULT_SECTIONS.slice(0, i).reverse().find(d => out.some(s => s.key === d.key))
-        const at = before ? out.findIndex(s => s.key === before.key) + 1 : 0
+        const at = wanted.atEnd ? out.length : before ? out.findIndex(s => s.key === before.key) + 1 : 0
         out.splice(at, 0, { key: wanted.key, title: wanted.title })
     })
     return out
