@@ -14,6 +14,7 @@
 const TABLES = {
     sales_records: 'Daily sales',
     sales_tenders: 'Till receipt',
+    sales_tender_names: 'Till receipt names',
     sales_platforms: 'Delivery platform',
     petty_cash_entries: 'Petty cash',
     invoices: 'Invoice',

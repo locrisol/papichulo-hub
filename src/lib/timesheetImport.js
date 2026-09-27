@@ -201,8 +201,9 @@ export function fileFits({ header, restaurantName, weekStart, weekEnd }) {
 }
 
 // Loose on purpose. "Papi Chulo Point Campus" against a restaurant named "Point
-// Campus" has to pass, or the check refuses every real file.
-function sameShop(a, b) {
+// Campus" has to pass, or the check refuses every real file. The weekly sales
+// import makes the same check against the same store field.
+export function sameShop(a, b) {
     const tidy = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
     const one = tidy(a)
     const two = tidy(b)

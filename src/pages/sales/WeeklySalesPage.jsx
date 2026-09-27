@@ -17,6 +17,7 @@ import {
     bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
 } from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import SalesImportDialog from '@/components/sales/SalesImportDialog'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -99,6 +100,7 @@ export default function WeeklySalesPage() {
 
     // True once something has been edited but not yet saved.
     const [dirty, setDirty] = useState(false)
+    const [importing, setImporting] = useState(false)
 
     // Working copy of the week, keyed by date.
     const [days, setDays] = useState({})
@@ -320,6 +322,17 @@ export default function WeeklySalesPage() {
                 platformValues: { ...prev[date].platformValues, [platformName]: value },
             },
         }))
+    }
+
+    // The till's report, read in. It lands in the boxes exactly as if it had
+    // been typed, so the week is still checked by the Reconciliation row and
+    // still saved with Save week, and nothing is written until it is.
+    function fillFromTill(filled) {
+        setDirty(true)
+        setDays(prev => ({ ...prev, ...filled }))
+        setImporting(false)
+        setFormProblem('')
+        setSuccess("The till's report is in. Check the week, then press Save week.")
     }
 
     function toggleClosed(date) {
@@ -867,13 +880,24 @@ export default function WeeklySalesPage() {
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>
                 </div>
-                {/* Switch to the single-day form, for phone use */}
-                <button
-                    onClick={() => navigate('/sales?view=day')}
-                    className={secondaryButton}
-                >
-                    Day view
-                </button>
+                {/* The till's report first, the same words the Timesheet
+                    uses for the same kind of file, then the switch to the
+                    single day form for phone use. */}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setImporting(true)}
+                        className={secondaryButton}
+                    >
+                        Upload the till&apos;s report
+                    </button>
+                    <button
+                        onClick={() => navigate('/sales?view=day')}
+                        className={secondaryButton}
+                    >
+                        Day view
+                    </button>
+                </div>
             </div>
 
             {/* Phone only.
@@ -1100,6 +1124,22 @@ export default function WeeklySalesPage() {
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
+
+            {importing && (
+                <SalesImportDialog
+                    restaurantId={restaurantId}
+                    restaurantName={activeRestaurant?.name}
+                    weekStart={weekStart}
+                    days={days}
+                    tenders={tenders}
+                    shownTenders={shownTenders}
+                    trackingPlatforms={cateringPlatforms}
+                    loading={loading}
+                    onGoToWeek={goToWeek}
+                    onFill={fillFromTill}
+                    onClose={() => setImporting(false)}
+                />
+            )}
         </div>
     )
 }
