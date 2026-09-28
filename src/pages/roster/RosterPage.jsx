@@ -6,21 +6,25 @@ import { useConfirm } from '@/context/confirm'
 import { friendlyError } from '@/lib/errors'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
+import { nearbyRows, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
-import { secondaryButton, jumpButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton, jumpLabel } from '@/lib/controlStyles'
+import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
-import { sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote } from '@/lib/team'
+import {
+    sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
+} from '@/lib/team'
 import { fullDayRun, fullDayWords } from '@/lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
     shiftEdges,
 } from '@/lib/roster'
-import { checkWeek, findingsByEmployee, overlapFindings } from '@/lib/workRules'
+import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
-import { emailTheAnswer } from '@/lib/timeOffMail'
+import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
-import { writesFor, requestsOnShift } from '@/lib/shiftRequests'
+import { writesFor, requestsOnShift, shiftIdsOf, LIVE_STATES } from '@/lib/shiftRequests'
 import RosterDay from '@/components/roster/RosterDay'
 import RosterWeek from '@/components/roster/RosterWeek'
 import ShareWeekButton from '@/components/roster/ShareWeekButton'
@@ -30,11 +34,15 @@ import RosterRulesModal from '@/components/settings/RosterRulesModal'
 import ShiftDialog from '@/components/roster/ShiftDialog'
 import TimeOffDialog from '@/components/roster/TimeOffDialog'
 import WeeklyExtrasModal from '@/components/roster/WeeklyExtrasModal'
+import WeekExtrasModal from '@/components/roster/WeekExtrasModal'
 import RequestDeskModal from '@/components/roster/RequestDeskModal'
 import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import { atRestaurant } from '@/lib/diary'
+import DiaryDialog from '@/components/diary/DiaryDialog'
+import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
 // Building the week.
 //
@@ -44,13 +52,6 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 //
 // A week is a draft until it is published, and publishing is a week at a time,
 // never a shift on its own. Half a roster going out is worse than none.
-const NEW_PERSON = {
-    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
-    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
-    permissionRenewalApplied: '', permissionRenewalReference: '',
-    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
-}
-
 export default function RosterPage() {
     const { activeRestaurant } = useRestaurant()
     const { user } = useAuth()
@@ -78,7 +79,15 @@ export default function RosterPage() {
     const [dayIndex, setDayIndex] = useState(() => new Date(todayISO() + 'T00:00:00').getDay())
     const [editingShift, setEditingShift] = useState(null)
     const [editingDay, setEditingDay] = useState(null)
-    const [events, setEvents] = useState([])
+    const [nearbyOn, setNearbyOn] = useState([])
+    // Kept apart from the listings so a place with nothing on this week still
+    // draws its row. See ownRows.
+    const [nearbyPlaces, setNearbyPlaces] = useState([])
+    const [diary, setDiary] = useState([])
+    const [restaurants, setRestaurants] = useState([])
+    const [editingDiary, setEditingDiary] = useState(null)
+    const [viewingDiary, setViewingDiary] = useState(null)
+    const [weekExtrasOpen, setWeekExtrasOpen] = useState(false)
     const [priorHours, setPriorHours] = useState({})
     // The week either side. Only the rest checks read it: a break between two
     // shifts does not stop on a Saturday night, so they cannot be worked out
@@ -86,11 +95,22 @@ export default function RosterPage() {
     const [nearbyShifts, setNearbyShifts] = useState([])
     // What two people have agreed between them and are waiting on.
     const [requests, setRequests] = useState([])
+    // The shifts those requests name where they are not in the week on screen.
+    // Kept out of `shifts` deliberately: the week is the week, and a swap for a
+    // fortnight's time is not part of it. These are only so the desk can say
+    // what a request is about and which week to open to deal with it.
+    const [otherShifts, setOtherShifts] = useState([])
     const [deskOpen, setDeskOpen] = useState(false)
-    const [view, setView] = useState('day')
+    // The week, not the day.
+    //
+    // The day was the default because the roster is built a day at a time: you
+    // think about Thursday, not about the whole week at once. That is true
+    // while you are building it and wrong every other time you open the page,
+    // which is to look something up. His call, 20 September.
+    const [view, setView] = useState('week')
     const [settingsOpen, setSettingsOpen] = useState(null)
     const [addingPerson, setAddingPerson] = useState(false)
-    const [personForm, setPersonForm] = useState(NEW_PERSON)
+    const [personForm, setPersonForm] = useState(EMPTY_EMPLOYEE)
 
     const today = todayISO()
     const restaurantId = activeRestaurant?.id
@@ -98,16 +118,50 @@ export default function RosterPage() {
     const date = dates[dayIndex]
     const weekEnd = dates[6]
 
-    // The asks about this week's shifts. Nothing about the roster waits on
-    // them, so they are fetched on their own and a failure here leaves the week
-    // on screen rather than taking it down.
+    // The asks. Nothing about the roster waits on them, so they are fetched on
+    // their own and a failure here leaves the week on screen rather than
+    // taking it down.
+    //
+    // Two questions, and only one of them is about this week.
+    //
+    // **Everything still going somewhere, whatever week it is for.** Two people
+    // agreeing a swap for a fortnight's time were invisible from every week but
+    // that one, so the count on the menu said there was something to approve and
+    // the roster in front of you said there was not. Time off was fixed this way
+    // in the same place and the swaps were missed.
+    //
+    // **Everything about this week's shifts, whatever its state.** That half is
+    // genuinely week shaped: it is what marks a cell as already asked about.
+    //
+    // The restaurant filter is belt and braces. A policy already keeps this to
+    // your own, and saying it here means a bug in a policy cannot quietly widen
+    // what a manager is looking at.
     async function loadRequests(weekShifts) {
         const ids = (weekShifts || []).map(s => s.id)
-        if (ids.length === 0) { setRequests([]); return }
+        const wanted = [
+            `status.in.(${LIVE_STATES.join(',')})`,
+            ...(ids.length > 0
+                ? [`give_shift_id.in.(${ids.join(',')})`, `take_shift_id.in.(${ids.join(',')})`]
+                : []),
+        ]
+
         const { data } = await supabase.from('shift_requests').select('*')
-            .or(`give_shift_id.in.(${ids.join(',')}),take_shift_id.in.(${ids.join(',')})`)
+            .eq('restaurant_id', restaurantId)
+            .or(wanted.join(','))
             .order('created_at', { ascending: false })
-        setRequests(data || [])
+
+        const asks = data || []
+        setRequests(asks)
+
+        // The shifts those requests name, where the week does not already have
+        // them. Without these the desk can count a swap it cannot describe.
+        const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
+        if (missing.length === 0) { setOtherShifts([]); return }
+
+        const { data: rows } = await supabase.from('roster_shifts')
+            .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
+            .in('id', missing)
+        setOtherShifts(rows || [])
     }
 
     useEffect(() => {
@@ -132,7 +186,9 @@ export default function RosterPage() {
         if (!quiet) setLoading(true)
         setError('')
 
-        const [empRes, posRes, shiftRes, noteRes, eventRes, offRes, askRes] = await Promise.all([
+        const [
+            empRes, posRes, shiftRes, noteRes, eventRes, nearRes, diaryRes, placeRes, offRes, askRes,
+        ] = await Promise.all([
             supabase.from('employees').select('*').eq('restaurant_id', restaurantId),
             supabase.from('positions').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
             supabase.from('roster_shifts').select('*')
@@ -141,12 +197,48 @@ export default function RosterPage() {
             supabase.from('day_notes').select('*')
                 .eq('restaurant_id', restaurantId)
                 .gte('note_date', weekStart).lte('note_date', addDays(weekStart, 6)),
-            // What is on at the Arena. A concert at half six is the reason half
-            // the week is rostered the way it is, so it belongs on the grid
-            // rather than in somebody's head.
+            // What is on near us. A concert at half six is the reason half the
+            // week is rostered the way it is, so it belongs on the grid rather
+            // than in somebody's head.
+            //
+            // Everything in the window, sorted out below rather than in the
+            // query. This used to ask with no restaurant test at all, so Dun
+            // Laoghaire got the Arena listings Point Campus had synced, forty
+            // minutes away and nothing to do with its week. What decides now is
+            // which places this restaurant is near, and that is one list read
+            // once rather than a clause repeated on four screens.
+            //
+            // Overlapping the week rather than starting in it, the same as the
+            // diary below: a market that began last Thursday still covers
+            // Monday and a date range on event_date alone would miss it.
             supabase.from('events').select('*')
-                .gte('event_date', weekStart).lte('event_date', addDays(weekStart, 6))
+                .lte('event_date', addDays(weekStart, 6))
+                .or(`ends_on.gte.${weekStart},and(ends_on.is.null,event_date.gte.${weekStart})`)
                 .order('event_time'),
+            supabase.from('restaurant_places')
+                .select(PAIRING_COLUMNS)
+                .eq('restaurant_id', restaurantId)
+                .order('sort_order'),
+            // The diary: catering, meetings, promotions. Overlapping the
+            // week rather than starting in it, the same reason the absences
+            // below are asked for that way: a discount week that began last
+            // Thursday still covers Monday.
+            //
+            // No restaurant clause on the query, and that part was right: a
+            // group wide promotion carries no restaurant at all and a clause
+            // would drop it. What was missing is the sort afterwards. The
+            // policy answers whether you may read an entry, which is not the
+            // same question as whether it belongs to the restaurant you have
+            // switched to, and for a super admin the two answers differ. See
+            // atRestaurant.
+            supabase.from('diary_entries').select('*')
+                .lte('starts_on', addDays(weekStart, 6))
+                .or(`ends_on.gte.${weekStart},and(ends_on.is.null,starts_on.gte.${weekStart})`)
+                .order('starts_on'),
+            // For the diary dialog, which has to name every restaurant an entry
+            // could be put on rather than only the one whose week is open.
+            supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
+                .eq('is_active', true).order('sort_order'),
             // Anything overlapping the week, which is not the same as anything
             // starting in it. A fortnight off that began last Thursday still
             // covers Monday and would be missed by a date range on starts_on.
@@ -174,7 +266,12 @@ export default function RosterPage() {
         setNearbyShifts(fetched.filter(s => s.shift_date < weekStart || s.shift_date > weekLast))
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
-        setEvents(eventRes.data || [])
+        // One pass, so the roster and the calendar cannot disagree about which
+        // listing belongs to which shop. See lib/nearby.
+        setNearbyOn(nearbyRows(eventRes.data, nearRes.data, activeRestaurant))
+        setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
+        setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
+        setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
         setAllWaiting(askRes.data || [])
         setLoading(false)
@@ -380,11 +477,20 @@ export default function RosterPage() {
     // have scrolled past. Double bookings join them here and only here: they
     // already have their own line above, and saying it twice in the same place
     // would read as two problems.
+    //
+    // Paperwork does not come down here. A permit or a food safety certificate
+    // is a standing fact about the person, the same on Monday as on Friday, and
+    // it stays in the banner at the top. Beside a name on a row of shifts it
+    // made the row's warning mean two things at once, so a number beside
+    // somebody had to be opened to find out whether the week was wrong or the
+    // filing was.
     const alerts = findingsByEmployee([
-        ...findings, ...overlapFindings(clashes, employeesById), ...fullDayNotes,
+        ...aboutThisWeek(findings), ...overlapFindings(clashes, employeesById), ...fullDayNotes,
     ])
 
     // Two people have agreed it and it is waiting on somebody to say yes.
+    // Every week, not this one, which is what the count on the menu has always
+    // meant and what the button beside it did not.
     const agreed = requests.filter(r => r.status === 'accepted')
 
     // The same checks, run against a week that does not exist yet. It is how
@@ -455,6 +561,9 @@ export default function RosterPage() {
 
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // Last, after every write above has gone through. Both of them are
+        // being told the roster has changed, and it has to have changed first.
+        emailTheShiftDecision(request.id)
         load({ quiet: true })
     }
 
@@ -467,6 +576,9 @@ export default function RosterPage() {
         }).eq('id', request.id)
         setSaving(false)
         if (err) { setError(friendlyError(err)); return }
+        // A no is worth as much as a yes here. Two people agreed something
+        // between them and are both waiting to find out whether it counts.
+        emailTheShiftDecision(request.id)
         loadRequests(shifts)
     }
 
@@ -543,21 +655,7 @@ export default function RosterPage() {
 
         const { error: err } = await supabase.from('employees').insert({
             restaurant_id: restaurantId,
-            full_name: personForm.fullName.trim(),
-            position_id: personForm.positionId || null,
-            hourly_rate: personForm.hourlyRate === '' ? null : Number(personForm.hourlyRate),
-            started_on: personForm.startedOn || null,
-            ended_on: personForm.endedOn || null,
-            user_id: personForm.userId || null,
-            notes: personForm.notes.trim() || null,
-            date_of_birth: personForm.dateOfBirth || null,
-            work_permission: personForm.workPermission || null,
-            work_permission_expires: personForm.workPermissionExpires || null,
-            permission_renewal_applied: personForm.permissionRenewalApplied || null,
-            permission_renewal_reference: personForm.permissionRenewalReference || null,
-            food_safety_level: personForm.foodSafetyLevel || null,
-            food_safety_issued: personForm.foodSafetyIssued || null,
-            food_safety_expires: personForm.foodSafetyExpires || null,
+            ...employeeRow(personForm),
             sort_order: nextSortOrder(employees),
             created_by: user?.id,
         })
@@ -566,7 +664,7 @@ export default function RosterPage() {
         if (err) { setError(friendlyError(err)); return }
 
         setAddingPerson(false)
-        setPersonForm(NEW_PERSON)
+        setPersonForm(EMPTY_EMPLOYEE)
         load({ quiet: true })
     }
 
@@ -651,9 +749,10 @@ export default function RosterPage() {
                     backLabel="Previous week"
                     nextLabel="Next week"
                     jump={(
-                        <button type="button" onClick={() => setWeekStart(weekStartOf(today))} className={jumpButton(weekStart === weekStartOf(today))}>
-                            {jumpLabel(weekStart === weekStartOf(today))}
-                        </button>
+                        <JumpButton
+                            isCurrent={weekStart === weekStartOf(today)}
+                            onClick={() => setWeekStart(weekStartOf(today))}
+                        />
                     )}
                 >
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">
@@ -872,7 +971,7 @@ export default function RosterPage() {
                             {agreed.length} {agreed.length === 1 ? 'change' : 'changes'} to approve
                         </button>
                     )}
-                    <button type="button" onClick={() => { setPersonForm(NEW_PERSON); setAddingPerson(true) }} className={secondaryButton}>
+                    <button type="button" onClick={() => { setPersonForm(EMPTY_EMPLOYEE); setAddingPerson(true) }} className={secondaryButton}>
                         Add staff
                     </button>
                     {/* Reached from here as well as from the team list, because
@@ -924,7 +1023,9 @@ export default function RosterPage() {
                         employees={roster}
                         shifts={shifts}
                         dayNotes={dayNotes}
-                        events={events}
+                        nearby={nearbyOn}
+                        nearbyPlaces={nearbyPlaces}
+                        diary={diary}
                         openingHours={activeRestaurant?.opening_hours}
                         absences={absences}
                         standingNote={activeRestaurant?.roster_note}
@@ -949,7 +1050,11 @@ export default function RosterPage() {
                     shifts={shifts}
                     positions={positions}
                     dayNotes={dayNotes}
-                    events={events}
+                    nearby={nearbyOn}
+                    nearbyPlaces={nearbyPlaces}
+                    diary={diary}
+                    onOpenDiary={entry => setViewingDiary(entry)}
+                    onOpenWeekExtras={() => setWeekExtrasOpen(true)}
                     openingHours={activeRestaurant?.opening_hours}
                     standingNote={activeRestaurant?.roster_note}
                     today={today}
@@ -980,7 +1085,9 @@ export default function RosterPage() {
                     gridHours={activeRestaurant?.roster_rules?.gridHours}
                     breakRules={activeRestaurant?.break_rules}
                     onResizeShift={resizeShift}
-                    events={events.filter(ev => ev.event_date === date)}
+                    nearby={rowsOn(nearbyOn, date)}
+                    diary={diary}
+                    onOpenDiary={entry => setViewingDiary(entry)}
                     onDragShift={dragShift}
                     onOpenShift={shift => setEditingShift({ shift })}
                     onNewShift={({ employeeId, startsAt, endsAt }) => setEditingShift({
@@ -1035,6 +1142,16 @@ export default function RosterPage() {
             )}
 
             {settingsOpen === 'weekly' && <WeeklyExtrasModal onClose={() => setSettingsOpen(null)} />}
+
+            {weekExtrasOpen && (
+                <WeekExtrasModal
+                    startOn={weekStart}
+                    canStepWeeks={false}
+                    restaurant={activeRestaurant}
+                    onClose={() => setWeekExtrasOpen(false)}
+                    onSaved={() => { setWeekExtrasOpen(false); load({ quiet: true }) }}
+                />
+            )}
             {settingsOpen === 'hours' && <OpeningHoursModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'breaks' && <BreakRulesModal onClose={() => setSettingsOpen(null)} />}
             {settingsOpen === 'rules' && <RosterRulesModal onClose={() => setSettingsOpen(null)} />}
@@ -1043,6 +1160,7 @@ export default function RosterPage() {
                 <RequestDeskModal
                     requests={agreed}
                     shifts={shifts}
+                    otherShifts={otherShifts}
                     employees={roster}
                     breakRules={activeRestaurant?.break_rules}
                     dayNotes={dayNotes}
@@ -1051,6 +1169,16 @@ export default function RosterPage() {
                     saving={saving}
                     onApprove={async request => { await approveRequest(request); setDeskOpen(false) }}
                     onRefuse={refuseRequest}
+                    onGoToWeek={date => {
+                        // The desk is left open on purpose. Stepping the week
+                        // refetches everything underneath it, so the request
+                        // that was a line of text a moment ago comes back with
+                        // an Approve on it, which is the whole point of the
+                        // button. Closing it would put the manager back where
+                        // they started with one more click to make.
+                        setWeekStart(weekStartOf(date))
+                        setView('week')
+                    }}
                     onClose={() => setDeskOpen(false)}
                 />
             )}
@@ -1085,6 +1213,32 @@ export default function RosterPage() {
                         setAnswering(null)
                     }}
                     onClose={() => setAnswering(null)}
+                />
+            )}
+
+            {/* Read first, the same as everything else on these screens, and
+                edited from a button inside it. A promotion running across the
+                week opens from the band it is drawn as, so a date that turns
+                out to be wrong is fixed where it is wrong. */}
+            {viewingDiary && (
+                <DiaryEntryModal
+                    entry={viewingDiary}
+                    restaurants={restaurants}
+                    canEdit
+                    /* The route is managers and above, so anybody who can
+                       reach this page can change it. */
+                    onEdit={() => { setEditingDiary(viewingDiary); setViewingDiary(null) }}
+                    onClose={() => setViewingDiary(null)}
+                />
+            )}
+
+            {editingDiary && (
+                <DiaryDialog
+                    entry={editingDiary}
+                    date={editingDiary.starts_on}
+                    restaurants={restaurants}
+                    onClose={() => setEditingDiary(null)}
+                    onSaved={() => { setEditingDiary(null); load({ quiet: true }) }}
                 />
             )}
         </div>

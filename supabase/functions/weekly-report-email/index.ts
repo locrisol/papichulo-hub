@@ -42,7 +42,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
+import { timesheetEmail, personPeriod, addDays } from './timesheet.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -64,7 +65,16 @@ const json = (body: unknown, status = 200) =>
         headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
-type Mail = { to: string[], from: string, replyTo?: string, subject: string, html: string, text: string }
+type Attachment = {
+    filename: string,
+    content: string,
+    encoding: 'base64',
+    contentType: string,
+}
+type Mail = {
+    to: string[], from: string, replyTo?: string, subject: string,
+    html: string, text: string, attachments?: Attachment[],
+}
 
 // One Workspace account sends for both restaurants and the restaurant's own
 // name goes in front of the address. Google rewrites the ADDRESS on a mail
@@ -86,51 +96,142 @@ const from = (restaurantName?: string, address?: string | null) =>
 // 465 by default, which is TLS from the first byte. See the connection below.
 const smtpPort = Number(Deno.env.get('SMTP_PORT') || 465)
 
+// denomailer's writer can fail on a socket the far end already dropped, after
+// the handler has finished with it. That arrives as an event loop
+// UncaughtException rather than a rejected promise anybody awaited, so no try
+// around a call can catch it: the isolate dies and the app is told only
+// "Failed to send a request to the Edge Function", which reads like the app is
+// broken when the mail has already gone.
+//
+// Caught here, named, and allowed to pass. This hides nothing that a caller
+// could have acted on: by the time it fires, the send has either happened or
+// thrown somewhere that was caught properly.
+globalThis.addEventListener('unhandledrejection', (event) => {
+    console.warn('an unawaited failure after sending, ignored:', event.reason)
+    event.preventDefault()
+})
+
+
+// Bytes to base64, in chunks.
+//
+// String.fromCharCode(...bytes) on a whole PDF blows the argument limit and
+// throws RangeError, which arrives as "failed to send a request to the edge
+// function" and says nothing at all. Eight thousand at a time is well inside it.
+function base64(bytes: Uint8Array) {
+    let binary = ''
+    const step = 8192
+    for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + step))
+    }
+    return btoa(binary)
+}
+
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
-    const client = new SMTPClient({
-        connection: {
-            // smtp.gmail.com sends only as the account that logged in.
-            // smtp-relay.gmail.com will send as any address on the domain,
-            // which is what lets a new restaurant have a sender of its own
-            // without anybody creating an alias for it in the admin console.
-            //
-            // A secret rather than a constant so that switch is a setting
-            // change and not a deploy.
-            //
-            // The port decides how the connection is encrypted, because
-            // getting those two out of step is a hang rather than an error.
-            // 465 is TLS from the first byte. Anything else, 587 in
-            // practice, starts in the clear and upgrades with STARTTLS,
-            // which is what tls:false means here.
-            hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
-            port: smtpPort,
-            tls: smtpPort === 465,
-            auth: { username: user, password },
-        },
-    })
-
-    try {
-        await client.send({
-            from: mail.from,
-            to: mail.to,
-            replyTo: mail.replyTo || Deno.env.get('MAIL_REPLY_TO') || undefined,
-            subject: mail.subject,
-            content: mail.text,
-            html: mail.html,
+    async function attempt() {
+        const client = new SMTPClient({
+            connection: {
+                // smtp.gmail.com sends only as the account that logged in.
+                // smtp-relay.gmail.com will send as any address on the domain,
+                // which is what lets a new restaurant have a sender of its own
+                // without anybody creating an alias for it in the admin console.
+                //
+                // A secret rather than a constant so that switch is a setting
+                // change and not a deploy.
+                //
+                // The port decides how the connection is encrypted, because
+                // getting those two out of step is a hang rather than an error.
+                // 465 is TLS from the first byte. Anything else, 587 in
+                // practice, starts in the clear and upgrades with STARTTLS,
+                // which is what tls:false means here.
+                // **Do not point this at smtp-relay.gmail.com.**
+                //
+                // The relay decides who may connect by IP address, allow-listed
+                // in Workspace admin, and edge functions run on shared rotating
+                // IPs, so there is nothing to allow-list. It refuses at EHLO,
+                // before authentication, with:
+                //
+                //     421-4.7.0 Try again later, closing connection. (EHLO)
+                //
+                // It was set to the relay on 6 September 2026 to let each
+                // restaurant send from its own address. The time off mail last
+                // arrived the day before and did not work again until it was
+                // put back, and every dropped connection in between was this.
+                // 421 is a temporary refusal, so the weekly report getting
+                // through some of the time was luck, not a difference.
+                //
+                // smtp.gmail.com only sends as the account that authenticates,
+                // so per restaurant senders need a provider that authenticates
+                // rather than allow-lists, not this setting.
+                hostname: Deno.env.get('SMTP_HOST') || 'smtp.gmail.com',
+                port: smtpPort,
+                tls: smtpPort === 465,
+                auth: { username: user, password },
+            },
         })
-    } finally {
-        // Left open, the function is held until it times out. But closing a
-        // connection the far end already dropped throws BadResource, and a
-        // throw in here replaces whatever went wrong with a useless one: the
-        // isolate dies and the app is told only "failed to send a request to
-        // the edge function", which is how a plain SMTP refusal came back
-        // with no reason attached.
+
         try {
-            await client.close()
-        } catch (closing) {
-            console.warn('the SMTP connection was already gone', closing)
+            await client.send({
+                from: mail.from,
+                to: mail.to,
+                replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
+                subject: mail.subject,
+                content: mail.text,
+                html: mail.html,
+                // Left out entirely when there are none. denomailer walks
+                // whatever it is given, and an empty array still turns a plain
+                // mail into a multipart one for no reason.
+                ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
+            })
+        } finally {
+            // Left open, the function is held until it times out. But closing a
+            // connection the far end already dropped throws BadResource, and a
+            // throw in here replaces whatever went wrong with a useless one: the
+            // isolate dies and the app is told only "failed to send a request to
+            // the edge function", which is how a plain SMTP refusal came back
+            // with no reason attached.
+            try {
+                await client.close()
+            } catch (closing) {
+                console.warn('the SMTP connection was already gone', closing)
+            }
+        }
+    }
+
+    // One more go if the first fails, and no more than that.
+    //
+    // What this answers is a dropped TLS connection to Gmail, seen twice in
+    // September, both times after the mail had almost certainly gone out. It
+    // cannot be reproduced on demand, so there is nothing clever to do: build a
+    // fresh client and try again, and let a second failure be the real one.
+    //
+    // Every send here is somebody pressing a button, so the worst case of a
+    // double send is the same report arriving twice. That is a great deal
+    // better than it not arriving while the app says it is broken.
+    try {
+        await attempt()
+    } catch (first) {
+        // Tried again rather than believed.
+        //
+        // A dropped connection says nothing about whether the message was
+        // taken, so the only honest moves are to try once more and, if that
+        // fails too, to say it did not go. Claiming it went was tried on
+        // 13 September and lost a real mail while telling somebody it had sent,
+        // which is the worst of the three.
+        //
+        // A duplicate is possible and is the lesser evil: somebody reading the
+        // same request twice is a smaller problem than somebody never reading
+        // it and being told they had.
+        console.warn('the first attempt to send failed, trying once more:', first)
+        try {
+            await attempt()
+        } catch (second) {
+            if (isJustTheGoodbye(second)) {
+                throw new Error(
+                    'Gmail dropped the connection twice without finishing, so the mail did not go out.')
+            }
+            throw second
         }
     }
 }
@@ -142,7 +243,7 @@ async function byResend(mail: Mail, key: string) {
         body: JSON.stringify({
             from: mail.from,
             to: mail.to,
-            reply_to: mail.replyTo || undefined,
+            reply_to: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
@@ -172,8 +273,11 @@ Deno.serve(async (req) => {
     )
 
     try {
-        const { reportId, test = false, origin, figures: posted, charts: postedCharts } = await req.json()
-        if (!reportId) return json({ error: 'Which report?' }, 400)
+        const {
+            reportId, kind, periodStart, restaurantId, comment, attachment,
+            test = false, origin, figures: posted, charts: postedCharts,
+        } = await req.json()
+        if (!reportId && kind !== 'timesheet') return json({ error: 'Which report?' }, 400)
 
         // ---- who is asking ----
         //
@@ -191,6 +295,19 @@ Deno.serve(async (req) => {
 
         if (!account || !['store_manager', 'super_admin'].includes(account.role)) {
             return json({ error: 'Only a manager can send a report.' }, 403)
+        }
+
+        // The other mail a finished week produces: the hours, for whoever runs
+        // the payroll. It is here rather than in a function of its own so it
+        // goes out through the send below, which is the one path in this
+        // project that has been sending real mail for weeks. A second copy of
+        // that would be a second thing to get wrong in the part of the Hub
+        // that has been wrong most often.
+        if (kind === 'timesheet') {
+            return await sendTimesheet({
+                admin, account, caller, send, from,
+                periodStart, restaurantId, comment, test, attachment,
+            })
         }
 
         // ---- the report ----
@@ -273,60 +390,92 @@ Deno.serve(async (req) => {
         const publisherAddress = caller.email || null
 
         let to: string[] = []
-        if (test) {
-            // A test goes to the person who asked for it and nowhere else.
-            // There is no list to get wrong, which is the whole safety of it.
-            if (!publisherAddress) return json({ error: 'Your account has no email address.' }, 400)
-            to = [publisherAddress]
-        } else {
+
+        // A test goes to the list somebody chose. A publish goes there and to
+        // the owners as well.
+        //
+        // It used to go to the publisher alone, on the grounds that there was
+        // no list to get wrong. That was safe and it did not test the thing
+        // worth testing, which is whether the list is right. Now it is the same
+        // report to the same addresses, with the banner on top saying what it
+        // is, so a rehearsal rehearses something.
+        //
+        // Owners stay out of a test on purpose. They are on the list by role
+        // rather than by anybody's decision, and nobody put them there to sit
+        // through a rehearsal. The addresses in Settings are chosen, so they
+        // are fair game.
+        const found: string[] = []
+        if (!test) {
             const { data: owners } = await admin
                 .from('users').select('id')
                 .eq('restaurant_id', report.restaurant_id)
                 .eq('role', 'owner')
                 .eq('is_active', true)
+                // A developer account has a real role on purpose, so role is
+                // no way to tell it from a person. See users.is_test.
+                .eq('is_test', false)
 
-            const found: string[] = []
             for (const owner of owners || []) {
                 const address = await addressFor(owner.id)
                 if (address) found.push(address)
             }
+        }
 
-            // The manager who wrote it up goes on the list too.
-            //
-            // Two reasons, and the second is the one that is not obvious.
-            // They need to see it arrive, because a report that was
-            // published but never sent looks identical from the Hub.
-            //
-            // And it is what makes a reply land in the right place. Every
-            // recipient is in To, and Reply-To is the manager, so a client
-            // asked to reply to all puts the manager in To and demotes the
-            // owners to Cc: the reply goes to the person who wrote the week
-            // up, with everybody who read it copied. If the manager were not
-            // a recipient they would drop out of the thread the moment an
-            // owner replied to all.
-            //
-            // hub@ is in none of it. Reply-To does not add to From, it
-            // replaces it, so the sending address is out of both Reply and
-            // Reply All without being asked.
-            const seen = new Set<string>()
-            for (const address of [
-                publisherAddress,
-                ...found,
-                ...(restaurant?.report_recipients || []),
-            ]) {
-                const key = String(address || '').trim().toLowerCase()
-                if (!key || seen.has(key)) continue
+
+        // The manager who wrote it up goes on the list too.
+        //
+        // Two reasons, and the second is the one that is not obvious.
+        // They need to see it arrive, because a report that was
+        // published but never sent looks identical from the Hub.
+        //
+        // And it is what makes a reply land in the right place. Every
+        // recipient is in To, and Reply-To is the manager, so a client
+        // asked to reply to all puts the manager in To and demotes the
+        // owners to Cc: the reply goes to the person who wrote the week
+        // up, with everybody who read it copied. If the manager were not
+        // a recipient they would drop out of the thread the moment an
+        // owner replied to all.
+        //
+        // hub@ is in none of it. Reply-To does not add to From, it
+        // replaces it, so the sending address is out of both Reply and
+        // Reply All without being asked.
+        // Anything dropped is reported back rather than only logged.
+        //
+        // The card on the report says who gets it, and an address quietly
+        // skipped makes that card a lie: it would name somebody who never
+        // receives a thing. Saying so on the way out is the only way somebody
+        // finds out today rather than in a fortnight.
+        const skipped: string[] = []
+
+        const seen = new Set<string>()
+        for (const address of [
+            publisherAddress,
+            ...found,
+            ...(restaurant?.report_recipients || []),
+        ]) {
+            const key = String(address || '').trim().toLowerCase()
+            if (!key || seen.has(key)) continue
+            // An address that provably cannot receive is dropped rather
+            // than attempted. One refusal can take the whole send with it,
+            // and the people who should have had it would never know.
+            if (!deliverable(key)) {
+                console.warn('skipping an address that cannot receive mail:', key)
                 seen.add(key)
-                to.push(String(address).trim())
+                skipped.push(String(address).trim())
+                continue
             }
+            seen.add(key)
+            to.push(String(address).trim())
         }
 
         // An empty list is not a failure. The report is the point and the mail
         // is how it travels; a week written up and frozen with nobody to send
         // it to is still a week written up. It says so and stops.
         if (to.length === 0) {
-            await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
-            return json({ sent: 0, why: 'nobody on the list' })
+            // A test leaves sent_to alone. It is the record of where the real
+            // thing went, and a rehearsal finding nobody must not erase it.
+            if (!test) await admin.from('weekly_reports').update({ sent_to: [] }).eq('id', report.id)
+            return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
         }
 
         const allowed = (Deno.env.get('APP_URL_ALSO') || '')
@@ -374,6 +523,7 @@ Deno.serve(async (req) => {
             sent: sentTo.length,
             to: test || redirect ? sentTo : undefined,
             held: redirect ? to.length : undefined,
+            skipped: skipped.length ? skipped : undefined,
         })
     } catch (err) {
         // Said out loud, because a key that has expired should be findable in
@@ -385,3 +535,193 @@ Deno.serve(async (req) => {
         return json({ error: why }, 500)
     }
 })
+
+// ---------------------------------------------------------------------------
+// The week's hours, for whoever runs the payroll
+// ---------------------------------------------------------------------------
+
+// Everything in the mail is read here, off the database, the same rule the
+// report follows: the browser says which week and nothing else. What it may
+// say is a comment to go at the top, which is somebody's own words and is
+// escaped before it is drawn.
+//
+// The list is the restaurant's own, typed in Settings. Nobody is on it by role.
+// An owner is on the report's list whether anybody likes it or not, because a
+// report the owner never sees is the failure that matters; this is a working
+// list for one job, and the person who does that job is the only one who
+// should be on it.
+async function sendTimesheet({
+    admin, account, caller, send, from, periodStart, restaurantId, comment, test, attachment,
+}: {
+    admin: ReturnType<typeof createClient>,
+    account: { id: string, role: string, restaurant_id: string | null, full_name?: string | null },
+    caller: { email?: string | null },
+    send: (mail: Mail) => Promise<unknown>,
+    from: (name?: string, address?: string | null) => string,
+    periodStart?: string,
+    restaurantId?: string,
+    comment?: string,
+    test?: boolean,
+    attachment?: string,
+}) {
+    const period = String(periodStart || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
+
+    const forRestaurant = restaurantId || account.restaurant_id
+    if (!forRestaurant) return json({ error: 'Which restaurant?' }, 400)
+    if (account.role !== 'super_admin' && forRestaurant !== account.restaurant_id) {
+        return json({ error: 'That pay period belongs to another restaurant.' }, 403)
+    }
+
+    // **A pay period is always a fortnight.** His, 23 September 2026, and the
+    // reason the hours leave the building two weeks at a time rather than one:
+    // a weekly mail leaves whoever runs the payroll adding two of them together
+    // before they can run anything.
+    const dates = Array.from({ length: 14 }, (_, i) => addDays(period, i))
+    const periodEnd = dates[13]
+    // The two Hub weeks it is made of. Everything else in the app still works
+    // a week at a time, and these are what it is handed.
+    const weeks = [period, addDays(period, 7)]
+
+    // timesheet_recipients arrived in migration 007 and a function can be
+    // deployed before a migration is run. Asking for a column that is not
+    // there does not throw, it comes back as an error and a null row, and an
+    // unchecked null would have sent a week headed "The restaurant" to nobody.
+    let { data: restaurant, error: missing } = await admin
+        .from('restaurants').select('id, name, mail_from, timesheet_recipients')
+        .eq('id', forRestaurant).maybeSingle()
+
+    if (missing) {
+        console.warn('restaurants.timesheet_recipients is missing, run migration 007', missing)
+        const again = await admin
+            .from('restaurants').select('id, name, mail_from')
+            .eq('id', forRestaurant).maybeSingle()
+        restaurant = again.data
+    }
+
+    const [{ data: team }, { data: worked }, { data: away }] = await Promise.all([
+        admin.from('employees')
+            .select('id, full_name, sort_order, started_on, ended_on')
+            .eq('restaurant_id', forRestaurant)
+            .order('sort_order'),
+        admin.from('timesheet_entries')
+            .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
+            .eq('restaurant_id', forRestaurant)
+            .gte('work_date', period).lte('work_date', periodEnd),
+        admin.from('absences')
+            .select('employee_id, kind, status, starts_on, ends_on, hours')
+            .eq('restaurant_id', forRestaurant)
+            .lte('starts_on', periodEnd).gte('ends_on', period),
+    ])
+
+    // Somebody who left before the week, or had not started, is not on it. The
+    // same rule the screen uses, so the mail and the screen hold the same
+    // people.
+    const people = (team || []).filter(p => (
+        (!p.ended_on || p.ended_on >= period) && (!p.started_on || p.started_on <= periodEnd)
+    ))
+
+    const skipped: string[] = []
+    const to: string[] = []
+    const seen = new Set<string>()
+
+    // The manager who sent it is on the list, the same as on the report and
+    // for the same two reasons: they need to see it arrive, because a week
+    // sent and a week not sent look identical from the Hub, and it is what
+    // keeps a reply in the right place.
+    for (const address of [caller.email, ...(restaurant?.timesheet_recipients || [])]) {
+        const key = String(address || '').trim().toLowerCase()
+        if (!key || seen.has(key)) continue
+        if (!deliverable(key)) {
+            console.warn('skipping an address that cannot receive mail:', key)
+            seen.add(key)
+            skipped.push(String(address).trim())
+            continue
+        }
+        seen.add(key)
+        to.push(String(address).trim())
+    }
+
+    if (to.length === 0) {
+        return json({ sent: 0, why: 'nobody on the list', skipped: skipped.length ? skipped : undefined })
+    }
+
+    let mail = timesheetEmail({
+        restaurantName: restaurant?.name,
+        periodStart: period,
+        people: personPeriod({ people, entries: worked || [], absences: away || [], dates }),
+        comment: String(comment || '').trim(),
+        test: Boolean(test),
+    })
+
+    // **The paper the browser drew, fetched with the service role.**
+    //
+    // The bucket is private and nothing ever fetches this by url: the bytes go
+    // inside the mail. The path always starts with the restaurant's id, and it
+    // is checked here as well as by the bucket's own policy, because this read
+    // goes round that policy.
+    const attachments: Attachment[] = []
+    if (attachment) {
+        if (!String(attachment).startsWith(`${forRestaurant}/`)) {
+            return json({ error: 'That file belongs to another restaurant.' }, 403)
+        }
+
+        const { data: file, error: missing } = await admin.storage
+            .from('timesheet-hours').download(attachment)
+
+        // He asked for the hours and the paper together, so a mail without it
+        // is not the thing he asked to send.
+        if (missing || !file) {
+            console.warn('the hours PDF could not be read', missing)
+            return json({ error: 'The PDF for this period could not be read, so nothing was sent.' }, 500)
+        }
+
+        attachments.push({
+            filename: `hours-${period}.pdf`,
+            content: base64(new Uint8Array(await file.arrayBuffer())),
+            encoding: 'base64',
+            contentType: 'application/pdf',
+        })
+    }
+
+    const redirect = (Deno.env.get('MAIL_REDIRECT_TO') || '').trim()
+    const sentTo = redirect ? [redirect] : to
+    if (redirect) mail = heldNotice(mail, to)
+
+    await send({
+        to: sentTo,
+        from: from(restaurant?.name, restaurant?.mail_from),
+        replyTo: caller.email || undefined,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        attachments: attachments.length ? attachments : undefined,
+    })
+
+    // The week is marked as filed, and a test never is: a rehearsal that said
+    // a week had gone to the accountant would be worse than no mark at all.
+    // It moves on a second send, because a week can be corrected and sent
+    // again and what matters is when the figures she has were sent.
+    // **Both weeks, because the period is what went.** The mark is per week,
+    // which is right: every screen reads a week at a time, and a week left
+    // unmarked would sit there looking like it had never been sent.
+    if (!test) {
+        const at = new Date().toISOString()
+        await admin.from('timesheet_weeks').upsert(
+            weeks.map(week_start => ({
+                restaurant_id: forRestaurant,
+                week_start,
+                filed_at: at,
+                filed_by: account.id,
+            })),
+            { onConflict: 'restaurant_id,week_start' },
+        )
+    }
+
+    return json({
+        sent: sentTo.length,
+        to: test || redirect ? sentTo : undefined,
+        held: redirect ? to.length : undefined,
+        skipped: skipped.length ? skipped : undefined,
+    })
+}

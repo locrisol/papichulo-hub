@@ -60,7 +60,9 @@ export const WIDTH = 760
 // twenty each side it arrives on a phone about two thirds the width of the
 // figures above it. So every row of words pays the padding and a chart pays
 // none, which is what puts it edge to edge.
-const SIDE = 20
+// Exported so a test can say "the standard gutter" rather than repeat the
+// number, which is how a test comes to pass against a width nobody chose.
+export const SIDE = 16
 
 // Quoted printable, and the one rule this file has to obey.
 //
@@ -216,22 +218,36 @@ function band(colour, background, title, body) {
     </table>`
 }
 
-// A section heading.
+// A section heading, and which of the eight it is.
 //
 // A filled bar rather than small grey lettering over a short rule. Seven
 // sections deep in a mail read on a phone, the old one carried the same weight
 // as the figures around it and the whole report read as one long list. This one
 // you can find by scrolling.
-function heading(title) {
-    // It runs wider than the figures under it, by the width of the gutter they
-    // pay and it does not. That step is what makes scrolling past one read as
-    // the start of something rather than as another row. The bar takes the
-    // gutter back as its own padding, so the title stays exactly where it was
-    // and only the dark ground gets wider.
-    return `<tr><td style="padding:28px 0 12px;">
+//
+// It ran wider than the figures under it, by the width of the gutter they paid
+// and it did not, so the step read as the start of something. It runs the whole
+// width of the message now, which does the same job better and costs nothing:
+// the message has no gutter of its own any more.
+//
+// **The number is not decoration.** A band tells you where a section starts and
+// says nothing once you have scrolled past it, which on a phone is most of the
+// time. The eight are always the same eight in the same order, so "4" is a true
+// thing about the section and it is the answer to standing in the middle of a
+// long mail wondering which part this is.
+//
+// It is handed in rather than counted here. A counter kept in this module would
+// be right in a function that renders one mail and wrong in a test run that
+// renders forty, which is the sort of bug that only ever shows up in the one
+// place nobody is looking.
+function heading(title, number) {
+    return `<tr><td style="padding:36px 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="background:${DARK};border-radius:8px;padding:12px ${SIDE + 15}px;font-family:${FONT};">
-                <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</div>
+            <tr><td style="background:${DARK};padding:14px ${SIDE}px;font-family:${FONT};">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                    ${number ? `<td width="26" align="center" style="background:#ffffff2e;border-radius:6px;font-family:${FONT};font-size:12px;font-weight:700;color:#ffffff;padding:4px 0;">${number}</td>` : ''}
+                    <td style="${number ? `padding-left:12px;` : ''}font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;letter-spacing:.02em;">${escapeHtml(title)}</td>
+                </tr></table>
             </td></tr>
         </table>
     </td></tr>`
@@ -381,7 +397,15 @@ function salesAndCosts(section, f, charts) {
         t.packaging ? `packaging ${t.packaging}%` : null,
     ].filter(Boolean).join(', ')
 
-    return heading(section.title) + figures([
+    // The chart first, under the band.
+    //
+    // It is the shape of the week, and the figures under it are that shape
+    // written out. Reading the numbers and then being shown the picture is the
+    // wrong way round: by then you have already done the work the picture was
+    // going to save you.
+    return heading(section.title, section.number)
+        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
+        + figures([
         line({ label: 'Net sales', value: money(f.net), total: true }),
         line({ label: 'Gross sales', value: money(f.gross), tone: MUTED }),
         line({ label: 'Food', value: withShare(f.food, f.foodPct, costTone(f.foodPct, t.food)) }),
@@ -396,8 +420,29 @@ function salesAndCosts(section, f, charts) {
             + (targetNote
                 ? ` Green is at or under target, amber within two points over, red past that. This week was judged against ${targetNote}.`
                 : ''))
-        + chart(charts.sales, 'Net sales against what it cost to make, week by week.')
         + comments(sectionComments(section))
+}
+
+// What a platform cost the week, and the share it kept.
+//
+// Since figures version 2 the platform carries both, worked out from its
+// Monday to Sunday statement. A report frozen before that has only the typed
+// figure, which was the cost, and a share against what it took in our week.
+function deliveryOf(item, platform) {
+    if (platform && platform.cost != null) {
+        return {
+            cost: num(platform.cost),
+            rate: platform.rate == null ? null : num(platform.rate),
+            // What the share was worked out against: the platform's own
+            // takings over its statement's Monday to Sunday.
+            against: platform.statementTaken == null ? null : num(platform.statementTaken),
+        }
+    }
+    const sales = num(platform?.taken)
+    return {
+        cost: num(item.amount),
+        rate: sales > 0 ? (num(item.amount) / sales) * 100 : null,
+    }
 }
 
 function profitAndLoss(section, f, charts) {
@@ -442,15 +487,23 @@ function profitAndLoss(section, f, charts) {
         // costs" into four. Splitting the tables took that string off the
         // overheads; this takes it off the platforms as well.
         const platform = platforms.find(p => p.id === item.key)
-        const sales = num(platform?.taken)
+        //
+        // Since 27 September it says what the share was taken against and
+        // over which days, his words: "the percentage is calculated against X
+        // amount and done Monday to Sunday as that's the way the cost reports
+        // comes". A report frozen before the statement week keeps saying what
+        // it said.
+        const { cost, rate, against } = deliveryOf(item, platform)
+        const over = against != null && f.statement?.words
+            ? `${pct(rate)} of the ${money(against)} it took ${escapeHtml(f.statement.words)}, the days its statement covers`
+            : `${pct(rate)} of what it took`
         rows.push(line({
             label: escapeHtml(item.label || 'Platform')
-                + (sales > 0
-                    ? `<br /><span style="color:${MUTED};font-size:13px;">`
-                        + `${pct((num(item.amount) / sales) * 100)} of what it took</span>`
+                + (rate != null
+                    ? `<br /><span style="color:${MUTED};font-size:13px;">${over}</span>`
                     : ''),
             colour: platform?.colour,
-            value: money(item.amount),
+            value: money(cost),
             indent: true,
         }))
     }
@@ -460,8 +513,17 @@ function profitAndLoss(section, f, charts) {
         }))
     }
 
-    return heading(section.title) + figures(rows.slice(0, paidFrom))
+    // The platform costs go under the platform costs, and net earnings is what
+    // is left after them, so the picture of what they cost belongs on the near
+    // side of that box rather than three screens past it.
+    return heading(section.title, section.number) + figures(rows.slice(0, paidFrom))
         + (rows.length > paidFrom ? figures(rows.slice(paidFrom)) : '')
+        + (delivery.length > 0 && f.statement?.words
+            ? note('The platforms bill Monday to Sunday, a day behind our week. Each share is what '
+                + `the platform kept on its statement for ${f.statement.words}, and the cost is that `
+                + 'share of what it took this week.')
+            : '')
+        + chart(charts.delivery, 'What each platform has cost, week by week.')
         + bigFigure({
             label: 'Net earnings',
             value: money(f.earnings),
@@ -471,7 +533,6 @@ function profitAndLoss(section, f, charts) {
         + note('Net earnings is what is left of net sales after the food, the packaging, the '
             + 'people, the fixed overheads and the delivery platforms. The share under it is '
             + 'against net sales, the same as every other share on this report.')
-        + chart(charts.delivery, 'What each platform has cost, week by week.')
         + chart(charts.earnings, 'Net earnings, week by week.')
         + comments(sectionComments(section))
 }
@@ -520,15 +581,21 @@ function platformBlock(section, platform, rated) {
         && Math.abs(num(rating.amount) - num(rating.carried_from)) >= 0.005
     const up = moved && num(rating.amount) > num(rating.carried_from)
 
+    // The move goes under the rating, not beside it, the same as a share goes
+    // under the money. The figure cell cannot wrap, so "4.2 out of 5 (no
+    // change)" on one line was the widest thing in the mail: wider than a
+    // phone, and the Gmail app answers a mail wider than the screen by
+    // shrinking every box in it to fit its own words.
+    const change = `font-size:13px;font-weight:400;`
     if (rated) rows.push(line({ inset: 14,
         label: 'Overall rating',
         value: rating?.amount == null
             ? '<span style="color:' + MUTED + ';">not recorded</span>'
             : `${num(rating.amount).toFixed(1)}&nbsp;out&nbsp;of&nbsp;5`
                 + (moved
-                    ? ` <span style="color:${up ? GREEN : AMBER};">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
+                    ? `<br /><span style="color:${up ? GREEN : AMBER};${change}">(${up ? 'up' : 'down'} from ${num(rating.carried_from).toFixed(1)})</span>`
                     : (rating.carried_from != null
-                        ? ` <span style="color:${MUTED};">(no change)</span>`
+                        ? `<br /><span style="color:${MUTED};${change}">(no change)</span>`
                         : '')),
     }))
 
@@ -572,7 +639,7 @@ function platformBlock(section, platform, rated) {
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:17px;font-weight:700;
                             color:${platform.colour || INK};">${escapeHtml(platform.name)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:17px;
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:17px;
                             font-weight:700;color:${INK};white-space:nowrap;">${money(platform.taken)}</td>
                     </tr>
                 </table>
@@ -593,11 +660,46 @@ function platformSection(section, f, charts, bucket, chartKey) {
         ? note('No platforms were tracked for this week.')
         : platforms.map(p => platformBlock(section, p, bucket === 'online_platform')).join('')
 
-    return heading(section.title) + body
+    // Under the band, the same as sales and costs. A section that opens with
+    // the shape of the thing and then breaks it down by platform reads in the
+    // order somebody actually wants it.
+    return heading(section.title, section.number)
         + chart(charts[chartKey], bucket === 'online_platform'
             ? 'What each platform took, week by week.'
             : 'Corporate sales, week by week.')
+        + body
         + comments(sectionComments(section))
+}
+
+// Whether somebody applied to renew, under their name.
+//
+// It is the difference between the two things a date in the past can mean.
+// Somebody whose stamp ran out and who has applied is waiting on the post and
+// may well still be able to work; somebody who has not is a person who cannot
+// legally be on next week's roster, and an owner reading a list of four names
+// has no way to tell which is which.
+//
+// Only for paperwork that has renewals at all, which is the right to work stamp
+// and not the food safety certificate: you sit that course again rather than
+// applying to renew it. **undefined means this kind has no renewals. null means
+// it does and nobody applied.** See names() in reportPeople.js, where the
+// difference is made to survive JSON.
+//
+// A date applied for AFTER it ran out is said out loud rather than left to be
+// worked out from two dates in a list, because it is the one that earns nothing
+// and it is the one somebody has to do something about today.
+export function renewalWords(person) {
+    if (person?.applied === undefined) return ''
+
+    if (!person.applied) {
+        return `<br /><span style="font-size:13px;color:${RED};">&nbsp;&nbsp;&nbsp;No renewal applied for</span>`
+    }
+
+    const late = person.on && person.applied > person.on
+    return `<br /><span style="font-size:13px;color:${late ? AMBER : MUTED};">`
+        + `&nbsp;&nbsp;&nbsp;Renewal applied for ${fmtDate(person.applied)}`
+        + (late ? ', after it ran out' : '')
+        + '</span>'
 }
 
 // The paperwork, from the copy frozen with the report rather than from the staff
@@ -620,7 +722,9 @@ function paperwork(state, title) {
     const group = (label, people, withDate) => {
         if (people.length === 0) return
         const names = people
-            .map(p => '&bull;&nbsp;' + escapeHtml(p.name) + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : ''))
+            .map(p => '&bull;&nbsp;' + escapeHtml(p.name)
+                + (withDate && p.on ? `&nbsp;(${fmtDate(p.on)})` : '')
+                + renewalWords(p))
             .join('<br />')
         groups.push(`<div style="margin-top:12px;font-family:${FONT};font-size:13px;color:${MUTED};">${label}</div>`
             + `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${names}</div>`)
@@ -637,7 +741,7 @@ function paperwork(state, title) {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                         <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
-                        <td width="1%" align="right" style="font-family:${FONT};font-size:15px;
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
                             font-weight:700;color:${tone};white-space:nowrap;">${state.fine} of ${state.total} fine</td>
                     </tr>
                 </table>
@@ -649,7 +753,7 @@ function paperwork(state, title) {
 
 function peopleAndOps(section, f) {
     const paper = f.paperwork || {}
-    return heading(section.title)
+    return heading(section.title, section.number)
         + paperwork(paper.food, 'Food safety certificates')
         + paperwork(paper.permits, 'Right to work')
         + comments(sectionComments(section))
@@ -668,7 +772,7 @@ function weeksOpen(openedOn, weekStart) {
 function supportActions(section, weekStart) {
     const actions = of(section, 'action').filter(a => !a.done_on)
     if (actions.length === 0) {
-        return heading(section.title) + note('Nothing outstanding.')
+        return heading(section.title, section.number) + note('Nothing outstanding.')
     }
 
     const rows = actions.map(action => {
@@ -680,15 +784,327 @@ function supportActions(section, weekStart) {
         })
     })
 
-    return heading(section.title) + figures(rows) + comments(sectionComments(section))
+    return heading(section.title, section.number) + figures(rows) + comments(sectionComments(section))
+}
+
+// The checklists as they stood on Saturday night, one card each, the way the
+// paperwork is laid out.
+//
+// Every word comes frozen from the app (weekCleaning in checklists.js),
+// because nothing outside this folder is deployed with it. A card says what
+// the list came to and, when it warns, what was left and when each of those
+// was last done. No photos: his answer on 27 September was the Hub page only,
+// since a picture in a mail breaks once the nightly job deletes it and thirty
+// of them make a heavy mail. So the mail says how many there were and where to
+// see them.
+const LEFT_IN_MAIL = 12
+
+function cleaningCard(list) {
+    const warn = list.lines.some(l => l.warn)
+    const tone = warn ? RED : list.lines.every(l => l.state === 'done') ? GREEN : AMBER
+    const lines = list.lines.map(line => {
+        const colour = line.warn ? RED : line.state === 'done' ? GREEN : INK
+        let out = `<div style="margin-top:8px;font-family:${FONT};font-size:14px;line-height:1.55;color:${colour};${line.warn ? 'font-weight:700;' : ''}">${escapeHtml(line.words)}</div>`
+        if (line.warn && line.left?.length) {
+            // Missed two rounds running is the thing worth a manager's eye,
+            // so it is said in red.
+            const shown = line.left.slice(0, LEFT_IN_MAIL)
+                .map(t => '&bull;&nbsp;' + escapeHtml(t.label) + `<span style="color:${MUTED};">, ${escapeHtml(t.lastDoneWords)}</span>`
+                    + (t.again ? `<span style="color:${RED};font-weight:700;">, not done the time before either</span>` : ''))
+            if (line.left.length > LEFT_IN_MAIL) shown.push(`<span style="color:${MUTED};">and ${line.left.length - LEFT_IN_MAIL} more, on the Hub</span>`)
+            out += `<div style="margin-top:4px;font-family:${FONT};font-size:14px;line-height:1.7;color:${INK};">${shown.join('<br />')}</div>`
+        }
+        return out
+    }).join('')
+    const photos = list.photos?.length
+        ? `<div style="margin-top:10px;font-family:${FONT};font-size:13px;color:${MUTED};">${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.</div>`
+        : ''
+
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <div style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(list.name)}</div>
+                <div style="margin-top:2px;font-family:${FONT};font-size:12.5px;color:${MUTED};">${escapeHtml(list.repeats)}</div>
+            </td></tr>
+            <tr><td style="padding:2px 14px 14px;">${lines}${photos}</td></tr>
+        </table>
+    </td></tr>`
+}
+
+function cleaningSection(section, f) {
+    const c = f.cleaning
+    const written = comments(sectionComments(section))
+    if (!c) return heading(section.title, section.number) + note('The checklists were not read for this week.') + written
+    if (!c.lists?.length) return heading(section.title, section.number) + note('No checklists were due this week.') + written
+    const total = (c.byDay || []).reduce((sum, n) => sum + n, 0)
+    return heading(section.title, section.number)
+        + c.lists.map(cleaningCard).join('')
+        + (total ? note(`${total} ${total === 1 ? 'thing' : 'things'} ticked this week. ${c.busiest || ''}`.trim()) : '')
+        + written
 }
 
 // A section somebody added. It has no figures of its own, only what was written
 // in it, which is the whole reason it exists.
 function ownSection(section) {
     const written = sectionComments(section)
-    return heading(section.title)
+    return heading(section.title, section.number)
         + (written.length ? comments(written) : note('Nothing written this week.'))
+}
+
+// ---------------------------------------------------------------------------
+// Prices and suppliers
+// ---------------------------------------------------------------------------
+//
+// Read from what was frozen when the report was published, the same as every
+// other figure in here. It is worked out in the app (invoiceReport.js), words
+// and all, because nothing in this folder can import from there. So this only
+// lays it out.
+
+const signedMoney = n => (num(n) > 0 ? '+' : '') + money(n)
+
+export function change(n) {
+    if (n == null || isNaN(Number(n))) return ''
+    return (Number(n) > 0 ? '+' : '') + Number(n).toFixed(1) + '%'
+}
+
+// Two places, the same as every other figure in here. Prices are kept to four,
+// and on a report the extra two only made them harder to read.
+const unitMoney = money
+const priceOf = value => money(value)
+
+// A day and a month, for a row that already says which week it is in.
+export function dayMonth(iso) {
+    if (!iso) return ''
+    const d = new Date(String(iso).slice(0, 10) + 'T00:00:00Z')
+    if (isNaN(d)) return String(iso)
+    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
+
+const small = text => `<br /><span style="color:${MUTED};font-size:13px;">${text}</span>`
+
+// One kind of thing, as a card: a header with what it came to, then a row each.
+// Built the way the paperwork cards are, and for the same reason: loose rows
+// under a section band read as one long list.
+function priceCard(title, figure, tone, rows, empty) {
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${tone};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${escapeHtml(title)}</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                            font-weight:700;color:${tone};white-space:nowrap;">${figure}</td>
+                    </tr>
+                </table>
+            </td></tr>
+            <tr><td style="padding:0 0 4px;">
+                ${rows.length
+                    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                        style="border-collapse:collapse;">${rows.join('')}</table>`
+                    : `<div style="padding:12px 14px;font-family:${FONT};font-size:13px;line-height:1.55;color:${MUTED};">${escapeHtml(empty)}</div>`}
+            </td></tr>
+        </table>
+    </td></tr>`
+}
+
+const toneFor = n => (num(n) > 0.004 ? RED : num(n) < -0.004 ? GREEN : MUTED)
+
+// The headlines, one to a line, with what kind of thing it is in bold: his
+// choice on 26 September for the mail (B). The label is everything before the
+// first colon, which is how the app writes them.
+function wordsBlock(words) {
+    if (!words?.length) return ''
+    const one = w => {
+        const at = w.indexOf(': ')
+        return at === -1
+            ? escapeHtml(w)
+            : `<strong style="color:${DARK};">${escapeHtml(w.slice(0, at + 1))}</strong>&#32;${escapeHtml(w.slice(at + 2))}`
+    }
+    return `<tr><td style="padding:14px ${SIDE}px 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">`
+        + words.map(w => `<div style="margin:0 0 8px;">${one(w)}</div>`).join('')
+        + '</td></tr>'
+}
+
+export function pricesSection(section, f) {
+    const p = f.prices
+    if (!p) {
+        return heading(section.title, section.number)
+            + note('Prices were not read for this week.')
+            + comments(sectionComments(section))
+    }
+    const t = p.totals || {}
+
+    // The four figures an owner reads first, as rows, with what each one is
+    // under its name rather than beside the money.
+    const summary = figures([
+        line({
+            label: 'Same product, new price'
+                + small(p.moves.length ? `${p.moves.length} ${p.moves.length === 1 ? 'product' : 'products'}` : 'Every code cost what it did'),
+            value: p.moves.length ? signedMoney(t.moves) : 'None',
+            tone: toneFor(t.moves),
+        }),
+        line({
+            label: 'Bought as something else'
+                + small(p.switches.length ? `${p.switches.length} ${p.switches.length === 1 ? 'product' : 'products'}` : 'Everything was the usual one'),
+            value: p.switches.length ? signedMoney(t.switches) : 'None',
+            tone: toneFor(t.switches),
+        }),
+        line({
+            label: 'Recipes out of line'
+                + small(t.cannot ? `and ${t.cannot} that cannot be compared` : `more than ${p.threshold}% off what we pay`),
+            value: String(t.recipes || 0),
+            tone: t.recipes ? AMBER : MUTED,
+        }),
+        line({
+            label: 'Came back'
+                + small(`${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`
+                    + (t.owedCount ? `, ${t.owedCount} still owed` : '')),
+            value: money(t.back),
+        }),
+    ])
+
+    const moves = priceCard('Same product, new price', p.moves.length ? signedMoney(t.moves) : '', toneFor(t.moves),
+        [
+            ...p.moves.map(m => line({
+                inset: 14,
+                // The split on a line of its own, "6 cases, €3.15 less each",
+                // so the total beside it can be checked by multiplying. Absent
+                // on anything frozen before it existed.
+                label: escapeHtml(m.name)
+                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}, `
+                        + `${dayMonth(m.on)}${m.invoice ? ` ${escapeHtml(m.invoice)}` : ''}`)
+                    + (m.split ? small(escapeHtml(m.split)) : ''),
+                value: `${change(m.change)}<br /><span style="font-size:13px;">${signedMoney(m.effect)}</span>`,
+                tone: m.up ? RED : GREEN,
+            })),
+            ...(p.doubtful || []).map(m => line({
+                inset: 14,
+                label: `${escapeHtml(m.name)}, left out`
+                    + small(`${escapeHtml(priceOf(m.was, m.per))} to ${escapeHtml(priceOf(m.now, m.per))} ${escapeHtml(m.per)}: `
+                        + 'more likely a pack read wrong than a real price'),
+                value: '',
+            })),
+        ],
+        'Every code cost what it did the last time it came.')
+
+    const switches = priceCard('Bought as something else', p.switches.length ? signedMoney(t.switches) : '', toneFor(t.switches),
+        p.switches.map(x => line({
+            inset: 14,
+            label: escapeHtml(x.name)
+                + small(`${escapeHtml(x.bought)}, ${dayMonth(x.on)}. `
+                    + (x.cannot
+                        ? 'Cannot be compared.'
+                        : `${unitMoney(x.per)} ${escapeHtml(x.unit)} against ${unitMoney(x.usualPer)} usually`)),
+            value: x.cannot ? '' : `${change(x.change)}<br /><span style="font-size:13px;">${signedMoney(x.effect)}</span>`,
+            tone: x.cannot ? MUTED : toneFor(x.change),
+        })),
+        'Everything came as the version recipes cost from.')
+
+    const recipes = priceCard('Recipes not costing what we pay', t.recipes ? String(t.recipes) : '', t.recipes ? AMBER : MUTED,
+        p.recipes.map(r => line({
+            inset: 14,
+            label: escapeHtml(r.name)
+                + small(r.state === 'cannot'
+                    ? (r.why === 'units'
+                        ? 'Cannot be compared: the price recipes use and the invoice are not counted the same way.'
+                        : 'Cannot be compared: counted by weight, sold one at a time.')
+                    : `Recipes ${unitMoney(r.recipe)} ${escapeHtml(r.unit)}, paid ${unitMoney(r.paid)} on ${dayMonth(r.paidOn)}`),
+            value: r.state === 'cannot' ? '' : change(r.gap)
+                + (r.effect ? `<br /><span style="font-size:13px;">${signedMoney(r.effect)}</span>` : ''),
+            tone: r.state === 'cannot' ? MUTED : AMBER,
+        })),
+        `Every recipe is within ${p.threshold}% of what was last paid.`)
+
+    // What came back: by reason first, then each credit note, then what is
+    // still owed. The reasons are lines of their own rather than a bar, which
+    // a mail cannot be trusted to draw.
+    const backRows = [
+        ...(p.reasons || []).map(r => line({
+            inset: 14,
+            label: `<span style="color:${r.colour};">&#9632;</span>&nbsp;${escapeHtml(r.label)}`,
+            value: money(r.money),
+        })),
+        ...p.back.map(b => line({
+            inset: 14,
+            label: escapeHtml(b.what)
+                + small(`${escapeHtml(b.number || 'Credit note')} of ${dayMonth(b.date)}: `
+                    + b.parts.map(part => escapeHtml(part.label)).join(', ')),
+            value: money(b.money),
+            tone: GREEN,
+        })),
+        ...(p.owed.length ? [subHeading('Still waiting on a credit')] : []),
+        ...p.owed.map(o => line({
+            inset: 14,
+            label: escapeHtml(o.what) + small(`${escapeHtml(o.label)}, since ${dayMonth(o.since)}`),
+            value: o.money == null ? 'not priced' : money(o.money),
+        })),
+    ]
+    const back = priceCard('Came back, and why', p.back.length ? money(t.back) : '', GREEN, backRows,
+        'Nothing came back this week and nothing is owed.')
+
+    const fresh = p.newCodes?.length
+        ? note(`${p.newCodes.length} ${p.newCodes.length === 1 ? 'code was' : 'codes were'} delivered for the first time.`)
+        : ''
+
+    // Where it came from first, set the way the headlines are: only a
+    // document read line by line says anything about a price, and a reader
+    // has to know which suppliers were only a typed total. Absent on anything
+    // frozen before it existed.
+    return heading(section.title, section.number)
+        + (p.readFrom?.words ? wordsBlock([p.readFrom.words]) : '')
+        + summary
+        + wordsBlock(p.words)
+        + moves + switches + recipes + back
+        + fresh
+        + note(`Recipes checked on ${fmtDate(p.checkedOn)}. Prices are without VAT, as printed on the invoices.`)
+        + comments(sectionComments(section))
+}
+
+function pricesText(p) {
+    if (!p) return ['  Prices were not read for this week.']
+    const t = p.totals || {}
+    const out = [
+        ...(p.readFrom?.words ? [`  ${p.readFrom.words}`] : []),
+        `  Same product, new price: ${p.moves.length ? signedMoney(t.moves) : 'none'}`,
+        `  Bought as something else: ${p.switches.length ? signedMoney(t.switches) : 'none'}`,
+        `  Recipes out of line: ${t.recipes || 0}${t.cannot ? `, and ${t.cannot} that cannot be compared` : ''}`,
+        `  Came back: ${money(t.back)} on ${p.back.length} credit ${p.back.length === 1 ? 'note' : 'notes'}`,
+    ]
+    for (const w of p.words || []) out.push(`  - ${w}`)
+    if (p.moves.length) {
+        out.push('  Same product, new price')
+        for (const m of p.moves) {
+            out.push(`    ${m.name}: ${priceOf(m.was, m.per)} to ${priceOf(m.now, m.per)} ${m.per}, ${change(m.change)}, ${signedMoney(m.effect)}`
+                + (m.split ? ` (${m.split})` : ''))
+        }
+    }
+    if (p.switches.length) {
+        out.push('  Bought as something else')
+        for (const x of p.switches) {
+            out.push(`    ${x.name}: ${x.bought}` + (x.cannot ? ', cannot be compared' : `, ${change(x.change)}, ${signedMoney(x.effect)}`))
+        }
+    }
+    if (p.recipes.length) {
+        out.push('  Recipes not costing what we pay')
+        for (const r of p.recipes) {
+            out.push(`    ${r.name}: ` + (r.state === 'cannot'
+                ? 'cannot be compared'
+                : `recipes ${unitMoney(r.recipe)}, paid ${unitMoney(r.paid)} ${r.unit}, ${change(r.gap)}`))
+        }
+    }
+    if (p.back.length) {
+        out.push('  Came back')
+        for (const b of p.back) {
+            out.push(`    ${b.what}: ${money(b.money)}, ${b.parts.map(part => part.label).join(', ')}`)
+        }
+    }
+    if (p.owed.length) {
+        out.push('  Still waiting on a credit')
+        for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
+    }
+    return out
 }
 
 // ---------------------------------------------------------------------------
@@ -738,6 +1154,7 @@ export function reportEmail({
     const known = {
         sales_costs: s => salesAndCosts(s, f, charts),
         profit_loss: s => profitAndLoss(s, f, charts),
+        prices_suppliers: s => pricesSection(s, f),
         online_sales: s => platformSection(s, f, charts, 'online_platform', 'online'),
         // The bucket is called catering in the database, nailed down in
         // migration 015. The report calls it corporate, which is what people
@@ -746,11 +1163,16 @@ export function reportEmail({
         people_ops: s => peopleAndOps(s, f),
         marketing: s => ownSection(s),
         support_actions: s => supportActions(s, weekStart),
+        cleaning: s => cleaningSection(s, f),
     }
 
+    // Numbered in the order they are drawn, which is the order they are read
+    // and the only order that could be meant. Counted here rather than inside
+    // heading(), because a counter living in the module would keep climbing
+    // across every mail the same isolate renders.
     const body = [...sections]
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .map(section => (known[section.key] || ownSection)(section))
+        .map((section, i) => (known[section.key] || ownSection)({ ...section, number: i + 1 }))
         .join('')
 
     const hubButton = appUrl
@@ -772,25 +1194,24 @@ export function reportEmail({
 <meta name="supported-color-schemes" content="light dark" /></head>
 <body style="margin:0;padding:0;background:${CREAM};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="background:${CREAM};padding:24px 10px;">
+    style="background:${CREAM};padding:0;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="width:100%;max-width:${WIDTH}px;background:#ffffff;border-radius:14px;
-    border:1px solid ${BORDER};overflow:hidden;">
+    style="width:100%;max-width:${WIDTH}px;background:#ffffff;overflow:hidden;">
 
-    <tr><td style="background:${DARK};padding:22px 24px;font-family:${FONT};">
+    <tr><td style="background:${DARK};padding:22px ${SIDE}px;font-family:${FONT};">
         <div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#ffffff99;">Weekly summary report</div>
         <div style="margin-top:5px;font-size:22px;font-weight:700;color:#ffffff;">${escapeHtml(place)}</div>
         <div style="margin-top:4px;font-size:14px;color:#ffffffcc;">Week ${weekNumber(weekStart)}&nbsp;&middot;&nbsp;${weekWords(weekStart)}</div>
     </td></tr>
 
-    <tr><td style="padding:22px 24px 30px;">
+    <tr><td style="padding:18px 0 26px;">
         ${bands}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>
         <div style="margin-top:34px;">${hubButton}</div>
     </td></tr>
 
-    <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px 24px;
+    <tr><td style="background:${CREAM};border-top:1px solid ${BORDER};padding:18px ${SIDE}px;
         font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">${publisher
             ? `Written up by ${escapeHtml(publisher)}. Replies come straight back to them.` : ''}</td></tr>
 
@@ -858,9 +1279,14 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
         } else if (section.key === 'profit_loss') {
             for (const item of of(section, 'overhead')) out.push(share(item.label, item.amount, null))
             out.push(share('Fixed overheads', f.standing, null))
-            for (const item of of(section, 'delivery')) out.push(share(item.label, item.amount, null))
+            for (const item of of(section, 'delivery')) {
+                const platform = (f.platforms || []).find(p => p.id === item.key)
+                out.push(share(item.label, deliveryOf(item, platform).cost, null))
+            }
             out.push(share('Third party delivery costs', f.deliveryTotal, null))
             out.push(share('Net earnings', f.earnings, f.earningsPct))
+        } else if (section.key === 'prices_suppliers') {
+            out.push(...pricesText(f.prices))
         } else if (section.key === 'online_sales' || section.key === 'corporate_sales') {
             const bucket = section.key === 'online_sales' ? 'online_platform' : 'catering'
             for (const platform of (f.platforms || []).filter(p => p.bucket === bucket)) {
@@ -897,6 +1323,22 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 group('Runs out soon:', state.expiring)
                 group('Nothing on file:', state.missing)
             }
+        } else if (section.key === 'cleaning') {
+            const c = f.cleaning
+            if (!c?.lists?.length) out.push(c ? '  No checklists were due this week.' : '  The checklists were not read for this week.')
+            for (const list of c?.lists || []) {
+                out.push(`  ${list.name} (${list.repeats})`)
+                for (const line of list.lines) {
+                    out.push(`    ${line.words}`)
+                    if (line.warn) {
+                        for (const t of line.left || []) {
+                            out.push(`      - ${t.label}, ${t.lastDoneWords}${t.again ? ', not done the time before either' : ''}`)
+                        }
+                    }
+                }
+                if (list.photos?.length) out.push(`    ${list.photos.length === 1 ? '1 photo' : `${list.photos.length} photos`} taken this week, on the Hub.`)
+            }
+            if (c?.busiest) out.push(`  ${c.busiest}`)
         } else if (section.key === 'support_actions') {
             const open = of(section, 'action').filter(a => !a.done_on)
             if (open.length === 0) out.push('  Nothing outstanding.')
@@ -919,6 +1361,96 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
 
     return out.map(l => l.replace(/\s+$/, '')).join('\n')
 }
+
+// Gmail's untidy goodbye.
+//
+// smtp.gmail.com can accept a message, answer QUIT and drop the socket without
+// a TLS close_notify. rustls calls that an unexpected EOF and denomailer
+// surfaces it out of send().
+//
+// **What this does NOT tell you is whether the message was taken.** That was
+// assumed on 13 September, from a note saying an earlier one had "probably"
+// gone out, and the assumption was wrong: on 14 September a time off request
+// ended exactly this way and never arrived. The error is identical whether the
+// message was delivered or lost, so there is nothing in it to read.
+//
+// So it is not treated as success any more. It is used to say something clearer
+// than a stack trace when a send has failed twice, and nothing else.
+export function isJustTheGoodbye(err) {
+    const said = String((err && err.message) || err || '').toLowerCase()
+    return said.includes('close_notify')
+        || said.includes('unexpected eof')
+        || said.includes('unexpectedeof')
+}
+
+// An address nobody can ever receive mail at.
+//
+// RFC 2606 and RFC 6761 set aside .test, .example, .invalid and .localhost, and
+// the example.com family, so they can be written in documentation and used in
+// testing without ever resolving. A mail server will not deliver to one: it
+// refuses, and one refused recipient can take a whole send with it.
+//
+// This is here because test.manager@papichulo.test is a real store manager on
+// the live database, so every Point Campus time off request would have tried
+// it. Whose account happens to exist should not decide whether the mail works,
+// and the alternative was to keep the account list tidy forever.
+//
+// Deliberately narrow. This is not address validation and it is not a guess at
+// whether a mailbox exists; it only removes the ones that provably cannot.
+const NEVER_DELIVERS_TLD = ['test', 'example', 'invalid', 'localhost']
+const NEVER_DELIVERS_DOMAIN = ['example.com', 'example.net', 'example.org']
+
+export function deliverable(address) {
+    const at = String(address || '').trim()
+    const cut = at.lastIndexOf('@')
+    if (cut < 1 || cut === at.length - 1) return false
+
+    const domain = at.slice(cut + 1).toLowerCase()
+    if (NEVER_DELIVERS_DOMAIN.includes(domain)) return false
+
+    const tld = domain.slice(domain.lastIndexOf('.') + 1)
+    return !NEVER_DELIVERS_TLD.includes(tld)
+}
+
+// Where a reply should land.
+//
+// On a report that is the manager who wrote the week up, not the restaurant.
+// Every recipient is in To and Reply-To is the manager, so an owner pressing
+// reply to all puts the author in To and copies everybody who read it. Point it
+// at a shared inbox and the thread loses its author.
+//
+// This only decides whether the address is worth using. Which address it is, is
+// the caller's business.
+//
+// It is checked rather than trusted: the column is typed into a form, and a
+// Reply-To nobody can receive at is worse than none, because the client offers
+// the reply and the person believes it went.
+export function replyToFor(restaurantAddress, fallback) {
+    const asked = String(restaurantAddress || '').trim()
+    if (asked && deliverable(asked)) return asked
+
+    const spare = String(fallback || '').trim()
+    if (spare && deliverable(spare)) return spare
+
+    return undefined
+}
+
+// Who the mail comes from.
+//
+// One Workspace account sends for every restaurant, and the restaurant's own
+// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
+// SMTP when it is not the account that authenticated, but it leaves the display
+// name alone, so this is how one mailbox and one app password can still say
+// which restaurant a mail is about.
+//
+// It is the display name people actually read in a list of mail, and it is the
+// only place the restaurant appears in the header: the address is the same for
+// both, so anybody sorting by sender sorts on this.
+//
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
+// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
+// one matters: a display name with an accent in it has to be encoded to travel
+// in a header, and a name that arrives as mojibake is worse than a generic one.
 
 // Who the mail comes from.
 //

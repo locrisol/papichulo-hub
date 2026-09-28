@@ -41,6 +41,7 @@
 
 CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
 CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
 CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
@@ -83,10 +84,27 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "usual_extras" "jsonb",
     "roster_note" "text",
     "mail_from" "text",
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "google_calendar_id" "text",
+    "watch_city_events" boolean DEFAULT true NOT NULL,
+    "latitude" numeric(9,6),
+    "longitude" numeric(9,6),
+    "timesheet_recipients" "text"[],
+    "pay_period_start" "date",
+    "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
+    -- The payroll list, and nobody is on it by role. See the comment below.,
+    CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
 COMMENT ON COLUMN "public"."restaurants"."break_rules" IS 'The break ladder, longest shift first, as [{"hours":8,"operator":"gte","minutes":60}, ...]. Read top down and the first rung that matches wins. Seeded with the two that come from the Irish rules on breaks plus the hour this company adds on top. Breaks are paid and are never deducted from the hours: the ladder decides what gets printed beside a shift, not what it is worth.';
+COMMENT ON COLUMN "public"."restaurants"."forecasting_venue_id" IS 'Superseded by restaurant_places. Migration 011 copied it into a place row and nothing reads it any more. Kept until a backup is newer than that migration.';
+COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually is, which is what the search for nearby places asks from and what the city rule measures against. Null until somebody pins the address, and both of those simply do not run until it is.';
+COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
+COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
+COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
+COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
+COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
 COMMENT ON COLUMN "public"."restaurants"."opening_hours" IS 'The usual week, as {"0":{"open":"10:00","close":"21:00"}, ...} keyed by weekday with Sunday as 0. A day that is missing or null means the store does not normally open that day. Null overall means nobody has set them yet, and the roster then simply marks nothing as opening or closing rather than guessing.';
 COMMENT ON COLUMN "public"."restaurants"."roster_note" IS 'The line of small print at the bottom of every shared week. Migration 029 replaced this with a message per day on the grounds that a fixed line stops being read, which was half right: the per day message is the one people read, and there is still a standing sentence every roster needs to carry. Both exist now and neither prints when it is empty.';
@@ -104,10 +122,15 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "full_name" character varying(255) NOT NULL,
     "role" character varying(20) NOT NULL,
     "restaurant_id" "uuid",
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee')))
+    "is_test" boolean DEFAULT false NOT NULL,
+    "landing_page" "text",
+    CONSTRAINT "users_role_check" CHECK (("role" IN ('super_admin', 'owner', 'store_manager', 'employee'))),
+    CONSTRAINT "users_landing_page_is_a_path" CHECK ((("landing_page" IS NULL) OR ("landing_page" ~ '^/[a-z0-9/-]{0,60}$')))
 );
+
+COMMENT ON COLUMN "public"."users"."landing_page" IS 'The page this account opens on after signing in. Null lands where the role always did. The app checks it is still allowed before using it, because nothing here can.';
 
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
@@ -157,21 +180,27 @@ CREATE TABLE IF NOT EXISTS "public"."employees" (
     "permission_renewal_reference" "text",
     "availability_next" "jsonb",
     "availability_from" "date",
+    "on_trial" boolean DEFAULT false NOT NULL,
     CONSTRAINT "employees_availability_next_needs_a_date" CHECK ((("availability_next" IS NULL) = ("availability_from" IS NULL))),
     CONSTRAINT "employees_check" CHECK ((("ended_on" IS NULL) OR ("started_on" IS NULL) OR ("ended_on" >= "started_on")))
 );
 
 COMMENT ON TABLE "public"."employees" IS 'A person who works at a restaurant, whether or not they can log in. This is what the roster is built from.';
+COMMENT ON COLUMN "public"."users"."is_test" IS 'True for a developer account that exists to be signed in as, never to be communicated with. Kept out of every recipient list. Does not affect permissions: the role is real.';
+
+COMMENT ON COLUMN "public"."restaurants"."sort_order" IS 'Where this restaurant sits in a list. Arranged on Settings, Users.';
+
 COMMENT ON COLUMN "public"."employees"."availability" IS 'The days and hours they can normally work, as {"1":[["09:00","17:00"]], ...} keyed by weekday with Sunday as 0. A weekday missing from the object means no restriction on that day. A weekday present with an empty list means they cannot work it. A weekday with pairs means those hours and nothing else, and a pair with 00:00 at the start or 24:00 at the end is a stretch open at that end: [["13:00","24:00"]] is anything from one o''clock on. Null means nothing has been recorded, which is the same as no restriction on any day. Held on the person rather than in a table of its own because it has no history worth keeping: a published week is frozen, so a rostered shift is already a fact and cannot be changed by anything typed here afterwards.';
 COMMENT ON COLUMN "public"."employees"."availability_from" IS 'The day availability_next starts. Before it, availability applies; on it and after, availability_next does.';
 COMMENT ON COLUMN "public"."employees"."availability_next" IS 'The availability that takes over on availability_from. Null when nothing is queued.';
 COMMENT ON COLUMN "public"."employees"."calendar_token" IS 'The secret in their calendar subscription URL. Anybody holding it can read that person''s published shifts and nothing else. Null until a link is made. Replacing it makes every old link stop working, which is what to do when a phone is lost.';
 COMMENT ON COLUMN "public"."employees"."date_of_birth" IS 'Only used to tell whether somebody is under 18, who has their own limits: eight hours a day, forty a week, nothing after ten at night and twelve hours rest rather than eleven. Empty for everybody else and nothing depends on it.';
-COMMENT ON COLUMN "public"."employees"."ended_on" IS 'The last day worked. There is no delete. Everything follows from this date: gone from rosters after it, present on rosters before it, and access removed on it.';
+COMMENT ON COLUMN "public"."employees"."ended_on" IS 'The last day worked. There is no delete. Everything follows from this date: gone from rosters after it, present on rosters before it, and their login switched off the night after it (switch_off_leavers).';
 COMMENT ON COLUMN "public"."employees"."food_safety_expires" IS 'When it runs out. This is the one that matters and the one everything watches. Two years is the usual term and is what gets offered, but it is typed rather than calculated so a certificate that says something different can say something different here.';
 COMMENT ON COLUMN "public"."employees"."food_safety_issued" IS 'When they sat it. Only used to work out the expiry, which is offered as two years later and can be changed.';
 COMMENT ON COLUMN "public"."employees"."food_safety_level" IS 'Which food safety training they hold. Empty means none recorded, which for anybody handling food is itself worth knowing.';
 COMMENT ON COLUMN "public"."employees"."full_name" IS 'Kept here rather than read from the account, so a person with no account still has a name, and so two people called Ana can be told apart on the roster without anybody having to rename an account.';
+COMMENT ON COLUMN "public"."employees"."on_trial" IS 'On the team, doing shifts and being paid for them, but not hired. The only thing it changes is that food safety training is not asked for or warned about while it is true, since that is part of being hired. A work permit is still asked for from the first day, because working without one is the same offence either way. Turn it off when they are hired and the record is held to the full standard from then on.';
 COMMENT ON COLUMN "public"."employees"."hourly_rate" IS 'What they cost per hour, used only to total up what a rostered week costs. Not payroll and never shown to staff: the whole table is closed to the employee role, so this column is unreachable by anyone below a manager. When staff need to see each other on a published roster, they get a narrow view of name and position rather than this table.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_applied" IS 'The day they applied to renew their permission to work. Only earns the grace period if it is on or before work_permission_expires.';
 COMMENT ON COLUMN "public"."employees"."permission_renewal_reference" IS 'The OREG number from the renewal application receipt. Kept because it is the proof an employer is asked for.';
@@ -226,15 +255,18 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "also_in" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
     "category" "text" DEFAULT 'ingredient'::"text" NOT NULL,
     "held_for" "text",
+    "piece_weight" numeric(10,3),
     CONSTRAINT "products_also_in_known" CHECK (("also_in" <@ ARRAY['Freezer'::"text", 'Cold Room'::"text", 'Dry'::"text", 'Packaging'::"text", 'Cleaning'::"text"])),
     CONSTRAINT "products_category_known" CHECK (("category" = ANY (ARRAY['ingredient'::"text", 'drink'::"text"]))),
     CONSTRAINT "products_count_frequency_check" CHECK ((("count_frequency" IS NULL) OR ("count_frequency" = ANY (ARRAY['daily'::"text", 'weekly'::"text", 'monthly'::"text"])))),
     CONSTRAINT "products_section_check" CHECK (("section" IN ('Freezer', 'Cold Room', 'Dry', 'Packaging', 'Cleaning'))),
-    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre')))
+    CONSTRAINT "products_unit_check" CHECK (("unit" IN ('KG', 'Units', 'Litre'))),
+    CONSTRAINT "products_piece_weight_positive" CHECK (("piece_weight" IS NULL OR "piece_weight" > (0)::numeric))
 );
 
 COMMENT ON COLUMN "public"."products"."also_in" IS 'The other places this product turns up, on top of its own section. It only affects where it appears on a stock take: the section is still what the product is, and the costing and the reports read that and never this. Empty for nearly everything.';
 COMMENT ON COLUMN "public"."products"."category" IS 'What kind of thing this is, as opposed to where it is kept, which is the section. ingredient is anything that can go into a recipe and is the default. drink is counted on a stock take like everything else but is never offered as an ingredient in a MIX. Menu items are not filtered by this: a can of Coke is a real line on a menu.';
+COMMENT ON COLUMN "public"."products"."piece_weight" IS 'Roughly what one piece weighs, for something sold by the piece and counted by weight, or the other way round: a cabbage, a lime, an avocado. In the product''s own unit, kilos or litres; in kilos for something counted in units. Only an estimate, used to turn a case of ten into kilos and back. Empty means nobody has said.';
 COMMENT ON COLUMN "public"."products"."held_for" IS 'Who this stock belongs to, when it is not ours. Empty for almost everything. Set it and the product is still counted on a stock take exactly as it always was, and the report splits its section into theirs, ours and the two together. It is deliberately not a section: where a thing is kept and whose it is are different questions, and merging them would make a combined total impossible.';
 ALTER TABLE ONLY "public"."products"
     ADD CONSTRAINT "products_pkey" PRIMARY KEY ("id");
@@ -256,10 +288,12 @@ CREATE TABLE IF NOT EXISTS "public"."product_supplier_prices" (
     CONSTRAINT "product_supplier_prices_purchase_type_check" CHECK (("purchase_type" IN ('case', 'loose')))
 );
 
+COMMENT ON COLUMN "public"."product_supplier_prices"."supplier_code" IS 'The supplier''s code this price is for. Each code has a price of its own, because two codes are two versions of a product even in the same pack, and one of them costing more is not the other one going up. supplier_codes is the authority on which row a code means; this is kept in step with it.';
+
 ALTER TABLE ONLY "public"."product_supplier_prices"
     ADD CONSTRAINT "product_supplier_prices_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."product_supplier_prices"
-    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case");
+    ADD CONSTRAINT "product_supplier_prices_unique" UNIQUE NULLS NOT DISTINCT ("product_id", "supplier_id", "restaurant_id", "purchase_type", "units_per_case", "supplier_code");
 CREATE INDEX "idx_prices_restaurant" ON "public"."product_supplier_prices" USING "btree" ("restaurant_id", "is_preferred");
 CREATE INDEX "idx_prices_supplier" ON "public"."product_supplier_prices" USING "btree" ("supplier_id");
 
@@ -503,6 +537,28 @@ ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_name_key" UNIQUE ("restaurant_id", "name");
 CREATE INDEX "idx_sales_platforms_restaurant" ON "public"."sales_platforms" USING "btree" ("restaurant_id");
 
+-- What the till calls a row of the receipt, answered once when its weekly
+-- report is read in: CASH is Cash Sales, Credit Card is Card. Only "this is our
+-- row" is kept. Money put under another row because it was rung up by mistake
+-- is one file's mistake and is asked again, or the next mistake would go
+-- somewhere without anybody seeing it.
+CREATE TABLE IF NOT EXISTS "public"."sales_tender_names" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "tender_key" "text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "sales_tender_names_has_a_name" CHECK (("btrim"("name") <> ''::"text"))
+);
+
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_once" UNIQUE ("restaurant_id", "name");
+
+COMMENT ON TABLE "public"."sales_tender_names" IS 'What the till calls a row of the sales receipt, answered once when its weekly report is read in: CASH is Cash Sales, Credit Card is Card. Money put under a row just this once is never kept here.';
+
 CREATE TABLE IF NOT EXISTS "public"."petty_cash_entries" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
@@ -543,6 +599,13 @@ ALTER TABLE ONLY "public"."predictions"
 -- The other half of the week: what came in the door, what the hours came
 -- to, and what went in the bin.
 
+-- A document, which is usually an invoice and is sometimes a credit note.
+--
+-- A credit note is a row here with a negative total rather than a second kind
+-- of thing. It lands in a week the way any other document does, it reduces the
+-- food cost the way it reduces the bill, and the list on screen reads the way
+-- the supplier's own portal does. The only extra fact it carries is which
+-- invoice it credits.
 CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "restaurant_id" "uuid" NOT NULL,
@@ -556,15 +619,41 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
     "notes" "text",
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"(),
+    "invoice_number" "text",
+    "document_type" "text" DEFAULT 'invoice'::"text" NOT NULL,
+    "credit_of_invoice_id" "uuid",
+    "counts_in_cost" boolean DEFAULT true NOT NULL,
+    "credit_reason" "text",
     CONSTRAINT "invoices_category_check" CHECK (("category" IN ('food', 'packaging', 'cleaning', 'other'))),
-    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted')))
+    CONSTRAINT "invoices_document_type_check" CHECK (("document_type" IN ('invoice', 'credit'))),
+    CONSTRAINT "invoices_entry_method_check" CHECK (("entry_method" IN ('manual', 'ai_extracted', 'parsed'))),
+    CONSTRAINT "invoices_credit_reason_check" CHECK (("credit_reason" IS NULL OR "credit_reason" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else')))
 );
+
+COMMENT ON COLUMN "public"."invoices"."invoice_number" IS 'The number printed on the document. Null for everything entered by hand off a total, which is eight months of them.';
+COMMENT ON COLUMN "public"."invoices"."credit_reason" IS 'Why a credit note came back, given afterwards for the part nobody logged at the door. A label and nothing else: it moves no money and no week. Logging a claim for it now would take the money off the week the delivery happened, which may be a report already sent.';
+COMMENT ON COLUMN "public"."invoices"."counts_in_cost" IS 'Whether this document counts towards the food cost, as against whether it exists. False for a credit note that settles a claim, because the claim already takes that money off, in the week the delivery happened. A credit with no claim behind it counts on its own date.';
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_invoices_restaurant_date" ON "public"."invoices" USING "btree" ("restaurant_id", "invoice_date");
 CREATE INDEX "idx_invoices_supplier" ON "public"."invoices" USING "btree" ("supplier_id");
+CREATE INDEX "idx_invoices_credit_of" ON "public"."invoices" USING "btree" ("credit_of_invoice_id") WHERE ("credit_of_invoice_id" IS NOT NULL);
+-- The same document cannot arrive twice for one supplier at one restaurant.
+-- Partial, because everything entered by hand has no number and they are not
+-- all duplicates of each other.
+CREATE UNIQUE INDEX "invoices_document_once" ON "public"."invoices" USING "btree" ("restaurant_id", "supplier_id", "invoice_number") WHERE ("invoice_number" IS NOT NULL);
 
+-- One line off a document.
+--
+-- Two quantity columns because the paper has two, and a claim is made in the
+-- same shape: one case ordered and one unit delivered is a different sentence
+-- to four trays with one sent back.
+--
+-- The pack size is kept as printed and as parsed. "4X2.5 KG" is what somebody
+-- reading the screen against the paper needs to see and 4 is what the
+-- arithmetic needs. units_per_case is null when it cannot be read, which is a
+-- real answer and better than a confident 1.
 CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "invoice_id" "uuid" NOT NULL,
@@ -573,14 +662,226 @@ CREATE TABLE IF NOT EXISTS "public"."invoice_lines" (
     "quantity" numeric(10,3),
     "unit_price" numeric(10,4),
     "line_total" numeric(10,2),
-    "price_changed" boolean DEFAULT false,
-    "previous_price" numeric(10,4),
-    "price_change_confirmed" boolean DEFAULT false
+    "supplier_code" "text",
+    "line_no" integer,
+    "cases" numeric(10,3),
+    "units" numeric(10,3),
+    "pack_size" "text",
+    "units_per_case" numeric(10,3),
+    "price_per_case" numeric(10,4),
+    "storage" "text",
+    "category" "text",
+    "price_id" "uuid",
+    "decision" "text",
+    "decided_at" timestamp with time zone,
+    "decided_by" "uuid",
+    "vat_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    "deposit_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT "invoice_lines_category_check" CHECK (("category" IS NULL OR "category" IN ('food', 'packaging', 'cleaning', 'other'))),
+    CONSTRAINT "invoice_lines_decision_check" CHECK (("decision" IS NULL OR "decision" IN ('accepted', 'rejected', 'ignored', 'matched'))),
+    CONSTRAINT "invoice_lines_storage_check" CHECK (("storage" IS NULL OR "storage" IN ('ambient', 'chilled', 'frozen')))
 );
+
+COMMENT ON COLUMN "public"."invoice_lines"."decision" IS 'Whether somebody has looked at this line yet and what they said. The review works out what needs a decision by comparing the line against the price row, which answers itself once a price is accepted. Rejecting does not: the difference is still there next week, so saying no once has to stick.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."vat_amount" IS 'This line''s share of the VAT on its document, from the VAT table at the foot, shared over the lines taxed at each code so the shares add up to what was printed. The cost view adds it to line_total. The price columns stay as printed, without it.';
+
+COMMENT ON COLUMN "public"."invoice_lines"."deposit_amount" IS 'This line''s share of the container deposit on its document, on the drinks that carry one. The cost view adds it to line_total, so the food cost takes what the invoice charged.';
 
 ALTER TABLE ONLY "public"."invoice_lines"
     ADD CONSTRAINT "invoice_lines_pkey" PRIMARY KEY ("id");
 CREATE INDEX "idx_invoice_lines_invoice" ON "public"."invoice_lines" USING "btree" ("invoice_id");
+CREATE INDEX "idx_invoice_lines_code" ON "public"."invoice_lines" USING "btree" ("supplier_code") WHERE ("supplier_code" IS NOT NULL);
+CREATE INDEX "idx_invoice_lines_product" ON "public"."invoice_lines" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
+CREATE INDEX "idx_invoice_lines_waiting" ON "public"."invoice_lines" USING "btree" ("invoice_id") WHERE ("decision" IS NULL);
+
+-- The account number a supplier prints on a document, and which restaurant it
+-- means.
+--
+-- This guards the worst failure in the whole feature. Suppliers are shared
+-- between restaurants: the table has no restaurant_id and Sysco is one row for
+-- both shops. So a file dropped on the import screen says nothing about whose
+-- costs it belongs in except through the account number printed on it, and
+-- importing one restaurant's delivery into the other's food cost would be
+-- silent, wrong in both weeks and nearly impossible to find afterwards.
+--
+-- An account number the Hub has never seen stops the import and asks once.
+CREATE TABLE IF NOT EXISTS "public"."supplier_accounts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "account_no" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+COMMENT ON TABLE "public"."supplier_accounts" IS 'The account number a supplier prints on a document, and which restaurant it means. Suppliers are shared between restaurants, so this is the only reliable link from a file to a set of costs.';
+
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_accounts_once" ON "public"."supplier_accounts" USING "btree" ("supplier_id", "account_no");
+CREATE INDEX "idx_supplier_accounts_lookup" ON "public"."supplier_accounts" USING "btree" ("account_no");
+
+-- Every code a supplier has ever printed at a restaurant.
+--
+-- It points at a price row rather than at a product, because a code is one pack
+-- of one product from one supplier, and that is exactly what a
+-- product_supplier_prices row is.
+--
+-- last_seen_on is what lets the Hub say "497870 has not appeared since 12
+-- August and 497871 turned up last week with almost the same description".
+-- A supplier renumbering something is otherwise a new product appearing beside
+-- an old one that quietly stops, and nobody notices for a year.
+--
+-- ignored is for what is on an invoice and is not stock: a delivery charge, a
+-- crate deposit, a fuel surcharge. They have codes and they would turn up in
+-- the new pile every week until somebody could say no.
+CREATE TABLE IF NOT EXISTS "public"."supplier_codes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_code" "text" NOT NULL,
+    "price_id" "uuid",
+    "last_description" "text",
+    "pack_size" "text",
+    "first_seen_on" "date",
+    "last_seen_on" "date",
+    "ignored" boolean DEFAULT false NOT NULL,
+    "ignored_reason" "text",
+    "replaces_code" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "alternate_group" "uuid"
+);
+
+COMMENT ON TABLE "public"."supplier_codes" IS 'Every code a supplier has ever printed at a restaurant, and the price row it means. Points at a price rather than a product because a code is one pack of one product from one supplier, which is what a price row is. last_seen_on is what powers noticing a code has been replaced.';
+
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_codes_once" ON "public"."supplier_codes" USING "btree" ("supplier_id", "restaurant_id", "supplier_code");
+CREATE INDEX "idx_supplier_codes_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+-- A price row belongs to one code. Two codes are two versions of a product,
+-- each with its own price, even when they come in the same pack.
+CREATE UNIQUE INDEX "supplier_codes_one_per_price" ON "public"."supplier_codes" USING "btree" ("price_id") WHERE ("price_id" IS NOT NULL);
+CREATE INDEX "idx_supplier_codes_alternate_group" ON "public"."supplier_codes" USING "btree" ("alternate_group") WHERE ("alternate_group" IS NOT NULL);
+COMMENT ON COLUMN "public"."supplier_codes"."alternate_group" IS 'Codes for the same thing that are bought either way, depending on what the supplier has. Every code in a group keeps its own price and none is ever bought instead of another; recipes cost from the one chosen and are checked against what the group cost on average. Empty for a code on its own, which is nearly all of them.';
+
+-- What a product's cost did, and why. The decision log, as against the evidence.
+--
+-- An invoice proves what a supplier charged. It proves nothing about what the
+-- Hub should cost a dish at, because that follows the preferred price, and the
+-- preferred price moves when somebody decides to buy elsewhere. That decision
+-- has no document behind it, so it needs a record of its own or the product's
+-- own line on the graph cannot be explained.
+--
+-- Per unit and not per case, because that is what everything downstream costs
+-- from and because two suppliers' pack sizes cannot be compared any other way.
+--
+-- Added to, never rewritten, which is what keeps a published report true.
+CREATE TABLE IF NOT EXISTS "public"."product_price_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "price_id" "uuid",
+    "at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "price_per_unit" numeric(10,4) NOT NULL,
+    "previous_per_unit" numeric(10,4),
+    "reason" "text" NOT NULL,
+    "invoice_line_id" "uuid",
+    "changed_by" "uuid",
+    "note" "text",
+    CONSTRAINT "product_price_events_reason_check" CHECK (("reason" IN ('invoice', 'by_hand', 'preferred_moved', 'created')))
+);
+
+COMMENT ON TABLE "public"."product_price_events" IS 'What a product cost per unit, and why it changed. An invoice moving a supplier price and somebody choosing a different supplier are two different events and only one of them has a document behind it.';
+
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_price_events_product" ON "public"."product_price_events" USING "btree" ("restaurant_id", "product_id", "at");
+
+-- What was wrong with the delivery.
+--
+-- **The claim is the reason. The credit is the money.**
+--
+-- The supplier never credits unless it is asked for at the door, so there are
+-- no surprise credits and they never credit more than was asked. But a credit
+-- note says 74.26 came back on bay leaves and never says why: short, rotten,
+-- sent back, or the wrong thing entirely. The reason is the whole of the
+-- conversation worth having with a supplier.
+--
+-- The other direction is the one that earns its keep. If two trays are queried
+-- at the door and no credit ever comes, nothing in the Hub would know, because
+-- the Hub only sees documents and there is no document for something that did
+-- not happen. Credits ran at 6% of spend over the month this was designed
+-- against, so the forgotten ones are real money.
+--
+-- So a claim can exist before any invoice does. A note taken at the door
+-- carries the docket number off the paper the driver leaves, and is matched to
+-- its line when the document is imported, which is usually the same week.
+CREATE TABLE IF NOT EXISTS "public"."invoice_line_claims" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_id" "uuid",
+    "invoice_id" "uuid",
+    "invoice_line_id" "uuid",
+    "docket_number" "text",
+    "what" "text",
+    "kind" "text" NOT NULL,
+    "cases" numeric(10,3) DEFAULT 0 NOT NULL,
+    "units" numeric(10,3) DEFAULT 0 NOT NULL,
+    "amount" numeric(10,2),
+    "credited_amount" numeric(10,2) DEFAULT 0 NOT NULL,
+    "status" "text" DEFAULT 'open'::"text" NOT NULL,
+    "raised_on" "date" NOT NULL,
+    "raised_by" "uuid",
+    "settled_on" "date",
+    "credit_invoice_id" "uuid",
+    "counted_week" "date",
+    "note" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "invoice_line_claims_kind_check" CHECK (("kind" IN ('not_delivered', 'short', 'damaged', 'quality', 'out_of_date', 'warm', 'wrong_item', 'price', 'mistake', 'something_else', 'other'))),
+    CONSTRAINT "invoice_line_claims_status_check" CHECK (("status" IN ('open', 'settled', 'refused', 'void')))
+);
+
+COMMENT ON TABLE "public"."invoice_line_claims" IS 'What was wrong with a delivery, and how much of it has come back. Raised at the door before any document exists, or against a line when a credit note turns up and the Hub asks why. The balance is amount less credited_amount, because a credit can partly settle an ask.';
+COMMENT ON COLUMN "public"."invoice_line_claims"."kind" IS 'Why. The supplier''s side: not_delivered, short, damaged, quality, out_of_date, warm, wrong_item, price. Ours: mistake, ordered by mistake. something_else says what in the note. other is never picked: it is what a credit note gets when nobody logged anything for it.';
+COMMENT ON COLUMN "public"."invoice_line_claims"."counted_week" IS 'The week this comes off, which is the week it happened in and not always the week the credit lands in. A week is open until its report is published; after that everything later belongs to the week it happened.';
+
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_claims_open" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "status", "raised_on");
+CREATE INDEX "idx_claims_line" ON "public"."invoice_line_claims" USING "btree" ("invoice_line_id") WHERE ("invoice_line_id" IS NOT NULL);
+CREATE INDEX "idx_claims_docket" ON "public"."invoice_line_claims" USING "btree" ("restaurant_id", "docket_number") WHERE ("docket_number" IS NOT NULL);
+
+-- What the supplier says it sent us, off its own portal, pasted in.
+--
+-- Three things come out of it for nothing, and the first cannot be had any
+-- other way: comparing the documents we hold against the documents that exist
+-- catches an invoice that was never downloaded at all, which comparing PDFs to
+-- PDFs never can. The value is a third cross check on a parsed document. And
+-- pasting a fresh list can close an open claim by showing the credit has been
+-- issued.
+CREATE TABLE IF NOT EXISTS "public"."supplier_documents" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "supplier_id" "uuid" NOT NULL,
+    "document_id" "text" NOT NULL,
+    "order_reference" "text",
+    "document_date" "date" NOT NULL,
+    "document_type" "text" NOT NULL,
+    "value" numeric(10,2) NOT NULL,
+    "invoice_id" "uuid",
+    "first_seen_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "not_needed_at" timestamp with time zone,
+    CONSTRAINT "supplier_documents_type_check" CHECK (("document_type" IN ('invoice', 'credit')))
+);
+
+COMMENT ON TABLE "public"."supplier_documents" IS 'The supplier portal list, pasted in. What exists, against what we hold. Document numbers do not run in date order, so never sort or page on one.';
+COMMENT ON COLUMN "public"."supplier_documents"."not_needed_at" IS 'When somebody cleared this document off Still to download as not needed, from before the Hub read invoices or otherwise never going to be downloaded. Empty means still wanted. It stays recorded, and pasting the list again leaves this alone.';
+COMMENT ON COLUMN "public"."supplier_documents"."order_reference" IS 'On a credit this is the invoice it credits. On an invoice it is empty, which is how the two halves of a pair find each other.';
+
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "supplier_documents_once" ON "public"."supplier_documents" USING "btree" ("supplier_id", "restaurant_id", "document_id");
+CREATE INDEX "idx_supplier_documents_date" ON "public"."supplier_documents" USING "btree" ("restaurant_id", "document_date");
 
 CREATE TABLE IF NOT EXISTS "public"."labour_entries" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -599,6 +900,130 @@ ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_restaurant_id_entry_date_key" UNIQUE ("restaurant_id", "entry_date");
+
+COMMENT ON TABLE "public"."labour_entries" IS 'The old Labour page, frozen. 245 days from January to September 2026, one total a day at one rate for everybody, because that is all it could record. Nothing writes here any more: timesheet_entries is where hours go, and labour_by_day reads this only for the months before it existed.';
+
+-- One person, one span of a day, to the second.
+--
+-- A span and not a day, because a split shift is two rows and a cell that has
+-- to hold two of everything will have to hold three next year. The till's own
+-- export already works this way.
+--
+-- **Holiday and off sick are deliberately not here.** They are already a record
+-- in absences, with an approval behind them and a colour the roster draws.
+-- Storing the same fact twice is how two screens end up disagreeing, and the
+-- roster would keep the stale answer.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "employee_id" "uuid",
+    "person_name" "text",
+    "work_date" "date" NOT NULL,
+    -- Both ends can be empty. A row with no times and a note is somebody
+    -- saying nothing was worked and why, which is the other half of what the
+    -- report block means by "times or a reason".
+    "starts_at" time without time zone,
+    "ends_at" time without time zone,
+    "hours" numeric(6,2) GENERATED ALWAYS AS (
+        CASE WHEN "ends_at" IS NULL THEN NULL ELSE
+            EXTRACT(epoch FROM ("ends_at" - "starts_at"
+                + CASE WHEN "ends_at" <= "starts_at" THEN interval '24 hours' ELSE interval '0 hours' END
+            )) / 3600
+        END
+    ) STORED,
+    "kind" "text" DEFAULT 'worked'::"text" NOT NULL,
+    "note" "text",
+    "source" "text" DEFAULT 'typed'::"text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "timesheet_entries_kind_known" CHECK (("kind" = ANY (ARRAY['worked'::"text", 'training'::"text", 'trial'::"text"]))),
+    CONSTRAINT "timesheet_entries_source_known" CHECK (("source" = ANY (ARRAY['typed'::"text", 'roster'::"text", 'import'::"text", 'corrected'::"text"]))),
+    CONSTRAINT "timesheet_entries_has_a_person" CHECK (
+        ("employee_id" IS NOT NULL) OR ("btrim"(COALESCE("person_name", ''::"text")) <> ''::"text")
+    ),
+    -- And something to say: a start time, a note saying why there is none, a
+    -- kind that is a statement in itself, a training day or a trial marked
+    -- before the times are typed, or a correction, which is a shift the till
+    -- reported with its times rubbed out and the week waiting to be told why.
+    CONSTRAINT "timesheet_entries_says_something" CHECK (
+        ("starts_at" IS NOT NULL)
+        OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
+        OR ("kind" <> 'worked'::"text")
+        OR ("source" = 'corrected'::"text")
+    )
+);
+
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_timesheet_entries_week" ON "public"."timesheet_entries" USING "btree" ("restaurant_id", "work_date");
+CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" USING "btree" ("employee_id");
+
+COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
+COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
+COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
+COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
+
+-- What the till calls people.
+--
+-- It says "ARREDONDO ESCALANTE Maria" and the roster says Maria. Surname first,
+-- in capitals, sometimes two surnames, sometimes none at all. No rule matches
+-- that reliably, so the import asks once and remembers.
+--
+-- `ignored` is for the accounts that are not people: MANAGER, CBE, end of day.
+-- Somebody typing the wrong employee number is **not** remembered, on purpose.
+-- That is one file's mistake, and remembering it would hide a real person's
+-- hours the first week they worked.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_names" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "employee_id" "uuid",
+    "ignored" boolean DEFAULT false NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "timesheet_names_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "timesheet_names_says_something" CHECK ((("employee_id" IS NOT NULL) <> "ignored"))
+);
+
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_once" UNIQUE ("restaurant_id", "name");
+
+COMMENT ON TABLE "public"."timesheet_names" IS 'What the till calls somebody, answered once. Either it points at an employee or it is marked ignored, never both and never neither. "Ignore this time" writes nothing here on purpose.';
+
+-- One row per restaurant per week: when the till's report was read in, and
+-- when the week was filed and by whom.
+--
+-- It was built to keep the Sunday premium in force at the time as well, so that
+-- changing the figure could not quietly rewrite what last March cost. That
+-- premium is gone, on his word, and what the table is for now is the mark the
+-- weekly email leaves on a week it has sent.
+CREATE TABLE IF NOT EXISTS "public"."timesheet_weeks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "week_start" "date" NOT NULL,
+    "filed_at" timestamp with time zone,
+    "filed_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
+    -- When the till's report covering this week was last read in. While it is,
+    -- set, a rostered shift with nothing against it is taken as not worked,
+    -- rather than as an open question: the file answered it.,
+    CONSTRAINT "timesheet_weeks_starts_on_a_sunday" CHECK ((EXTRACT(dow FROM "week_start") = (0)::numeric))
+);
+
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_once" UNIQUE ("restaurant_id", "week_start");
+
+COMMENT ON TABLE "public"."timesheet_weeks" IS 'One row per restaurant per week: when the till''s report was read in, and when the week was filed and by whom. It used to hold the Sunday premium in force at the time, which is gone.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."filed_at" IS 'When this week''s hours were last mailed out. A week can be sent again after a correction, and this moves.';
+COMMENT ON COLUMN "public"."timesheet_weeks"."imported_at" IS 'When the till''s report covering this week was last read in. While it is set, a rostered shift with nothing against it is taken as not worked rather than as an open question: the file answered it, and the accountant has the same file.';
 
 CREATE TABLE IF NOT EXISTS "public"."cost_target_overrides" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -684,6 +1109,141 @@ ALTER TABLE ONLY "public"."stock_take_lines"
 CREATE INDEX "idx_stock_take_lines_take" ON "public"."stock_take_lines" USING "btree" ("stock_take_id");
 CREATE INDEX "idx_stock_take_lines_product" ON "public"."stock_take_lines" USING "btree" ("product_id");
 
+
+
+-- -- Checklists --------------------------------------------------------
+--
+-- The cleaning lists staff tick on the phone, asked for on 27 September 2026
+-- to replace Kitchtech. A list is categories, elements, and sub elements under
+-- an element, one level and no more. Only the things at the bottom are ticked:
+-- an element with things under it is done when they all are.
+--
+-- A round is one go at a list, started by anybody and open until everything
+-- is ticked, one open per list at a time. It counts in the week it finishes.
+--
+-- A tick is never changed once it is saved, by anybody. No update or delete
+-- policy, and a trigger refuses a change to who, when or which round even
+-- from the service role, which only ever says its photos were deleted.
+
+CREATE TABLE IF NOT EXISTS "public"."checklists" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "repeats" "text" NOT NULL,
+    "every_weeks" integer,
+    "starts_on" "date" DEFAULT (("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" NOT NULL,
+    "finish_by" "date",
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "checklists_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "checklists_repeats_check" CHECK (("repeats" = ANY (ARRAY['weeks'::"text", 'monthly'::"text", 'once'::"text"]))),
+    CONSTRAINT "checklists_every_weeks_check" CHECK (((("repeats" = 'weeks'::"text") = ("every_weeks" IS NOT NULL)) AND (("every_weeks" IS NULL) OR (("every_weeks" >= 1) AND ("every_weeks" <= 12))))),
+    CONSTRAINT "checklists_finish_by_check" CHECK ((("finish_by" IS NULL) OR (("repeats" = 'once'::"text") AND ("finish_by" >= "starts_on"))))
+);
+
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklists_restaurant" ON "public"."checklists" USING "btree" ("restaurant_id", "sort_order");
+
+COMMENT ON TABLE "public"."checklists" IS 'A list staff work through, like the weekly deep clean. Rounds of it are started by anybody and stay open until everything is ticked.';
+COMMENT ON COLUMN "public"."checklists"."repeats" IS 'weeks (every every_weeks weeks, counted from the week of starts_on), monthly (every calendar month) or once.';
+COMMENT ON COLUMN "public"."checklists"."starts_on" IS 'For a list every so many weeks, the week the count starts from. For a list done once, the day it is first due.';
+COMMENT ON COLUMN "public"."checklists"."finish_by" IS 'A list done once can say when it should be finished by. The weekly report says it is late after that day.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_categories" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "checklist_categories_has_a_name" CHECK (("btrim"("name") <> ''::"text"))
+);
+
+ALTER TABLE ONLY "public"."checklist_categories"
+    ADD CONSTRAINT "checklist_categories_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklist_categories_checklist" ON "public"."checklist_categories" USING "btree" ("checklist_id", "sort_order");
+
+COMMENT ON TABLE "public"."checklist_categories" IS 'The headings a list is split into, like Kitchen or Toilets. Taken off the list rather than deleted once anything under them has been ticked.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_tasks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "category_id" "uuid" NOT NULL,
+    "parent_id" "uuid",
+    "name" "text" NOT NULL,
+    "how_to" "text",
+    "needs_photo" boolean DEFAULT false NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "guide_photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    CONSTRAINT "checklist_tasks_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "checklist_tasks_not_its_own_parent" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id"))),
+    CONSTRAINT "checklist_tasks_a_few_pictures" CHECK (("cardinality"("guide_photos") <= 4))
+);
+
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_pkey" PRIMARY KEY ("id");
+CREATE INDEX "idx_checklist_tasks_checklist" ON "public"."checklist_tasks" USING "btree" ("checklist_id", "sort_order");
+CREATE INDEX "idx_checklist_tasks_parent" ON "public"."checklist_tasks" USING "btree" ("parent_id");
+
+COMMENT ON TABLE "public"."checklist_tasks" IS 'An element of a list, or a sub element under one when parent_id is set. One level only. Only the ones with nothing under them are ticked.';
+COMMENT ON COLUMN "public"."checklist_tasks"."how_to" IS 'How to do it, shown under the name: use the blue roll and the green spray.';
+COMMENT ON COLUMN "public"."checklist_tasks"."guide_photos" IS 'Up to four pictures showing what is meant, in checklist-photos under <restaurant>/guides/. Hidden behind a button on the phone. Each is kept until it is taken off the task, or the task or its list is.';
+COMMENT ON COLUMN "public"."checklist_tasks"."needs_photo" IS 'It cannot be ticked without a photo of it done.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_rounds" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "checklist_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "started_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "started_by" "uuid",
+    "started_by_name" "text",
+    "ended_at" timestamp with time zone,
+    "ended_by" "uuid",
+    "ended_by_name" "text",
+    CONSTRAINT "checklist_rounds_ends_after_it_starts" CHECK ((("ended_at" IS NULL) OR ("ended_at" >= "started_at")))
+);
+
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_pkey" PRIMARY KEY ("id");
+CREATE UNIQUE INDEX "checklist_rounds_one_open" ON "public"."checklist_rounds" USING "btree" ("checklist_id") WHERE ("ended_at" IS NULL);
+CREATE INDEX "idx_checklist_rounds_restaurant" ON "public"."checklist_rounds" USING "btree" ("restaurant_id", "started_at");
+
+COMMENT ON TABLE "public"."checklist_rounds" IS 'One go at a list, from Start until everything is ticked. One open at a time per list.';
+COMMENT ON COLUMN "public"."checklist_rounds"."ended_by" IS 'Null when it finished because everything was ticked. Set when a manager ended it with things left.';
+
+CREATE TABLE IF NOT EXISTS "public"."checklist_ticks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "round_id" "uuid" NOT NULL,
+    "task_id" "uuid" NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "done_by" "uuid",
+    "done_by_name" "text" NOT NULL,
+    "done_at" timestamp with time zone NOT NULL,
+    "saved_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "photos" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "photos_gone_at" timestamp with time zone,
+    CONSTRAINT "checklist_ticks_a_few_photos" CHECK (("cardinality"("photos") <= 4))
+);
+
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_once" UNIQUE ("round_id", "task_id");
+CREATE INDEX "idx_checklist_ticks_restaurant_done" ON "public"."checklist_ticks" USING "btree" ("restaurant_id", "done_at");
+CREATE INDEX "idx_checklist_ticks_task_done" ON "public"."checklist_ticks" USING "btree" ("task_id", "done_at");
+
+COMMENT ON TABLE "public"."checklist_ticks" IS 'Somebody did one thing on a list. Never changed once saved: no update or delete policy, and a trigger refuses a change to anything but the note that its photos were deleted.';
+COMMENT ON COLUMN "public"."checklist_ticks"."done_at" IS 'When it was ticked on the phone, which can be a while before Submit saved it. Never before the round started and never after it was saved.';
+COMMENT ON COLUMN "public"."checklist_ticks"."done_by_name" IS 'Who did it, as their account was named at the time. Kept here because an employee cannot read anybody else''s account.';
+COMMENT ON COLUMN "public"."checklist_ticks"."photos" IS 'Where its photos are in checklist-photos. The paths stay after the files are deleted, so it still says a photo was taken.';
+COMMENT ON COLUMN "public"."checklist_ticks"."photos_gone_at" IS 'When the nightly job deleted its photos.';
 
 -- -- The roster --------------------------------------------------------
 --
@@ -863,7 +1423,7 @@ CREATE TABLE IF NOT EXISTS "public"."report_sections" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
-COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, online_sales, corporate_sales, people_ops, marketing and support_actions. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
+COMMENT ON COLUMN "public"."report_sections"."key" IS 'The stable name. The built-in ones are sales_costs, profit_loss, prices_suppliers, online_sales, corporate_sales, people_ops, marketing, support_actions and cleaning. A section somebody adds gets a key made from its title once and keeps it, so the title can be rewritten without orphaning anything inside it.';
 COMMENT ON COLUMN "public"."report_sections"."title" IS 'What is shown. Free to change.';
 ALTER TABLE ONLY "public"."report_sections"
     ADD CONSTRAINT "report_sections_pkey" PRIMARY KEY ("id");
@@ -898,10 +1458,113 @@ CREATE INDEX "idx_report_items_section" ON "public"."report_items" USING "btree"
 CREATE UNIQUE INDEX "report_items_one_per_key" ON "public"."report_items" USING "btree" ("section_id", "kind", "key") WHERE ("kind" = ANY (ARRAY['overhead'::"text", 'delivery'::"text", 'rating'::"text"]));
 
 
--- -- What is on at the 3Arena ------------------------------------------
+-- -- What is on near us ------------------------------------------------
 --
--- Pulled from the Ticketmaster Discovery API, for the one restaurant that
--- is across the road from it.
+-- Three tables and one idea: something is happening close enough to change
+-- how busy we are, and somebody rostering should be told.
+--
+-- places is the thing itself, an arena or a theatre or a council that runs
+-- festivals. restaurant_places is one restaurant being near one of them and
+-- how far the walk is, which belongs to the pair rather than to the place:
+-- the same theatre is five minutes from one shop and an hour from the next.
+-- events is what is on at a place, from a feed or from reading a page.
+--
+-- This replaced one varchar on the restaurant, forecasting_venue_id, which
+-- could hold exactly one venue, so a restaurant near three places could
+-- watch only one of them and a second restaurant with a venue of its own
+-- would have shared one flat list with the first.
+--
+-- **Nothing here predicts anything.** It says what is on and when, the way
+-- the diary says a catering job is on. What that is worth is the manager's.
+
+CREATE TABLE IF NOT EXISTS "public"."places" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "short_name" "text",
+    "ticketmaster_venue_id" "text",
+    "page_url" "text",
+    "capacity" integer,
+    "latitude" numeric(9,6),
+    "longitude" numeric(9,6),
+    "last_read_at" timestamp with time zone,
+    "last_read_count" integer,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "reading_key" "text" DEFAULT 'date'::"text" NOT NULL,
+    "page_depth" integer DEFAULT 1 NOT NULL,
+    CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
+    CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
+    CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
+    CONSTRAINT "places_reading_key_known" CHECK (("reading_key" = ANY (ARRAY['date'::"text", 'title'::"text"]))),
+    CONSTRAINT "places_page_depth_sane" CHECK ((("page_depth" >= 1) AND ("page_depth" <= 12)))
+);
+
+COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds things: an arena, a theatre, a cinema, a harbour, a council that runs festivals. The place itself and nothing about who is near it, because the same place can be near more than one restaurant and would otherwise be typed twice.';
+COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
+COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
+COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
+COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
+COMMENT ON COLUMN "public"."places"."reading_key" IS 'What makes a reading off this page the same reading twice. date is the ordinary case, where a thing is itself on a given day. title is for a page that lists the same thing over and over, a cinema being the one that forced it: the same film showing for a month is one thing that happened once, so the first sighting is kept and every later one is ignored.';
+COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
+COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';
+
+ALTER TABLE ONLY "public"."places"
+    ADD CONSTRAINT "places_pkey" PRIMARY KEY ("id");
+
+-- One row per venue, so the geo search that adds a restaurant finds the place
+-- we already have rather than making a second one.
+--
+-- **No WHERE clause on it, and that is not an oversight.** It was written as a
+-- partial index, on the grounds that only rows with a venue id need to be
+-- unique, and that quietly broke the thing the index exists for: ON CONFLICT
+-- can only infer a partial index when the statement repeats its predicate, and
+-- PostgREST has no way to send one. Every upsert would have come back with
+-- "there is no unique or exclusion constraint matching the ON CONFLICT
+-- specification", which is a runtime error and not a migration one.
+--
+-- The predicate was never needed anyway. Postgres treats nulls as distinct in a
+-- unique index, so every place with no venue id is already free to exist
+-- alongside every other one.
+CREATE UNIQUE INDEX "places_one_per_venue" ON "public"."places" USING "btree" ("ticketmaster_venue_id");
+
+
+CREATE TABLE IF NOT EXISTS "public"."restaurant_places" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "restaurant_id" "uuid" NOT NULL,
+    "place_id" "uuid" NOT NULL,
+    "relation" "text" DEFAULT 'walk'::"text" NOT NULL,
+    "walk_minutes" integer,
+    "distance_km" numeric(5,2),
+    "is_active" boolean DEFAULT true NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "own_row" boolean DEFAULT false NOT NULL,
+    CONSTRAINT "restaurant_places_relation_known" CHECK (("relation" = ANY (ARRAY['walk'::"text", 'city'::"text"]))),
+    CONSTRAINT "restaurant_places_walk_has_minutes" CHECK ((("relation" <> 'walk'::"text") OR ("walk_minutes" IS NOT NULL))),
+    CONSTRAINT "restaurant_places_walk_minutes_sane" CHECK ((("walk_minutes" IS NULL) OR (("walk_minutes" > 0) AND ("walk_minutes" <= 120))))
+);
+
+COMMENT ON TABLE "public"."restaurant_places" IS 'One restaurant being near one place, and how near. The distance lives here rather than on the place because it is a fact about the pair: the same theatre is five minutes from one shop and an hour from the next.';
+COMMENT ON COLUMN "public"."restaurant_places"."distance_km" IS 'Straight line, for the city rule, which asks whether something big is within a few kilometres. Only filled when a place arrived with a point on it, so it is null for everything typed by hand and the rule simply passes over those.';
+COMMENT ON COLUMN "public"."restaurant_places"."own_row" IS 'Whether this place gets a row of its own on the roster week, named after it, rather than sharing the Also on row with the catering and the deliveries. For the one place near a restaurant that is on its own scale: nine thousand people two minutes away is not the same kind of fact as a sandwich delivery, and a week grid that lists them together buries it. Off for almost everything.';
+COMMENT ON COLUMN "public"."restaurant_places"."relation" IS 'Why this counts. walk means somebody at it would come here rather than eat where they already are, and that is almost all of them. city means nobody walks from it and it is here because it fills the hotels beside us, which is a different fact and reads as a different badge.';
+COMMENT ON COLUMN "public"."restaurant_places"."walk_minutes" IS 'How long somebody would take to walk it. The one judgement a person has to make, because no API can answer whether a customer would rather come here than eat where they are. Worked out from the distance when a place is found by searching, and editable after.';
+
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_one_per_pair" UNIQUE ("restaurant_id", "place_id");
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."restaurant_places"
+    ADD CONSTRAINT "restaurant_places_place_id_fkey" FOREIGN KEY ("place_id") REFERENCES "public"."places"("id") ON DELETE CASCADE;
+
+-- Read every time a roster week or the calendar opens, always by restaurant.
+CREATE INDEX "idx_restaurant_places_restaurant" ON "public"."restaurant_places" USING "btree" ("restaurant_id");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_restaurant_places_place" ON "public"."restaurant_places" USING "btree" ("place_id");
+
 
 CREATE TABLE IF NOT EXISTS "public"."events" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -917,16 +1580,128 @@ CREATE TABLE IF NOT EXISTS "public"."events" (
     "status" character varying,
     "min_price" numeric,
     "max_price" numeric,
-    "last_seen_at" timestamp with time zone
+    "last_seen_at" timestamp with time zone,
+    "place_id" "uuid",
+    "ends_on" "date",
+    "source" "text" DEFAULT 'ticketmaster'::"text" NOT NULL,
+    "source_url" "text",
+    "source_key" "text",
+    "review" "text" DEFAULT 'trusted'::"text" NOT NULL,
+    "found_at" timestamp with time zone,
+    "reviewed_at" timestamp with time zone,
+    "reviewed_by" "uuid",
+    "display_name" "text",
+    CONSTRAINT "events_source_known" CHECK (("source" = ANY (ARRAY['ticketmaster'::"text", 'page'::"text", 'manual'::"text"]))),
+    CONSTRAINT "events_review_known" CHECK (("review" = ANY (ARRAY['trusted'::"text", 'found'::"text", 'kept'::"text", 'dismissed'::"text"]))),
+    CONSTRAINT "events_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "event_date")))
 );
 
+COMMENT ON TABLE "public"."events" IS 'What is on near a restaurant. It started as the 3Arena and nothing else, which is why the table is called this and why one column still says venue in words. A row belongs to a place now, and which restaurants see it follows from which of them are near that place.';
+COMMENT ON COLUMN "public"."events"."display_name" IS 'What we call this listing, when what it calls itself is too long for a roster cell. Null means we have not renamed it and the feed or the reading stands. A separate column rather than an edit in place, because name is what arrived: a page read a second time lands on the row it made the first time, and a Ticketmaster name is overwritten by every sync, so a rename typed into it would vanish twice a day with nothing said.';
+COMMENT ON COLUMN "public"."events"."ends_on" IS 'Null means the same day, the rule diary_entries already follows. A Christmas market over three weekends is one row rather than seventeen, so a roster week can draw it once.';
+COMMENT ON COLUMN "public"."events"."found_at" IS 'When a read first turned this up. Shown beside it while it is waiting to be kept, because how old a reading is changes how much it is worth.';
 COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still found this event in the API. Once an event has happened it disappears from Ticketmaster, so this is when we last saw it.';
+COMMENT ON COLUMN "public"."events"."review" IS 'trusted came from a feed and goes everywhere with nobody asked. found came off a page somebody read and shows on the calendar marked not checked, and stays off the roster until it is kept. kept is one somebody kept. dismissed is one somebody said no to, and it stays in the table precisely so the next read of the same page does not offer it again.';
+COMMENT ON COLUMN "public"."events"."source" IS 'Where the row came from. A feed is trusted because it is the venue itself saying so. A page is a reading of something written for people, which is a different kind of fact and is marked as one.';
+COMMENT ON COLUMN "public"."events"."source_key" IS 'What makes a page read the same event twice, since only a feed hands out an id. Built from the place, the date and a flattened title, so a second read lands on the row that is already there and a dismissal is remembered.';
 COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, cancelled, postponed, rescheduled. Off sale well before the date usually means sold out.';
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_ticketmaster_id_key" UNIQUE ("ticketmaster_id");
+ALTER TABLE ONLY "public"."events"
+    ADD CONSTRAINT "events_place_id_fkey" FOREIGN KEY ("place_id") REFERENCES "public"."places"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."events"
+    ADD CONSTRAINT "events_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 CREATE INDEX "idx_events_date" ON "public"."events" USING "btree" ("event_date");
+CREATE INDEX "idx_events_place" ON "public"."events" USING "btree" ("place_id", "event_date");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_events_reviewed_by" ON "public"."events" USING "btree" ("reviewed_by");
+
+-- A second read of the same page lands on the row it made last time. Without
+-- this a dismissal is forgotten every week, which is the one detail that
+-- decides whether the whole feature is useful or is noise.
+--
+-- No WHERE clause, for the reason places_one_per_venue gives: a partial index
+-- cannot be inferred by ON CONFLICT, and nulls are distinct in a unique index
+-- anyway, so every Ticketmaster row with no reading key of its own already sits
+-- happily beside every other one.
+CREATE UNIQUE INDEX "events_one_per_reading" ON "public"."events" USING "btree" ("place_id", "source_key");
+
+
+-- -- The diary --------------------------------------------------------
+--
+-- What is coming up that somebody had to be told about.
+--
+-- Three kinds of thing land on a day and they are deliberately three
+-- tables. events arrives from Ticketmaster on its own. day_notes.extras is
+-- the deliveries a restaurant usually gets, ticked onto a day off a list.
+-- This is the third: the ones with a customer or a person on the other end,
+-- which is why it is the only one of the three with a contact and a state.
+--
+-- It is also the only table in here where a row can belong to more than one
+-- restaurant. Everything else carries a single restaurant_id. The
+-- requirement here is genuinely many to many, so the scope decides, and
+-- restaurant_ids means nothing unless the scope says sites.
+
+CREATE TABLE IF NOT EXISTS "public"."diary_entries" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "kind" "text" NOT NULL,
+    "title" "text" NOT NULL,
+    "scope" "text" NOT NULL,
+    "restaurant_ids" "uuid"[] DEFAULT '{}'::"uuid"[] NOT NULL,
+    "starts_on" "date" NOT NULL,
+    "ends_on" "date",
+    "starts_at" time without time zone,
+    "ends_at" time without time zone,
+    "location" "text",
+    "contact_name" "text",
+    "contact_detail" "text",
+    "note" "text",
+    "status" "text" DEFAULT 'confirmed'::"text" NOT NULL,
+    "google_event_ids" "jsonb",
+    "google_synced_at" timestamp with time zone,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "labels" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    CONSTRAINT "diary_entries_kind_known" CHECK (("kind" = ANY (ARRAY['catering'::"text", 'meeting'::"text", 'promotion'::"text", 'maintenance'::"text", 'other'::"text"]))),
+    CONSTRAINT "diary_entries_scope_known" CHECK (("scope" = ANY (ARRAY['all_sites'::"text", 'sites'::"text", 'private'::"text"]))),
+    CONSTRAINT "diary_entries_status_known" CHECK (("status" = ANY (ARRAY['enquiry'::"text", 'confirmed'::"text", 'cancelled'::"text", 'done'::"text"]))),
+    CONSTRAINT "diary_entries_scope_matches_the_list" CHECK ((CASE WHEN ("scope" = 'sites'::"text") THEN ("cardinality"("restaurant_ids") >= 1) ELSE ("cardinality"("restaurant_ids") = 0) END)),
+    CONSTRAINT "diary_entries_ends_after_it_starts" CHECK ((("ends_on" IS NULL) OR ("ends_on" >= "starts_on"))),
+    CONSTRAINT "diary_entries_no_finish_without_a_start" CHECK ((("ends_at" IS NULL) OR ("starts_at" IS NOT NULL))),
+    CONSTRAINT "diary_entries_private_has_an_owner" CHECK ((("scope" <> 'private'::"text") OR ("created_by" IS NOT NULL)))
+);
+
+COMMENT ON TABLE "public"."diary_entries" IS 'What is coming up that somebody had to be told about: catering, meetings, promotions, maintenance. What is on at the Arena arrives on its own and lives in events; the deliveries a restaurant usually gets are ticked onto a day and live in day_notes.extras. This is the third kind, the one with a customer or a person on the other end of it.';
+COMMENT ON COLUMN "public"."diary_entries"."ends_at" IS 'Null is allowed and means nobody said. The same rule the roster already follows for deliveries: something arriving some time on Tuesday is still worth having, and refusing it only means somebody invents a time to get it in.';
+COMMENT ON COLUMN "public"."diary_entries"."ends_on" IS 'Null means the same day. A promotion running the 22nd to the 28th is one row rather than seven, so the roster can draw it as one band and the calendar as one thing.';
+COMMENT ON COLUMN "public"."diary_entries"."labels" IS 'Short words saying who or what an entry is for, e.g. Students or Corporate. Free text with no list behind it: what is offered next time is whatever has been used before, so nothing has to be set up for a new restaurant. Kept apart from the title because the title is the thing itself and these are how it is grouped, and because a title cannot be asked a question.';
+COMMENT ON COLUMN "public"."diary_entries"."google_event_ids" IS 'The calendar id to the event id Google gave back, as {"<calendar id>":"<event id>"}. A map rather than one column because an entry for two restaurants is written to two calendars and both have to be updated when it changes. Null means it has never been written.';
+COMMENT ON COLUMN "public"."diary_entries"."google_synced_at" IS 'When Google last accepted it. Null after a save means the write failed and the entry is only in the Hub, which the screen says out loud. A failed write must never lose the entry and must never be reported as a success.';
+COMMENT ON COLUMN "public"."diary_entries"."restaurant_ids" IS 'Which restaurants, and only when the scope is sites. Empty for all_sites and for private, which the check constraint enforces so there is no second way to say the same thing.';
+COMMENT ON COLUMN "public"."diary_entries"."scope" IS 'Who it is for, and it decides three things at once: who can see it, which Google calendar it is written to, and which rosters it appears on. all_sites is the whole group and is not the same as ticking every restaurant, because it goes to the group calendar.';
+COMMENT ON COLUMN "public"."diary_entries"."starts_at" IS 'Null means all day, which is how a promotion is entered. A promotion also goes to Google as free rather than busy, or a week long offer blacks out everybody''s week.';
+
+ALTER TABLE ONLY "public"."diary_entries"
+    ADD CONSTRAINT "diary_entries_pkey" PRIMARY KEY ("id");
+
+-- Read by date range every time the calendar or a roster week is opened.
+CREATE INDEX "idx_diary_entries_dates" ON "public"."diary_entries" USING "btree" ("starts_on", "ends_on");
+
+-- The select policy asks whether one restaurant is in the array, which is what
+-- a gin index on an array is for.
+CREATE INDEX "idx_diary_entries_restaurants" ON "public"."diary_entries" USING "gin" ("restaurant_ids");
+
+-- A foreign key with no index behind it is what the advisor flagged last time.
+CREATE INDEX "idx_diary_entries_created_by" ON "public"."diary_entries" USING "btree" ("created_by");
+
+-- Asking which entries carry a label is the whole reason this is an array
+-- rather than a word in the title, so it gets the index that makes the question
+-- cheap before anybody asks it in anger.
+CREATE INDEX "idx_diary_entries_labels" ON "public"."diary_entries" USING "gin" ("labels");
 
 
 -- -- The record of what happened ---------------------------------------
@@ -1074,6 +1849,10 @@ ALTER TABLE ONLY "public"."sales_tenders"
     ADD CONSTRAINT "sales_tenders_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."sales_tender_names"
+    ADD CONSTRAINT "sales_tender_names_tender_fk" FOREIGN KEY ("restaurant_id", "tender_key") REFERENCES "public"."sales_tenders"("restaurant_id", "key") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."petty_cash_entries"
     ADD CONSTRAINT "petty_cash_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."petty_cash_entries"
@@ -1086,19 +1865,73 @@ ALTER TABLE ONLY "public"."predictions"
 -- -- What it cost ------------------------------------------------------
 
 ALTER TABLE ONLY "public"."invoices"
-    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
-ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id");
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_credit_of_fkey" FOREIGN KEY ("credit_of_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoices"
+    ADD CONSTRAINT "invoices_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id");
+    ADD CONSTRAINT "invoice_lines_invoice_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."invoice_lines"
-    ADD CONSTRAINT "invoice_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+    ADD CONSTRAINT "invoice_lines_product_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_price_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_lines"
+    ADD CONSTRAINT "invoice_lines_decided_by_fkey" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_accounts"
+    ADD CONSTRAINT "supplier_accounts_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_codes"
+    ADD CONSTRAINT "supplier_codes_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_price_id_fkey" FOREIGN KEY ("price_id") REFERENCES "public"."product_supplier_prices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."product_price_events"
+    ADD CONSTRAINT "product_price_events_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_invoice_line_id_fkey" FOREIGN KEY ("invoice_line_id") REFERENCES "public"."invoice_lines"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_credit_invoice_id_fkey" FOREIGN KEY ("credit_invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."invoice_line_claims"
+    ADD CONSTRAINT "invoice_line_claims_raised_by_fkey" FOREIGN KEY ("raised_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."supplier_documents"
+    ADD CONSTRAINT "supplier_documents_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE SET NULL;
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."labour_entries"
     ADD CONSTRAINT "labour_entries_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_entries"
+    ADD CONSTRAINT "timesheet_entries_employee_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_names"
+    ADD CONSTRAINT "timesheet_names_employee_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."timesheet_weeks"
+    ADD CONSTRAINT "timesheet_weeks_restaurant_fk" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id") ON DELETE CASCADE;
 ALTER TABLE ONLY "public"."cost_target_overrides"
     ADD CONSTRAINT "cost_target_overrides_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 ALTER TABLE ONLY "public"."cost_target_overrides"
@@ -1124,6 +1957,37 @@ ALTER TABLE ONLY "public"."stock_take_lines"
     ADD CONSTRAINT "stock_take_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
 ALTER TABLE ONLY "public"."stock_take_lines"
     ADD CONSTRAINT "stock_take_lines_stock_take_id_fkey" FOREIGN KEY ("stock_take_id") REFERENCES "public"."stock_takes"("id");
+
+-- -- Checklists --------------------------------------------------------
+
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklists"
+    ADD CONSTRAINT "checklists_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_categories"
+    ADD CONSTRAINT "checklist_categories_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."checklist_categories"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_tasks"
+    ADD CONSTRAINT "checklist_tasks_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "public"."checklist_tasks"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_checklist_id_fkey" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id");
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_started_by_fkey" FOREIGN KEY ("started_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_rounds"
+    ADD CONSTRAINT "checklist_rounds_ended_by_fkey" FOREIGN KEY ("ended_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_round_id_fkey" FOREIGN KEY ("round_id") REFERENCES "public"."checklist_rounds"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "public"."checklist_tasks"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."restaurants"("id");
+ALTER TABLE ONLY "public"."checklist_ticks"
+    ADD CONSTRAINT "checklist_ticks_done_by_fkey" FOREIGN KEY ("done_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 
 -- -- The roster --------------------------------------------------------
 
@@ -1177,6 +2041,14 @@ ALTER TABLE ONLY "public"."report_sections"
 ALTER TABLE ONLY "public"."report_items"
     ADD CONSTRAINT "report_items_section_id_fkey" FOREIGN KEY ("section_id") REFERENCES "public"."report_sections"("id") ON DELETE CASCADE;
 
+-- -- The diary --------------------------------------------------------
+
+-- No cascade, the same as every other created_by here. Deleting somebody
+-- who wrote entries should be refused rather than quietly taking the
+-- entries with them.
+ALTER TABLE ONLY "public"."diary_entries"
+    ADD CONSTRAINT "diary_entries_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
+
 
 -- ======================================================================
 -- The functions the rules are written in terms of
@@ -1192,21 +2064,42 @@ CREATE OR REPLACE FUNCTION "public"."get_my_role"() RETURNS "text"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  SELECT role FROM public.users WHERE id = auth.uid();
+  SELECT role FROM public.users WHERE id = auth.uid() AND is_active;
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_restaurant_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  SELECT restaurant_id FROM public.users WHERE id = auth.uid();
+  SELECT restaurant_id FROM public.users WHERE id = auth.uid() AND is_active;
+$$;
+
+-- Saving your own landing page without being able to save anything else.
+--
+-- users_write is deliberately one sided: you may write the rows below you and
+-- never your own, which is right and is also why nobody could save their own
+-- preference. A policy works on rows, so it cannot say "this column only", and
+-- widening users_write to include your own row would let anybody make
+-- themselves a super admin. A function that writes one column of one row can.
+-- The id comes from the session rather than from a parameter, so there is
+-- nothing to pass it that would reach somebody else.
+CREATE OR REPLACE FUNCTION "public"."set_my_landing_page"("page" "text") RETURNS "void"
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  UPDATE public.users
+     SET landing_page = nullif(btrim(page), '')
+   WHERE id = auth.uid() AND is_active;
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."get_my_employee_id"() RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  select id from public.employees where user_id = auth.uid() limit 1
+  select e.id from public.employees e
+    join public.users u on u.id = e.user_id
+   where e.user_id = auth.uid() and u.is_active
+   limit 1
 $$;
 
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
@@ -1343,6 +2236,338 @@ begin
   return touched;
 end;
 $$;
+
+-- A leaver's login, switched off once their last day has passed.
+--
+-- The same as pressing Deactivate on the Users page: an account that is not
+-- active gets nothing back from get_my_role and the other two, so every rule
+-- refuses it. Every night rather than at sign in, because a check at sign in
+-- does nothing about a session already open and leaves the Users page saying
+-- Active for somebody who cannot get in. The date is read in Ireland, so a
+-- last day is a working day to its end. Never an owner or a super admin: they
+-- are the ones who can undo a last day typed by mistake. Never switches
+-- anybody back on. Scheduled on live by 016, like this:
+--
+--   select cron.schedule('switch-off-leavers', '5 0 * * *', $$select public.switch_off_leavers()$$);
+CREATE OR REPLACE FUNCTION "public"."switch_off_leavers"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+declare
+  switched integer;
+begin
+  update public.users u
+     set is_active = false
+    from public.employees e
+   where e.user_id = u.id
+     and u.is_active
+     and u.role in ('employee', 'store_manager')
+     and e.ended_on < (now() at time zone 'Europe/Dublin')::date;
+
+  get diagnostics switched = row_count;
+  return switched;
+end;
+$$;
+
+-- A sub element sits under an element of the same list, one level down, in
+-- the same category. Its guide pictures are in this restaurant's guides
+-- folder.
+create or replace function public.checklist_task_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    parent public.checklist_tasks;
+    place uuid;
+    picture text;
+begin
+    if not exists (select 1 from public.checklist_categories c
+                    where c.id = new.category_id and c.checklist_id = new.checklist_id) then
+        raise exception 'That category is on another list';
+    end if;
+
+    if new.parent_id is not null then
+        select * into parent from public.checklist_tasks where id = new.parent_id;
+        if not found or parent.checklist_id <> new.checklist_id then
+            raise exception 'A sub element has to be under an element of the same list';
+        end if;
+        if parent.parent_id is not null then
+            raise exception 'A sub element cannot have sub elements of its own';
+        end if;
+        new.category_id := parent.category_id;
+    end if;
+
+    if cardinality(new.guide_photos) > 0 then
+        select l.restaurant_id into place from public.checklists l where l.id = new.checklist_id;
+        foreach picture in array new.guide_photos loop
+            if left(picture, length(place::text || '/guides/')) <> place::text || '/guides/' then
+                raise exception 'A guide picture has to be in this restaurant''s folder';
+            end if;
+        end loop;
+    end if;
+
+    new.updated_at := now();
+    return new;
+end $$;
+
+-- An element moved to another category takes its sub elements with it. After
+-- the move rather than during it, so the guard above reads the new category
+-- when it checks each of them.
+create or replace function public.checklist_task_moved() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    update public.checklist_tasks
+       set category_id = new.category_id
+     where parent_id = new.id
+       and category_id <> new.category_id;
+    return null;
+end $$;
+
+-- Starting a round says who and when from the session, not from the phone. The
+-- only thing that changes afterwards is its end, and only once.
+create or replace function public.checklist_round_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    list public.checklists;
+begin
+    if tg_op = 'INSERT' then
+        select * into list from public.checklists where id = new.checklist_id;
+        if not found or not list.is_active then
+            raise exception 'That checklist is not in use';
+        end if;
+        new.restaurant_id := list.restaurant_id;
+        new.started_at := now();
+        new.ended_at := null;
+        new.ended_by := null;
+        new.ended_by_name := null;
+        if auth.uid() is not null then
+            new.started_by := auth.uid();
+            select full_name into new.started_by_name from public.users where id = auth.uid();
+        end if;
+        return new;
+    end if;
+
+    if old.ended_at is not null then
+        raise exception 'That round has already ended';
+    end if;
+
+    if row(new.checklist_id, new.restaurant_id, new.started_at, new.started_by, new.started_by_name)
+       is distinct from row(old.checklist_id, old.restaurant_id, old.started_at, old.started_by, old.started_by_name) then
+        raise exception 'Only the end of a round can change';
+    end if;
+
+    if new.ended_at is null then
+        new.ended_by := null;
+        new.ended_by_name := null;
+        return new;
+    end if;
+
+    new.ended_at := now();
+    -- finish_checklist_round says so when a round ends because everything
+    -- was ticked, which is the one end nobody chose.
+    if current_setting('checklists.finishing', true) = 'on' then
+        new.ended_by := null;
+        new.ended_by_name := null;
+    else
+        new.ended_by := auth.uid();
+        select full_name into new.ended_by_name from public.users where id = auth.uid();
+    end if;
+    return new;
+end $$;
+
+-- A tick is for something at the bottom of the list, on an open round, with
+-- the photos it needs, in that round's own folder. Who and when come from
+-- here.
+create or replace function public.checklist_tick_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    r public.checklist_rounds;
+    t public.checklist_tasks;
+    folder text;
+    p text;
+begin
+    if tg_op = 'UPDATE' then
+        -- The nightly job saying the photos are gone is the only change a
+        -- tick ever takes.
+        if row(new.round_id, new.task_id, new.restaurant_id, new.done_by, new.done_by_name,
+               new.done_at, new.saved_at, new.photos)
+           is distinct from row(old.round_id, old.task_id, old.restaurant_id, old.done_by, old.done_by_name,
+               old.done_at, old.saved_at, old.photos) then
+            raise exception 'A tick cannot be changed once it is saved';
+        end if;
+        return new;
+    end if;
+
+    select * into r from public.checklist_rounds where id = new.round_id;
+    if not found then
+        raise exception 'That round does not exist';
+    end if;
+    if r.ended_at is not null then
+        raise exception 'That round has ended, so nothing more can be ticked on it';
+    end if;
+
+    select * into t from public.checklist_tasks where id = new.task_id;
+    if not found or t.checklist_id <> r.checklist_id then
+        raise exception 'That is not on this checklist';
+    end if;
+    if not t.is_active then
+        raise exception '% is no longer on the list', t.name;
+    end if;
+    if exists (select 1 from public.checklist_tasks k where k.parent_id = t.id and k.is_active) then
+        raise exception '% is ticked through the things under it', t.name;
+    end if;
+    if t.needs_photo and cardinality(new.photos) = 0 then
+        raise exception '% needs a photo before it can be ticked', t.name;
+    end if;
+
+    folder := r.restaurant_id::text || '/rounds/' || r.id::text || '/';
+    foreach p in array new.photos loop
+        if left(p, length(folder)) <> folder then
+            raise exception 'A photo has to be taken for this round';
+        end if;
+    end loop;
+
+    new.restaurant_id := r.restaurant_id;
+    new.saved_at := now();
+    new.done_at := least(greatest(coalesce(new.done_at, now()), r.started_at), now());
+    new.photos_gone_at := null;
+    if auth.uid() is not null then
+        new.done_by := auth.uid();
+        select full_name into new.done_by_name from public.users where id = auth.uid();
+    end if;
+    return new;
+end $$;
+
+-- How many things at the bottom of the list a round still has to tick. What is
+-- on the list is what is on it now: something taken off does not hold a round
+-- open, and something added joins the round in progress.
+create or replace function public.checklist_left(round uuid) returns integer
+    language sql stable
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select count(*)::integer
+      from public.checklist_rounds r
+      join public.checklist_tasks t on t.checklist_id = r.checklist_id
+      join public.checklist_categories c on c.id = t.category_id
+      left join public.checklist_tasks up on up.id = t.parent_id
+     where r.id = round
+       and t.is_active
+       and c.is_active
+       and (up.id is null or up.is_active)
+       and not exists (select 1 from public.checklist_tasks k where k.parent_id = t.id and k.is_active)
+       and not exists (select 1 from public.checklist_ticks d where d.round_id = r.id and d.task_id = t.id)
+$$;
+
+-- Ends a round when nothing is left. The last tick calls it through the
+-- trigger below; the app calls it too, for a round that has nothing left
+-- because a manager took the last thing off the list.
+create or replace function public.finish_checklist_round(round uuid) returns boolean
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    ended integer;
+begin
+    if auth.uid() is not null and not exists (
+        select 1 from public.checklist_rounds r
+         where r.id = round
+           and (public.get_my_role() = 'super_admin' or r.restaurant_id = public.get_my_restaurant_id())
+    ) then
+        return false;
+    end if;
+
+    if public.checklist_left(round) > 0 then
+        return false;
+    end if;
+
+    perform set_config('checklists.finishing', 'on', true);
+    update public.checklist_rounds set ended_at = now() where id = round and ended_at is null;
+    get diagnostics ended = row_count;
+    perform set_config('checklists.finishing', '', true);
+    return ended > 0;
+end $$;
+
+create or replace function public.checklist_tick_finishes() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    perform public.finish_checklist_round(new.round_id);
+    return null;
+end $$;
+
+-- Which photos the nightly job deletes. His rules, 27 September: a list keeps
+-- the photos of its last finished round and of the one in progress, so there
+-- are never two old rounds and a new one all holding pictures. A list done
+-- once keeps its photos two weeks after it is finished. A guide picture never
+-- expires: it goes when it is taken off its task, when its task is deleted or
+-- taken off the list, or when the whole list is. And a photo taken and never
+-- submitted goes after a day, which is also the grace every file gets so
+-- nothing is deleted between being uploaded and being saved.
+create or replace function public.checklist_photos_due() returns setof text
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    with ranked as (
+        select r.id, r.ended_at, l.repeats,
+               row_number() over (partition by r.checklist_id, (r.ended_at is null)
+                                  order by r.ended_at desc, r.started_at desc, r.id desc) as n
+          from public.checklist_rounds r
+          join public.checklists l on l.id = r.checklist_id
+    ), old_rounds as (
+        select id from ranked
+         where ended_at is not null
+           and (n > 1 or (repeats = 'once' and ended_at < now() - interval '14 days'))
+    )
+    select unnest(t.photos)
+      from public.checklist_ticks t
+     where t.round_id in (select id from old_rounds)
+       and t.photos_gone_at is null
+       and cardinality(t.photos) > 0
+    union
+    select o.name
+      from storage.objects o
+     where o.bucket_id = 'checklist-photos'
+       and o.created_at < now() - interval '1 day'
+       and ((split_part(o.name, '/', 2) = 'rounds'
+             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos)))
+         or (split_part(o.name, '/', 2) = 'guides'
+             and not exists (select 1
+                               from public.checklist_tasks k
+                               join public.checklists l on l.id = k.checklist_id
+                              where o.name = any (k.guide_photos)
+                                and k.is_active
+                                and l.is_active)))
+$$;
+
+-- And what it says afterwards, so the tick shows the photo was deleted rather
+-- than never taken, and a task taken off the list stops pointing at guide
+-- pictures that are no longer there.
+create or replace function public.checklist_photos_removed(names text[]) returns integer
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    marked integer;
+begin
+    update public.checklist_ticks
+       set photos_gone_at = now()
+     where photos && names
+       and photos_gone_at is null;
+    get diagnostics marked = row_count;
+
+    update public.checklist_tasks
+       set guide_photos = array(select p from unnest(guide_photos) as p where p <> all (names))
+     where guide_photos && names;
+
+    return marked;
+end $$;
 
 CREATE OR REPLACE FUNCTION "public"."brief"("v" "jsonb") RETURNS "jsonb"
     LANGUAGE "sql" IMMUTABLE
@@ -1653,12 +2878,33 @@ end;
 $$;
 
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
+COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
+COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted. Nothing younger than a day.';
+COMMENT ON FUNCTION "public"."checklist_photos_removed"("names" "text"[]) IS 'Marks the ticks whose photos the nightly job has just deleted, and clears a guide picture it deleted off the task taken off the list.';
+COMMENT ON FUNCTION "public"."finish_checklist_round"("round" "uuid") IS 'Ends a round when everything on its list is ticked. Returns whether it did. Safe to call any time: it does nothing to a round with something left or one already ended.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
+COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
 COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'Which row this is, in words, worked out from its own columns and its foreign keys. Never raises: a label that cannot be built comes back null.';
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_photos_due"() to service_role;
+revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_photos_removed"("names" "text"[]) to service_role;
+revoke all on function "public"."checklist_round_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_round_guard"() to service_role;
+revoke all on function "public"."checklist_task_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_task_guard"() to service_role;
+revoke all on function "public"."checklist_task_moved"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_task_moved"() to service_role;
+revoke all on function "public"."checklist_tick_finishes"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_tick_finishes"() to service_role;
+revoke all on function "public"."checklist_tick_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."checklist_tick_guard"() to service_role;
+revoke all on function "public"."finish_checklist_round"("round" "uuid") from public, anon;
+grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
 grant execute on function "public"."handle_delete_user"() to service_role;
 revoke all on function "public"."handle_new_user"() from public, anon, authenticated, service_role;
@@ -1675,6 +2921,8 @@ revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") fr
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
+revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
+grant execute on function "public"."switch_off_leavers"() to service_role;
 revoke all on function "public"."unwatched_tables"() from public, anon, authenticated, service_role;
 grant execute on function "public"."unwatched_tables"() to authenticated, service_role;
 revoke all on function "public"."watch_changes"() from public, anon, authenticated, service_role;
@@ -1712,7 +2960,7 @@ ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "users_select" ON "public"."users" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
-CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING (("id" = ( SELECT "auth"."uid"() )));
+CREATE POLICY "users_select_own" ON "public"."users" FOR SELECT TO "authenticated" USING ((("id" = ( SELECT "auth"."uid"() )) AND "is_active"));
 
 CREATE POLICY "users_write" ON "public"."users" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text")))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'owner'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("role" IN ('store_manager', 'employee'))) OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("role")::"text" = 'employee'::"text"))));
 
@@ -1819,6 +3067,10 @@ CREATE POLICY "sales_platforms_select" ON "public"."sales_platforms" FOR SELECT 
 
 CREATE POLICY "sales_platforms_write" ON "public"."sales_platforms" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
+ALTER TABLE "public"."sales_tender_names" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "sales_tender_names_all" ON "public"."sales_tender_names" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
 ALTER TABLE "public"."petty_cash_entries" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "petty_cash_select" ON "public"."petty_cash_entries" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
@@ -1852,11 +3104,62 @@ CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" TO "authenticate
    FROM "public"."invoices" "i"
   WHERE (("i"."id" = "invoice_lines"."invoice_id") AND ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("i"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
+-- Everything that hangs off an invoice follows the invoice's own rule:
+-- managers and above, their own restaurant. An employee has no business
+-- reading what anything costs.
+ALTER TABLE "public"."supplier_accounts" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_accounts_all" ON "public"."supplier_accounts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."supplier_codes" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_codes_all" ON "public"."supplier_codes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."product_price_events" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "product_price_events_all" ON "public"."product_price_events" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."supplier_documents" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "supplier_documents_all" ON "public"."supplier_documents" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+-- Claims are the one table here an employee touches, and that is the whole
+-- point of taking the note at the door: the person signing for it knows within
+-- a minute and has forgotten by Friday.
+--
+-- They may raise one and read back the ones they raised. They may not read
+-- anybody else's, because a claim carries an amount once it has been matched to
+-- a line and what things cost is not an employee's business. They may not
+-- change one afterwards either: a note taken at the door is a record of what
+-- was said at the door.
+ALTER TABLE "public"."invoice_line_claims" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "invoice_line_claims_manage" ON "public"."invoice_line_claims" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+CREATE POLICY "invoice_line_claims_raise" ON "public"."invoice_line_claims" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() )) AND ("amount" IS NULL) AND ("credited_amount" = (0)::numeric) AND ("status" = 'open'::"text") AND ("invoice_line_id" IS NULL) AND ("credit_invoice_id" IS NULL)));
+
+CREATE POLICY "invoice_line_claims_read_own" ON "public"."invoice_line_claims" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND ("raised_by" = ( SELECT "auth"."uid"() ))));
+
 ALTER TABLE "public"."labour_entries" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "labour_entries_select" ON "public"."labour_entries" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "labour_entries_write" ON "public"."labour_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+-- The timesheet, same rule as the labour page it replaces: managers and
+-- above, their own restaurant. An employee has no business reading what the
+-- person beside them earns.
+ALTER TABLE "public"."timesheet_entries" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_entries_all" ON "public"."timesheet_entries" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."timesheet_names" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_names_all" ON "public"."timesheet_names" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."timesheet_weeks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "timesheet_weeks_all" ON "public"."timesheet_weeks" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."cost_target_overrides" ENABLE ROW LEVEL SECURITY;
 
@@ -1908,6 +3211,60 @@ CREATE POLICY "stock_take_lines_write_manager" ON "public"."stock_take_lines" TO
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text")))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (EXISTS ( SELECT 1
    FROM "public"."stock_takes" "st"
   WHERE (("st"."id" = "stock_take_lines"."stock_take_id") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("st"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("st"."status")::"text" = 'in_progress'::"text"))))));
+
+
+-- -- Checklists --------------------------------------------------------
+--
+-- Everybody at the restaurant reads its lists and works through them: starts
+-- a round and ticks. Managers and above make the lists, end a round early,
+-- and delete a round started by mistake, which the ticks' foreign key only
+-- allows while nothing on it is ticked. Nobody changes or deletes a tick.
+
+ALTER TABLE "public"."checklists" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklists_select" ON "public"."checklists" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklists_write" ON "public"."checklists" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."checklist_categories" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_categories_select" ON "public"."checklist_categories" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))));
+
+CREATE POLICY "checklist_categories_write" ON "public"."checklist_categories" TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_categories"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
+
+ALTER TABLE "public"."checklist_tasks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_tasks_select" ON "public"."checklist_tasks" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))));
+
+CREATE POLICY "checklist_tasks_write" ON "public"."checklist_tasks" TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."checklists" "l"
+  WHERE (("l"."id" = "checklist_tasks"."checklist_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("l"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
+
+ALTER TABLE "public"."checklist_rounds" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_rounds_select" ON "public"."checklist_rounds" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_rounds_start" ON "public"."checklist_rounds" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_rounds_end" ON "public"."checklist_rounds" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+CREATE POLICY "checklist_rounds_delete" ON "public"."checklist_rounds" FOR DELETE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+
+ALTER TABLE "public"."checklist_ticks" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklist_ticks_select" ON "public"."checklist_ticks" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
+
+CREATE POLICY "checklist_ticks_insert" ON "public"."checklist_ticks" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 
 -- -- The roster --------------------------------------------------------
@@ -1979,7 +3336,23 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
   WHERE (("s"."id" = "report_items"."section_id") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))))));
 
 
--- -- What is on at the 3Arena ------------------------------------------
+-- -- What is on near us ------------------------------------------------
+--
+-- Everybody working a concert night needs to know it is happening, so all
+-- three read to any signed in account. Only a manager decides which places
+-- we watch, and only for their own restaurant.
+
+ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+
+CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+
+CREATE POLICY "restaurant_places_write" ON "public"."restaurant_places" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
@@ -1988,6 +3361,23 @@ CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated"
 CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+
+-- -- The diary --------------------------------------------------------
+
+ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
+
+-- Everybody who works here reads what is on, because a catering job matters
+-- most to the person who has to make it. Private is the exception and answers
+-- only to the person who wrote it.
+CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )))));
+
+-- Managers and above write. A store manager or an owner can only put an entry
+-- on their own restaurant, so restaurant_ids has to be contained by the one
+-- they are at; a super admin is the only one who can write an entry that lands
+-- on somebody else's site. Only an owner or a super admin speaks for the whole
+-- group, because a discount week is not one restaurant's decision.
+CREATE POLICY "diary_entries_write" ON "public"."diary_entries" TO "authenticated" USING (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )])))))) WITH CHECK (((("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_ids" <@ ARRAY[( SELECT "public"."get_my_restaurant_id"() )]))))));
 
 
 -- -- The record of what happened ---------------------------------------
@@ -2043,6 +3433,106 @@ CREATE OR REPLACE VIEW "public"."roster_away" AS
     "can_work_to"
    FROM "public"."absences" "a"
   WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
+
+-- What labour cost, per day, for everything that asks: the cost dashboard, the
+-- report and the weekly report. None of them has to know the answer comes from
+-- two places, or that a Labour page ever existed.
+--
+-- The timesheet for every day it covers, and the frozen labour_entries archive
+-- for the eight months before it. A day the timesheet has anything on is never
+-- taken from the archive, so nothing is ever counted twice.
+--
+-- security_invoker on purpose, and this is the case where that is right: both
+-- tables underneath already decide who sees what by restaurant, and the view
+-- has nothing of its own to hide. The public_ views are the opposite case and
+-- must stay SECURITY DEFINER.
+CREATE OR REPLACE VIEW "public"."labour_by_day" WITH ("security_invoker"='true') AS
+ SELECT "t"."restaurant_id",
+    "t"."work_date" AS "entry_date",
+    "round"("sum"("t"."hours"), 2) AS "total_hours",
+    "round"("sum"(("t"."hours" * COALESCE("e"."hourly_rate", "r"."hourly_rate", (0)::numeric))), 2) AS "labour_cost",
+    "count"(DISTINCT COALESCE(("t"."employee_id")::"text", "t"."person_name")) FILTER (WHERE ("t"."hours" > (0)::numeric)) AS "staff_count",
+    'timesheet'::"text" AS "came_from"
+   FROM (("public"."timesheet_entries" "t"
+     JOIN "public"."restaurants" "r" ON (("r"."id" = "t"."restaurant_id")))
+     LEFT JOIN "public"."employees" "e" ON (("e"."id" = "t"."employee_id")))
+  GROUP BY "t"."restaurant_id", "t"."work_date", "r"."hourly_rate"
+ HAVING ("count"("t"."hours") > 0)
+UNION ALL
+ SELECT "l"."restaurant_id",
+    "l"."entry_date",
+    "l"."total_hours",
+    "l"."labour_cost",
+    "l"."staff_count",
+    'archive'::"text" AS "came_from"
+   FROM "public"."labour_entries" "l"
+  WHERE (NOT (EXISTS ( SELECT 1
+           FROM "public"."timesheet_entries" "t"
+          WHERE (("t"."restaurant_id" = "l"."restaurant_id") AND ("t"."work_date" = "l"."entry_date") AND ("t"."hours" IS NOT NULL)))));
+
+COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for everything that asks: the cost dashboard, the report and the weekly report. The timesheet for every day it covers, and the frozen labour_entries archive for the months before it existed. Nothing writes to labour_entries any more.';
+
+-- What was spent, split the way the money actually was.
+--
+-- The labour_by_day pattern, for the same reason and in the same shape. Three
+-- screens asked the invoices table for `total_amount, category` and added up by
+-- category: the cost dashboard, the week's figures on the report, and the
+-- twelve month chart. One category per invoice cannot hold a delivery that came
+-- mixed, and a parsed invoice knows the answer line by line.
+--
+-- So the lines where there are lines, the header where there are not, and eight
+-- months of invoices typed off a total keep answering exactly as they did.
+--
+-- **An invoice costs what it charges, VAT and deposit included**, decided on 24
+-- September 2026: the typed ones were always entered at the amount payable, and
+-- a line counts its printed value plus its share of both. The prices stay as
+-- printed.
+--
+-- The third arm is the claims, and **the claim is the one place money coming
+-- back is taken off, always in the week the delivery happened**: the whole ask
+-- while it is open, what actually came back once it is settled. A credit note
+-- that settles a claim is kept and matched and does not count on its own, which
+-- is what counts_in_cost is for. It comes off once, and it never moves between
+-- weeks because the credit happened to be dated the Monday after.
+--
+-- security_invoker on purpose, the same case as labour_by_day: everything
+-- underneath already decides who sees what by restaurant and the view has
+-- nothing of its own to hide.
+CREATE OR REPLACE VIEW "public"."invoice_cost_by_category" WITH ("security_invoker"='true') AS
+ SELECT "i"."restaurant_id",
+    "i"."invoice_date" AS "cost_date",
+    "l"."category",
+    "sum"((("l"."line_total" + "l"."vat_amount") + "l"."deposit_amount")) AS "amount",
+    'lines'::"text" AS "came_from"
+   FROM ("public"."invoices" "i"
+     JOIN "public"."invoice_lines" "l" ON (("l"."invoice_id" = "i"."id")))
+  WHERE ("i"."counts_in_cost" AND ("l"."category" IS NOT NULL))
+  GROUP BY "i"."restaurant_id", "i"."invoice_date", "l"."category"
+UNION ALL
+ SELECT "i"."restaurant_id",
+    "i"."invoice_date" AS "cost_date",
+    "i"."category",
+    "i"."total_amount" AS "amount",
+    'header'::"text" AS "came_from"
+   FROM "public"."invoices" "i"
+  WHERE ("i"."counts_in_cost" AND (NOT (EXISTS ( SELECT 1
+           FROM "public"."invoice_lines" "l"
+          WHERE (("l"."invoice_id" = "i"."id") AND ("l"."category" IS NOT NULL))))))
+UNION ALL
+ SELECT "c"."restaurant_id",
+    "c"."counted_week" AS "cost_date",
+    COALESCE("l"."category", "i"."category", 'food'::"text") AS "category",
+    - CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END AS "amount",
+    'claim'::"text" AS "came_from"
+   FROM (("public"."invoice_line_claims" "c"
+     LEFT JOIN "public"."invoice_lines" "l" ON (("l"."id" = "c"."invoice_line_id")))
+     LEFT JOIN "public"."invoices" "i" ON (("i"."id" = "c"."invoice_id")))
+  WHERE (("c"."status" = ANY (ARRAY['open'::"text", 'settled'::"text", 'refused'::"text"]))
+     AND ("c"."counted_week" IS NOT NULL)
+     AND ("c"."amount" IS NOT NULL)
+     AND (CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END > (0)::numeric));
+
+COMMENT ON VIEW "public"."invoice_cost_by_category" IS 'What was spent, split by category, for every screen that asks. What each invoice charged, VAT and deposit included: its lines where it has them, each with its share of both, and the header where it does not. Claims come off as a deduction in the week the delivery happened: the whole ask while open, what came back once settled. A credit note that settles a claim does not count on its own.';
 
 CREATE OR REPLACE VIEW "public"."public_menu_categories" AS
  SELECT "id",
@@ -2109,12 +3599,25 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
 
+-- The day each thing on a checklist was last done. The third kind, and the
+-- opposite of the two above: it is a security invoker view, so it reads
+-- through the ticks' own row level security and needs no where clause.
+CREATE OR REPLACE VIEW "public"."checklist_last_done" WITH ("security_invoker"='true') AS
+ SELECT "task_id",
+    "max"("done_at") AS "done_at"
+   FROM "public"."checklist_ticks"
+  GROUP BY "task_id";
+
+COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticked. Reads through the ticks'' own row level security.';
+
 -- Who may read them, stated rather than inherited from whatever the default
 -- privileges happen to be.
 grant select on public.roster_colleagues to authenticated;
 grant select on public.roster_away      to authenticated;
 revoke all on public.roster_colleagues from anon, public;
 revoke all on public.roster_away      from anon, public;
+grant select on public.checklist_last_done to authenticated;
+revoke all on public.checklist_last_done from anon, public;
 
 grant select on public.public_menu_categories to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
@@ -2202,6 +3705,103 @@ create policy report_charts_replace on storage.objects
   );
 
 
+
+-- The hours PDF that travels with the timesheet mail.
+--
+-- **Private, unlike report-charts, and that difference is the point.** The
+-- charts are public because they are linked images inside the mail and a
+-- signed url would expire. This one is an attachment: the bytes travel inside
+-- the mail, nothing ever fetches it by url, and a public bucket holding every
+-- employee's clock times for a fortnight would be a real leak the moment a
+-- path was guessed. The function reads it with the service role, which goes
+-- round all of this anyway.
+--
+-- The path always begins with the restaurant's id, so a manager cannot write
+-- into another restaurant's folder by typing the path themselves.
+
+drop policy if exists timesheet_hours_write on storage.objects;
+create policy timesheet_hours_write on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_replace on storage.objects;
+create policy timesheet_hours_replace on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+drop policy if exists timesheet_hours_read on storage.objects;
+create policy timesheet_hours_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'timesheet-hours'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
+
+
+-- The checklist photos.
+--
+-- Private. They are pictures of the kitchen and now and then of whoever is
+-- in it, and the Hub shows them through signed addresses that expire. The
+-- first folder is the restaurant, the second is guides (the pictures a
+-- manager puts on a task, kept for as long as the task is) or rounds (what
+-- staff took, deleted by the nightly job). Staff add to rounds; only
+-- managers add or take away guides. Nobody but the job deletes a round's
+-- photo, since that is the proof.
+--
+-- The bucket row is in seed.sql: 3MB and JPEG only, because the phone
+-- shrinks every photo to a few hundred KB before it leaves.
+
+drop policy if exists checklist_photos_read on storage.objects;
+create policy checklist_photos_read on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'checklist-photos'
+    and ((get_my_role() = 'super_admin')
+         or split_part(name, '/', 1) = get_my_restaurant_id()::text)
+  );
+
+drop policy if exists checklist_photos_write on storage.objects;
+create policy checklist_photos_write on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'checklist-photos'
+    and ((get_my_role() = 'super_admin')
+         or (split_part(name, '/', 1) = get_my_restaurant_id()::text
+             and (split_part(name, '/', 2) = 'rounds'
+                  or (split_part(name, '/', 2) = 'guides'
+                      and get_my_role() in ('store_manager', 'owner')))))
+  );
+
+drop policy if exists checklist_photos_remove on storage.objects;
+create policy checklist_photos_remove on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'checklist-photos'
+    and split_part(name, '/', 2) = 'guides'
+    and ((get_my_role() = 'super_admin')
+         or (get_my_role() in ('store_manager', 'owner')
+             and split_part(name, '/', 1) = get_my_restaurant_id()::text))
+  );
+
 -- ======================================================================
 -- What watches it all
 -- ======================================================================
@@ -2220,9 +3820,19 @@ CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."re
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
+CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();
+CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" ON "public"."checklist_tasks" FOR EACH ROW WHEN ((("new"."parent_id" IS NULL) AND ("old"."category_id" IS DISTINCT FROM "new"."category_id"))) EXECUTE FUNCTION "public"."checklist_task_moved"();
+CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_rounds" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_round_guard"();
+CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
+CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
 
 -- The audit triggers, put on by the function rather than listed here. There
 -- are sixty six of them and they are all the same two.

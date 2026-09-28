@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
-    waitingOn, requestsOnShift, writesFor, newFindings,
+    waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -53,6 +53,29 @@ describe('weekAfter', () => {
         expect(moved[0].ends_at).toBe('21:00')
         expect(shifts.some(s => s.employee_id === 'ana')).toBe(false)
         expect(removedIds).toHaveLength(1)
+    })
+
+    // Two shifts became one and one of the two ids had to go. Which one is not
+    // a detail: shift_requests points at both of these shifts and both foreign
+    // keys are ON DELETE CASCADE, so deleting the id the request hangs off
+    // deletes the request. The manager presses Approve, the row saying who
+    // agreed what disappears, and the status update a moment later writes to
+    // nothing.
+    it('keeps the shifts the request hangs off when two of them merge', () => {
+        // Ben is on the Wednesday morning. Ana gives him her evening, so the
+        // two meet and join, and hers is the later of the two.
+        const week = [
+            shift('evening', 'ana', WED, '15:00', '21:00'),
+            shift('morning', 'ben', WED, '09:00', '15:00'),
+        ]
+        const request = {
+            from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 'evening',
+        }
+        const { shifts, removedIds } = weekAfter(request, week)
+
+        expect(shifts).toHaveLength(1)
+        expect(shifts[0]).toMatchObject({ id: 'evening', employee_id: 'ben', starts_at: '09:00', ends_at: '21:00' })
+        expect(removedIds).toEqual(['morning'])
     })
 
     it('leaves the asker with the half they kept', () => {
@@ -349,5 +372,52 @@ describe('newFindings', () => {
     it('has nothing to say when the swap broke nothing', () => {
         const same = [finding('dailyRest', 'ana', 'Ana has only 9 hours.')]
         expect(newFindings(same, same)).toEqual([])
+    })
+})
+
+// Both screens fetch a week at a time, which is right for a roster and wrong
+// for a request. These two are what lets a screen show one from another week:
+// the ids to go and get, and the day to say it is on.
+describe('the shifts a set of requests points at', () => {
+    it('takes both ends of every one of them', () => {
+        const ids = shiftIdsOf([
+            { give_shift_id: 's1', take_shift_id: 's2' },
+            { give_shift_id: 's3', take_shift_id: null },
+        ])
+        expect(ids.sort()).toEqual(['s1', 's2', 's3'])
+    })
+
+    // Two people can both be asking about the same Saturday, and fetching it
+    // twice is a longer query for the same row.
+    it('names one shift once', () => {
+        expect(shiftIdsOf([
+            { give_shift_id: 's1', take_shift_id: null },
+            { give_shift_id: null, take_shift_id: 's1' },
+        ])).toEqual(['s1'])
+    })
+
+    it('copes with nothing at all', () => {
+        expect(shiftIdsOf(null)).toEqual([])
+        expect(shiftIdsOf([{}])).toEqual([])
+    })
+})
+
+describe('the day a request is about', () => {
+    const find = id => WEEK.find(s => s.id === id) || null
+
+    it('is the earlier of the two shifts', () => {
+        expect(requestDate({ give_shift_id: 's3', take_shift_id: 's1' }, find)).toBe(WED)
+    })
+
+    it('is the one there is, when there is only one', () => {
+        expect(requestDate({ give_shift_id: 's3' }, find)).toBe(THU)
+    })
+
+    // Not an error. A screen that cannot say when something is should say it
+    // cannot, rather than draw a row with a gap where the date goes.
+    it('is nothing when neither shift is in hand', () => {
+        expect(requestDate({ give_shift_id: 'gone' }, find)).toBe(null)
+        expect(requestDate({}, find)).toBe(null)
+        expect(requestDate(null, find)).toBe(null)
     })
 })

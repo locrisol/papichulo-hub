@@ -6,10 +6,17 @@ import {
     extraLabel,
     hasExtra,
     toggleExtra,
-    setExtraTime,
-    removeExtra,
+    addExtra,
+    repeatExtra,
+    setExtraTimeAt,
+    removeExtraAt,
+    setNthTime,
+    removeNth,
+    extraKey,
     usualProblem,
     extraLanes,
+    weekGrid,
+    whatIsOn,
 } from '@/lib/dayExtras'
 
 describe('cleanExtras', () => {
@@ -117,16 +124,83 @@ describe('changing one on the day', () => {
     // The whole reason the time is copied onto the day rather than read back
     // off the usual list every time.
     it('lets a day disagree with the usual time', () => {
-        expect(setExtraTime(list, 'Feedr', '13:30')[0].time).toBe('13:30')
-        expect(setExtraTime(list, 'Feedr', '13:30')[1].time).toBe('15:00')
+        expect(setExtraTimeAt(list, 0, '13:30')[0].time).toBe('13:30')
+        expect(setExtraTimeAt(list, 0, '13:30')[1].time).toBe('15:00')
     })
 
     it('lets a time be cleared', () => {
-        expect(setExtraTime(list, 'Feedr', '')[0].time).toBe('')
+        expect(setExtraTimeAt(list, 0, '')[0].time).toBe('')
     })
 
     it('takes one off', () => {
-        expect(removeExtra(list, 'Clockmeal').map(e => e.name)).toEqual(['Feedr'])
+        expect(removeExtraAt(list, 1).map(e => e.name)).toEqual(['Feedr'])
+    })
+})
+
+// Three Feedr orders on one day, the week he asked for this.
+describe('more than one of the same on a day', () => {
+    const three = [
+        { name: 'Feedr', time: '11:30' },
+        { name: 'Feedr', time: '12:00' },
+        { name: 'Clockmeal', time: '15:00' },
+        { name: 'Feedr', time: '12:30' },
+    ]
+
+    it('puts another one on rather than taking the first one off', () => {
+        const once = addExtra([], { name: 'Feedr', time: '11:30' })
+        expect(addExtra(once, { name: 'Feedr', time: '12:00' })).toEqual([
+            { name: 'Feedr', time: '11:30' },
+            { name: 'Feedr', time: '12:00' },
+        ])
+    })
+
+    it('adds another straight after, with no time yet', () => {
+        expect(repeatExtra(three, 0).slice(0, 3)).toEqual([
+            { name: 'Feedr', time: '11:30' },
+            { name: 'Feedr', time: '' },
+            { name: 'Feedr', time: '12:00' },
+        ])
+    })
+
+    it('changes the time on one without touching the others', () => {
+        expect(setExtraTimeAt(three, 1, '12:15').map(e => e.time)).toEqual(['11:30', '12:15', '15:00', '12:30'])
+    })
+
+    it('takes one of them off and leaves the rest', () => {
+        expect(removeExtraAt(three, 0).filter(e => e.name === 'Feedr').map(e => e.time)).toEqual(['12:00', '12:30'])
+    })
+
+    // The week grid has a row for Feedr, and its third time on a day is the
+    // third Feedr, wherever Clockmeal sits between them.
+    it('finds the nth one of a name', () => {
+        expect(setNthTime(three, 'feedr', 2, '13:00')[3].time).toBe('13:00')
+        expect(removeNth(three, 'Feedr', 2).map(e => e.time)).toEqual(['11:30', '12:00', '15:00'])
+        expect(setNthTime(three, 'Feedr', 5, '13:00')).toEqual(three)
+    })
+
+    it('keeps all of them, in time order, once saved', () => {
+        expect(sortExtras(three).map(extraLabel)).toEqual([
+            '11:30 Feedr', '12:00 Feedr', '12:30 Feedr', '15:00 Clockmeal',
+        ])
+    })
+
+    it('gives each its own key to be drawn by', () => {
+        const keys = sortExtras(three).map(extraKey)
+        expect(new Set(keys).size).toBe(4)
+        expect(extraKey({ name: 'Feedr', time: '12:00' }, 0)).not.toBe(extraKey({ name: 'Feedr', time: '12:00' }, 1))
+    })
+
+    it('still takes every one of them off when the button is untouched', () => {
+        expect(toggleExtra(three, { name: 'Feedr' })).toEqual([{ name: 'Clockmeal', time: '15:00' }])
+    })
+
+    it('draws them on separate lines when they are close together', () => {
+        expect(extraLanes(three.filter(e => e.name === 'Feedr'))).toHaveLength(3)
+    })
+
+    it('lists all three on the day', () => {
+        const on = whatIsOn([], { extras: three }, [])
+        expect(on.filter(item => item.extra?.name === 'Feedr')).toHaveLength(3)
     })
 })
 
@@ -193,5 +267,178 @@ describe('extraLanes', () => {
 
     it('is happy with nothing', () => {
         expect(extraLanes(null)).toEqual([])
+    })
+})
+
+describe('the whole week at once', () => {
+    const DATES = ['2026-10-12', '2026-10-13', '2026-10-14']
+    const USUAL = [{ name: 'Feedr', time: '12:00' }, { name: 'Clockmeal', time: '15:00' }]
+    const NOTES = [
+        { note_date: '2026-10-12', extras: [{ name: 'Feedr', time: '12:00' }] },
+        { note_date: '2026-10-14', extras: [{ name: 'Feedr', time: '11:30' }, { name: 'Extraction', time: '' }] },
+    ]
+
+    it('gives a row for every usual one, in the order somebody set', () => {
+        expect(weekGrid(USUAL, NOTES, DATES).map(r => r.name).slice(0, 2))
+            .toEqual(['Feedr', 'Clockmeal'])
+    })
+
+    it('puts the time in the cell, not a tick, because the time is what varies', () => {
+        const feedr = weekGrid(USUAL, NOTES, DATES)[0]
+        expect(feedr.onDay).toEqual({
+            '2026-10-12': ['12:00'],
+            '2026-10-13': [],
+            '2026-10-14': ['11:30'],
+        })
+    })
+
+    it('leaves a usual one that is on no day completely empty', () => {
+        const clockmeal = weekGrid(USUAL, NOTES, DATES)[1]
+        expect(Object.values(clockmeal.onDay)).toEqual([[], [], []])
+        expect(clockmeal.count).toBe(0)
+    })
+
+    // Not on the usual list, but it is on the roster, so a grid that left it out
+    // would disagree with the row right beside it.
+    it('picks up a one off that was ticked onto a day', () => {
+        const rows = weekGrid(USUAL, NOTES, DATES)
+        const extraction = rows.find(r => r.name === 'Extraction')
+        expect(extraction).toBeTruthy()
+        expect(extraction.usual).toBe(false)
+    })
+
+    // On with nobody saying when is a real answer, and it is not the same as
+    // not being on at all.
+    it('tells on with no time apart from not on', () => {
+        const extraction = weekGrid(USUAL, NOTES, DATES).find(r => r.name === 'Extraction')
+        expect(extraction.onDay['2026-10-14']).toEqual([''])
+        expect(extraction.onDay['2026-10-13']).toEqual([])
+    })
+
+    it('holds every time one is on that day, in the order they were put on', () => {
+        const busy = [{ note_date: '2026-10-13', extras: [
+            { name: 'Feedr', time: '12:30' }, { name: 'Feedr', time: '11:30' }, { name: 'Feedr', time: '12:00' },
+        ] }]
+        const feedr = weekGrid(USUAL, busy, DATES)[0]
+        expect(feedr.onDay['2026-10-13']).toEqual(['12:30', '11:30', '12:00'])
+        expect(feedr.count).toBe(1)
+    })
+
+    it('counts the days each one is on, which is what says a job is half done', () => {
+        expect(weekGrid(USUAL, NOTES, DATES)[0].count).toBe(2)
+    })
+
+    it('does not list the same name twice', () => {
+        const twice = [{ note_date: '2026-10-13', extras: [{ name: 'feedr', time: '12:00' }] }]
+        expect(weekGrid(USUAL, twice, DATES).filter(r => r.name.toLowerCase() === 'feedr')).toHaveLength(1)
+    })
+
+    it('copes with nothing at all', () => {
+        expect(weekGrid(null, null, DATES)).toEqual([])
+        expect(weekGrid(USUAL, null, [])).toHaveLength(2)
+    })
+})
+
+// Two tables, one question: what else is happening today.
+//
+// The week view drew these as two groups with the diary first, so a catering
+// job at 13:00 sat above a Lunch Team drop at 11:30. That does not read as a
+// ranking, it reads as the times being wrong.
+describe('everything a day has on it', () => {
+    const day = {
+        extras: [
+            { name: 'Lunch Team', time: '11:30' },
+            { name: 'Feedr', time: '12:10' },
+            { name: 'Extraction clean', time: '' },
+        ],
+    }
+    const diary = [
+        { id: 'c1', title: 'MUFG', starts_at: '13:00:00' },
+        { id: 'm1', title: 'Area manager', starts_at: '09:00:00' },
+    ]
+    const near = [
+        { time: '17:00', event: { id: 'n1', name: 'Wicked opens' } },
+        { time: '18:30', event: { id: 'n2', name: 'Kings of Leon' } },
+    ]
+    const names = list => list.map(i => {
+        if (i.entry) return i.entry.title
+        if (i.near) return i.near.event.name
+        return i.extra.name
+    })
+
+    it('reads down the day whichever table a thing came out of', () => {
+        expect(names(whatIsOn(diary, day)))
+            .toEqual(['Area manager', 'Lunch Team', 'Feedr', 'MUFG', 'Extraction clean'])
+    })
+
+    // The one he reported.
+    it('puts a delivery at half eleven above a catering job at one', () => {
+        const order = names(whatIsOn(diary, day))
+        expect(order.indexOf('Lunch Team')).toBeLessThan(order.indexOf('MUFG'))
+    })
+
+    // The same rule sortExtras follows: it is the one thing that cannot be
+    // placed in the day's order.
+    it('leaves anything with no time at the end', () => {
+        const order = names(whatIsOn([{ id: 'x', title: 'Some day this week', starts_at: null }], day))
+        // Both of the untimed ones are behind everything that has a time, and
+        // between the two of them the same tiebreak applies as anywhere else.
+        expect(order.slice(-2)).toEqual(['Some day this week', 'Extraction clean'])
+        expect(order.slice(0, 2)).toEqual(['Lunch Team', 'Feedr'])
+    })
+
+    // A commitment and a delivery at the same moment: the commitment first,
+    // because somebody agreed to it and the other one merely arrives.
+    it('keeps a commitment above a delivery at the same time', () => {
+        const both = whatIsOn(
+            [{ id: 'c1', title: 'MUFG', starts_at: '12:10' }],
+            { extras: [{ name: 'Feedr', time: '12:10' }] },
+        )
+        expect(names(both)).toEqual(['MUFG', 'Feedr'])
+    })
+
+    it('hands back each thing as it arrived, so the caller can draw it', () => {
+        const [first] = whatIsOn(diary, day)
+        expect(first.entry).toMatchObject({ id: 'm1', title: 'Area manager' })
+        expect(first.extra).toBe(undefined)
+    })
+
+    it('copes with a day that has neither', () => {
+        expect(whatIsOn([], null)).toEqual([])
+        expect(whatIsOn(null, null)).toEqual([])
+    })
+
+    // The Thursday the whole thing is for: four things from three different
+    // tables, and one glance says the evening is going to move.
+    it('threads what is on next door into the same list', () => {
+        expect(names(whatIsOn(diary, day, near))).toEqual([
+            'Area manager', 'Lunch Team', 'Feedr', 'MUFG',
+            'Wicked opens', 'Kings of Leon', 'Extraction clean',
+        ])
+    })
+
+    // At the same moment: a job somebody booked, then a concert, then the
+    // delivery that arrives every week anyway.
+    it('ranks a commitment over a concert over a delivery at the same time', () => {
+        const all = whatIsOn(
+            [{ id: 'c1', title: 'MUFG', starts_at: '18:30' }],
+            { extras: [{ name: 'Feedr', time: '18:30' }] },
+            [{ time: '18:30', event: { id: 'n2', name: 'Kings of Leon' } }],
+        )
+        expect(names(all)).toEqual(['MUFG', 'Kings of Leon', 'Feedr'])
+    })
+
+    it('hands a nearby one back as it arrived', () => {
+        const found = whatIsOn([], null, near).find(i => i.near)
+        expect(found.near.event.id).toBe('n1')
+        expect(found.entry).toBe(undefined)
+        expect(found.extra).toBe(undefined)
+    })
+
+    // A listing nobody put a time on is still worth having, and it lands at
+    // the end with everything else that cannot be placed in the day.
+    it('leaves an untimed listing at the end', () => {
+        const order = names(whatIsOn([], day, [{ time: '', event: { id: 'n3', name: 'Regatta' } }]))
+        expect(order.slice(-2)).toEqual(['Regatta', 'Extraction clean'])
     })
 })

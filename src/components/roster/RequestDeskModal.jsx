@@ -4,7 +4,7 @@ import { dayName } from '@/lib/events'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
-    windowOf, isWholeShift, hoursChange, weekAfter, newFindings,
+    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate,
 } from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
@@ -21,13 +21,38 @@ import {
 // would train somebody to press through all of them.
 //
 // Approving does not unpublish the week. An approved change is the roster now.
+//
+// **Everything waiting is listed here, whatever week it is for.** That is the
+// half that was missing: a swap agreed for a fortnight's time was invisible
+// from every week but that one, so the count on the menu said there was
+// something to approve and this list said there was not.
+//
+// What cannot follow it across is the approving. All three of the things above
+// are worked out against a week, and the week in hand is the one on screen, so
+// a request from another week gets its facts and a button that opens its week
+// rather than an Approve that would be answering a question nobody asked. The
+// alternative was to load that week quietly underneath and approve against it,
+// which is the same screen telling you about a week you are not looking at.
 export default function RequestDeskModal({
-    requests, shifts, employees, breakRules, dayNotes, openingHours, check,
-    saving, onApprove, onRefuse, onClose,
+    requests, shifts, otherShifts, employees, breakRules, dayNotes, openingHours, check,
+    saving, onApprove, onRefuse, onGoToWeek, onClose,
 }) {
     const nameOf = id => employees.find(e => e.id === id)?.full_name || 'Somebody'
     const hoursOn = d => hoursForDate(openingHours, (dayNotes || []).find(n => n.note_date === d), d)
     const before = check ? check(shifts) : []
+
+    // The week first, then the two fetched by id because a request pointed at
+    // them. Without the second half a request from another week is a row that
+    // knows somebody's name and nothing else.
+    const findShift = id =>
+        shifts.find(s => s.id === id) || (otherShifts || []).find(s => s.id === id) || null
+
+    // Every shift it names is in the week on screen, so the checks below mean
+    // something. A request naming one shift here and one somewhere else is not
+    // this week's either: half a swap cannot be approved.
+    const isThisWeek = request => [request.give_shift_id, request.take_shift_id]
+        .filter(Boolean)
+        .every(id => shifts.some(s => s.id === id))
 
     return (
         <Modal title="Changes to approve" onClose={onClose} width="max-w-2xl">
@@ -39,12 +64,14 @@ export default function RequestDeskModal({
                 )}
 
                 {requests.map(request => {
-                    const after = weekAfter(request, shifts, breakRules)
-                    const change = hoursChange(request, shifts, breakRules)
-                    const broke = check ? newFindings(before, check(after.shifts)) : []
+                    const here = isThisWeek(request)
+                    const after = here ? weekAfter(request, shifts, breakRules) : null
+                    const change = here ? hoursChange(request, shifts, breakRules) : []
+                    const broke = here && check ? newFindings(before, check(after.shifts)) : []
+                    const when = requestDate(request, findShift)
 
                     const half = (shiftId, from, to, takerId) => {
-                        const shift = shifts.find(s => s.id === shiftId)
+                        const shift = findShift(shiftId)
                         if (!shift) return null
                         const window = windowOf(shift, from, to)
                         const whole = isWholeShift(shift, from, to)
@@ -69,7 +96,7 @@ export default function RequestDeskModal({
                     // is worked out again for the length that makes. It is
                     // worth saying out loud: it is the part nobody expects and
                     // the part that would otherwise underpay somebody.
-                    const joined = after.removedIds.length > 0
+                    const joined = here && after.removedIds.length > 0
 
                     return (
                         <div key={request.id} className="rounded-lg border border-border bg-white p-4">
@@ -86,31 +113,42 @@ export default function RequestDeskModal({
                                 </p>
                             ))}
 
+                            {/* It should not be possible to be counted and not
+                                describable, and if it ever is, saying so beats
+                                a card with a heading and nothing under it. */}
+                            {halves.length === 0 && (
+                                <p className="text-sm text-muted">
+                                    The shifts this was about are no longer on the roster.
+                                </p>
+                            )}
+
                             {request.message && (
                                 <p className="text-sm text-gray-600 mt-2 italic">{request.message}</p>
                             )}
 
-                            <div className="rounded-lg bg-gray-50 border border-border p-3 mt-3">
-                                <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                                    The week, after
-                                </p>
-                                {change.map(row => (
-                                    <p key={row.employeeId} className="text-sm flex items-center gap-2">
-                                        <span className="font-medium text-gray-800">{nameOf(row.employeeId)}</span>
-                                        <span className="ml-auto text-muted">{fmtHours(row.before)}</span>
-                                        <span className="text-muted">to</span>
-                                        <span className="font-bold text-gray-900">{fmtHours(row.after)}</span>
+                            {here && (
+                                <div className="rounded-lg bg-gray-50 border border-border p-3 mt-3">
+                                    <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                                        The week, after
                                     </p>
-                                ))}
-                                {joined && (
-                                    <p className="text-xs text-muted mt-2">
-                                        Two shifts end up touching, so they become one and the break is
-                                        worked out again for the whole of it.
-                                    </p>
-                                )}
-                            </div>
+                                    {change.map(row => (
+                                        <p key={row.employeeId} className="text-sm flex items-center gap-2">
+                                            <span className="font-medium text-gray-800">{nameOf(row.employeeId)}</span>
+                                            <span className="ml-auto text-muted">{fmtHours(row.before)}</span>
+                                            <span className="text-muted">to</span>
+                                            <span className="font-bold text-gray-900">{fmtHours(row.after)}</span>
+                                        </p>
+                                    ))}
+                                    {joined && (
+                                        <p className="text-xs text-muted mt-2">
+                                            Two shifts end up touching, so they become one and the break is
+                                            worked out again for the whole of it.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
-                            {broke.length > 0 && (
+                            {here && broke.length > 0 && (
                                 <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 mt-3">
                                     <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1.5">
                                         This would break
@@ -128,30 +166,51 @@ export default function RequestDeskModal({
                                 </div>
                             )}
 
-                            <div className="flex flex-wrap gap-2 mt-3">
-                                <button
-                                    type="button"
-                                    disabled={saving || broke.some(f => f.level === 'block')}
-                                    onClick={() => onApprove(request)}
-                                    className={rowButton('good')}
-                                >
-                                    Approve
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={saving}
-                                    onClick={() => onRefuse(request)}
-                                    className={rowButton('danger')}
-                                >
-                                    Do not approve
-                                </button>
-                                {broke.some(f => f.level === 'block') && (
-                                    <span className="text-xs text-red-700 self-center">
-                                        Something here stops the week going out, so it cannot be approved
-                                        as it stands.
+                            {here ? (
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                    <button
+                                        type="button"
+                                        disabled={saving || broke.some(f => f.level === 'block')}
+                                        onClick={() => onApprove(request)}
+                                        className={rowButton('good')}
+                                    >
+                                        Approve
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={saving}
+                                        onClick={() => onRefuse(request)}
+                                        className={rowButton('danger')}
+                                    >
+                                        Do not approve
+                                    </button>
+                                    {broke.some(f => f.level === 'block') && (
+                                        <span className="text-xs text-red-700 self-center">
+                                            Something here stops the week going out, so it cannot be approved
+                                            as it stands.
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="flex flex-wrap items-center gap-2 mt-3">
+                                    {/* Said before the button rather than after
+                                        it, because the reason it is not an
+                                        Approve is the thing worth reading. */}
+                                    <span className="text-sm text-muted">
+                                        This is for another week, so what it would do to that week cannot be
+                                        worked out from here.
                                     </span>
-                                )}
-                            </div>
+                                    {when && onGoToWeek && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onGoToWeek(when)}
+                                            className={rowButton('good')}
+                                        >
+                                            Open that week
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )
                 })}

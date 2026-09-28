@@ -3,6 +3,7 @@ import { useConfirm } from '@/context/confirm'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { can, MANAGERS } from '@/lib/access'
+import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 import { friendlyError } from '@/lib/errors'
 import { tableHeadRow, tableHeadCell, tableCard, badge, card, cardHeader, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
 import SupplierForm from '@/components/inventory/SupplierForm'
@@ -56,10 +57,16 @@ export default function SuppliersPage() {
         return localStorage.getItem('suppliersShowInactive') === 'true'
     })
 
+    // The button is hidden from an employee, and this is the other half of that.
+    // The preference is kept per browser, so somebody who had it on as a manager
+    // would otherwise keep seeing deactivated suppliers with nothing on screen
+    // to turn it off.
+    const showingInactive = isManager && showInactive
+
     const categoryOrder = ['food', 'packaging', 'cleaning', 'other']
 
     const filteredSuppliers = suppliers
-        .filter(s => showInactive || s.is_active)
+        .filter(s => showingInactive || s.is_active)
         .sort((a, b) => {
             const categoryDiff = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
             if (categoryDiff !== 0) return categoryDiff
@@ -172,22 +179,19 @@ export default function SuppliersPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {/* Show Inactive is a filter rather than a change, so anyone
-                        can use it. There is nothing to hide in a deactivated
-                        supplier that is not already on screen. */}
-                    <button
-                        onClick={() => {
+                    {/* Managers only now, and the button decides that itself.
+                        It used to be offered to everybody, on the grounds that a
+                        filter is not a change. His call on 13 September: a
+                        supplier somebody turned off is not an employee's
+                        business either way. */}
+                    <ShowInactiveButton
+                        showing={showingInactive}
+                        onToggle={() => {
                             const next = !showInactive
                             setShowInactive(next)
                             localStorage.setItem('suppliersShowInactive', next)
                         }}
-                        className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${showInactive
-                            ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                            : 'border-border text-gray-600 hover:bg-gray-50'
-                            }`}
-                    >
-                        {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-                    </button>
+                    />
                     {isManager && (
                         <button
                             onClick={() => { resetForm(); setShowForm(true) }}

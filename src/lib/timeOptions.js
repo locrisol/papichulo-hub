@@ -22,6 +22,18 @@ import { toMinutes, toTime } from '@/lib/roster'
 const STEP = 15
 const DAY = 24 * 60
 
+// How much room the list leaves before the doors open.
+//
+// It used to begin exactly at the opening time, which put everything earlier at
+// the very bottom: a store opening at 09:00 meant scrolling a whole day to
+// reach 08:30. Somebody is in before the doors on most days, setting up or
+// taking a delivery, so the quarter hours just before opening are among the
+// likeliest picks in the list and they were the furthest away in it.
+//
+// Two hours rather than one, because the odd day needs more than the usual
+// half hour and the point is not having to scroll on that day either.
+const LEAD_IN = 2 * 60
+
 // The end of the day, which is not 23:45 and is not a time of day at all.
 //
 // availability stores "until the end of the day" as 24:00, which a native time
@@ -50,9 +62,17 @@ function grid() {
 // puts the opening hour first, so the times anybody actually wants are at the
 // top with nothing to scroll past, and every other time in the day is still
 // there, further down, where a late finish belongs.
-export function timeOptions({ value = '', dayStart = '', endOfDay = false } = {}) {
+// free is asked of every time in the list, and says whether that person can
+// actually work then. Anything it says no to keeps its place and is marked,
+// rather than being taken out: a shift sometimes has to be built across hours
+// somebody would rather not do, and a picker that hides them makes that
+// impossible instead of merely deliberate.
+export function timeOptions({ value = '', dayStart = '', endOfDay = false, free } = {}) {
     const from = toMinutes(dayStart)
-    const start = from >= 0 ? Math.floor(from / STEP) * STEP : 0
+    const opening = from >= 0 ? Math.floor(from / STEP) * STEP : 0
+    // Wrapped, so a store opening at 00:30 starts its list at 22:30 the night
+    // before rather than at a negative number.
+    const start = from >= 0 ? ((opening - LEAD_IN) % DAY + DAY) % DAY : 0
 
     const minutes = grid().map(m => (m + start) % DAY)
 
@@ -68,10 +88,20 @@ export function timeOptions({ value = '', dayStart = '', endOfDay = false } = {}
         minutes.sort((a, b) => rank(a) - rank(b))
     }
 
-    const options = minutes.map(m => ({ value: toTime(m), label: toTime(m) }))
+    // The words rather than only a colour.
+    //
+    // An option's colour is honoured on a desktop browser and ignored on a
+    // phone, where the operating system draws the list itself. The colour is
+    // still set, because where it works it is read without reading. But the
+    // meaning has to be in the text or half the people using this never see it.
+    const options = minutes.map(m => {
+        const time = toTime(m)
+        const can = free ? free(time) : true
+        return { value: time, label: can ? time : `${time} (cannot work)`, free: can }
+    })
 
     // Last, because it is the far edge of the day whatever the list starts at.
-    if (endOfDay) options.push({ value: END_OF_DAY, label: label(END_OF_DAY) })
+    if (endOfDay) options.push({ value: END_OF_DAY, label: label(END_OF_DAY), free: true })
 
     return options
 }

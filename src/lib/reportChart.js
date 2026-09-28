@@ -43,6 +43,23 @@ export const DEFAULT_RANGE = '12m'
 // re-read the key at every chart.
 export const CHART_TOTAL = '#2C6FCF'
 
+// How tall a chart on the page is, from how wide it is.
+//
+// It was a fixed 240, or 210 for the four under the sales chart, whatever the
+// width. On a laptop that is a strip fifteen hundred wide and two hundred tall,
+// and a week that cost four hundred euro more moved the line by a few pixels.
+// He asked for them taller on 27 September, holding up the Google Sheets charts
+// his old report sent, which are nearer two wide to one tall. That on a
+// fifteen hundred pixel page would be a chart taller than the screen, so it
+// follows the width to a ceiling: about twice what it was on a laptop, and a
+// floor that still leaves a phone a readable shape.
+export const CHART_MIN_H = 260
+export const CHART_MAX_H = 440
+
+export function chartHeight(width) {
+    return Math.round(Math.min(CHART_MAX_H, Math.max(CHART_MIN_H, num(width) * 0.42)))
+}
+
 
 // The last `count` weeks up to and including the week `upTo` falls in.
 //
@@ -94,7 +111,8 @@ export function inRange(rows, rangeKey) {
     return rows.slice(-range.weeks)
 }
 
-// A round number at or above the peak, and not much above it.
+// A round number at or above the peak, and not much above it. The product
+// price chart's scale; the report's charts use roundScale.
 //
 // It has to divide into four, since that is how many gaps the grid has, and it
 // has to be a figure somebody would write down. A ladder of steps rather than
@@ -144,7 +162,64 @@ export function isMissing(value) {
     return value == null || value === '' || Number.isNaN(Number(value))
 }
 
-// The scale for a set of series: what the axis runs between.
+// The gridlines for the report's charts: where the axis starts and ends, and
+// a line at every round figure in between.
+//
+// **Every gap is 1, 2, 2.5 or 5 of something, and there are three to six of
+// them**, however many fit the figures best. His choice on 27 September, after
+// the charts went up in 350s and 1,200s and net earnings came out at
+// €1,337.50 and €3,112.50: it was always four gaps, of any figure off a ladder,
+// with the top chosen as if every axis started at nought. It is what Google
+// Sheets does, and what his old report's charts looked like.
+//
+// **Nothing here stops at a size.** The gap comes from the power of ten the
+// figures are in, whatever it is, so a week of €22,000 gets €0 to €25,000 in
+// fives, €38,000 gets €0 to €40,000 in tens, and €120,000 gets €125,000 in
+// twenty fives, by the same rule as today's €20,000.
+//
+// Nought at the bottom for money, always, and an axis fitted to the figures
+// only where the chart asks for it (net earnings, where a bad week must not be
+// flattened into the floor); then the bottom is a round figure too, and below
+// nought when a week was. A little room above the highest week and below the
+// lowest, so no line runs along the frame. Of the gaps that fit, the one the
+// figures fill most of the height with; on a tie, the one nearest four lines.
+const ROUND_GAPS = [1, 2, 2.5, 5]
+const HEADROOM = 0.04
+
+const tidy = v => Math.round(v * 1e6) / 1e6
+
+export function roundScale(low, peak, { zero = true } = {}) {
+    const floor = zero ? Math.min(0, low) : low
+    const top = peak > floor ? peak : floor + 1
+    const span = top - floor
+    const decade = Math.pow(10, Math.floor(Math.log10(span)))
+
+    let best = null
+    for (const power of [decade / 100, decade / 10, decade, decade * 10]) {
+        for (const r of ROUND_GAPS) {
+            const step = tidy(r * power)
+            const min = zero
+                ? Math.min(0, Math.floor(low / step) * step)
+                : Math.floor((floor - span * HEADROOM) / step) * step
+            const max = Math.ceil(tidy((top + (top - min) * HEADROOM) / step)) * step
+            const gaps = Math.round((max - min) / step)
+            if (gaps < 3 || gaps > 6) continue
+            const fill = (top - floor) / (max - min)
+            const better = !best || fill > best.fill + 1e-9
+                || (Math.abs(fill - best.fill) <= 1e-9 && Math.abs(gaps - 4) < Math.abs(best.gaps - 4))
+            if (better) best = { min: tidy(min), max: tidy(max), step, gaps, fill }
+        }
+    }
+
+    return {
+        min: best.min,
+        max: best.max,
+        ticks: Array.from({ length: best.gaps + 1 }, (_, i) => tidy(best.min + i * best.step)),
+    }
+}
+
+// The scale for a set of series: what the axis runs between, and where its
+// lines go. See roundScale.
 export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
     let peak = 0
     let low = Infinity
@@ -161,7 +236,7 @@ export function scaleFor(rows, { stacked = [], lines = [], zero = true } = {}) {
     }
 
     if (low === Infinity) low = 0
-    return { min: niceMin(low, { zero }), max: niceMax(peak * 1.06) }
+    return roundScale(low, peak, { zero })
 }
 
 // One line broken into the runs of weeks that actually have a figure.

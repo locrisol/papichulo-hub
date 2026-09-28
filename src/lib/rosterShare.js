@@ -12,10 +12,13 @@ import { DAY_NAMES } from '@/lib/events'
 import { dayState, availabilityOn, availabilityStart } from '@/lib/availability'
 import { fullDate, shortDate } from '@/lib/dates'
 import {
-    weekRows, dayTotals, endLabel, shortTime, breakLabel, fmtHours, hoursForDate, shiftEdges,
+    weekRows, dayTotals, endLabel, shortTime, dayBreakLabels, fmtHours, hoursForDate, shiftEdges,
 } from '@/lib/roster'
 import { wholeDaysOn, holidayHoursInWeek } from '@/lib/absences'
-import { extrasFor, extraLabel } from '@/lib/dayExtras'
+import { extraLabel, whatIsOn } from '@/lib/dayExtras'
+import { rowsOn, chipWords, ownRows, sharedRows, placeName } from '@/lib/nearby'
+import { onDate, showsOnRoster, kindLabel, bandsForWeek, labelsOf } from '@/lib/diary'
+import { bankHolidayFor, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 
 // A day somebody is not there, as it goes out.
 //
@@ -55,8 +58,8 @@ export function shareName(restaurantName, weekStart, extension) {
 // it does on screen, so nobody can read a finishing time off a printed copy that
 // the screen never showed them.
 export function weekTable({
-    dates, employees, shifts, dayNotes, events, openingHours, restaurantName, absences,
-    standingNote, today,
+    dates, employees, shifts, dayNotes, nearby, nearbyPlaces, diary, openingHours, restaurantName,
+    absences, standingNote, today,
 }) {
     // The first date somebody's availability is allowed to say anything about.
     // Taken as an argument so it can be pinned in a test rather than moving
@@ -66,10 +69,14 @@ export function weekTable({
     const noteFor = d => (dayNotes || []).find(n => n.note_date === d) || null
     const hoursFor = d => hoursForDate(openingHours, noteFor(d), d)
 
+    // The bank holiday goes on the sheet as well as on the screen, because the
+    // sheet is what is printed and put on the wall. Staff reading it should not
+    // be looking at a different week to the one that was planned.
     const head = (dates || []).map((d, i) => ({
         date: d,
         day: DAY_NAMES[i],
         label: fullDate(d),
+        holiday: bankHolidayFor(d, noteFor(d)) ? BANK_HOLIDAY_LABEL : '',
     }))
 
     const storeHours = (dates || []).map(d => {
@@ -78,11 +85,6 @@ export function weekTable({
         const hours = hoursFor(d)
         return hours ? `${hours.open} to ${hours.close}` : ''
     })
-
-    const whatIsOn = (dates || []).map(d => (events || [])
-        .filter(e => e.event_date === d)
-        .map(e => (e.event_time ? `${e.name} (doors ${shortTime(e.event_time)})` : e.name))
-        .join(', '))
 
     // A shift is kept in parts rather than as one string, because the start and
     // the finish are marked separately.
@@ -115,6 +117,10 @@ export function weekTable({
                 // looked like a day nobody had got round to filling.
                 away: wholeDaysOn(absences, row.employee.id, day.date).length > 0
                     || dayState(availabilityOn(row.employee, day.date, availableFrom), day.date) === 'none',
+                // The day's breaks rather than each shift's, the same as the
+                // screen. A split day where neither stretch earns one printed
+                // No break twice, which is one fact said twice.
+                breaks: dayBreakLabels(day.shifts),
                 shifts: day.shifts.map(s => {
                     const edges = shiftEdges(s, hours)
                     const start = shortTime(s.starts_at)
@@ -125,7 +131,6 @@ export function weekTable({
                         text: `${start} - ${end}`,
                         opens: edges.opening,
                         closes: edges.closing,
-                        break: breakLabel(s.break_minutes),
                     }
                 }),
             }
@@ -138,15 +143,98 @@ export function weekTable({
     // where the column ran out, so where a line ended had nothing to do with
     // where one thing ended and the next began. They are separate things and
     // they get separate lines.
-    const deliveries = (dates || []).map(d => extrasFor(noteFor(d)).map(extraLabel))
+    // What is on from the calendar, in the same shape the deliveries are in,
+    // so neither sheet has to learn about a new kind of thing. A week printed
+    // and pinned up that leaves the catering off is worse than one that never
+    // had it.
+    const running = (diary || []).filter(showsOnRoster)
 
-    // The same things again with the time and the name still apart, because a
-    // sheet draws them as a card each with one of the two picked out, and only
-    // the CSV wants them flattened into a string.
-    const extras = (dates || []).map(d => extrasFor(noteFor(d)))
-    const eventsOn = (dates || []).map(d => (events || [])
-        .filter(e => e.event_date === d)
-        .map(e => ({ name: e.name, time: e.event_time ? shortTime(e.event_time) : '' })))
+    // Anything covering more than one day is a band across the days it covers,
+    // the same as on screen. It used to repeat on each of them, because a flat
+    // sheet had no band to draw; now both sheets draw one, so a discount week
+    // is one bar that says what it is rather than five chips that each say it
+    // again.
+    const bands = bandsForWeek(running, dates || []).map(b => ({
+        // The labels ride on the band because a band has the width for them.
+        // The chip on a single day does not, and there the name is the part
+        // that has to survive being cut.
+        label: [
+            `${kindLabel(b.entry.kind)} (${b.entry.title})`,
+            ...labelsOf(b.entry).map(l => `[${l}]`),
+        ].join(' '),
+        kind: b.entry.kind,
+        start: b.start,
+        span: b.span,
+        runsIn: b.runsIn,
+        runsOn: b.runsOn,
+    }))
+    const banded = new Set(bandsForWeek(running, dates || []).map(b => b.entry.id))
+
+    // The one place big enough for a row of its own, drawn as its own band
+    // rather than in among the deliveries. **The sheet says what the screen
+    // says**, which is the whole reason this is here and not just on screen: a
+    // manager reading the grid and somebody reading the picture in a WhatsApp
+    // group are reading the same week, and the Arena being a headline on one
+    // and a line in a list on the other is two versions of Thursday.
+    //
+    // The cards carry no place name. The band is named after the place, and
+    // saying it again on every card under it is the place said twice.
+    const headlines = ownRows(nearby, nearbyPlaces).map(group => ({
+        name: placeName(group.place, { short: true }),
+        kind: group.kind,
+        perDay: (dates || []).map(d => rowsOn(group.rows, d).map(row => ({
+            name: chipWords(row, { withPlace: false }),
+            time: row.time,
+            kind: row.kind,
+            checked: row.checked !== false,
+        }))),
+    }))
+
+    const shared = sharedRows(nearby)
+
+    // Everything a day has on it, in the order it happens, whichever table it
+    // came out of. The same function the screen uses, so the sheet pinned to
+    // the wall and the screen beside it cannot put the same day in two
+    // different orders.
+    //
+    // What is on next door used to be a band of its own in the app's orange,
+    // above this one. That put it in the same colour as catering and made the
+    // week read as two lists of the same thing, so it is in here now.
+    //
+    // Each one carries its kind, which is what lets a card be drawn in the
+    // colour it has on screen. Before this they were all slate, so a catering
+    // job and a Feedr drop looked identical on the one copy of the week that
+    // gets printed and pinned up.
+    const extras = (dates || []).map(d => whatIsOn(
+        onDate(running, d).filter(e => !banded.has(e.id)),
+        noteFor(d),
+        rowsOn(shared, d),
+    ).map(({ entry, extra, near }) => {
+        if (entry) {
+            return {
+                name: `${kindLabel(entry.kind)} (${entry.title})`,
+                time: entry.starts_at ? shortTime(entry.starts_at) : '',
+                kind: entry.kind,
+            }
+        }
+        if (near) {
+            return {
+                // The short name, the same as the screen. The sheet said
+                // "[Odeon Point Square]" where the grid said "[Odeon]", and
+                // his answer to that is the right one: we know it is in Point
+                // Square, we are there. A sheet and a screen of the same week
+                // disagreeing about a name is two versions of Thursday.
+                name: chipWords(near, { short: true }),
+                time: near.time,
+                kind: near.kind,
+                checked: near.checked !== false,
+            }
+        }
+        return { name: extra.name, time: extra.time, kind: 'delivery' }
+    }))
+
+    // The same list flattened, which is the only thing the CSV wants.
+    const deliveries = extras.map(list => list.map(extraLabel))
 
     const notes = (dates || []).map(d => noteFor(d)?.note || '')
     const messages = (dayNotes || []).filter(n => n.message)
@@ -163,8 +251,8 @@ export function weekTable({
         subtitle: dates?.length ? `${fullDate(dates[0])} to ${fullDate(dates[6])}` : '',
         head,
         storeHours,
-        whatIsOn,
-        eventsOn,
+        bands,
+        headlines,
         deliveries,
         extras,
         people: people.map(p => ({ ...p, holiday: p.holiday === '' ? '' : fmtHours(p.holiday) })),
@@ -191,72 +279,6 @@ export function weekTable({
 //
 // Three bytes at the front settle it. Excel, Sheets and Numbers all understand
 // them and none of them show them.
-export const CSV_BOM = '\uFEFF'
-
-// The spreadsheet.
-//
-// A comma separated file rather than a real workbook, because Sheets and Excel
-// both open one and it needs nothing added to the project. A workbook would be
-// about four hundred kilobytes of dependency to make the columns slightly
-// prettier.
-//
-// Lines end the way the standard says and the way Excel expects rather than the
-// way this file happens to be written.
-export function weekCsv(table) {
-    const rows = []
-    const escape = value => {
-        const text = String(value ?? '')
-        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-    }
-    const line = cells => rows.push(cells.map(escape).join(','))
-
-    // The holiday column is only there in a week that needs it, and every row
-    // has to agree about that or the columns walk sideways.
-    const tail = table.anyHoliday ? ['Holiday', 'Hours'] : ['Hours']
-    const pad = table.anyHoliday ? ['', ''] : ['']
-
-    line([table.title, ...table.head.map(h => h.day), ...tail])
-    line(['', ...table.head.map(h => h.label), ...pad])
-    line(['Store hours', ...table.storeHours, ...pad])
-    line(['Events', ...table.whatIsOn, ...pad])
-    if (table.deliveries.some(d => d.length)) {
-        line(['Also on', ...table.deliveries.map(d => d.join(', ')), ...pad])
-    }
-
-    for (const person of table.people) {
-        line([person.name, ...person.days.map(d => {
-            const shifts = d.shifts.map(s => s.text).join(' / ')
-            // The same rule the sheet and the picture follow. A day with a
-            // shift on it is an ordinary day, whatever somebody usually does.
-            if (d.shifts.length > 0) return shifts
-            return d.away ? AWAY.label : shifts
-        }), ...(table.anyHoliday ? [person.holiday] : []), person.hours])
-        line(['  Breaks', ...person.days.map(d => d.shifts.map(s => s.break).join(' / ')), ...pad])
-    }
-
-    line(['Notes', ...table.notes, ...pad])
-    line([
-        'Hours on the day',
-        ...table.dayHours,
-        ...(table.anyHoliday ? [''] : []),
-        table.totalHours,
-    ])
-    for (const message of table.messages) line([message])
-    if (table.standing) line([table.standing])
-
-    return rows.join('\r\n')
-}
-
-// Breaking a line of text so it fits a column.
-//
-// The measuring is handed in rather than done here, because a canvas measures
-// with its own context and a PDF measures with its own, and neither belongs in
-// a file that knows nothing about either. It also means this can be tested with
-// a ruler that counts characters.
-//
-// A single word longer than the column goes on a line of its own and overflows
-// it. Breaking a word in half to fit reads worse than a name running slightly
-// wide, and an event with one word that long has never happened.
 export function wrapLines(text, maxWidth, measure) {
     const words = String(text ?? '').split(/\s+/).filter(Boolean)
     if (words.length === 0) return []
@@ -283,10 +305,11 @@ export function wrapLines(text, maxWidth, measure) {
 // how many pixels it has, it is how big the text is next to the whole width. A
 // wide sheet with small text loses either way.
 //
-// eventLines is how many lines the busiest day of events needs. It is measured
-// by whoever is drawing, because only they know how wide their letters are.
+// deliveryLines is how many lines the busiest day needs. It is measured by
+// whoever is drawing, because only they know how wide their own letters are.
 export function sheetLayout(table, {
-    width = 1180, pad = 24, eventLines = 1, deliveryLines = 1, noteLines = 1,
+    width = 1180, pad = 24, deliveryLines = 1, noteLines = 1, bandLines = null,
+    headlineLines = null,
     nameCol: askedName, hoursCol: askedHours, holidayCol: askedHoliday,
 } = {}) {
     // The three columns either side of the week used to be fixed, and they were
@@ -307,9 +330,41 @@ export function sheetLayout(table, {
     const dayCol = (width - pad * 2 - nameCol - hoursCol - holidayCol) / 7
 
     const titleH = 62
-    const headH = 44
+    // One line taller in a week with a bank holiday in it, and not otherwise,
+    // the same rule the holiday column follows: an ordinary week keeps every
+    // pixel it had.
+    const headH = (table.head || []).some(h => h.holiday) ? 58 : 44
     const metaH = 32
-    const eventsH = Math.max(metaH, eventLines * 15 + 14)
+    // Each band as tall as its own words need, and nothing at all when the
+    // week has none.
+    //
+    // One line each was the first version and it was wrong in the one case
+    // that matters: a two day band carries a long name in two columns of room,
+    // so the words ran out of the bar and across the days beside it. They wrap
+    // now, the same as the events and the notes already do, which is the rule
+    // this sheet follows everywhere else: written out in full rather than cut
+    // short.
+    //
+    // bandLines is one count per band, measured by whoever is drawing, because
+    // only they know how wide their own lettering is and each band has its own
+    // width to fit inside.
+    const bandHeights = (table.bands || []).map(
+        (_, i) => (bandLines?.[i] ?? 1) * 14 + 8,
+    )
+    const bandsH = bandHeights.length ? bandHeights.reduce((t, n) => t + n, 0) + 6 : 0
+    // A band each for the places big enough to have their own row, **including
+    // the weeks they have nothing on**. That is the opposite of the rule Also
+    // on follows and it is deliberate: a missing row and a quiet week look the
+    // same, and only one of them has been checked. His call, and it holds for
+    // the picture as much as for the screen.
+    //
+    // Measured the same way the deliveries are, one count per band from
+    // whoever is drawing.
+    const headlineHeights = (table.headlines || []).map(
+        (_, i) => Math.max(metaH, (headlineLines?.[i] ?? 1) * 15 + 12),
+    )
+    const headlinesH = headlineHeights.reduce((t, n) => t + n, 0)
+
     // Nothing at all when no day has one, rather than an empty band. Most weeks
     // have deliveries every day and some have none all week.
     const hasDeliveries = table.deliveries?.some(d => d.length)
@@ -334,14 +389,15 @@ export function sheetLayout(table, {
     const standingH = table.standing ? 30 : 0
     const messagesH = messageLines || standingH ? 22 * messageLines + standingH + 12 : 0
 
-    const height = pad * 2 + titleH + headH + metaH + eventsH + deliveriesH
+    const height = pad * 2 + titleH + headH + metaH + bandsH + headlinesH + deliveriesH
         + bodyRows * (shiftH + breakH) + notesH + totalH + messagesH
 
     const columnX = i => pad + nameCol + i * dayCol
 
     return {
         width, height, pad, nameCol, hoursCol, holidayCol, dayCol, columnX,
-        titleH, headH, metaH, eventsH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
+        titleH, headH, metaH, bandsH, bandHeights,
+        headlineHeights, headlinesH, deliveriesH, shiftH, breakH, notesH, totalH, messagesH,
         hoursX: width - pad - hoursCol,
         holidayX: width - pad - hoursCol - holidayCol,
         holidayCentreX: width - pad - hoursCol - holidayCol / 2,

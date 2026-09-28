@@ -25,13 +25,19 @@ import { shortDate, fullDate, addDays } from '@/lib/dates'
 //
 // null means no cap from us: either there is no restriction, or the restriction
 // is of a kind the roster cannot check, like a permit tied to one employer.
+//
+// `expires` is whether it comes with a date it runs out, so whether a blank
+// expiry is a gap in the records. The team page and the weekly report both read
+// it from here, so they cannot disagree about who is missing one. Not recorded
+// counts as expiring: we do not know what they hold, and not knowing is the
+// thing worth saying.
 export const WORK_PERMISSIONS = [
-    { value: '', label: 'Not recorded', term: null, holiday: null },
-    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null },
-    { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40 },
-    { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0 },
-    { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null },
-    { value: 'stamp1g', label: 'Stamp 1G (graduate)', term: null, holiday: null },
+    { value: '', label: 'Not recorded', term: null, holiday: null, expires: true },
+    { value: 'unrestricted', label: 'No restriction (citizen, EU, Stamp 4)', term: null, holiday: null, expires: false },
+    { value: 'stamp2', label: 'Stamp 2 (student)', term: 20, holiday: 40, expires: true },
+    { value: 'stamp2a', label: 'Stamp 2A (no permission to work)', term: 0, holiday: 0, expires: true },
+    { value: 'stamp1', label: 'Stamp 1 (employment permit)', term: null, holiday: null, expires: true },
+    { value: 'stamp1g', label: 'Stamp 1G (graduate)', term: null, holiday: null, expires: true },
 ]
 
 // The food safety training a restaurant records against somebody.
@@ -292,6 +298,21 @@ export function shortestGap(shifts, weekDates) {
         const before = sorted[i - 1]
         const then = sorted[i]
         if (!thisWeek(before) && !thisWeek(then)) continue
+
+        // A split day is not a short turnaround.
+        //
+        // Majo works nine to one, goes to her English class, and comes back at
+        // half five. That is one working day with a gap in the middle of it,
+        // which is an ordinary arrangement here, and the eleven hours is about
+        // the rest between one working day and the next. Measured shift to
+        // shift it called every split day a rest problem, which is both wrong
+        // and the fastest way to teach somebody to ignore the warnings.
+        //
+        // The pair that matters is still measured: shifts are in order, so the
+        // last one of a day is what the first of the next day is compared
+        // against.
+        if (before.shift_date === then.shift_date) continue
+
         const gap = startOf(then) - endOf(before)
         if (gap < best) { best = gap; after = before }
     }
@@ -394,7 +415,12 @@ export function checkWeek({
         // has quietly run out, and finding that out during an inspection is the
         // expensive way. It warns rather than blocks: an expired certificate is
         // a course to book, not a reason the roster cannot go out.
-        if (settings.foodSafety?.on) {
+        //
+        // Nothing at all for somebody on trial. They have no certificate and
+        // are not expected to: it comes with being hired. Warning about one
+        // would put a line on the roster every week somebody does a trial shift
+        // and teach everybody to scroll past this whole section.
+        if (settings.foodSafety?.on && !employee.on_trial) {
             const food = expiryState(
                 employee.food_safety_expires, weekDates?.[0], weekEnd,
                 settings.foodSafety.warnDays,
@@ -509,7 +535,7 @@ export function checkWeek({
             const gap = shortestGap(around, weekDates)
             if (gap.hours < settings.dailyRest.hours) {
                 add('warn', 'dailyRest',
-                    `${name} has only ${gap.hours.toFixed(1)} hours between two shifts, against ${settings.dailyRest.hours}.`)
+                    `${name} has only ${gap.hours.toFixed(1)} hours between finishing one day and starting the next, against ${settings.dailyRest.hours}.`)
             }
         }
 
@@ -555,6 +581,33 @@ export function checkWeek({
 // The roster reads down a column of names, so a warning that only exists in a
 // banner above the grid is a warning nobody sees. This is what lets the row
 // itself carry it.
+// What a finding is about, which decides where it is allowed to appear.
+//
+// A work permit expiring and a food safety certificate running out are about a
+// person's paperwork. They are true all week, they are the same on Monday as on
+// Friday, and nothing about the grid changes them. Putting them beside a name
+// on a row of shifts made the row's warning mean two different things at once,
+// so a manager reading "3" beside somebody had to open it to find out whether
+// the week was wrong or the filing was.
+//
+// So paperwork lives in the banner at the top, where it is a standing fact
+// about the person, and the row keeps what is about this week: hours against a
+// limit, rest between shifts, days off, availability, a clash, a minor rostered
+// too long or too late.
+//
+// Matched on the front of the kind rather than by listing every one, so a new
+// permission check lands in the right half without anybody remembering to come
+// back here.
+const PAPERWORK = /^(permission|foodSafety)/
+
+export function isPaperwork(finding) {
+    return PAPERWORK.test(String(finding?.kind || ''))
+}
+
+export function aboutThisWeek(findings) {
+    return (findings || []).filter(f => !isPaperwork(f))
+}
+
 export function findingsByEmployee(findings) {
     const out = {}
     for (const finding of findings || []) {

@@ -1,17 +1,20 @@
 import { useState, useRef, Fragment } from 'react'
 import { cardEdge } from '@/lib/controlStyles'
 import { NO_COLOUR } from '@/lib/team'
-import { categoryDot } from '@/lib/events'
+import { kindColours } from '@/lib/diary'
+import { chipWords } from '@/lib/nearby'
 import { unavailableSpans, dayState, windowsFor, windowsLabel, availabilityOn } from '@/lib/availability'
 import { AlertBadge, AlertStrip } from '@/components/roster/RosterAlerts'
 import { hasWarnings } from '@/lib/workRules'
 import { wholeDayOn, partDayOn, kindOf } from '@/lib/absences'
 import { partWords, partDaySpans } from '@/lib/timeOff'
-import { extrasFor, extraLabel, extraLanes } from '@/lib/dayExtras'
+import { extrasFor, extraLabel, extraLanes, extraKey } from '@/lib/dayExtras'
+import { onDate, showsOnRoster, kindLabel, kindChip, kindDot } from '@/lib/diary'
 import {
     toMinutes, toTime, shiftMinutes, shiftHours, shiftEdges, endLabel, shortTime,
     breakLabel, fmtHours, timelineRange, staffPerSlot, tint, breakFor, hourLabelStep,
 } from '@/lib/roster'
+import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 
 // One day, drawn as a timeline.
 //
@@ -60,13 +63,15 @@ export default function RosterDay({
     absences,
     dayHours,
     dayNote,
-    events,
+    nearby,
+    diary,
     gridHours,
     breakRules,
     onOpenShift,
     onNewShift,
     onDragShift,
     onResizeShift,
+    onOpenDiary,
 }) {
     // Whose warnings are open, one at a time. Seven rows of amber under a grid
     // you came to read is a grid you cannot read, and a warning nobody can see
@@ -115,15 +120,37 @@ export default function RosterDay({
     // reason the middle of the day needs another pair of hands, and neither of
     // them is in the ticketing API that fills What is on.
     //
+    // The calendar's own entries share the strip now: a catering job, a meeting
+    // or a maintenance visit is the same question as a delivery, which is what
+    // else is happening today, and answering it in two places would mean
+    // reading two.
+    //
     // Split by whether it has a time. One can be put on the grid where it
     // happens and the other cannot, and pretending otherwise would mean drawing
     // an office delivery at midnight because that is where nothing sorts to.
-    const extras = extrasFor(dayNote)
+    // What is on, from the calendar, drawn on the same strip as the corporate
+    // orders. Two tables and one question: what else is happening today.
+    //
+    // Shaped into the same {name, time} the strip already packs into lanes, so
+    // a catering job at noon and Feedr at noon cannot land on top of each
+    // other. The lane packer keeps only the name and the time, so the kind is
+    // looked back up by name to colour it.
+    const commitments = onDate((diary || []).filter(showsOnRoster), date).map(e => ({
+        name: `${kindLabel(e.kind)} (${e.title})`,
+        time: e.starts_at ? String(e.starts_at).slice(0, 5) : '',
+        entry: e,
+    }))
+    const byName = new Map(commitments.map(c => [c.name.toLowerCase(), c]))
+
+    const extras = [...commitments, ...extrasFor(dayNote)]
     const extraRows = extraLanes(extras)
     const looseExtras = extras.filter(e => !e.time)
 
     const closed = dayNote?.is_closed
-    const bankHoliday = dayNote?.is_bank_holiday
+    // The date decides this now, and the tick only adds to it. Somebody had to
+    // remember to tick the October bank holiday for the day to know it was one,
+    // and a day nobody ticked looked like an ordinary Monday.
+    const bankHoliday = bankHolidayFor(date, dayNote)
 
     function beginDrag(employeeId, index, e) {
         // Only a mouse drags. A finger presses and releases, and that is a tap.
@@ -254,23 +281,33 @@ export default function RosterDay({
 
     // The tone the whole day carries. Closed beats bank holiday: a bank holiday
     // you are shut for is just shut.
-    const dayTone = closed
-        ? 'bg-red-50'
-        : bankHoliday
-            ? 'bg-blue-50'
-            : ''
+    //
+    // Gold rather than the blue it used to be. Blue is somebody's booked
+    // holiday, drawn on this same screen a few pixels away, and one screen
+    // cannot have two meanings for one colour.
+    const dayTone = closed ? 'bg-red-50' : ''
+    const dayWash = !closed && bankHoliday ? BANK_HOLIDAY_WASH : undefined
 
     return (
         <div className={`${cardEdge} bg-white overflow-hidden`}>
             {(closed || bankHoliday) && (
-                <div className={`px-4 py-2 text-sm font-semibold border-b ${
-                    closed
-                        ? 'bg-red-100 text-red-800 border-red-200'
-                        : 'bg-blue-100 text-blue-800 border-blue-200'
-                }`}>
+                <div
+                    className={`px-4 py-2 text-sm font-semibold border-b ${
+                        closed ? 'bg-red-100 text-red-800 border-red-200' : 'border-transparent'
+                    }`}
+                    style={closed
+                        ? undefined
+                        : { backgroundColor: BANK_HOLIDAY_WASH, color: BANK_HOLIDAY_INK }}
+                >
+                    {/* What hours are actually in force, rather than where
+                        they came from. The day takes the bank holiday hours on
+                        its own now, so the old sentence about nobody having
+                        marked it was saying the opposite of what happens. */}
                     {closed
                         ? 'The store is closed this day. Anything rostered here is somebody coming in anyway.'
-                        : 'Bank holiday. The bank holiday hours are the ones in force.'}
+                        : `${bankHoliday.name}.${dayHours
+                            ? ` The store is open ${dayHours.open} to ${dayHours.close}.`
+                            : ''}`}
                 </div>
             )}
 
@@ -309,30 +346,47 @@ export default function RosterDay({
                         and two concerts on one night were drawn over each
                         other, since every one of them runs from its own time to
                         the end of the day. Here each gets a line. */}
-                    {(events || []).length > 0 && (
-                        <div className="flex border-b border-border bg-accent-light/40">
-                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-accent-ink uppercase tracking-wider">
-                                Events
+                    {(nearby || []).length > 0 && (
+                        <div className="flex border-b border-border bg-slate-50/60">
+                            <div className="w-40 flex-shrink-0 px-3 py-1.5 text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
+                                Near us
                             </div>
                             <div className="flex-1 relative py-1">
-                                {(events || []).map(event => {
-                                    const at = toMinutes(event.event_time)
+                                {(nearby || []).map(row => {
+                                    // Its own colour rather than the app's
+                                    // orange. Every one of these used to be
+                                    // drawn in the accent, which is catering's
+                                    // colour, so a concert and a booked job
+                                    // were the same shade on a screen whose
+                                    // whole job is telling them apart.
+                                    const colours = kindColours(row.kind)
+                                    const at = toMinutes(row.event.event_time)
                                     const start = at < 0 ? from : Math.max(from, at)
                                     return (
                                         <span
-                                            key={event.id}
-                                            title={`${event.name} · doors ${shortTime(event.event_time)}`}
+                                            key={row.event.id}
+                                            title={chipWords(row) + (row.checked === false ? ' (found, nobody has checked it)' : '')}
                                             className="relative h-4 mb-0.5 last:mb-0 rounded-sm flex items-center px-1 overflow-hidden"
                                             style={{
                                                 marginLeft: `${pct(start)}%`,
                                                 width: `${Math.max(0, 100 - pct(start))}%`,
-                                                backgroundColor: 'rgba(188,85,43,0.18)',
-                                                borderLeft: '2px solid var(--color-accent)',
+                                                backgroundColor: colours.fill,
+                                                border: row.checked === false
+                                                    ? `1px dashed ${colours.edge}`
+                                                    : `1px solid ${colours.edge}`,
+                                                borderLeft: `3px solid ${colours.bar}`,
                                             }}
                                         >
-                                            <span className={`w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0 ${categoryDot(event.category)}`} />
-                                            <span className="text-[0.5625rem] font-semibold text-gray-700 truncate">
-                                                {shortTime(event.event_time)} {event.name}
+                                            <span
+                                                className="text-[0.5625rem] font-semibold truncate"
+                                                style={{ color: colours.ink }}
+                                            >
+                                                {row.time && `${row.time} `}
+                                                {row.kind === 'city' && 'CITY '}
+                                                {/* The short name, the same as
+                                                    the week and the sheet. One
+                                                    week, one name for a place. */}
+                                                {chipWords(row, { short: true })}
                                             </span>
                                         </span>
                                     )
@@ -343,37 +397,75 @@ export default function RosterDay({
                     )}
 
                     {/* Everything else the day has on, at the time it lands.
-                        Its own strip rather than crowded in with the Arena
-                        events above, because a concert is a run of hours and a
+                        Its own strip rather than crowded in with what is
+                        on next door, because a concert is a run of hours and a
                         delivery is a moment, and drawing them the same way
-                        would say they are the same kind of thing. */}
+                        would say they are the same kind of thing. That is the
+                        opposite of the week view, which merges them, and it is
+                        the right answer in both places: a week cell has no room
+                        to say how long anything lasts and this one is built to
+                        say exactly that. */}
                     {extras.length > 0 && (
                         <div className="flex border-b border-border bg-slate-50">
                             <div className="w-40 flex-shrink-0 px-3 py-1.5">
                                 <span className="block text-[0.625rem] font-bold text-slate-600 uppercase tracking-wider">
                                     Also on
                                 </span>
-                                {looseExtras.map(extra => (
-                                    <span key={extra.name} className="block text-[0.625rem] text-slate-500 truncate">
-                                        {extra.name}
-                                    </span>
-                                ))}
+                                {looseExtras.map((extra, i) => {
+                                    const mine = byName.get(extra.name.toLowerCase())
+                                    return mine ? (
+                                        <button
+                                            key={extraKey(extra, i)}
+                                            type="button"
+                                            onClick={() => onOpenDiary?.(mine.entry)}
+                                            className={`block w-full text-left text-[0.625rem] truncate rounded border-l-[3px] px-1 ${kindChip(mine.entry.kind)}`}
+                                        >
+                                            {extra.name}
+                                        </button>
+                                    ) : (
+                                        <span key={extraKey(extra, i)} className="block text-[0.625rem] text-slate-500 truncate">
+                                            {extra.name}
+                                        </span>
+                                    )
+                                })}
                             </div>
                             <div className="flex-1 py-1">
                                 {extraRows.map((row, i) => (
                                     <div key={i} className="relative h-4 mb-0.5 last:mb-0">
-                                        {row.map(extra => (
-                                            <span
-                                                key={extra.name}
-                                                className="absolute top-0 bottom-0 flex items-center"
-                                                style={{ left: `${pct(toMinutes(extra.time))}%` }}
-                                            >
-                                                <span className="w-0.5 self-stretch bg-slate-400 flex-shrink-0" />
-                                                <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
-                                                    {extraLabel(extra)}
+                                        {row.map((extra, i) => {
+                                            const mine = byName.get(extra.name.toLowerCase())
+                                            // kindDot is the solid colour and
+                                            // kindChip the soft fill. Pulling
+                                            // the one out of the other by
+                                            // string surgery worked and was a
+                                            // class name nobody had written
+                                            // down, which is how a colour
+                                            // quietly stops being generated.
+                                            const tick = mine ? kindChip(mine.entry.kind) : ''
+                                            const bar = mine ? kindDot(mine.entry.kind) : 'bg-slate-400'
+                                            return (
+                                                <span
+                                                    key={extraKey(extra, i)}
+                                                    className="absolute top-0 bottom-0 flex items-center"
+                                                    style={{ left: `${pct(toMinutes(extra.time))}%` }}
+                                                >
+                                                    <span className={`w-0.5 self-stretch flex-shrink-0 ${bar}`} />
+                                                    {mine ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onOpenDiary?.(mine.entry)}
+                                                            className={`text-[0.625rem] font-semibold whitespace-nowrap px-1 rounded ${tick}`}
+                                                        >
+                                                            {extraLabel(extra)}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[0.625rem] font-semibold text-slate-700 whitespace-nowrap pl-1">
+                                                            {extraLabel(extra)}
+                                                        </span>
+                                                    )}
                                                 </span>
-                                            </span>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                 ))}
                             </div>
@@ -501,8 +593,9 @@ export default function RosterDay({
                             <Fragment key={employee.id}>
                             <div
                                 className={`flex ${stripShowing ? '' : 'border-b border-border last:border-b-0'} ${
-                                    dayTone || (row % 2 ? 'bg-gray-50/40' : '')
+                                    dayTone || (dayWash ? '' : (row % 2 ? 'bg-gray-50/40' : ''))
                                 }`}
+                                style={dayWash ? { backgroundColor: dayWash } : undefined}
                             >
                                 {/* The exact minute lives in the hover rather
                                     than on the row. What matters at a glance is

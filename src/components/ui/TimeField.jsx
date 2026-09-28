@@ -37,13 +37,14 @@ export default function TimeField({
     onChange,
     dayStart = '',
     endOfDay = false,
+    free,
     allowEmpty = false,
     compact = false,
     placeholder = 'Pick a time',
     className = '',
     ...rest
 }) {
-    const options = timeOptions({ value, dayStart, endOfDay })
+    const options = timeOptions({ value, dayStart, endOfDay, free })
 
     return (
         <select
@@ -63,7 +64,17 @@ export default function TimeField({
                 back would be to cancel the whole thing. */}
             {(allowEmpty || !value) && <option value="">{placeholder}</option>}
             {options.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                // The colour is honoured on a computer and ignored on a
+                // phone, where the operating system draws the list. It is set
+                // anyway, because where it works it is read without reading,
+                // and the label carries the same thing for everywhere else.
+                <option
+                    key={o.value}
+                    value={o.value}
+                    className={o.free === false ? 'text-amber-700 bg-amber-50' : undefined}
+                >
+                    {o.label}
+                </option>
             ))}
         </select>
     )

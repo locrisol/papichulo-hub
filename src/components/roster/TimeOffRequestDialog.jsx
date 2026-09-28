@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
 import { noticeProblem, noticeDays } from '@/lib/timeOff'
-import { emailTheAsk } from '@/lib/timeOffMail'
+import { emailTheAsk } from '@/lib/rosterMail'
 import { modalFooter, secondaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 

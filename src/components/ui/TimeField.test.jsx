@@ -55,11 +55,12 @@ describe('TimeField', () => {
         expect([...screen.getByLabelText('From').options].map(o => o.value)).toContain('')
     })
 
-    it('starts the list at opening time when it is given one', () => {
+    it('starts the list before opening time, so an early start is near the top', () => {
         render(<TimeField value="" onChange={() => {}} dayStart="10:00" aria-label="Opens" />)
 
         const values = [...screen.getByLabelText('Opens').options].map(o => o.value).filter(Boolean)
-        expect(values[0]).toBe('10:00')
+        expect(values[0]).toBe('08:00')
+        expect(values.indexOf('10:00')).toBe(8)
     })
 
     it('can offer the end of the day', () => {

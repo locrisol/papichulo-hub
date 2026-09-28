@@ -1,6 +1,6 @@
 import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
@@ -9,7 +9,7 @@ import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '@/lib/product
 import { emptyAllergens } from '@/lib/allergens'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
-  heldFor, partiesIn,
+  heldFor, partiesIn, prefillFrom,
 } from '@/lib/products'
 import SearchBox from '@/components/ui/SearchBox'
 import RowActions from '@/components/ui/RowActions'
@@ -22,6 +22,7 @@ import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
 import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 
 // Every column in the table, in the order it appears.
 //
@@ -164,7 +165,19 @@ export default function ProductsPage() {
       ? current.filter(s => s !== section)
       : [...current, section]))
   }
-  const [priceForm, setPriceForm] = useState(EMPTY_PRICE)
+  // Arriving from the invoice review with a line nobody has ever bought.
+  //
+  // The review hands off rather than growing a creation flow of its own: this
+  // one asks for the allergens, the packs and the recipe, all of which a new
+  // product needs and none of which an invoice line knows anything about.
+  //
+  // **Read once, on the way in.** The link fills the form the first time the
+  // screen is built and never again, so typing over it cannot be undone by a
+  // render, and the same snapshot decides that the form should be open at all.
+  const [params] = useSearchParams()
+  const [fromLink] = useState(() => prefillFrom(params))
+
+  const [priceForm, setPriceForm] = useState(() => ({ ...EMPTY_PRICE, ...(fromLink?.price || {}) }))
   const [priceErrors, setPriceErrors] = useState({})
   const [priceCounts, setPriceCounts] = useState({})
   const [formats, setFormats] = useState(EMPTY_FORMATS)
@@ -175,7 +188,9 @@ export default function ProductsPage() {
   // of rice, so it cannot be told apart from never looking by the values alone.
   const [allergensTouched, setAllergensTouched] = useState(false)
   // One section open at a time, and both shut to start with.
-  const [openExtra, setOpenExtra] = useState(null)
+  // Open on the supplier when the link brought a price with it, since that
+  // is the half already filled in and the half worth checking.
+  const [openExtra, setOpenExtra] = useState(fromLink ? 'supplier' : null)
 
   // Whether the heading has left its resting place and is riding along.
   //
@@ -222,12 +237,12 @@ export default function ProductsPage() {
   // thing and one fewer state to keep straight than a list that has to contain
   // every section to mean nothing is being filtered.
   const [activeSections, setActiveSections] = useState([])
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(!!fromLink)
   const [editingProduct, setEditingProduct] = useState(null)
   const [showInactive, setShowInactive] = useState(() => {
     return localStorage.getItem('productsShowInactive') === 'true'
   })
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     name: '',
     section: 'Freezer',
     also_in: [],
@@ -236,9 +251,11 @@ export default function ProductsPage() {
     unit: 'KG',
     is_mix: false,
     weight_loss_pct: 0,
+    piece_weight: '',
     notes: '',
     is_active: true,
-  })
+    ...(fromLink?.form || {}),
+  }))
 
   // The filter buttons above the table. There is no separate order list any
   // more: the sort runs across the whole list, so nothing needs to know which
@@ -412,6 +429,12 @@ export default function ProductsPage() {
       newErrors.weight_loss_pct = 'Weight loss must be between 0 and 100'
     }
 
+    // Empty is a real answer: nobody has said. A number has to be more than
+    // nothing, since a piece that weighs nothing would make a case of ten free.
+    if (String(formData.piece_weight ?? '').trim() !== '' && !(parseFloat(formData.piece_weight) > 0)) {
+      newErrors.piece_weight = 'Leave it empty, or say roughly what one piece weighs'
+    }
+
     return newErrors
   }
 
@@ -505,6 +528,9 @@ export default function ProductsPage() {
     const payload = {
       ...formData,
       weight_loss_pct: parseFloat(formData.weight_loss_pct),
+      piece_weight: parseFloat(formData.piece_weight) > 0 && !formData.is_mix
+        ? parseFloat(formData.piece_weight)
+        : null,
       // Somewhere it is already kept is not somewhere it is also kept. The
       // section can be changed after the boxes are ticked, so this is cleared
       // on the way out rather than trusted on the way in.
@@ -705,7 +731,7 @@ export default function ProductsPage() {
     setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',
-      unit: 'KG', is_mix: false, weight_loss_pct: 0, notes: '', is_active: true,
+      unit: 'KG', is_mix: false, weight_loss_pct: 0, piece_weight: '', notes: '', is_active: true,
     })
     setPriceForm(EMPTY_PRICE)
     setFormats(EMPTY_FORMATS)
@@ -740,6 +766,7 @@ export default function ProductsPage() {
       unit: product.unit,
       is_mix: product.is_mix,
       weight_loss_pct: product.weight_loss_pct || 0,
+      piece_weight: product.piece_weight == null ? '' : String(Number(product.piece_weight)),
       notes: product.notes || '',
       is_active: product.is_active,
     })
@@ -997,20 +1024,14 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => {
+          <ShowInactiveButton
+            showing={showInactive}
+            onToggle={() => {
               const next = !showInactive
               setShowInactive(next)
               localStorage.setItem('productsShowInactive', next)
             }}
-            className={`px-4 py-2 border text-sm font-medium rounded-lg transition-colors ${
-              showInactive
-                ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                : 'border-border text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-          </button>
+          />
           <button
             onClick={() => { resetForm(); setShowForm(true) }}
             className={primaryButton()}

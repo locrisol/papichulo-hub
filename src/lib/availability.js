@@ -133,6 +133,35 @@ export function unavailableSpans(availability, date, from, to) {
     return spans.filter(([a, b]) => b > a)
 }
 
+// Can somebody work at this moment of the day?
+//
+// The picker asks it of every quarter hour, so the hours they said they cannot
+// do are marked before you choose one rather than after. The day view already
+// hatches them; the week view had no way to say it and you found out by picking
+// a time and reading the warning that followed.
+//
+// Null windows means nobody has said anything, and no answer is not the same as
+// no. Somebody who has never filled in their availability can work any hour.
+//
+// The two ends of a shift are different questions and it matters at the edges.
+// A window of 09:00 to 15:00 means a shift can finish at 15:00 and cannot start
+// at it: starting then would be a shift of no length inside the window and a
+// real one outside it.
+export function canWorkAt(availability, date, time, { edge = 'start' } = {}) {
+    const windows = windowsFor(availability, date)
+    if (windows === null) return true
+    if (windows.length === 0) return false
+
+    const at = toMinutes(time)
+    if (at < 0) return true
+
+    return windows.some(w => {
+        const from = toMinutes(w[0])
+        const to = toMinutes(w[1])
+        return edge === 'end' ? at > from && at <= to : at >= from && at < to
+    })
+}
+
 // Which of the four shapes a window has, read off its two ends.
 export function windowShape(window) {
     const from = toMinutes(window?.[0])

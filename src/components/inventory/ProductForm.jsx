@@ -127,6 +127,37 @@ export default function ProductForm({
           </select>
         </div>
 
+        {/* What one piece weighs, roughly. Only on something bought, since a
+            MIX is made here and never arrives in pieces. It is what lets a
+            case of ten cabbages be priced by the kilo when the product is
+            counted in kilos, or a four kilo box of limes be counted in limes
+            when the product is counted in pieces. */}
+        {!formData.is_mix && (
+          <div>
+            <label className={labelClass} htmlFor="piece-weight">
+              One piece weighs about ({formData.unit === 'Litre' ? 'litres' : 'kg'})
+            </label>
+            <input
+              id="piece-weight"
+              {...numberField({
+                value: formData.piece_weight ?? '',
+                onChange: v => onChange('piece_weight', v),
+                decimals: 3,
+              })}
+              placeholder="Leave empty"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
+            />
+            {errors.piece_weight
+              ? <p className="text-xs text-red-600 mt-1">{errors.piece_weight}</p>
+              : (
+                <p className={hintClass}>
+                  Only for something sold by the piece and counted by weight, or the other way
+                  round: a cabbage, a lime, an avocado. Roughly is fine.
+                </p>
+              )}
+          </div>
+        )}
+
         {/* Only on something we make. It is about what a batch loses between
             the raw weight going in and the finished weight coming out, which
             is not a question you can ask about a case of tomatoes. */}

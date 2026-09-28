@@ -129,6 +129,30 @@ on conflict (id) do update
       file_size_limit = 2097152,
       allowed_mime_types = array['image/png'];
 
+-- The bucket the timesheet's hours PDF waits in between being drawn in the
+-- browser and being attached by the function. **Private**, unlike the charts
+-- above: this one travels inside the mail rather than being linked from it, so
+-- nothing ever fetches it by url and a public bucket of everybody's clock times
+-- would be a leak. 8MB and PDF only. The policies are in schema.sql.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('timesheet-hours', 'timesheet-hours', false, 8388608, array['application/pdf'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 8388608,
+      allowed_mime_types = array['application/pdf'];
+
+-- The checklist photos: what staff take when they tick something, and the
+-- guide pictures managers put on a task. **Private**, because they are
+-- pictures of the kitchen and now and then of whoever is in it; the Hub shows
+-- them through signed addresses. 3MB and JPEG only, since the phone shrinks
+-- every photo before it leaves. The policies are in schema.sql.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('checklist-photos', 'checklist-photos', false, 3145728, array['image/jpeg'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 3145728,
+      allowed_mime_types = array['image/jpeg'];
+
 -- Who signed in, collected every ten minutes from auth.sessions, because
 -- Supabase keeps the session and not the history of it.
 select cron.unschedule('record-logins')

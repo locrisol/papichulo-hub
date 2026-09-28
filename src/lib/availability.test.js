@@ -20,6 +20,7 @@ import {
     copyDay,
     DAY_GROUPS,
     DAY_END,
+    canWorkAt,
 } from '@/lib/availability'
 
 // 23 August 2026 is a Sunday, so the week that follows runs Sunday to Saturday
@@ -433,5 +434,53 @@ describe('pendingAvailability', () => {
 
     it('says nothing when nothing is queued', () => {
         expect(pendingAvailability({ availability: {} }, '2026-09-10')).toBeNull()
+    })
+})
+
+describe('the hours somebody cannot work', () => {
+    // Sunday 23 August 2026 is a Sunday, so key 0.
+    const SUN = '2026-08-23'
+    const nine_to_three = { 0: [['09:00', '15:00']] }
+
+    it('says yes inside the window', () => {
+        expect(canWorkAt(nine_to_three, SUN, '09:00')).toBe(true)
+        expect(canWorkAt(nine_to_three, SUN, '12:00')).toBe(true)
+    })
+
+    it('says no outside it', () => {
+        expect(canWorkAt(nine_to_three, SUN, '08:45')).toBe(false)
+        expect(canWorkAt(nine_to_three, SUN, '17:00')).toBe(false)
+    })
+
+    // The two ends of a shift are different questions. A window of nine to
+    // three means a shift can finish at three and cannot start at it: starting
+    // then would be no shift inside the window and a real one outside it.
+    it('lets a shift finish on the edge but not start on it', () => {
+        expect(canWorkAt(nine_to_three, SUN, '15:00')).toBe(false)
+        expect(canWorkAt(nine_to_three, SUN, '15:00', { edge: 'end' })).toBe(true)
+        expect(canWorkAt(nine_to_three, SUN, '09:00', { edge: 'end' })).toBe(false)
+    })
+
+    // No answer is not the same as no. Somebody who has never filled this in
+    // can work any hour, and marking their whole day would be a lie.
+    it('allows everything when nobody has said anything', () => {
+        expect(canWorkAt(null, SUN, '03:00')).toBe(true)
+        expect(canWorkAt({}, SUN, '03:00')).toBe(true)
+    })
+
+    it('refuses everything on a day they said they cannot do', () => {
+        expect(canWorkAt({ 0: [] }, SUN, '12:00')).toBe(false)
+    })
+
+    it('takes two windows with a gap in the middle', () => {
+        const split = { 0: [['09:00', '13:00'], ['17:30', '23:00']] }
+        expect(canWorkAt(split, SUN, '10:00')).toBe(true)
+        expect(canWorkAt(split, SUN, '15:00')).toBe(false)
+        expect(canWorkAt(split, SUN, '18:00')).toBe(true)
+    })
+
+    it('does not throw on a time it cannot read', () => {
+        expect(canWorkAt(nine_to_three, SUN, '')).toBe(true)
+        expect(canWorkAt(nine_to_three, SUN, 'nonsense')).toBe(true)
     })
 })

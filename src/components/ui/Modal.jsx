@@ -18,6 +18,13 @@ import { cardEdge, closeButton, modalHeader } from '@/lib/controlStyles'
 export default function Modal({ title, onClose, children, width = 'max-w-lg' }) {
     const panel = useRef(null)
 
+    // Whether the press that ends in a click began on the overlay itself. The
+    // browser sends a click to whatever holds both the press and the release,
+    // so selecting text in a box and letting go a little outside the dialog was
+    // a click on the overlay, and it closed with everything typed in it. Only a
+    // press and a release both on the overlay close it now.
+    const pressedOutside = useRef(false)
+
     // Escape closes it, which is what a dialog is expected to do and what the
     // browser box it replaced already did.
     useEffect(() => {
@@ -39,7 +46,12 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
     return (
         <div
             className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-            onClick={onClose}
+            onPointerDown={e => { pressedOutside.current = e.target === e.currentTarget }}
+            onPointerUp={e => { if (e.target !== e.currentTarget) pressedOutside.current = false }}
+            onClick={e => {
+                if (pressedOutside.current && e.target === e.currentTarget) onClose()
+                pressedOutside.current = false
+            }}
             role="dialog"
             aria-modal="true"
             aria-label={typeof title === 'string' ? title : undefined}
@@ -47,8 +59,8 @@ export default function Modal({ title, onClose, children, width = 'max-w-lg' }) 
             <div
                 ref={panel}
                 className={`${cardEdge} bg-white w-full ${width} max-h-[85vh] overflow-hidden flex flex-col`}
-                // A click inside must not reach the overlay behind it, or every
-                // click in the form would close the dialog.
+                // A click inside stops here, so it never reaches the overlay or
+                // whatever the dialog was opened from.
                 onClick={e => e.stopPropagation()}
             >
                 <div className={`${modalHeader} flex items-center justify-between gap-3`}>

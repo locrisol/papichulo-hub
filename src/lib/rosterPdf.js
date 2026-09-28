@@ -1,4 +1,10 @@
 import { sheetLayout, shareName, wrapLines, AWAY } from '@/lib/rosterShare'
+import { kindColours } from '@/lib/diary'
+
+// The PDF works in three numbers rather than a string of six letters. One
+// place that knows how to turn one into the other, so a colour written down
+// once in lib/diary reaches both sheets and the screen unchanged.
+const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
 
 // jsPDF is fetched when somebody asks for a PDF, not when the screen opens.
 //
@@ -22,7 +28,6 @@ async function loadJsPdf() {
 // Everything comes off weekTable, the same shape the screen reads.
 const GREEN = [24, 47, 36]
 const SLATE = [232, 236, 239]
-const WARM = [240, 232, 224]
 const RED = [185, 28, 28]
 // The week's own total, which is not one of the seven days beside it.
 const ACCENT = [194, 65, 12]
@@ -45,7 +50,10 @@ const RULE_ROW = { rgb: [120, 113, 100], width: 1.1 }
 const RULE_DAY = { rgb: [168, 161, 149], width: 0.7 }
 const RULE_SOFT = { rgb: [225, 220, 212], width: 0.4 }
 
-export async function weekPdf(table, restaurantName, weekStart) {
+// save is an option only so a test can build a page without putting a file on
+// somebody's disk. It defaults to saving, because that is what every caller in
+// the app wants and a flag nobody passes should do the obvious thing.
+export async function weekPdf(table, restaurantName, weekStart, { save = true } = {}) {
     const pdf = new (await loadJsPdf())({ unit: 'pt', format: 'a4', orientation: 'landscape' })
     const pageWidth = pdf.internal.pageSize.getWidth()
 
@@ -106,12 +114,6 @@ export async function weekPdf(table, restaurantName, weekStart) {
         lines: wrapLines(`${lead}${tail}`, probe.dayCol - 26, t => pdf.getTextWidth(t)),
     })
 
-    const eventCards = (table.eventsOn || []).map(list => list.map(
-        e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
-    ))
-    const eventLines = eventCards.map(
-        cards => cards.reduce((t, c) => t + c.lines.length + 0.5, 0),
-    )
     // A card each rather than a line each. Two things on a Wednesday read as
     // one paragraph when they are plain lines, and the time is picked out
     // because a delivery at eleven and a delivery at three are different
@@ -123,20 +125,49 @@ export async function weekPdf(table, restaurantName, weekStart) {
     //
     // Measured in lines because that is the currency the layout works in.
     const CHIP_PAD_LINES = 1
-    const chipsPerDay = (table.extras || []).map(list => list.map(
-        extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
-    ))
+    const headlineCards = (table.headlines || []).map(one => one.perDay.map(list => list.map(e => ({
+        ...cardFor(e.time || e.name, e.time ? ` ${e.name}` : ''),
+        colours: kindColours(e.kind),
+        checked: e.checked !== false,
+    }))))
+
+    const chipsPerDay = (table.extras || []).map(list => list.map(extra => ({
+        ...cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
+        // The colour it has on screen. Every card on this band used to be
+        // slate, so a catering job and a Feedr drop looked identical on the one
+        // copy of the week that gets printed and pinned up.
+        colours: kindColours(extra.kind),
+        checked: extra.checked !== false,
+    })))
     const dayChipLines = chipsPerDay.map(
         chips => chips.reduce((t, c) => t + c.lines.length + CHIP_PAD_LINES, 0),
     )
     const noteLines = table.notes.map(
         v => wrapLines(v, probe.dayCol - 8, t => pdf.getTextWidth(t)),
     )
+    // Each band measured against its own width, which is however many day
+    // columns it runs across rather than one of them. Without this the words
+    // ran out of the bar and across the days beside it.
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'bold')
+    const bandWords = (table.bands || []).map(band => [
+        band.runsIn ? '‹' : '', band.label, band.runsOn ? '›' : '',
+    ].filter(Boolean).join(' '))
+    const bandLines = bandWords.map((words, i) => wrapLines(
+        words,
+        probe.dayCol * table.bands[i].span - 22,
+        t => pdf.getTextWidth(t),
+    ))
+
     const l = sheetLayout(table, {
         width: pageWidth,
         pad: 24,
         ...cols,
-        eventLines: Math.max(1, ...eventLines),
+        bandLines: bandLines.map(lines => lines.length),
+        headlineLines: headlineCards.map(days => Math.max(
+            1,
+            ...days.map(cards => cards.reduce((t, c) => t + c.lines.length + 1, 0)),
+        )),
         deliveryLines: Math.max(1, ...dayChipLines),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
@@ -214,10 +245,17 @@ export async function weekPdf(table, restaurantName, weekStart) {
     const headTop = y
     box(l.pad, y, pageWidth - l.pad * 2, h(l.headH), GREEN)
     at('STAFF', l.pad + 8, y + h(l.headH) / 2 + 3, { size: 8, style: 'bold', rgb: [255, 255, 255] })
+    const GOLD = [232, 200, 120]
+    // The same wash the screen uses, as the numbers a PDF wants.
+    const GOLD_WASH = [251, 244, 226]
     table.head.forEach((head, i) => {
         const x = l.columnX(i) + l.dayCol / 2
         at(head.day.toUpperCase(), x, y + h(16), { align: 'center', size: 8, style: 'bold', rgb: [255, 255, 255] })
         at(head.label, x, y + h(30), { align: 'center', size: 7, rgb: [225, 230, 226] })
+        // Gold on the green, the same as every screen shows it.
+        if (head.holiday) {
+            at(head.holiday.toUpperCase(), x, y + h(44), { align: 'center', size: 7, style: 'bold', rgb: GOLD })
+        }
     })
     if (l.holidayCol) {
         at('HOLIDAY', l.holidayCentreX, y + h(l.headH) / 2 + 3, {
@@ -234,6 +272,9 @@ export async function weekPdf(table, restaurantName, weekStart) {
     box(l.pad, y, pageWidth - l.pad * 2, h(l.metaH), SLATE)
     at('STORE HOURS', l.pad + 8, y + h(l.metaH) / 2 + 3, { size: 7, style: 'bold', rgb: [51, 65, 85] })
     table.storeHours.forEach((v, i) => {
+        // The whole column, a row at a time, because rows paint their own
+        // backgrounds after this point and would cover one tall rectangle.
+        if (table.head[i]?.holiday) box(l.columnX(i), y, l.dayCol, h(l.metaH), GOLD_WASH)
         at(v, l.columnX(i) + l.dayCol / 2, y + h(l.metaH) / 2 + 3, {
             align: 'center', size: 7, rgb: [51, 65, 85], max: l.dayCol - 8,
         })
@@ -270,10 +311,19 @@ export async function weekPdf(table, restaurantName, weekStart) {
         const centre = x + width / 2
 
         cards.forEach((card, n) => {
-            pdf.setFillColor(255, 255, 255)
-            pdf.setDrawColor(...edge)
+            const own = card.colours
+            pdf.setFillColor(...(own ? rgbOf(own.fill) : [255, 255, 255]))
+            pdf.setDrawColor(...(own ? rgbOf(own.edge) : edge))
             pdf.setLineWidth(0.4)
+            // Dashed means nobody has checked it: a model read it off a page
+            // and no person has looked at it yet. The same mark the screen
+            // uses, because this is the same week.
+            if (card.checked === false) pdf.setLineDashPattern([1, 0.8], 0)
             pdf.roundedRect(x, top, width, heights[n], h(3), h(3), 'FD')
+            pdf.setLineDashPattern([], 0)
+            // The solid tick down the left, the same as a band wears, so the
+            // colour survives a black and white printer badly.
+            if (own) box(x, top + 0.4, 1.2, heights[n] - 0.8, rgbOf(own.bar))
 
             let ty = top + padY + lineH * 0.75
             // How much of the picked out half is already behind us. A long
@@ -305,14 +355,60 @@ export async function weekPdf(table, restaurantName, weekStart) {
         })
     }
 
-    // Written out in full over as many lines as it needs, rather than cut short.
-    box(l.pad, y, pageWidth - l.pad * 2, h(l.eventsH), WARM)
-    at('EVENTS', l.pad + 8, y + h(l.eventsH) / 2 + 3, { size: 7, style: 'bold', rgb: [154, 74, 38] })
-    eventCards.forEach((cards, i) => drawCards(cards, i, y, l.eventsH, [154, 74, 38], [222, 184, 160]))
-    y += h(l.eventsH)
-    bandRule()
+    let bandsTop = 0
+    let bandsBottom = 0
 
-    // ---- everything else the day has on
+    // ---- what runs across the week, as one bar each
+    //
+    // A discount week is one thing, so it is drawn once across the days it
+    // covers rather than as a chip repeated on each of them. The arrows say it
+    // began before this week or carries on after it.
+    if (l.bandsH) {
+        bandsTop = y
+        let bandY = y + h(3)
+        table.bands.forEach((band, i) => {
+            const colours = kindColours(band.kind)
+            const height = h(l.bandHeights[i])
+            const x = l.columnX(band.start)
+            const w = l.dayCol * band.span
+            // Filled, then a line round it, then the solid tick down the left.
+            // Without the outline a pale fill on a white sheet gave no answer
+            // to the one thing the band is for, which is when it stops.
+            pdf.setFillColor(...rgbOf(colours.fill))
+            pdf.setDrawColor(...rgbOf(colours.edge))
+            pdf.setLineWidth(0.4)
+            pdf.roundedRect(x + 2, bandY, w - 4, height - h(4), h(3), h(3), 'FD')
+            box(x + 2, bandY, 3, height - h(4), rgbOf(colours.bar))
+            bandLines[i].forEach((line, n) => {
+                at(line, x + 9, bandY + h(10) + n * h(14), {
+                    size: 7, style: 'bold', rgb: rgbOf(colours.ink),
+                })
+            })
+            bandY += height
+        })
+        bandsBottom = y + h(l.bandsH)
+        y += h(l.bandsH)
+        bandRule()
+    }
+
+    // ---- the one place big enough for a row of its own
+    ;(table.headlines || []).forEach((one, i) => {
+        const bandH = l.headlineHeights[i]
+        if (!bandH) return
+        const colours = kindColours(one.kind)
+        box(l.pad, y, pageWidth - l.pad * 2, h(bandH), rgbOf(colours.fill))
+        at(one.name.toUpperCase(), l.pad + 8, y + h(bandH) / 2 + 3, {
+            size: 7, style: 'bold', rgb: rgbOf(colours.ink),
+        })
+        headlineCards[i].forEach((cards, d) =>
+            drawCards(cards, d, y, bandH, rgbOf(colours.ink), rgbOf(colours.edge)))
+        y += h(bandH)
+        bandRule()
+    })
+
+    // ---- everything else the day has on. One band, because what is on next
+    // door used to have a second one in the app's own orange, which put it in
+    // the same colour as catering.
     if (l.deliveriesH) {
         box(l.pad, y, pageWidth - l.pad * 2, h(l.deliveriesH), [241, 245, 249])
         at('ALSO ON', l.pad + 8, y + h(l.deliveriesH) / 2 + 3, {
@@ -334,6 +430,9 @@ export async function weekPdf(table, restaurantName, weekStart) {
         const top = y
         const rowH = h(l.shiftH + l.breakH)
         if (row % 2 === 0) box(l.pad, y, pageWidth - l.pad * 2, rowH, [252, 251, 249])
+        table.head.forEach((head, i) => {
+            if (head.holiday) box(l.columnX(i), y, l.dayCol, rowH, GOLD_WASH)
+        })
 
         // Down the middle of the whole row, breaks included, rather than of
         // the shift half of it.
@@ -387,8 +486,9 @@ export async function weekPdf(table, restaurantName, weekStart) {
             day.shifts.forEach((s, n) => {
                 marked(s, x, timesMiddle - ((stack - 1) * h(11)) / 2 + n * h(11))
             })
-            day.shifts.forEach((s, n) => {
-                at(s.break, x, breaksMiddle - ((stack - 1) * h(9)) / 2 + n * h(9), {
+            const breakStack = day.breaks.length
+            day.breaks.forEach((words, n) => {
+                at(words, x, breaksMiddle - ((breakStack - 1) * h(9)) / 2 + n * h(9), {
                     align: 'center', size: 6, rgb: RED, max: l.dayCol - 6,
                 })
             })
@@ -469,7 +569,14 @@ export async function weekPdf(table, restaurantName, weekStart) {
     // the store hours, the events and what each day came to floating in seven
     // unmarked spaces.
     const edges = []
-    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    // The six inside the week, which are the only ones the bands interrupt.
+    // The edges either side are the sides of a table rather than marks inside
+    // it, and a table with no right hand side looks unfinished.
+    const betweenDays = new Set()
+    for (let i = 0; i <= 7; i++) {
+        edges.push(l.columnX(i))
+        if (i > 0 && i < 7) betweenDays.add(l.columnX(i))
+    }
     if (l.holidayCol) edges.push(l.holidayX)
     edges.push(l.hoursX)
     pdf.setLineWidth(0.5)
@@ -481,7 +588,12 @@ export async function weekPdf(table, restaurantName, weekStart) {
         pdf.line(x, gridBottom - h(l.totalH), x, gridBottom)
         pdf.setDrawColor(...RULE_DAY.rgb)
         pdf.setLineWidth(RULE_DAY.width)
-        pdf.line(x, gridTop, x, gridBottom - h(l.totalH))
+        if (bandsBottom && betweenDays.has(x)) {
+            pdf.line(x, gridTop, x, bandsTop)
+            pdf.line(x, bandsBottom, x, gridBottom - h(l.totalH))
+        } else {
+            pdf.line(x, gridTop, x, gridBottom - h(l.totalH))
+        }
         pdf.setLineWidth(0.5)
     }
 
@@ -505,5 +617,6 @@ export async function weekPdf(table, restaurantName, weekStart) {
         at(table.standing, l.pad + 8, noteY + noteH / 2 + 2.5, { size: 8, rgb: [107, 83, 16] })
     }
 
-    pdf.save(shareName(restaurantName, weekStart, 'pdf'))
+    if (save) pdf.save(shareName(restaurantName, weekStart, 'pdf'))
+    return pdf
 }

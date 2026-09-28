@@ -9,6 +9,8 @@
 // picture cannot say something the roster did not.
 
 import { sheetLayout, wrapLines, AWAY } from '@/lib/rosterShare'
+import { kindColours } from '@/lib/diary'
+import { BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 
 const INK = '#111827'
 const MUTED = '#6b7280'
@@ -25,7 +27,6 @@ const ACCENT = '#c2410c'
 const FAINT = '#ece8e2'
 const GREEN = '#182F24'
 const CREAM = '#f7f5f0'
-const WARM = '#f0e8e0'
 const SLATE = '#e8ecef'
 const RED = '#b91c1c'
 // The same yellow the spreadsheet uses on an opening or a closing time.
@@ -93,20 +94,48 @@ export function drawWeek(canvas, table) {
     })
 
     const CARD_PAD_LINES = 1
-    const eventCards = (table.eventsOn || []).map(list => list.map(
-        e => cardFor(e.name, e.time ? ` (doors ${e.time})` : ''),
-    ))
-    const chipsPerDay = (table.extras || []).map(list => list.map(
-        extra => cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
-    ))
+    // A band each for the places with a row of their own, measured the same way
+    // the deliveries below are.
+    const headlineCards = (table.headlines || []).map(one => one.perDay.map(list => list.map(e => ({
+        ...cardFor(e.time || e.name, e.time ? ` ${e.name}` : ''),
+        colours: kindColours(e.kind),
+        checked: e.checked !== false,
+    }))))
+
+    const chipsPerDay = (table.extras || []).map(list => list.map(extra => ({
+        ...cardFor(extra.time || extra.name, extra.time ? ` ${extra.name}` : ''),
+        // The colour it has on screen. Every card on this band used to be
+        // slate, so a catering job and a Feedr drop looked identical on the one
+        // copy of the week that gets printed and pinned up.
+        colours: kindColours(extra.kind),
+        checked: extra.checked !== false,
+    })))
     const cardLines = cards => cards.reduce((t, x) => t + x.lines.length + CARD_PAD_LINES, 0)
 
     const noteLines = table.notes.map(
         v => wrapLines(v, probe.dayCol - 12, t => c.measureText(t).width),
     )
+    // Each band measured against its own width, which is however many day
+    // columns it runs across rather than one of them.
+    //
+    // c.font directly, the same as the measuring above it. The font helper is
+    // declared further down with the rest of the drawing, so calling it here
+    // threw before a single pixel was drawn and the button said only that it
+    // could not make the picture.
+    c.font = FONT(11, '700')
+    const bandWords = (table.bands || []).map(band => [
+        band.runsIn ? '\u2039' : '', band.label, band.runsOn ? '\u203a' : '',
+    ].filter(Boolean).join(' '))
+    const bandLines = bandWords.map((words, i) => wrapLines(
+        words,
+        probe.dayCol * table.bands[i].span - 22,
+        t => c.measureText(t).width,
+    ))
+
     const l = sheetLayout(table, {
         ...cols,
-        eventLines: Math.max(1, ...eventCards.map(cardLines)),
+        bandLines: bandLines.map(lines => lines.length),
+        headlineLines: headlineCards.map(days => Math.max(1, ...days.map(cardLines))),
         deliveryLines: Math.max(1, ...chipsPerDay.map(cardLines)),
         noteLines: Math.max(1, ...noteLines.map(lines => lines.length)),
     })
@@ -168,12 +197,21 @@ export function drawWeek(canvas, table) {
         const centre = x + width / 2
 
         cards.forEach((card, n) => {
+            const own = card.colours
             roundedPath(x, top, width, heights[n], 5)
-            c.fillStyle = '#ffffff'
+            c.fillStyle = own?.fill || '#ffffff'
             c.fill()
-            c.strokeStyle = edge
+            c.strokeStyle = own?.edge || edge
             c.lineWidth = 1
+            // Dashed means nobody has checked it: a model read it off a page
+            // and no person has looked at it yet. The same mark the screen
+            // uses, because this is the same week.
+            if (card.checked === false) c.setLineDash([4, 3])
             c.stroke()
+            c.setLineDash([])
+            // The solid tick down the left, the same as a band wears, so the
+            // colour survives being looked at from across a kitchen.
+            if (own) box(x, top + 1, 3, heights[n] - 2, own.bar)
 
             let ty = top + padY + lineH / 2
             // How much of the picked out half is already behind us, so a name
@@ -277,6 +315,11 @@ export function drawWeek(canvas, table) {
         text(h.day.toUpperCase(), x, y + 15, { align: 'center', colour: '#ffffff' })
         font(11)
         text(h.label, x, y + 31, { align: 'center', colour: 'rgba(255,255,255,0.75)' })
+        // Gold on the green, the same as every screen shows it.
+        if (h.holiday) {
+            font(11, '700')
+            text(h.holiday.toUpperCase(), x, y + 47, { align: 'center', colour: BANK_HOLIDAY_ON_DARK })
+        }
     })
     font(13, '700')
     if (l.holidayCol) {
@@ -292,6 +335,10 @@ export function drawWeek(canvas, table) {
     text('STORE HOURS', l.pad + 12, y + l.metaH / 2, { colour: '#334155' })
     font(12)
     table.storeHours.forEach((v, i) => {
+        // The whole column, a row at a time. Painted per row rather than as one
+        // tall rectangle because rows paint their own backgrounds after this
+        // point and would cover it.
+        if (table.head[i]?.holiday) box(l.columnX(i), y, l.dayCol, l.metaH, BANK_HOLIDAY_WASH)
         text(v, l.columnX(i) + l.dayCol / 2, y + l.metaH / 2, {
             align: 'center', colour: '#334155', max: l.dayCol - 10,
         })
@@ -301,15 +348,70 @@ export function drawWeek(canvas, table) {
     rule(l.pad, y + l.metaH, l.width - l.pad, y + l.metaH, RULE_ROW, 2)
     y += l.metaH
 
-    // ---- what is on, written out in full rather than cut short
-    box(l.pad, y, l.width - l.pad * 2, l.eventsH, WARM)
-    font(11, '700')
-    text('EVENTS', l.pad + 12, y + l.eventsH / 2, { colour: '#9a4a26' })
-    eventCards.forEach((cards, i) => drawCards(cards, i, y, l.eventsH, '#9a4a26', '#deb8a0'))
-    rule(l.pad, y + l.eventsH, l.width - l.pad, y + l.eventsH, RULE_ROW, 2)
-    y += l.eventsH
+    let bandsTop = 0
+    let bandsBottom = 0
 
-    // ---- everything else the day has on, when any of it does
+    // ---- what runs across the week, as one bar each
+    //
+    // A discount week is one thing, so it is drawn once across the days it
+    // covers rather than as a chip repeated on each of them. The arrows say it
+    // began before this week or carries on after it, which a bar clipped at the
+    // edge of the sheet cannot say on its own.
+    if (l.bandsH) {
+        box(l.pad, y, l.width - l.pad * 2, l.bandsH, '#ffffff')
+        font(11, '700')
+        // Named like every other row. A blank left column read as a strip of
+        // colour nobody had labelled, on a sheet where STORE HOURS, EVENTS and
+        // ALSO ON all say what they are.
+        text('ONGOING', l.pad + 12, y + l.bandsH / 2, { colour: '#475569' })
+
+        bandsTop = y
+        let bandY = y + 3
+        table.bands.forEach((band, i) => {
+            const colours = kindColours(band.kind)
+            const height = l.bandHeights[i]
+            const x = l.columnX(band.start)
+            const w = l.dayCol * band.span
+            // Filled, then a line round it, then the solid tick down the
+            // left. Without the outline a pale fill on a white sheet gave no
+            // answer to the one thing the band is for, which is when it stops.
+            roundedPath(x + 2, bandY, w - 4, height - 4, 4)
+            c.fillStyle = colours.fill
+            c.fill()
+            c.strokeStyle = colours.edge
+            c.lineWidth = 1
+            c.stroke()
+            box(x + 2, bandY, 3, height - 4, colours.bar)
+            bandLines[i].forEach((line, n) => {
+                text(line, x + 9, bandY + 11 + n * 14, { colour: colours.ink })
+            })
+            bandY += height
+        })
+        bandsBottom = y + l.bandsH
+        rule(l.pad, y + l.bandsH, l.width - l.pad, y + l.bandsH, RULE_ROW, 2)
+        y += l.bandsH
+    }
+
+    // ---- the one place big enough for a row of its own
+    //
+    // Named after the place rather than "Events", and in its own colour rather
+    // than the app's orange, which is catering's and was the reason this was
+    // folded away in the first place.
+    ;(table.headlines || []).forEach((one, i) => {
+        const bandH = l.headlineHeights[i]
+        if (!bandH) return
+        const colours = kindColours(one.kind)
+        box(l.pad, y, l.width - l.pad * 2, bandH, colours.fill)
+        font(11, '700')
+        text(one.name.toUpperCase(), l.pad + 12, y + bandH / 2, { colour: colours.ink })
+        headlineCards[i].forEach((cards, d) => drawCards(cards, d, y, bandH, colours.ink, colours.edge))
+        rule(l.pad, y + bandH, l.width - l.pad, y + bandH, RULE_ROW, 2)
+        y += bandH
+    })
+
+    // ---- everything else the day has on, written out in full rather than cut
+    // short. One band, because what is on next door used to have a second one
+    // in the app's own orange, which put it in the same colour as catering.
     if (l.deliveriesH) {
         box(l.pad, y, l.width - l.pad * 2, l.deliveriesH, '#f1f5f9')
         font(11, '700')
@@ -340,6 +442,9 @@ export function drawWeek(canvas, table) {
 
         person.days.forEach((day, i) => {
             const x = l.columnX(i) + l.dayCol / 2
+            if (table.head[i]?.holiday) {
+                box(l.columnX(i), top, l.dayCol, l.shiftH + l.breakH, BANK_HOLIDAY_WASH)
+            }
 
             // A day they are not about, filled and said in one word. Which kind
             // of not about is deliberately not here: the manager sees that on
@@ -360,11 +465,11 @@ export function drawWeek(canvas, table) {
                 marked(s, x, y + l.shiftH / 2 + (n - (day.shifts.length - 1) / 2) * 15)
             })
             font(10)
-            const stack = day.shifts.length
-            day.shifts.forEach((s, n) => {
+            const stack = day.breaks.length
+            day.breaks.forEach((words, n) => {
                 // In the middle of the break half rather than hard against the
                 // line above it, which left the row bottom heavy.
-                text(s.break, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
+                text(words, x, y + l.shiftH + l.breakH / 2 + (n - (stack - 1) / 2) * 11, {
                     align: 'center', colour: RED, max: l.dayCol - 8,
                 })
             })
@@ -432,14 +537,35 @@ export function drawWeek(canvas, table) {
     // covered the people, which left the store hours, the events and what each
     // day came to floating in seven unmarked spaces.
     const edges = []
-    for (let i = 0; i <= 7; i++) edges.push(l.columnX(i))
+    // The six inside the week, which are the only ones the bands interrupt.
+    const betweenDays = new Set()
+    for (let i = 0; i <= 7; i++) {
+        edges.push(l.columnX(i))
+        if (i > 0 && i < 7) betweenDays.add(l.columnX(i))
+    }
     if (l.holidayCol) edges.push(l.holidayX)
     edges.push(l.hoursX)
     for (const x of edges) {
         // White over the two green bands, because a cream rule on dark green is
         // no rule at all.
         rule(x, headTop, x, gridTop, 'rgba(255,255,255,0.3)')
-        rule(x, gridTop, x, gridBottom - l.totalH, RULE_DAY)
+
+        // Only the dividers between one weekday and the next stop at the
+        // bands. A bar running Tuesday to Saturday cut into five by them reads
+        // as five things again, which is what the band was drawn to stop.
+        //
+        // The edges of the week are a different job and they carry on: the one
+        // before Sunday closes the names off, and the ones after Saturday hold
+        // Holiday and Hours apart. Those are the sides of a table rather than
+        // marks inside it, and a table with no right hand side looks unfinished
+        // whatever is in the row.
+        if (bandsBottom && betweenDays.has(x)) {
+            rule(x, gridTop, x, bandsTop, RULE_DAY)
+            rule(x, bandsBottom, x, gridBottom - l.totalH, RULE_DAY)
+        } else {
+            rule(x, gridTop, x, gridBottom - l.totalH, RULE_DAY)
+        }
+
         rule(x, gridBottom - l.totalH, x, gridBottom, 'rgba(255,255,255,0.3)')
     }
 

@@ -8,8 +8,10 @@ import { fmtMoney, num } from '@/lib/format'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
+import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { friendlyError } from '@/lib/errors'
-import { secondaryButton, card, dateField, jumpButton, jumpLabel, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, card, dateField, checkbox, labelClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { useConfirm } from '@/context/confirm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -422,21 +424,24 @@ export default function SalesPage() {
                 stacks back into one column in the same order. */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 <div>
-                    {/* Date selector */}
-                    <div className={`${card} p-4 mb-3`}>
+                    {/* Date selector. The card carries the bank holiday
+                        colour, since this screen is one day and the day is the
+                        whole of it. */}
+                    <div
+                        className={`${card} p-4 mb-3`}
+                        style={bankHolidayOn(saleDate) ? { backgroundColor: BANK_HOLIDAY_WASH } : undefined}
+                    >
                         <DateStepper
                             onBack={() => shiftDate(-1)}
                             onNext={() => shiftDate(1)}
                             backLabel="Previous day"
                             nextLabel="Next day"
                             jump={(
-                                <button
-                                    type="button"
+                                <JumpButton
+                                    isCurrent={saleDate === todayISO()}
+                                    unit="day"
                                     onClick={() => setSaleDate(todayISO())}
-                                    className={jumpButton(saleDate === todayISO())}
-                                >
-                                    {jumpLabel(saleDate === todayISO(), 'day')}
-                                </button>
+                                />
                             )}
                         >
                             <input
@@ -452,6 +457,18 @@ export default function SalesPage() {
                             reading like a stray label. */}
                         {recordId && (
                             <p className="text-xs text-amber-600 font-medium mt-2">Existing record</p>
+                        )}
+                        {/* Which one it is, not just that it is one. A day
+                            taking bank holiday money is a day to compare with
+                            the last bank holiday rather than with last Monday,
+                            and that only works if the screen says so. */}
+                        {bankHolidayOn(saleDate) && (
+                            <p
+                                className="text-xs font-bold mt-2"
+                                style={{ color: BANK_HOLIDAY_INK }}
+                            >
+                                {bankHolidayOn(saleDate).name}
+                            </p>
                         )}
                     </div>
 

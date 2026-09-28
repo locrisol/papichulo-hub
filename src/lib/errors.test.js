@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { friendlyError, isPermissionError } from '@/lib/errors'
+import { friendlyError, isPermissionError, functionError } from '@/lib/errors'
 
 describe('friendlyError', () => {
     it('gives nothing when there is no error', () => {
@@ -60,5 +60,35 @@ describe('isPermissionError', () => {
 
     it('is false when there is no error', () => {
         expect(isPermissionError(null)).toBe(false)
+    })
+})
+// supabase.functions.invoke treats any non-2xx as an error, hands back a
+// FunctionsHttpError with the response hanging off it, and leaves data null. So
+// a function that carefully answers "nothing found for that, paste the
+// coordinates instead" has that sentence thrown away, and the person sees "Edge
+// Function returned a non-2xx status code", which tells them nothing they can
+// act on. He typed a restaurant name into the address box and got exactly that.
+describe('what a function actually said', () => {
+    const refusal = (body, message = 'Edge Function returned a non-2xx status code') => ({
+        message,
+        context: { json: async () => body },
+    })
+
+    it('reads the sentence out of the body', async () => {
+        await expect(functionError(refusal({ error: 'Nothing found for "Papi Chulo". Paste the coordinates instead.' })))
+            .resolves.toBe('Nothing found for "Papi Chulo". Paste the coordinates instead.')
+    })
+
+    it('falls back when the body says nothing useful', async () => {
+        await expect(functionError(refusal({}), 'Could not reach the listings'))
+            .resolves.toBeTruthy()
+    })
+
+    // A body that is not JSON, or one already read, must not take the screen
+    // down with it.
+    it('copes with a body it cannot read', async () => {
+        const broken = { message: 'boom', context: { json: async () => { throw new Error('read') } } }
+        await expect(functionError(broken)).resolves.toBe('boom')
+        await expect(functionError(null, 'fallback')).resolves.toBe('fallback')
     })
 })

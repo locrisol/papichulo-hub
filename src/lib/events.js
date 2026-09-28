@@ -135,12 +135,17 @@ export function byDate(events) {
 // underneath the new month. That looks like a repeat and it is not: it is what
 // says the week is still going, rather than leaving a month heading sitting in
 // the middle of a week with nothing to explain it.
-export function agendaRows(events, today) {
+// dateOf is how a row says which day it is on. It defaults to the Arena's own
+// column because that is what this was written for, and the diary passes its
+// own because the headings are the same headings. One copy of the rules rather
+// than two that drift.
+export function agendaRows(events, today, dateOf = e => e.event_date) {
     const days = []
     for (const e of events || []) {
+        const date = dateOf(e)
         const last = days[days.length - 1]
-        if (last && last.date === e.event_date) last.events.push(e)
-        else days.push({ date: e.event_date, events: [e] })
+        if (last && last.date === date) last.events.push(e)
+        else days.push({ date, events: [e] })
     }
 
     const rows = []

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
     heldFor, partiesIn, canBeMenuComponent, countName,
-    inCountOrder,
+    inCountOrder, prefillLink, prefillFrom,
 } from '@/lib/products'
 
 const PRODUCTS = [
@@ -252,5 +252,41 @@ describe('inCountOrder', () => {
     it('has nothing to say about nothing', () => {
         expect(inCountOrder([])).toEqual([])
         expect(inCountOrder(null)).toEqual([])
+    })
+})
+
+describe('starting a product from somewhere else', () => {
+    const made = prefillLink('/catalogue/products', {
+        name: 'FLOUR TORTILLA 12IN',
+        section: 'Dry',
+        unit: 'KG',
+        supplierId: 's1',
+        code: '497870',
+        pricePerCase: 30.3,
+        unitsPerCase: 10,
+    })
+
+    it('carries what the invoice line knows', () => {
+        const back = prefillFrom(new URLSearchParams(made.split('?')[1]))
+        expect(back.form).toEqual({ name: 'FLOUR TORTILLA 12IN', section: 'Dry', unit: 'KG' })
+        expect(back.price).toMatchObject({
+            supplier_id: 's1', supplier_code: '497870',
+            price_per_case: '30.3', units_per_case: '10',
+        })
+    })
+
+    // Both lists are check constraints in the database, so a stray word has to
+    // fall back rather than fill in something the form cannot save.
+    it('falls back on a section or a unit the database would refuse', () => {
+        const back = prefillFrom(new URLSearchParams('new=1&name=Thing&section=Shed&unit=Barrels'))
+        expect(back.form.section).toBe('Dry')
+        expect(back.form.unit).toBe('KG')
+    })
+
+    // An ordinary visit to the catalogue must be untouched by any of this.
+    it('is nothing at all without a link asking for it', () => {
+        expect(prefillFrom(new URLSearchParams(''))).toBeNull()
+        expect(prefillFrom(new URLSearchParams('name=Thing'))).toBeNull()
+        expect(prefillFrom(null)).toBeNull()
     })
 })

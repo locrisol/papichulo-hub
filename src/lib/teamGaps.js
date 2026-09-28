@@ -1,4 +1,5 @@
 import { employeeStatus } from '@/lib/team'
+import { permissionFor } from '@/lib/workRules'
 
 // What is missing from somebody's record.
 //
@@ -18,10 +19,6 @@ import { employeeStatus } from '@/lib/team'
 //   Nothing is reported that does not apply. A citizen has no permission expiry
 //   to record, so asking for one would put an amber line against half the team
 //   for no reason at all.
-
-// The permissions that come with an expiry date. A citizen, an EU national or
-// somebody on Stamp 4 has none, so there is nothing to chase.
-const EXPIRING_PERMISSIONS = ['stamp1', 'stamp1g', 'stamp2', 'stamp2a']
 
 export function gapsFor(employee, today) {
     if (!employee) return []
@@ -45,15 +42,26 @@ export function gapsFor(employee, today) {
 
     if (!employee.work_permission) {
         add('work_permission', 'Permission to work not recorded')
-    } else if (EXPIRING_PERMISSIONS.includes(employee.work_permission)
+    } else if (permissionFor(employee.work_permission).expires
         && !employee.work_permission_expires) {
+        // A citizen, an EU national or somebody on Stamp 4 has no expiry, so
+        // there is nothing to chase.
         add('work_permission_expires', 'Permission has no expiry date')
     }
 
-    if (!employee.food_safety_level) {
-        add('food_safety_level', 'No food safety training recorded')
-    } else if (!employee.food_safety_expires) {
-        add('food_safety_expires', 'Food safety has no expiry date')
+    // Not asked of somebody on trial. His rule, and the right one: food safety
+    // training is part of being hired, nobody books a course for somebody who
+    // might do one shift, and an amber line against every trial is how a list
+    // of real gaps stops being read.
+    //
+    // A work permit is asked for above whatever happens, trial or not, because
+    // working without one is the same offence either way.
+    if (!employee.on_trial) {
+        if (!employee.food_safety_level) {
+            add('food_safety_level', 'No food safety training recorded')
+        } else if (!employee.food_safety_expires) {
+            add('food_safety_expires', 'Food safety has no expiry date')
+        }
     }
 
     return gaps

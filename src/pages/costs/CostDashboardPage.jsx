@@ -6,12 +6,15 @@ import { fmtMoney, num, fmtPct } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '@/lib/dates'
 import { resolveTarget, statusFor } from '@/lib/costTargets'
 import CostTargetModal from '@/components/costs/CostTargetModal'
-import { dateField, jumpButton, card, rowButton, jumpLabel } from '@/lib/controlStyles'
+import { dateField, card, rowButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { friendlyError } from '@/lib/errors'
 import { tendersToShow } from '@/lib/salesTenders'
+import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import WeekTakenChart from '@/components/costs/WeekTakenChart'
 import { DAY_NAMES } from '@/lib/events'
+import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_LABEL } from '@/lib/bankHolidays'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -176,7 +179,7 @@ export default function CostDashboardPage() {
             const [
                 { data: sales, error: sErr },
                 { data: tends, error: tErr },
-                { data: invoices, error: iErr },
+                { data: spend, error: iErr },
                 { data: labour, error: lErr },
                 { data: waste, error: wErr },
                 { data: overrideRows, error: oErr },
@@ -191,12 +194,21 @@ export default function CostDashboardPage() {
                     .eq('restaurant_id', restaurantId)
                     .order('sort_order')
                     .order('label'),
-                supabase.from('invoices')
-                    .select('total_amount, category')
+                // invoice_cost_by_category, not invoices. The view reads the
+                // lines where an invoice has them, the header where it does
+                // not, and takes off anything claimed back at the door and not
+                // yet credited. An invoice that came mixed cannot be held by
+                // one category on its header.
+                supabase.from('invoice_cost_by_category')
+                    .select('cost_date, category, amount')
                     .eq('restaurant_id', restaurantId)
-                    .gte('invoice_date', weekStart)
-                    .lte('invoice_date', end),
-                supabase.from('labour_entries')
+                    .gte('cost_date', weekStart)
+                    .lte('cost_date', end),
+                // labour_by_day, not labour_entries. The table is the
+                // archive and stops at the 5th of September; the view reads the
+                // timesheet for every day it covers and the archive for the
+                // rest, so the percentage is right on both sides of the join.
+                supabase.from('labour_by_day')
                     .select('labour_cost')
                     .eq('restaurant_id', restaurantId)
                     .gte('entry_date', weekStart)
@@ -220,16 +232,8 @@ export default function CostDashboardPage() {
             setSalesRows(sales || [])
             setTenders(tends || [])
 
-            setFoodCost((invoices || [])
-                .filter(i => i.category === 'food')
-                .reduce((t, i) => t + num(i.total_amount), 0))
-
-            // Packaging and cleaning are added together, matching the weekly
-            // report. They are stored apart, so splitting them later is a
-            // change here rather than a migration.
-            setPackagingCost((invoices || [])
-                .filter(i => i.category === 'packaging' || i.category === 'cleaning')
-                .reduce((t, i) => t + num(i.total_amount), 0))
+            setFoodCost(spendOn(spend, FOOD))
+            setPackagingCost(spendOn(spend, PACKAGING))
 
             setLabourCost((labour || []).reduce((t, l) => t + num(l.labour_cost), 0))
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
@@ -338,10 +342,11 @@ export default function CostDashboardPage() {
                         backLabel="Previous week"
                         nextLabel="Next week"
                     >
-                        <button type="button" onClick={() => goToWeek(weekStartOf(todayISO()))}
-                            className={`${jumpButton(isThisWeek)} w-full sm:w-auto`}>
-                            {jumpLabel(isThisWeek)}
-                        </button>
+                        <JumpButton
+                            isCurrent={isThisWeek}
+                            onClick={() => goToWeek(weekStartOf(todayISO()))}
+                            className="w-full sm:w-auto"
+                        />
                     </DateStepper>
                     <input type="date" value={pickerDate}
                         onChange={e => {
@@ -514,7 +519,21 @@ export default function CostDashboardPage() {
                         const row = salesByDate[d]
                         return (
                             <div key={d} className="flex justify-between items-center gap-3 py-1.5 border-b border-border text-sm last:border-0">
-                                <span className="text-muted whitespace-nowrap">{DAY_NAMES[i]} {shortDate(d)}</span>
+                                <span className="text-muted whitespace-nowrap">
+                                    {DAY_NAMES[i]} {shortDate(d)}
+                                    {/* Labour and sales both move on one, so a
+                                        percentage out of line on a Monday in
+                                        October has an answer written beside
+                                        it. */}
+                                    {bankHolidayOn(d) && (
+                                        <span
+                                            className="ml-1.5 text-xs font-bold"
+                                            style={{ color: BANK_HOLIDAY_INK }}
+                                        >
+                                            {BANK_HOLIDAY_LABEL}
+                                        </span>
+                                    )}
+                                </span>
                                 {!row ? (
                                     <span className="text-muted italic text-xs">nothing entered yet</span>
                                 ) : row.is_closed ? (

@@ -21,7 +21,7 @@ import UnauthorisedPage from '@/pages/auth/UnauthorisedPage'
 import RequireRole from '@/components/auth/RequireRole'
 import { ALL_ROLES, MANAGERS, RESTAURANT_CONFIG, ADMIN_ONLY } from '@/lib/access'
 import { useAuth } from '@/context/auth'
-import { homeFor } from '@/lib/access'
+import { landingFor } from '@/lib/nav'
 
 // Every screen is fetched when somebody actually opens it.
 //
@@ -36,6 +36,7 @@ import { homeFor } from '@/lib/access'
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
 const ChangesPage = lazy(() => import('@/pages/settings/ChangesPage'))
 const RestaurantPage = lazy(() => import('@/pages/settings/RestaurantPage'))
+const PreferencesPage = lazy(() => import('@/pages/settings/PreferencesPage'))
 const SuppliersPage = lazy(() => import('@/pages/inventory/SuppliersPage'))
 const ProductsPage = lazy(() => import('@/pages/inventory/ProductsPage'))
 const ProductPricesPage = lazy(() => import('@/pages/inventory/ProductPricesPage'))
@@ -53,16 +54,24 @@ const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const WeeklySalesPage = lazy(() => import('@/pages/sales/WeeklySalesPage'))
 const InvoicesPage = lazy(() => import('@/pages/invoices/InvoicesPage'))
 const InvoiceHistoryPage = lazy(() => import('@/pages/invoices/InvoiceHistoryPage'))
-const LabourPage = lazy(() => import('@/pages/costs/LabourPage'))
+const InvoiceImportPage = lazy(() => import('@/pages/invoices/InvoiceImportPage'))
+const InvoiceReviewPage = lazy(() => import('@/pages/invoices/InvoiceReviewPage'))
+const SupplierDocumentsPage = lazy(() => import('@/pages/invoices/SupplierDocumentsPage'))
+const ClaimsPage = lazy(() => import('@/pages/invoices/ClaimsPage'))
+const TimesheetPage = lazy(() => import('@/pages/costs/TimesheetPage'))
 const WasteLogPage = lazy(() => import('@/pages/waste/WasteLogPage'))
 const WasteSummaryPage = lazy(() => import('@/pages/waste/WasteSummaryPage'))
 const CostDashboardPage = lazy(() => import('@/pages/costs/CostDashboardPage'))
 const ReportsListPage = lazy(() => import('@/pages/reports/ReportsListPage'))
 const ReportPage = lazy(() => import('@/pages/reports/ReportPage'))
-const EventCalendarPage = lazy(() => import('@/pages/forecast/EventCalendarPage'))
+const CalendarPage = lazy(() => import('@/pages/diary/CalendarPage'))
 const EmployeesPage = lazy(() => import('@/pages/team/EmployeesPage'))
 const RosterPage = lazy(() => import('@/pages/roster/RosterPage'))
 const MyShiftsPage = lazy(() => import('@/pages/roster/MyShiftsPage'))
+const ChecklistsPage = lazy(() => import('@/pages/checklists/ChecklistsPage'))
+const ChecklistRoundPage = lazy(() => import('@/pages/checklists/ChecklistRoundPage'))
+const ChecklistEditPage = lazy(() => import('@/pages/checklists/ChecklistEditPage'))
+const ChecklistsReportPage = lazy(() => import('@/pages/checklists/ChecklistsReportPage'))
 
 
 
@@ -88,7 +97,23 @@ export default function App() {
                 <Route path="/sales/weekly" element={<RequireRole allowed={MANAGERS}><WeeklySalesPage /></RequireRole>} />
                 <Route path="/invoices" element={<RequireRole allowed={MANAGERS}><InvoicesPage /></RequireRole>} />
                 <Route path="/invoices/history" element={<RequireRole allowed={MANAGERS}><InvoiceHistoryPage /></RequireRole>} />
-                <Route path="/costs/labour" element={<RequireRole allowed={MANAGERS}><LabourPage /></RequireRole>} />
+                {/* Reading the documents rather than typing a total off them.
+                    Managers and above, the same as the rest of the money. */}
+                <Route path="/invoices/import" element={<RequireRole allowed={MANAGERS}><InvoiceImportPage /></RequireRole>} />
+                <Route path="/invoices/review" element={<RequireRole allowed={MANAGERS}><InvoiceReviewPage /></RequireRole>} />
+                <Route path="/invoices/documents" element={<RequireRole allowed={MANAGERS}><SupplierDocumentsPage /></RequireRole>} />
+
+                {/* Everybody, and that is the point of it. The person signing
+                    for a delivery knows what was wrong within a minute and has
+                    forgotten by Friday, and a credit nobody asked for is never
+                    issued. What an employee sees is their own notes and nothing
+                    else, which the database insists on as well. */}
+                <Route path="/invoices/claims" element={<RequireRole allowed={ALL_ROLES}><ClaimsPage /></RequireRole>} />
+                <Route path="/costs/timesheet" element={<RequireRole allowed={MANAGERS}><TimesheetPage /></RequireRole>} />
+                {/* The Labour page is gone. Anyone with the old address
+                    bookmarked, which includes his phone, lands on the
+                    thing that replaced it rather than on nothing. */}
+                <Route path="/costs/labour" element={<Navigate to="/costs/timesheet" replace />} />
 
                 {/* The weekly report. Managers read it, store managers write it,
                     and which of those you are is settled in the database rather
@@ -99,6 +124,14 @@ export default function App() {
                 {/* Anyone logs waste; only managers see the week. */}
                 <Route path="/waste" element={<RequireRole allowed={ALL_ROLES}><WasteLogPage /></RequireRole>} />
                 <Route path="/waste/summary" element={<RequireRole allowed={MANAGERS}><WasteSummaryPage /></RequireRole>} />
+
+                {/* Everybody works through a checklist. Making one, and the
+                    reports on how the cleaning is going, are managers only. */}
+                <Route path="/checklists" element={<RequireRole allowed={ALL_ROLES}><ChecklistsPage /></RequireRole>} />
+                <Route path="/checklists/rounds/:id" element={<RequireRole allowed={ALL_ROLES}><ChecklistRoundPage /></RequireRole>} />
+                <Route path="/checklists/new" element={<RequireRole allowed={MANAGERS}><ChecklistEditPage /></RequireRole>} />
+                <Route path="/checklists/:id/edit" element={<RequireRole allowed={MANAGERS}><ChecklistEditPage /></RequireRole>} />
+                <Route path="/checklists/report" element={<RequireRole allowed={MANAGERS}><ChecklistsReportPage /></RequireRole>} />
 
                 {/* The catalogue is managers only, because every one of these
                     screens shows what we pay. An employee counting stock sees
@@ -127,7 +160,15 @@ export default function App() {
                 <Route path="/inventory/stock-takes/:id/summary" element={<RequireRole allowed={MANAGERS}><StockTakeSummaryPage /></RequireRole>} />
                 <Route path="/inventory/public-allergens" element={<RequireRole allowed={MANAGERS}><PublicAllergensPreviewPage /></RequireRole>} />
 
-                <Route path="/forecast" element={<RequireRole allowed={ALL_ROLES}><EventCalendarPage /></RequireRole>} />
+                {/* What is coming up: the diary, what is on at the Arena,
+                    and the deliveries a day already carries. Everybody
+                    reads it, because a catering job matters most to the
+                    person who has to make it. Managers and above write,
+                    which the database also insists on. */}
+                <Route path="/calendar" element={<RequireRole allowed={ALL_ROLES}><CalendarPage /></RequireRole>} />
+
+                {/* Where Events used to be. Somebody has this bookmarked. */}
+                <Route path="/forecast" element={<Navigate to="/calendar" replace />} />
 
                 {/* The people who work here. Managers and above, and nothing
                     below that: the row carries what somebody costs per hour, and
@@ -140,6 +181,7 @@ export default function App() {
                 <Route path="/settings/users" element={<RequireRole allowed={ADMIN_ONLY}><UsersPage /></RequireRole>} />
                 <Route path="/settings/changes" element={<RequireRole allowed={ADMIN_ONLY}><ChangesPage /></RequireRole>} />
                 <Route path="/settings/restaurant" element={<RequireRole allowed={RESTAURANT_CONFIG}><RestaurantPage /></RequireRole>} />
+                <Route path="/settings/preferences" element={<RequireRole allowed={MANAGERS}><PreferencesPage /></RequireRole>} />
 
                 <Route path="/" element={<HomeRedirect />} />
               </Routes>
@@ -152,10 +194,14 @@ export default function App() {
   )
 }
 
-// The dashboard is no use to an employee, who cannot read any of it, so send
-// them where their work actually is.
+// Where somebody lands, which is their own choice where they have made one.
+//
+// The dashboard is no use to an employee, who cannot read any of it, so the
+// answer with nothing chosen is still the screen their work is on. What they
+// chose is checked against what they may open rather than trusted, because a
+// role can be lowered after the choice was made. See landingFor.
 function HomeRedirect() {
     const { session, user, loading } = useAuth()
     if (loading || (session && !user)) return null
-    return <Navigate to={homeFor(user)} replace />
+    return <Navigate to={landingFor(user)} replace />
 }

@@ -9,10 +9,15 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
-import { secondaryButton, dateField, jumpButton, tableHeadRow, card, jumpLabel, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
+import {
+    bankHolidayOn, BANK_HOLIDAY_ON_DARK, BANK_HOLIDAY_WASH_CLASS, BANK_HOLIDAY_LABEL,
+} from '@/lib/bankHolidays'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import SalesImportDialog from '@/components/sales/SalesImportDialog'
 
 // Week entry grid: metrics as rows, days as columns, mirroring the layout the
 // business already uses in its weekly spreadsheet. Rows scale as platforms are
@@ -40,6 +45,9 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 function draftKey(restaurantId, weekStart) {
     return `salesWeekDraft:${restaurantId}:${weekStart}`
 }
+
+// The blocks Tab moves across rather than down. See handleGridKeyDown.
+const ACROSS_BLOCKS = new Set(['online_platform'])
 
 // Fields compared when deciding whether a draft genuinely differs from what is
 // already stored. A draft matching the database is not an unsaved change.
@@ -95,6 +103,7 @@ export default function WeeklySalesPage() {
 
     // True once something has been edited but not yet saved.
     const [dirty, setDirty] = useState(false)
+    const [importing, setImporting] = useState(false)
 
     // Working copy of the week, keyed by date.
     const [days, setDays] = useState({})
@@ -316,6 +325,17 @@ export default function WeeklySalesPage() {
                 platformValues: { ...prev[date].platformValues, [platformName]: value },
             },
         }))
+    }
+
+    // The till's report, read in. It lands in the boxes exactly as if it had
+    // been typed, so the week is still checked by the Reconciliation row and
+    // still saved with Save week, and nothing is written until it is.
+    function fillFromTill(filled) {
+        setDirty(true)
+        setDays(prev => ({ ...prev, ...filled }))
+        setImporting(false)
+        setFormProblem('')
+        setSuccess("The till's report is in. Check the week, then press Save week.")
     }
 
     function toggleClosed(date) {
@@ -540,35 +560,47 @@ export default function WeeklySalesPage() {
 
     // ---- keyboard -------------------------------------------------------
 
-    // Tab normally moves across the row. In a grid like this it is more natural
-    // to move down the same day's column, so jump to the next input carrying the
-    // same data-col value. Shift+Tab goes back up.
     // Tab moves down the block you are in, and at the bottom of it carries on
     // into the same block on the next day rather than dropping into the block
-    // below.
+    // below. Shift+Tab goes back.
     //
     // It used to walk the whole column, so finishing Uber Eats put you in
     // Clockmeal, which is a different record entirely. You fill one block across
     // the week, not one day top to bottom, so this follows how it is actually
     // used.
+    //
+    // **Except the online platforms, which go across.** Asked for on 27
+    // September: those are typed a platform at a time, Sunday to Saturday, and
+    // then the next platform. Only that block; the till's rows and Corporate
+    // still go down. The boxes are in the page row by row, left to right, so
+    // the next one in the page is the next day, and after Saturday it is the
+    // next platform's Sunday. A closed day's boxes are disabled and skipped.
     function handleGridKeyDown(e) {
         if (e.key !== 'Tab') return
         const { block, col } = e.target.dataset || {}
         if (block == null || col == null) return
 
         e.preventDefault()
-
-        const inBlock = c => Array.from(document.querySelectorAll(
-            `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
-        ))
-
-        const here = inBlock(col)
         const step = e.shiftKey ? -1 : 1
-        let next = here[here.indexOf(e.target) + step]
 
-        if (!next) {
-            const neighbour = inBlock(Number(col) + step)
-            next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+        let next
+        if (ACROSS_BLOCKS.has(block)) {
+            const boxes = Array.from(document.querySelectorAll(
+                `input[data-block="${block}"]:not([disabled])`
+            ))
+            next = boxes[boxes.indexOf(e.target) + step]
+        } else {
+            const inBlock = c => Array.from(document.querySelectorAll(
+                `input[data-block="${block}"][data-col="${c}"]:not([disabled])`
+            ))
+
+            const here = inBlock(col)
+            next = here[here.indexOf(e.target) + step]
+
+            if (!next) {
+                const neighbour = inBlock(Number(col) + step)
+                next = step > 0 ? neighbour[0] : neighbour[neighbour.length - 1]
+            }
         }
 
         if (next) {
@@ -610,8 +642,13 @@ export default function WeeklySalesPage() {
 
     // A closed day is not a day nobody has filled in, it is a day we did not
     // trade, so the whole column says so rather than just the boxes going flat.
+    //
+    // A bank holiday colours its column the same way, and closed wins: a bank
+    // holiday you were shut for is just shut. One class either way, never two,
+    // for the reason written under this one.
     function closedCol(date) {
-        return days[date]?.isClosed ? 'bg-red-50' : ''
+        if (days[date]?.isClosed) return 'bg-red-50'
+        return bankHolidayOn(date) ? BANK_HOLIDAY_WASH_CLASS : ''
     }
     // The label and total cells paint their own background, because the label
     // is sticky and would otherwise go transparent over the rows as it scrolls.
@@ -758,12 +795,28 @@ export default function WeeklySalesPage() {
                 <th className="text-left px-3 py-2 text-xs font-semibold uppercase tracking-wider sticky left-0 bg-sidebar z-10 w-44">
                     &nbsp;
                 </th>
-                {dates.map((d, i) => (
-                    <th key={d} className="px-1.5 py-2 text-center w-24">
-                        <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
-                        <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
-                    </th>
-                ))}
+                {dates.map((d, i) => {
+                    const holiday = bankHolidayOn(d)
+                    return (
+                        <th key={d} className="px-1.5 py-2 text-center w-24">
+                            <div className="text-xs font-semibold text-white">{DAY_NAMES[i]}</div>
+                            <div className="text-xs text-white/60 font-normal">{fullDate(d)}</div>
+                            {/* A bank holiday takes a different week and a
+                                different wage bill, so a week being read
+                                against last year's should say which days were
+                                one. Worked out from the date, so it is on every
+                                week ever typed without anybody going back. */}
+                            {holiday && (
+                                <div
+                                    className="text-[0.65rem] font-bold"
+                                    style={{ color: BANK_HOLIDAY_ON_DARK }}
+                                >
+                                    {BANK_HOLIDAY_LABEL}
+                                </div>
+                            )}
+                        </th>
+                    )
+                })}
                 <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider w-28">Total</th>
             </tr>
         )
@@ -842,13 +895,24 @@ export default function WeeklySalesPage() {
                         {activeRestaurant?.name} · enter the whole week, Sunday to Saturday
                     </p>
                 </div>
-                {/* Switch to the single-day form, for phone use */}
-                <button
-                    onClick={() => navigate('/sales?view=day')}
-                    className={secondaryButton}
-                >
-                    Day view
-                </button>
+                {/* The till's report first, the same words the Timesheet
+                    uses for the same kind of file, then the switch to the
+                    single day form for phone use. */}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setImporting(true)}
+                        className={secondaryButton}
+                    >
+                        Upload the till&apos;s report
+                    </button>
+                    <button
+                        onClick={() => navigate('/sales?view=day')}
+                        className={secondaryButton}
+                    >
+                        Day view
+                    </button>
+                </div>
             </div>
 
             {/* Phone only.
@@ -876,23 +940,16 @@ export default function WeeklySalesPage() {
                         backLabel="Previous week"
                         nextLabel="Next week"
                         jump={(
-                            <button
-                                type="button"
+                            <JumpButton
+                                isCurrent={weekStart === weekStartOf(todayISO())}
                                 onClick={() => goToWeek(weekStartOf(todayISO()))}
-                                className={jumpButton(weekStart === weekStartOf(todayISO()))}
-                            >
-                                {jumpLabel(weekStart === weekStartOf(todayISO()))}
-                            </button>
+                            />
                         )}
                     >
-                        {/* A set width on a wide screen, so the arrows do not
-                            shift sideways when the text changes length: 3 Aug -
-                            9 Aug is a lot narrower than 31 Aug - 6 Sept, and
-                            clicking back through weeks moved the button out from
-                            under the mouse. On a phone the arrows are pinned to
-                            the edges instead, so they cannot move whatever the
-                            date says, and the text takes the room between. */}
-                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap sm:w-44">
+                        {/* The width that keeps the arrows still lives in
+                            DateStepper now, so every screen with these arrows
+                            gets it. */}
+                        <span className="text-sm font-medium text-gray-900 text-center whitespace-nowrap">
                             {shortDate(dates[0])} - {shortDate(dates[6])}
                         </span>
                     </DateStepper>
@@ -1082,6 +1139,22 @@ export default function WeeklySalesPage() {
                     {saving ? 'Saving...' : 'Save week'}
                 </button>
             </div>
+
+            {importing && (
+                <SalesImportDialog
+                    restaurantId={restaurantId}
+                    restaurantName={activeRestaurant?.name}
+                    weekStart={weekStart}
+                    days={days}
+                    tenders={tenders}
+                    shownTenders={shownTenders}
+                    trackingPlatforms={cateringPlatforms}
+                    loading={loading}
+                    onGoToWeek={goToWeek}
+                    onFill={fillFromTill}
+                    onClose={() => setImporting(false)}
+                />
+            )}
         </div>
     )
 }

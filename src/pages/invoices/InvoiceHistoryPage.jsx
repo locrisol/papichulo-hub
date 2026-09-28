@@ -6,16 +6,20 @@ import { fmtMoney, num } from '@/lib/format'
 import { todayISO, addDays, shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, tableHeadRow, card, cardEdge, cardHeader, rowButton, labelClass, fieldClass, pageTitle } from '@/lib/controlStyles'
-import { INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory } from '@/lib/invoiceCategories'
+import {
+    INVOICE_CATEGORIES, INVOICE_SUMMARY_CARDS, invoiceCategory, invoiceSplit, mainCategory, spentIn,
+} from '@/lib/invoiceCategories'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import CategoryBadges from '@/components/invoices/CategoryBadges'
 
 // Invoice history. The entry screen only shows the week you are working on,
 // which is what you want while typing them in, but not when you are looking for
 // something. This is the whole record, filtered.
 //
-// Line items are not shown. They only exist once AI extraction fills them in,
-// and that is deferred (#48), so expanding a row would open onto nothing. The
-// same goes for a manual or AI badge: everything is manual at the moment.
+// An invoice read off a document is shown by what its lines were spent on,
+// VAT and deposit included, and one typed in off a total by its own category.
+// The totals and the category filter go the same way, so a delivery of mops
+// and foil is never counted as food because of the label it was filed under.
 
 
 export default function InvoiceHistoryPage() {
@@ -57,13 +61,12 @@ export default function InvoiceHistoryPage() {
             // only ones applied.
             let q = supabase
                 .from('invoices')
-                .select('*, suppliers(name)')
+                .select('*, suppliers(name), invoice_lines(category, line_total, vat_amount, deposit_amount)')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', fromDate)
                 .lte('invoice_date', toDate)
 
             if (supplierId) q = q.eq('supplier_id', supplierId)
-            if (category) q = q.eq('category', category)
 
             const { data, error: iErr } = await q.order('invoice_date', { ascending: !sortDesc })
 
@@ -73,14 +76,18 @@ export default function InvoiceHistoryPage() {
         }
 
         load()
-    }, [restaurantId, fromDate, toDate, supplierId, category, sortDesc])
+    }, [restaurantId, fromDate, toDate, supplierId, sortDesc])
+
+    // By what the money went on rather than by the label, so an invoice that
+    // was part packaging turns up under packaging too.
+    const shown = category
+        ? invoices.filter(inv => invoiceSplit(inv).some(s => s.category === category))
+        : invoices
 
     function totalFor(cats) {
-        return invoices
-            .filter(i => cats.includes(i.category))
-            .reduce((sum, i) => sum + num(i.total_amount), 0)
+        return spentIn(shown, cats)
     }
-    const total = invoices.reduce((sum, i) => sum + num(i.total_amount), 0)
+    const total = shown.reduce((sum, i) => sum + num(i.total_amount), 0)
 
     // Jump the range to something common, rather than making you pick two dates
     // every time.
@@ -174,12 +181,12 @@ export default function InvoiceHistoryPage() {
             {/* The invoices */}
             <div className={`${card} overflow-hidden`}>
                 <h3 className={cardHeader}>
-                    {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'} found
+                    {shown.length} {shown.length === 1 ? 'invoice' : 'invoices'} found
                 </h3>
                 <div className="p-5">
                 {loading ? (
                     <p className="text-sm text-muted">Loading...</p>
-                ) : invoices.length === 0 ? (
+                ) : shown.length === 0 ? (
                     <p className="text-sm text-muted italic">No invoices match those filters.</p>
                 ) : (
                     // Same as the invoices screen: this table is inside a padded
@@ -206,8 +213,8 @@ export default function InvoiceHistoryPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {invoices.map(inv => {
-                                const cat = invoiceCategory(inv.category)
+                            {shown.map(inv => {
+                                const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
                                 return (
                                 <tr key={inv.id} className={`border-b border-border hover:bg-gray-50 border-l-4 ${cat.stripe}`}>
                                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{shortDate(inv.invoice_date)}</td>
@@ -218,9 +225,7 @@ export default function InvoiceHistoryPage() {
                                     <td className="px-3 py-2">
                                         {/* Same colours as the entry screen, so a
                                             category means one thing everywhere. */}
-                                        <span className={`inline-block px-2 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${cat.soft}`}>
-                                            {cat.label}
-                                        </span>
+                                        <CategoryBadges invoice={inv} />
                                     </td>
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
                                 </tr>

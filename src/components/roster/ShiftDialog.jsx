@@ -7,6 +7,7 @@ import { dayName } from '@/lib/events'
 import {
     shiftMinutes, breakFor, breakLabel, shortTime, fmtHours, shiftEdges,
 } from '@/lib/roster'
+import { canWorkAt, availabilityOn } from '@/lib/availability'
 import { modalFooter, labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -44,6 +45,12 @@ export default function ShiftDialog({
     }))
 
     const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+
+    // Whose availability the picker marks against, which follows the name in
+    // the box rather than whoever the cell belonged to. Changing the person
+    // changes which hours are marked, since that is the whole point of it.
+    const forWhom = (employees || []).find(e => e.id === form.employeeId) || employee
+    const availabilityNow = availabilityOn(forWhom, date)
 
     const minutes = shiftMinutes(form.startsAt, form.endsAt)
     const hours = minutes / 60
@@ -119,6 +126,7 @@ export default function ShiftDialog({
                             value={form.startsAt}
                             onChange={v => set('startsAt', v)}
                             dayStart={dayHours?.open}
+                            free={t => canWorkAt(availabilityNow, date, t)}
                             aria-label="Starts"
                         />
                     </div>
@@ -128,6 +136,7 @@ export default function ShiftDialog({
                             value={form.endsAt}
                             onChange={v => set('endsAt', v)}
                             dayStart={dayHours?.open}
+                            free={t => canWorkAt(availabilityNow, date, t, { edge: 'end' })}
                             aria-label="Finishes"
                         />
                     </div>

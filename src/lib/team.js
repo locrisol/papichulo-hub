@@ -71,6 +71,12 @@ export function employeeStatus(employee, today) {
         // and also has to be thinking about replacing them.
         return { state: 'leaving', label: 'Last day', date: employee.ended_on }
     }
+    // On the team, doing shifts and being paid for them, but not hired. It is
+    // its own state rather than a note on the side because it changes what the
+    // record is held to: see gapsFor.
+    if (employee.on_trial) {
+        return { state: 'trial', label: 'On trial', date: employee.started_on || null }
+    }
     return { state: 'working', label: 'Working', date: null }
 }
 
@@ -103,6 +109,44 @@ export function linkableUsers(users, employees, currentEmployeeId) {
             .map(e => e.user_id),
     )
     return (users || []).filter(u => !taken.has(u.id))
+}
+
+// An empty employee form, and the row it saves as.
+//
+// The team page and the roster's Add someone share the form, and each kept its
+// own copy of these two. The roster's copy never learnt the On trial box, so
+// somebody added from the roster came out hired whatever the box said. One copy
+// now, for both.
+export const EMPTY_EMPLOYEE = {
+    fullName: '', positionId: '', hourlyRate: '', startedOn: '', endedOn: '', userId: '', notes: '',
+    onTrial: false,
+    dateOfBirth: '', workPermission: '', workPermissionExpires: '',
+    permissionRenewalApplied: '', permissionRenewalReference: '',
+    foodSafetyLevel: '', foodSafetyIssued: '', foodSafetyExpires: '',
+}
+
+// Empty boxes are stored as nothing rather than as a nought or an empty
+// string. A date the database can read as a date is the whole point of
+// ended_on, and '' is not one.
+export function employeeRow(form) {
+    return {
+        full_name: form.fullName.trim(),
+        position_id: form.positionId || null,
+        hourly_rate: form.hourlyRate === '' ? null : Number(form.hourlyRate),
+        started_on: form.startedOn || null,
+        ended_on: form.endedOn || null,
+        on_trial: !!form.onTrial,
+        user_id: form.userId || null,
+        notes: form.notes.trim() || null,
+        date_of_birth: form.dateOfBirth || null,
+        work_permission: form.workPermission || null,
+        work_permission_expires: form.workPermissionExpires || null,
+        permission_renewal_applied: form.permissionRenewalApplied || null,
+        permission_renewal_reference: form.permissionRenewalReference || null,
+        food_safety_level: form.foodSafetyLevel || null,
+        food_safety_issued: form.foodSafetyIssued || null,
+        food_safety_expires: form.foodSafetyExpires || null,
+    }
 }
 
 // What is wrong with the form, or nothing.

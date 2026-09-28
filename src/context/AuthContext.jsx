@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { AuthContext } from '@/context/auth'
+import { AuthContext, NO_ACCESS } from '@/context/auth'
 
 // Who is signed in.
 //
@@ -40,15 +40,30 @@ export function AuthProvider({ children }) {
         // Do not swallow this. If the row cannot be read the app has no idea
         // who is signed in, every role check reads undefined, and nothing says
         // so. That is how an employee could sign in and quietly have no role.
+        //
+        // No row at all (PGRST116) is the one answer that is not a fault: see
+        // NO_ACCESS.
         if (readError) {
             console.error('Could not load the signed-in user:', readError.message)
-            setError(readError.message)
+            setError(readError.code === 'PGRST116' ? NO_ACCESS : readError.message)
         } else {
             setUser(data)
             setError(null)
         }
         setLoading(false)
     }
+
+  // Read the row again.
+  //
+  // This context holds the row every permission check reads, so anything that
+  // changes it has to say so. Without it a preference saved on Tuesday is not
+  // the one the app uses until the next time somebody signs in, which for a
+  // setting about signing in is exactly the wrong moment to be a version
+  // behind.
+  async function refreshUser() {
+      const id = session?.user?.id
+      if (id) await fetchUser(id)
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -71,7 +86,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, error }}>
+    <AuthContext.Provider value={{ session, user, loading, error, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

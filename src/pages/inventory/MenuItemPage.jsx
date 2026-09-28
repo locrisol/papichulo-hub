@@ -6,7 +6,7 @@ import { calculateMixCost, menuItemCost } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
-import { tableHeadRow, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import AddOptions from '@/components/inventory/AddOptions'
@@ -768,6 +768,7 @@ export default function MenuItemPage() {
               </div>
               <ComponentTable
                   rows={rows}
+                  choiceGroup
                   counting={counting}
                   getProduct={getProduct}
                   getIngredientUnitCost={getIngredientUnitCost}
@@ -1106,9 +1107,13 @@ function ComponentChips({ product, component }) {
   )
 }
 
-function ComponentTable({
+// choiceGroup is what makes the Counted mark worth showing. In the ingredients
+// and the packaging every line is in the cost, so a mark on all of them says
+// nothing. In a choice group the customer takes one and only the dearest is
+// counted, and which one that is is the question the group is read to answer.
+export function ComponentTable({
   rows, counting, getProduct, getIngredientUnitCost, getLineCost,
-  editingComponent, onEdit, onCancelEdit, onRemove,
+  editingComponent, onEdit, onCancelEdit, onRemove, choiceGroup = false,
 }) {
   return (
     <>
@@ -1133,15 +1138,25 @@ function ComponentTable({
                   {product ? product.name : <span className="text-red-600">Missing product</span>}
                   <ComponentChips product={product} component={c} />
                 </span>
+                {/* The number and nothing else.
+                    This used to carry "not the most expensive" underneath, on
+                    every option the customer did not take. The phrase is longer
+                    than the price it explains and it could not wrap, so the
+                    right hand column was as wide as the sentence: the name was
+                    squeezed into two lines and the price ran off the screen.
+                    The group heading already says only the dearest is counted,
+                    so saying it again on four rows out of five was repeating
+                    the rule rather than answering it. The one that does count
+                    is marked instead, below. */}
                 <span className={`text-sm font-semibold whitespace-nowrap tabular-nums text-right ${
                   counted ? 'text-gray-900' : 'text-muted'}`}>
                   {lineCost === null ? '—' : fmtMoney(lineCost)}
-                  {lineCost !== null && !counted && (
-                    <span className="block text-xs font-normal">not the most expensive</span>
-                  )}
                 </span>
               </div>
               <p className="text-xs text-muted mt-0.5">
+                {choiceGroup && counted && lineCost !== null && (
+                  <span className={`${badge} bg-green-50 text-green-700 mr-1.5`}>Counted</span>
+                )}
                 {c.no_quantity
                   ? <span className="italic">Used, not measured</span>
                   : `${parseFloat(c.quantity)} ${product?.unit || ''}`}
@@ -1199,16 +1214,21 @@ function ComponentTable({
                         {unitCost !== null ? `${fmtUnitCost(unitCost)} / ${product?.unit}` : <span className="text-amber-600 text-xs">No cost available</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">
+                        {/* Same as the card above: the dearest one is marked
+                            rather than the other four explained. The options
+                            that are not counted still show what they come to,
+                            because a blank would read as a line costing
+                            nothing, and they stay in text-muted so they do not
+                            read as money the dish is paying. */}
                         {lineCost === null ? '—' : counting.has(c.id) ? (
-                          fmtMoney(lineCost)
-                        ) : (
-                          // Shown rather than hidden. What the other options
-                          // come to is worth seeing, and a blank here would
-                          // read as a line that costs nothing.
-                          <span className="font-normal text-muted">
+                          <>
                             {fmtMoney(lineCost)}
-                            <span className="block text-xs">not the most expensive</span>
-                          </span>
+                            {choiceGroup && (
+                              <span className={`${badge} bg-green-50 text-green-700 ml-2`}>Counted</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="font-normal text-muted">{fmtMoney(lineCost)}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-500">{c.notes || '—'}</td>

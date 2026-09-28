@@ -17,7 +17,10 @@ import { useState, useEffect } from 'react'
 //
 // It only turns up once there is something to go back to. A button offering to
 // take you to the top of a page you are already at the top of is noise.
-export default function BackToTop({ scrollers = [] }) {
+// A page carrying its own floating button says so, and this one stacks above
+// it rather than landing on top of it. Add stays lowest on purpose: it is the
+// one you press, and this only turns up on the way back up.
+export default function BackToTop({ scrollers = [], raised = false }) {
     const [show, setShow] = useState(false)
 
     useEffect(() => {
@@ -71,7 +74,7 @@ export default function BackToTop({ scrollers = [] }) {
             // Bottom right, out of the way of a thumb reaching for the bottom
             // left. Smaller on a phone, where the screen it is covering is
             // smaller too.
-            className="fixed bottom-4 right-4 md:bottom-5 md:right-5 z-40 w-11 h-11 md:w-12 md:h-12 rounded-full bg-sidebar/90 text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent"
+            className={`fixed right-4 md:right-5 z-40 w-11 h-11 md:w-12 md:h-12 rounded-full bg-sidebar/90 text-white shadow-lg flex items-center justify-center transition-colors hover:bg-sidebar-active focus:outline-none focus:ring-2 focus:ring-accent ${raised ? 'bottom-22 sm:bottom-4 md:bottom-5' : 'bottom-4 md:bottom-5'}`}
         >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />

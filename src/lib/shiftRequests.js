@@ -74,8 +74,20 @@ const dayKey = (employeeId, date) => `${employeeId}|${date}`
 //
 // Rows keep their ids where there are ids to go round. Anything left over is
 // handed back so the caller knows what to delete.
-function joinUp(rows, breakRules) {
+//
+// Which id a merged row keeps is not arbitrary, and that took a while to see.
+// shift_requests points at the two shifts it is about and both foreign keys are
+// ON DELETE CASCADE, so deleting the wrong one deletes the request itself: the
+// manager presses Approve, the shifts merge, the row that says who agreed what
+// is gone, and the status update written a moment later hits nothing at all.
+// The ids a request points at are kept first for that reason.
+//
+// It is not a guarantee. Three rows merging into one still has to lose two, and
+// if both halves of a request land on the same person on the same day one of
+// them goes. That swap is not a swap anybody would ask for.
+function joinUp(rows, breakRules, keepIds) {
     const spare = rows.map(r => r.id).filter(Boolean)
+    if (keepIds?.size) spare.sort((a, b) => (keepIds.has(b) ? 1 : 0) - (keepIds.has(a) ? 1 : 0))
     const out = []
 
     for (const row of rows) {
@@ -158,12 +170,16 @@ export function weekAfter(request, shifts, breakRules) {
     const out = all.filter(s => !dirty.has(dayKey(s.employee_id, s.shift_date)))
     const removedIds = []
 
+    // The two rows this request hangs off. See joinUp: deleting one of them
+    // deletes the request with it.
+    const keepIds = new Set([request?.give_shift_id, request?.take_shift_id].filter(Boolean))
+
     for (const key of dirty) {
         const [employeeId, date] = key.split('|')
         const mine = all
             .filter(s => s.employee_id === employeeId && s.shift_date === date)
             .sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
-        const joined = joinUp(mine, breakRules)
+        const joined = joinUp(mine, breakRules, keepIds)
         out.push(...joined.rows)
         removedIds.push(...joined.spare)
     }
@@ -266,6 +282,36 @@ export function requestsOnShift(requests, shiftId) {
     return (requests || []).filter(r =>
         LIVE_STATES.includes(r.status)
         && (r.give_shift_id === shiftId || r.take_shift_id === shiftId))
+}
+
+// The shifts a set of requests points at.
+//
+// Both screens fetch a week at a time, which is right for a roster and wrong
+// for a request: something waiting on you is not waiting only while you happen
+// to be looking at the right seven days. So the requests are fetched by who
+// they are about, and then the two shifts each one names are fetched by id,
+// whatever week those turn out to be in. Two small queries rather than three
+// weeks of somebody else's roster.
+export function shiftIdsOf(requests) {
+    const ids = new Set()
+    for (const request of requests || []) {
+        if (request?.give_shift_id) ids.add(request.give_shift_id)
+        if (request?.take_shift_id) ids.add(request.take_shift_id)
+    }
+    return [...ids]
+}
+
+// The day a request is about: the earlier of the two shifts it names.
+//
+// Null when neither shift is in hand, which is not an error. A screen that
+// cannot say when something is should say it cannot, rather than draw a row
+// with a gap where the date goes.
+export function requestDate(request, shiftById) {
+    const dates = [request?.give_shift_id, request?.take_shift_id]
+        .map(id => (id ? shiftById?.(id)?.shift_date : null))
+        .filter(Boolean)
+        .sort()
+    return dates[0] || null
 }
 
 // What has to be written for a request to become true.

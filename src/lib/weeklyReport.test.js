@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
     sectionKey,
     isOwnSection,
+    sectionsFor,
     weekReadiness,
+    blockedBy,
     weekIsOver,
     reportableWeeks,
     reportFigures,
@@ -19,6 +21,14 @@ import {
     figuresToStore,
     FIGURES_VERSION,
     isCorrection,
+    statementWeek,
+    statementWords,
+    dayWords,
+    platformTaken,
+    deliveryCost,
+    deliveryRows,
+    statementSundayIn,
+    deliveryBlockers,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -60,10 +70,53 @@ describe('sectionKey', () => {
     })
 })
 
+describe('the sections a new week starts with', () => {
+    const LAST_WEEK = [
+        { key: 'sales_costs', title: 'Sales and costs' },
+        { key: 'profit_loss', title: 'P and L' },
+        { key: 'priorities', title: 'Priorities' },
+        { key: 'online_sales', title: 'Online sales' },
+        { key: 'corporate_sales', title: 'Corporate sales' },
+        { key: 'people_ops', title: 'People and operations' },
+        { key: 'marketing', title: 'Marketing and sales development' },
+        { key: 'support_actions', title: 'Support / actions needed' },
+    ]
+
+    it('is the built-in list for a restaurant that has never written one', () => {
+        expect(sectionsFor(null).map(s => s.key)[2]).toBe('prices_suppliers')
+    })
+
+    // Prices and suppliers arrived in September, after every restaurant had
+    // a week to copy from.
+    it('adds a built-in section last week did not have, straight after the one it follows', () => {
+        expect(sectionsFor(LAST_WEEK).map(s => s.key)).toEqual([
+            'sales_costs', 'profit_loss', 'prices_suppliers', 'priorities', 'online_sales',
+            'corporate_sales', 'people_ops', 'marketing', 'support_actions', 'cleaning',
+        ])
+    })
+
+    // Cleaning arrived on 27 September, and he asked for it at the end.
+    it('puts Cleaning last, after a section of their own at the end', () => {
+        const withOwn = [...LAST_WEEK, { key: 'follow_up', title: 'Follow up' }]
+        expect(sectionsFor(withOwn).map(s => s.key).slice(-2)).toEqual(['follow_up', 'cleaning'])
+    })
+
+    it('keeps a renamed heading and a section of their own', () => {
+        const next = sectionsFor(LAST_WEEK)
+        expect(next.find(s => s.key === 'profit_loss').title).toBe('P and L')
+        expect(next.find(s => s.key === 'priorities').title).toBe('Priorities')
+    })
+
+    it('changes nothing once it has them all', () => {
+        const once = sectionsFor(LAST_WEEK)
+        expect(sectionsFor(once)).toEqual(once)
+    })
+})
+
 describe('isOwnSection', () => {
-    it('says no to every one of the seven the report comes with', () => {
-        for (const key of ['sales_costs', 'profit_loss', 'online_sales', 'corporate_sales',
-            'people_ops', 'marketing', 'support_actions']) {
+    it('says no to every one of the nine the report comes with', () => {
+        for (const key of ['sales_costs', 'profit_loss', 'prices_suppliers', 'online_sales', 'corporate_sales',
+            'people_ops', 'marketing', 'support_actions', 'cleaning']) {
             expect(isOwnSection({ key })).toBe(false)
         }
     })
@@ -106,6 +159,28 @@ describe('weekReadiness', () => {
         const days = fullWeek()
         days[6] = day('2026-08-15', 100, 897, 1000)
         expect(weekReadiness('2026-08-09', days, TENDERS).ready).toBe(true)
+    })
+
+    // Labour is a cost on this report, so a week where somebody was down to
+    // work and nobody has said whether they did reports a wage bill that is
+    // wrong without looking wrong. That is a harder line than a missing sales
+    // day on purpose.
+    it('stops a week where a rostered shift has nothing said about it', () => {
+        const waiting = [{ person: { id: 'e1', full_name: 'Aoife' }, days: ['2026-08-13'] }]
+        const out = weekReadiness('2026-08-09', fullWeek(), TENDERS, waiting)
+        expect(out.ready).toBe(false)
+        expect(out.unanswered).toBe(waiting)
+    })
+
+    it('is ready once the timesheet has nothing waiting', () => {
+        expect(weekReadiness('2026-08-09', fullWeek(), TENDERS, []).ready).toBe(true)
+    })
+
+    it('still minds the sales days as well', () => {
+        const days = fullWeek().filter(d => d.sale_date !== '2026-08-13')
+        const out = weekReadiness('2026-08-09', days, TENDERS, [])
+        expect(out.ready).toBe(false)
+        expect(out.missing).toEqual(['2026-08-13'])
     })
 
     it('still stops a week that is missing a day', () => {
@@ -151,17 +226,19 @@ describe('reportFigures', () => {
     const days = [
         { sale_date: '2026-08-09', net_sales: 14180.03, gross_sales: 15491.53, is_closed: false },
     ]
-    const invoices = [
-        { category: 'food', total_amount: 4013.85 },
-        { category: 'packaging', total_amount: 1080.43 },
-        { category: 'other', total_amount: 500 },
+    // Rows out of invoice_cost_by_category, which is what the report reads
+    // now: a date, a category, an amount, and where the answer came from.
+    const spend = [
+        { cost_date: '2026-08-09', category: 'food', amount: 4013.85, came_from: 'lines' },
+        { cost_date: '2026-08-09', category: 'packaging', amount: 1080.43, came_from: 'header' },
+        { cost_date: '2026-08-09', category: 'other', amount: 500, came_from: 'header' },
     ]
     const labour = [{ labour_cost: 3965.42 }]
     const overheads = [{ amount: 865 }, { amount: 346 }]
     const delivery = [{ amount: 660.24 }, { amount: 383.99 }, { amount: 124.14 }]
 
     it('works the week out against net sales', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.net).toBeCloseTo(14180.03, 2)
         expect(f.foodPct).toBeCloseTo(28.31, 2)
         expect(f.labourPct).toBeCloseTo(27.96, 2)
@@ -169,13 +246,13 @@ describe('reportFigures', () => {
     })
 
     it('also carries the gross percentages, which is what the mail used to quote', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.foodPctGross).toBeCloseTo(25.91, 2)
         expect(f.labourPctGross).toBeCloseTo(25.60, 2)
     })
 
     it('leaves an invoice that is neither food nor packaging out of both', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.food).toBeCloseTo(4013.85, 2)
         expect(f.packaging).toBeCloseTo(1080.43, 2)
     })
@@ -183,25 +260,25 @@ describe('reportFigures', () => {
     it('adds cleaning in with packaging', () => {
         const f = reportFigures({
             days, labour, overheads, delivery,
-            invoices: [...invoices, { category: 'cleaning', total_amount: 100 }],
+            spend: [...spend, { cost_date: '2026-08-09', category: 'cleaning', amount: 100, came_from: 'lines' }],
         })
         expect(f.packaging).toBeCloseTo(1180.43, 2)
     })
 
     it('adds the delivery lines up rather than taking a total', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.deliveryTotal).toBeCloseTo(1168.37, 2)
         expect(f.overhead).toBeCloseTo(2379.37, 2)
     })
 
     it('gives the total cost of sales the spreadsheet quotes', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.costOfSales).toBeCloseTo(9059.70, 2)
         expect(f.costOfSalesPct).toBeCloseTo(63.89, 2)
     })
 
     it('works down to net earnings', () => {
-        const f = reportFigures({ days, invoices, labour, overheads, delivery })
+        const f = reportFigures({ days, spend, labour, overheads, delivery })
         expect(f.grossMargin).toBeCloseTo(9085.75, 2)
         expect(f.grossProfit).toBeCloseTo(5120.33, 2)
         expect(f.earnings).toBeCloseTo(2740.96, 2)
@@ -210,14 +287,14 @@ describe('reportFigures', () => {
     it('leaves closed days out of the totals', () => {
         const f = reportFigures({
             days: [...days, { sale_date: '2026-08-10', net_sales: 0, gross_sales: 0, is_closed: true }],
-            invoices, labour, overheads, delivery,
+            spend, labour, overheads, delivery,
         })
         expect(f.tradingDays).toBe(1)
         expect(f.net).toBeCloseTo(14180.03, 2)
     })
 
     it('says nothing rather than dividing by nothing on a week with no sales', () => {
-        const f = reportFigures({ days: [], invoices: [], labour: [], overheads: [], delivery: [] })
+        const f = reportFigures({ days: [], spend: [], labour: [], overheads: [], delivery: [] })
         expect(f.net).toBe(0)
         expect(f.foodPct).toBe(null)
         expect(f.earningsPct).toBe(null)
@@ -230,9 +307,9 @@ describe('figureGaps', () => {
             { sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false },
             { sale_date: '2026-08-10', net_sales: 2000, gross_sales: 2185, is_closed: false },
         ],
-        invoices: [
-            { category: 'food', total_amount: 1000 },
-            { category: 'packaging', total_amount: 300 },
+        spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 1000, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 300, came_from: 'header' },
         ],
         labour: [{ labour_cost: 500 }, { labour_cost: 500 }],
     }
@@ -259,9 +336,20 @@ describe('figureGaps', () => {
     })
 
     it('names each kind of invoice that is missing', () => {
-        const out = figureGaps(reportFigures({ ...week, invoices: [] }))
+        const out = figureGaps(reportFigures({ ...week, spend: [] }))
         expect(out.some(g => g.includes('food invoices'))).toBe(true)
         expect(out.some(g => g.includes('packaging or cleaning'))).toBe(true)
+    })
+
+    // A claim comes off a week and never puts anything into one, so a week with
+    // nothing on it but money asked back is still a week with no invoices in
+    // it. Counting the claim would have quietly turned the warning off.
+    it('does not count a claim as an invoice', () => {
+        const out = figureGaps(reportFigures({
+            ...week,
+            spend: [{ cost_date: '2026-08-09', category: 'food', amount: -40, came_from: 'claim' }],
+        }))
+        expect(out.some(g => g.includes('food invoices'))).toBe(true)
     })
 
     it('is quiet about a closed day, which was never going to have hours', () => {
@@ -433,7 +521,10 @@ describe('publishCheck', () => {
     }]
     const full = reportFigures({
         days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
-        invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+        spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 500, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 100, came_from: 'header' },
+        ],
         labour: [{ labour_cost: 500 }],
     })
 
@@ -453,7 +544,10 @@ describe('publishCheck', () => {
     it('warns about a week with no hours rather than refusing it', () => {
         const out = publishCheck(clean, reportFigures({
             days: [{ sale_date: '2026-08-09', net_sales: 2000, gross_sales: 2185, is_closed: false }],
-            invoices: [{ category: 'food', total_amount: 500 }, { category: 'packaging', total_amount: 100 }],
+            spend: [
+            { cost_date: '2026-08-09', category: 'food', amount: 500, came_from: 'lines' },
+            { cost_date: '2026-08-09', category: 'packaging', amount: 100, came_from: 'header' },
+        ],
             labour: [],
         }))
         expect(out.blockers).toEqual([])
@@ -499,3 +593,139 @@ describe('isCorrection', () => {
     })
 })
 
+describe('blockedBy', () => {
+    it('says sales while any day has no figures', () => {
+        expect(blockedBy({ missing: ['2026-09-20'], unanswered: [{ person: {} }] })).toBe('sales')
+    })
+
+    // The week that showed it: every day typed in, seven people still to
+    // answer for on the timesheet, and the badge saying the sales were not
+    // finished.
+    it('says timesheet once the sales are in and somebody is still unanswered', () => {
+        expect(blockedBy({ missing: [], unanswered: [{ person: {} }] })).toBe('timesheet')
+    })
+
+    it('says nothing for a week that is ready', () => {
+        expect(blockedBy({ missing: [], unanswered: [] })).toBeNull()
+        expect(blockedBy(undefined)).toBeNull()
+    })
+})
+
+// The platforms bill Monday to Sunday and our week runs Sunday to Saturday.
+// Invented figures throughout; the week is 20 to 26 September 2026, the one
+// that raised it.
+describe("the delivery platforms' own week", () => {
+    const WEEK = '2026-09-20'
+    const ROO = { id: 'p1', name: 'Deliveroo' }
+    const EAT = { id: 'p2', name: 'Just Eat' }
+
+    // Deliveroo takes 100 every day from Sunday 20 to Sunday 27, except the
+    // two Sundays, which take 50 and 150.
+    const DAYS = [
+        { sale_date: '2026-09-20', platform_sales: { Deliveroo: 50 } },
+        ...['21', '22', '23', '24', '25', '26'].map(d => ({
+            sale_date: `2026-09-${d}`, platform_sales: { Deliveroo: 100, 'Just Eat': 10 },
+        })),
+        { sale_date: '2026-09-27', platform_sales: { Deliveroo: 150 } },
+    ]
+
+    it('runs the statement from the Monday to the Sunday after, out the Monday after that', () => {
+        expect(statementWeek(WEEK)).toEqual({ from: '2026-09-21', to: '2026-09-27', out: '2026-09-28' })
+    })
+
+    it('says the days the way a person would', () => {
+        expect(dayWords('2026-09-28')).toBe('Monday 28 September')
+        expect(statementWords(WEEK)).toBe('Monday 21 to Sunday 27 September')
+        expect(statementWords('2026-09-27')).toBe('Monday 28 September to Sunday 4 October')
+    })
+
+    it('adds up what a platform took between two dates', () => {
+        expect(platformTaken(DAYS, 'Deliveroo', '2026-09-21', '2026-09-27')).toBe(750)
+        expect(platformTaken(DAYS, 'Deliveroo', '2026-09-20', '2026-09-26')).toBe(650)
+    })
+
+    // 225 on 750 taken is 30%, and 30% of the 650 our week took is 195.
+    it('costs our week at the share the statement kept', () => {
+        const got = deliveryCost({ statement: 225, statementTaken: 750, weekTaken: 650 })
+        expect(got.rate).toBeCloseTo(30, 6)
+        expect(got.cost).toBe(195)
+        expect(got.typed).toBe(true)
+    })
+
+    it('knows nothing typed is not nought', () => {
+        expect(deliveryCost({ statement: null, statementTaken: 750, weekTaken: 650 }))
+            .toEqual({ typed: false, rate: null, cost: 0 })
+        expect(deliveryCost({ statement: 0, statementTaken: 750, weekTaken: 650 }))
+            .toMatchObject({ typed: true, cost: 0 })
+    })
+
+    it('counts a statement as it stands when nothing was taken over its week', () => {
+        expect(deliveryCost({ statement: 40, statementTaken: 0, weekTaken: 0 }))
+            .toEqual({ typed: true, rate: null, cost: 40 })
+    })
+
+    it('gives every platform a row, typed or not', () => {
+        const rows = deliveryRows({
+            platforms: [ROO, EAT],
+            items: [{ kind: 'delivery', key: 'p1', amount: 225 }, { kind: 'overhead', key: 'p2', amount: 999 }],
+            days: DAYS,
+            weekStart: WEEK,
+        })
+        expect(rows[0]).toMatchObject({ statement: 225, statementTaken: 750, weekTaken: 650, cost: 195, typed: true })
+        expect(rows[1]).toMatchObject({ statement: null, statementTaken: 60, weekTaken: 60, cost: 0, typed: false })
+    })
+
+    it("knows whether the statement's Sunday is in", () => {
+        expect(statementSundayIn(DAYS, [ROO], WEEK)).toBe(true)
+        expect(statementSundayIn(DAYS.slice(0, -1), [ROO], WEEK)).toBe(false)
+        expect(statementSundayIn([{ sale_date: '2026-09-27', platform_sales: {} }], [ROO], WEEK)).toBe(false)
+        expect(statementSundayIn([{ sale_date: '2026-09-27', is_closed: true }], [ROO], WEEK)).toBe(true)
+    })
+
+    describe('what stops it being sent', () => {
+        const rows = deliveryRows({
+            platforms: [ROO, EAT], items: [{ kind: 'delivery', key: 'p1', amount: 225 }], days: DAYS, weekStart: WEEK,
+        })
+
+        it('waits for the Monday the statements come out', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-27', rows, days: DAYS })
+            expect(said[0]).toBe('The delivery platforms bill Monday to Sunday, so their statements for '
+                + 'Monday 21 to Sunday 27 September come out on Monday 28 September. The report can be sent from then.')
+        })
+
+        it('asks for the Sunday the statements end on', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows, days: DAYS.slice(0, -1) })
+            expect(said.some(s => s.startsWith('Sunday 27 September has no online platform sales yet.'))).toBe(true)
+        })
+
+        it('asks for each statement not typed, by name', () => {
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows, days: DAYS })
+            expect(said).toEqual(["Type what Just Eat's statement for Monday 21 to Sunday 27 September came to."])
+        })
+
+        it('says nothing once it is Monday, the Sunday is in and every statement is typed', () => {
+            const all = deliveryRows({
+                platforms: [ROO, EAT],
+                items: [{ kind: 'delivery', key: 'p1', amount: 225 }, { kind: 'delivery', key: 'p2', amount: 0 }],
+                days: DAYS,
+                weekStart: WEEK,
+            })
+            expect(deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows: all, days: DAYS })).toEqual([])
+        })
+
+        it('does not ask about a platform that took nothing either week', () => {
+            const quiet = deliveryRows({ platforms: [{ id: 'p3', name: 'Quiet' }], days: DAYS, weekStart: WEEK })
+            const said = deliveryBlockers({ weekStart: WEEK, today: '2026-09-28', rows: quiet, days: DAYS })
+            expect(said.some(s => s.includes('Quiet'))).toBe(false)
+        })
+
+        it('waits for nothing at a restaurant with no online platforms', () => {
+            expect(deliveryBlockers({ weekStart: WEEK, today: '2026-09-27', rows: [], days: [] })).toEqual([])
+        })
+
+        it('stops the send alongside everything else', () => {
+            const check = publishCheck([], null, ['Waiting for Monday.'])
+            expect(check.blockers).toEqual(['Waiting for Monday.'])
+        })
+    })
+})

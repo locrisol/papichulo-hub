@@ -42,6 +42,28 @@ const BY_TEXT = [
     ['networkerror', 'Could not reach the server. Check your connection and try again.'],
 ]
 
+// What an edge function actually said, rather than the fact that it failed.
+//
+// **supabase.functions.invoke treats any non-2xx as an error**, hands back a
+// FunctionsHttpError with the response hanging off it, and leaves data null. So
+// a function that carefully answers "nothing found for that, paste the
+// coordinates instead" has that sentence thrown away, and the person sees "Edge
+// Function returned a non-2xx status code", which tells them nothing they can
+// act on. He typed a restaurant name into the address box and got exactly that.
+//
+// The sentence is in the body. This reads it, and falls back to the ordinary
+// wording when there is nothing there to read.
+export async function functionError(failed, fallback = '') {
+    try {
+        const body = await failed?.context?.json?.()
+        if (body?.error) return String(body.error)
+    } catch {
+        // Not JSON, or the body has been read already. Either way there is
+        // nothing better than what friendlyError makes of it.
+    }
+    return friendlyError(failed) || fallback
+}
+
 export function friendlyError(error) {
     if (!error) return ''
 

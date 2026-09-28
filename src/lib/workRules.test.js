@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     inHolidayPeriod, weeklyCap, ageOn, longestRest, shortestGap, checkWeek,
     permissionFor, DEFAULT_RULES, findingsByEmployee, worstLevel, overlapFindings,
-    graceFor,
+    graceFor, isPaperwork, aboutThisWeek,
 } from '@/lib/workRules'
 
 // Sunday 23 August 2026 to Saturday the 29th.
@@ -629,5 +629,79 @@ describe('filing findings under the person', () => {
     it('is happy with no clashes at all', () => {
         expect(overlapFindings([], {})).toEqual([])
         expect(overlapFindings(null, {})).toEqual([])
+    })
+})
+
+describe('what a finding is about', () => {
+    // A permit expiring is the same on Monday as on Friday and nothing on the
+    // grid changes it. Beside a name on a row of shifts it made the row's
+    // warning mean two things at once.
+    it('calls a permit and a food safety certificate paperwork', () => {
+        expect(isPaperwork({ kind: 'permissionExpired' })).toBe(true)
+        expect(isPaperwork({ kind: 'permissionSoonRenewing' })).toBe(true)
+        expect(isPaperwork({ kind: 'foodSafetySoon' })).toBe(true)
+    })
+
+    it('calls everything about the shifts something else', () => {
+        for (const kind of ['maxWeek', 'dailyRest', 'weeklyRest', 'daysOff',
+            'availabilityDay', 'timeOff', 'clash', 'minorWeek', 'minorLate']) {
+            expect(isPaperwork({ kind }), kind).toBe(false)
+        }
+    })
+
+    // Matched on the front of the kind, so a permission check added later lands
+    // in the right half without anybody remembering to come back.
+    it('takes a kind nobody has written yet, if it is named like the others', () => {
+        expect(isPaperwork({ kind: 'permissionSomethingNew' })).toBe(true)
+    })
+
+    it('does not throw on a finding with no kind', () => {
+        expect(isPaperwork({})).toBe(false)
+        expect(isPaperwork(null)).toBe(false)
+    })
+
+    it('keeps only what the week is responsible for', () => {
+        const findings = [
+            { kind: 'permissionExpired', level: 'block' },
+            { kind: 'maxWeek', level: 'warn' },
+            { kind: 'foodSafetySoon', level: 'warn' },
+            { kind: 'dailyRest', level: 'warn' },
+        ]
+        expect(aboutThisWeek(findings).map(f => f.kind)).toEqual(['maxWeek', 'dailyRest'])
+    })
+
+    it('copes with nothing at all', () => {
+        expect(aboutThisWeek(null)).toEqual([])
+    })
+})
+
+describe('a split day is not a short turnaround', () => {
+    // Majo works nine to one, goes to her English class, and comes back at
+    // half five. One working day with a gap in the middle, which is ordinary
+    // here, and the eleven hours is about the rest between one day and the
+    // next.
+    it('ignores the gap between two shifts on the same day', () => {
+        const shifts = [shift(WEEK[0], '09:00', '13:00'), shift(WEEK[0], '17:30', '23:00')]
+        expect(shortestGap(shifts, WEEK).hours).toBe(Infinity)
+    })
+
+    // The pair that matters is still measured, from the end of the last shift
+    // of the day rather than from the first.
+    it('still measures from the end of a split day to the next morning', () => {
+        const shifts = [
+            shift(WEEK[0], '09:00', '13:00'),
+            shift(WEEK[0], '17:30', '23:00'),
+            shift(WEEK[1], '08:00', '16:00'),
+        ]
+        expect(shortestGap(shifts, WEEK).hours).toBe(9)
+    })
+
+    it('does not let a split day hide a genuinely tight turnaround', () => {
+        const shifts = [
+            shift(WEEK[0], '09:00', '13:00'),
+            shift(WEEK[0], '17:30', '23:00'),
+            shift(WEEK[1], '06:00', '14:00'),
+        ]
+        expect(shortestGap(shifts, WEEK).hours).toBe(7)
     })
 })

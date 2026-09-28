@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
-import { wasChanged, platformShare, startsOpen, figureGaps } from '@/lib/weeklyReport'
+import { wasChanged, startsOpen, figureGaps } from '@/lib/weeklyReport'
 import { removeButton, secondaryButton } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import AddButton from '@/components/ui/AddButton'
@@ -25,6 +25,11 @@ import AddButton from '@/components/ui/AddButton'
 // Third party delivery is the opposite. It changes every week and there is no
 // rate that would hold, because promotions, penalties and goodwill credits all
 // land in it. So it is typed, one euro figure per platform, and never locked.
+//
+// What is typed is the platform's own statement, which runs Monday to Sunday,
+// a day behind our week. The cost that goes into the week is worked out from
+// it: the share the platform kept over its statement's week, applied to what
+// it took in ours. See statementWeek in weeklyReport.
 //
 // There is nowhere to type a delivery total. It is the platform lines added up,
 // so it cannot say something the lines do not.
@@ -207,18 +212,38 @@ function OverheadLine({ item, net, canEdit, onSave, onRename, onRemove }) {
     )
 }
 
-// What one platform charged this week, and what share of its own takings that
-// was. The takings come from the Hub; only the cost is typed.
-function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
-    const [draft, setDraft] = useState(String(item?.amount ?? ''))
-    const cost = Number(item?.amount) || 0
-    const share = platformShare(cost, taken)
+// One platform: its statement typed as it came, the share it kept over the
+// statement's own week, and what that comes to for ours.
+//
+// The box is the statement and only the statement. The cost for the week is
+// said underneath in words, with the two takings it came from, so nobody has to
+// take the arithmetic on trust.
+function DeliveryLine({ row, statement, waiting, canEdit, onSave }) {
+    const { platform } = row
+    const [draft, setDraft] = useState(row.statement == null ? '' : String(row.statement))
 
     async function commit() {
+        if (draft === '' && row.statement == null) return
         const next = draft === '' ? 0 : Number(draft)
-        if (Math.abs(next - cost) < 0.005) return
+        if (row.statement != null && Math.abs(next - row.statement) < 0.005) return
         await onSave(platform, next)
     }
+
+    // A report sent before the statement week existed says what it said then.
+    const said = row.legacy
+        ? null
+        : !row.typed
+            ? `Type its statement for ${statement}.`
+            : row.rate == null
+                ? `Nothing taken ${statement}, so the statement counts as it stands.`
+                // The percentage first and what it was taken against, since
+                // that is the figure people ask about. His words, 27
+                // September: "the percentage is calculated against X amount
+                // and done Monday to Sunday as that's the way the cost reports
+                // comes like".
+                : `${fmtPct(row.rate)} is what it kept of the ${fmtMoney(row.statementTaken)} it took ${statement}`
+                    + `${waiting ? ' so far' : ''}, the days its statement covers. The same share of the `
+                    + `${fmtMoney(row.weekTaken)} it took this week, Sunday to Saturday, is ${fmtMoney(row.cost)}.`
 
     return (
         <Row
@@ -226,7 +251,7 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
                 <>
                     <span className="flex-1 min-w-0 text-sm text-gray-800">{platform.name}</span>
                     <span className="text-xs tabular-nums text-muted whitespace-nowrap">
-                        {fmtMoney(taken)} taken
+                        {fmtMoney(row.weekTaken)} taken
                     </span>
                 </>
             }
@@ -237,21 +262,24 @@ function DeliveryLine({ platform, taken, item, canEdit, onSave }) {
                             {...numberField({ value: draft, onChange: setDraft, decimals: 2 })}
                             onBlur={commit}
                             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="0.00"
-                            aria-label={`What ${platform.name} cost this week`}
+                            placeholder="Statement"
+                            aria-label={`What ${platform.name}'s statement came to`}
                             className={`${moneyBox} sm:w-24 bg-white border border-gray-300 shadow-sm focus:border-accent`}
                         />
                     ) : (
                         <span className="flex-1 sm:flex-none sm:w-24 text-right text-sm tabular-nums font-semibold text-gray-900">
-                            {fmtMoney(cost)}
+                            {fmtMoney(row.cost)}
                         </span>
                     )}
                     <span className={`w-14 text-right text-sm tabular-nums font-bold ${
-                        share == null ? 'text-muted' : 'text-gray-900'}`}>
-                        {fmtPct(share)}
+                        row.rate == null ? 'text-muted' : 'text-gray-900'}`}>
+                        {fmtPct(row.rate)}
                     </span>
                 </>
             }
+            extra={said && (
+                <span className={`text-xs ${row.typed ? 'text-muted' : 'text-accent-ink'}`}>{said}</span>
+            )}
         />
     )
 }
@@ -283,7 +311,7 @@ function FigureRow({ label, hint, amount, share, tint, strong }) {
 }
 
 export default function ReportProfitLoss({
-    section, figures, platforms, taken, canEdit,
+    section, figures, rows = [], statement, waiting, canEdit,
     onSaveOverhead, onSaveDelivery, onAddOverhead, onRenameOverhead, onRemoveOverhead,
 }) {
     const [adding, setAdding] = useState(false)
@@ -293,8 +321,7 @@ export default function ReportProfitLoss({
     // The first report a restaurant writes: nothing carried into any line, so
     // there is nothing for a lock to protect.
     const firstTime = overheads.length > 0 && overheads.every(startsOpen)
-    const delivery = section.items.filter(i => i.kind === 'delivery')
-    const byKey = new Map(delivery.map(d => [d.key, d]))
+    const legacy = rows.some(r => r.legacy)
 
     const net = figures.net
     const gaps = figureGaps(figures)
@@ -305,24 +332,30 @@ export default function ReportProfitLoss({
             <p className="text-xs font-bold text-muted uppercase tracking-wider mb-1">
                 Third party delivery costs
             </p>
+            {/* Said once, above the lines, because it is the one thing about
+                this section nobody would guess: the figure typed is not the
+                figure the week is charged. */}
             <p className="text-xs text-muted mb-2">
-                A euro figure each week, not a rate, because promotions and penalties move it. There is nowhere
-                to type a total.
+                {legacy
+                    ? 'The statement each platform sent, as it was entered when this report went out.'
+                    : `Type each platform's statement as it came. The platforms bill Monday to Sunday, a day
+                        behind our week, so each statement covers ${statement}. The share it kept over those
+                        days is applied to what it took in this week, and that is its cost here.`}
             </p>
 
             <div className="rounded-lg border border-border bg-white overflow-hidden">
-                {platforms.map(p => (
+                {rows.map(row => (
                     <DeliveryLine
-                        key={p.id}
-                        platform={p}
-                        taken={taken[p.id] || 0}
-                        item={byKey.get(p.id)}
+                        key={row.platform.id}
+                        row={row}
+                        statement={statement}
+                        waiting={waiting}
                         canEdit={canEdit}
                         onSave={onSaveDelivery}
                     />
                 ))}
 
-                {platforms.length === 0 && (
+                {rows.length === 0 && (
                     <p className="px-3 py-3 text-sm text-muted">
                         No online platforms are set up for this restaurant yet.
                     </p>
@@ -332,6 +365,7 @@ export default function ReportProfitLoss({
                     strong
                     tint="bg-app-bg"
                     label="Total"
+                    hint="The share beside it is of this week's net sales."
                     amount={figures.deliveryTotal}
                     share={net > 0 ? (figures.deliveryTotal / net) * 100 : null}
                 />
