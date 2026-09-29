@@ -159,6 +159,23 @@ maybe('what each role can see and do', () => {
             })
             expect(refused).toBe(true)
         })
+
+        // Since 022. A MIX is valued from its recipe, and without it every
+        // MIX an employee counted or wasted was saved at nothing.
+        it('can read MIX recipes, which value what they count and waste', async () => {
+            const { count, error } = await countVisible(employee, 'mix_recipes')
+            expect(error).toBeNull()
+            expect(count).toBeGreaterThan(0)
+        })
+
+        it('is refused when writing a MIX recipe', async () => {
+            const refused = await writeRefused(employee, 'mix_recipes', {
+                mix_product_id: NOBODY,
+                ingredient_product_id: NOBODY,
+                quantity: 1,
+            })
+            expect(refused).toBe(true)
+        })
     })
 
     describe('store manager', () => {

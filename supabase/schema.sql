@@ -3015,7 +3015,9 @@ CREATE POLICY "product_aliases_write" ON "public"."product_aliases" TO "authenti
 
 ALTER TABLE "public"."mix_recipes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+-- Employees read recipes too: a MIX is valued from its recipe, and counting
+-- stock and logging waste are their job. Writing one stays with managers.
+CREATE POLICY "mix_recipes_select" ON "public"."mix_recipes" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
 
 CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
