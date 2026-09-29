@@ -54,3 +54,21 @@ export async function writeRefused(client, table, row) {
     const { error } = await client.from(table).insert(row)
     return Boolean(error)
 }
+
+// A uuid no row will ever have, so a write aimed at it changes nothing
+// whether or not the database allows it.
+export const NOBODY = '00000000-0000-0000-0000-000000000000'
+
+// Tries to change and to delete through a view, aimed at a row that cannot
+// exist. True only if the database refused both.
+//
+// Aimed at nothing on purpose, because these run against live. Before 021
+// both of these went through and simply matched no row, which is the hole
+// itself: the same request with a real filter rewrote the allergens. The
+// change has to name a column the view really has, or it is refused for the
+// wrong reason and the test passes while the hole is open.
+export async function changesRefused(client, view, key, change) {
+    const updated = await client.from(view).update(change).eq(key, NOBODY)
+    const deleted = await client.from(view).delete().eq(key, NOBODY)
+    return Boolean(updated.error) && Boolean(deleted.error)
+}

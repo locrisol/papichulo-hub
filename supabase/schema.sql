@@ -3612,20 +3612,39 @@ COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticke
 
 -- Who may read them, stated rather than inherited from whatever the default
 -- privileges happen to be.
-grant select on public.roster_colleagues to authenticated;
-grant select on public.roster_away      to authenticated;
-revoke all on public.roster_colleagues from anon, public;
-revoke all on public.roster_away      from anon, public;
-grant select on public.checklist_last_done to authenticated;
-revoke all on public.checklist_last_done from anon, public;
+--
+-- Revoke everything first, then give back reading and nothing else. Supabase
+-- gives anon and authenticated ALL on anything new in public, and a view that
+-- reads one table and nothing else is one the database will write through, as
+-- its owner, past row level security. Granting SELECT on top of that took
+-- nothing away: until 021 anybody with the website's key could rewrite the
+-- allergens through public_product_allergens. Any new view gets the same two
+-- lines here.
+revoke all on public.roster_colleagues        from anon, authenticated, public;
+revoke all on public.roster_away              from anon, authenticated, public;
+revoke all on public.checklist_last_done      from anon, authenticated, public;
+revoke all on public.labour_by_day            from anon, authenticated, public;
+revoke all on public.invoice_cost_by_category from anon, authenticated, public;
+grant select on public.roster_colleagues        to authenticated;
+grant select on public.roster_away              to authenticated;
+grant select on public.checklist_last_done      to authenticated;
+grant select on public.labour_by_day            to authenticated;
+grant select on public.invoice_cost_by_category to authenticated;
 
-grant select on public.public_menu_categories to anon, authenticated;
+revoke all on public.public_menu_categories      from anon, authenticated, public;
+revoke all on public.public_menu_item_components from anon, authenticated, public;
+revoke all on public.public_menu_items           from anon, authenticated, public;
+revoke all on public.public_mix_recipes          from anon, authenticated, public;
+revoke all on public.public_product_allergens    from anon, authenticated, public;
+revoke all on public.public_products             from anon, authenticated, public;
+revoke all on public.public_restaurants          from anon, authenticated, public;
+grant select on public.public_menu_categories      to anon, authenticated;
 grant select on public.public_menu_item_components to anon, authenticated;
-grant select on public.public_menu_items to anon, authenticated;
-grant select on public.public_mix_recipes to anon, authenticated;
-grant select on public.public_product_allergens to anon, authenticated;
-grant select on public.public_products to anon, authenticated;
-grant select on public.public_restaurants to anon, authenticated;
+grant select on public.public_menu_items           to anon, authenticated;
+grant select on public.public_mix_recipes          to anon, authenticated;
+grant select on public.public_product_allergens    to anon, authenticated;
+grant select on public.public_products             to anon, authenticated;
+grant select on public.public_restaurants          to anon, authenticated;
 
 
 -- ======================================================================
