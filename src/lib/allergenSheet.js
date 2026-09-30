@@ -1,4 +1,5 @@
 import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from '@/lib/allergens'
+import { toISODate, todayISO, dayMonth, addMonths } from '@/lib/dates'
 
 // The rows of the allergen sheet for one category.
 //
@@ -146,4 +147,57 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
     // sorted in among them.
     return rows.sort((a, b) =>
         (a.order - b.order) || a.name.localeCompare(b.name))
+}
+
+// How often the sheet is printed again when nothing has changed, unless the
+// restaurant says otherwise. The same default the database gives the column.
+export const REPRINT_EVERY_MONTHS = 3
+
+// When the printed sheet on the wall wants printing again.
+//
+// His rule, 29 September 2026: every so many months whatever happens, and as
+// soon as anything on the sheet has changed since the last one was printed.
+// Never printed from the Hub is due straight away, because there is no saying
+// what the paper on the wall says.
+//
+// printedAt is restaurants.allergen_sheet_printed_at, changedAt is what
+// allergens_changed_at() answers, and today is a plain date. Null when it is
+// not due. Otherwise why, and the sentence to show, so the Public Allergens
+// page and the weekly report cannot word it two different ways.
+export function reprintDue({ printedAt, everyMonths, changedAt, today = todayISO() } = {}) {
+    const printed = printedAt ? new Date(printedAt) : null
+    if (!printed || isNaN(printed)) {
+        return {
+            reason: 'never',
+            words: 'The allergen sheet has not been printed from the Hub yet. Print one now.',
+        }
+    }
+
+    const printedOn = toISODate(printed)
+    const when = printedOn.slice(0, 4) === today.slice(0, 4)
+        ? dayMonth(printedOn)
+        : `${dayMonth(printedOn)} ${printedOn.slice(0, 4)}`
+
+    // The change first. It is the one that makes the paper wrong rather than
+    // only old.
+    const changed = changedAt ? new Date(changedAt) : null
+    if (changed && changed > printed) {
+        return {
+            reason: 'changed',
+            words: `Last printed ${when}. The allergen information has changed since then. Print a new sheet.`,
+        }
+    }
+
+    const months = Number.isInteger(everyMonths) && everyMonths >= 1 ? everyMonths : REPRINT_EVERY_MONTHS
+    // Kept inside the month it lands in, so 30 November and three months is
+    // 28 February rather than 2 March.
+    if (today >= addMonths(printedOn, months)) {
+        const every = months === 1 ? 'every month' : `every ${months} months`
+        return {
+            reason: 'every',
+            words: `Last printed ${when}. A new sheet is due ${every}. Print a new one.`,
+        }
+    }
+
+    return null
 }

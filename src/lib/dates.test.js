@@ -162,9 +162,21 @@ describe('addMonths', () => {
         expect(addMonths('2026-01-01', -1)).toBe('2025-12-01')
     })
 
-    // Why the comment on the function says to call it on the first of a month.
     it('is safe from the first of any month, including into February', () => {
         expect(addMonths('2026-01-01', 1)).toBe('2026-02-01')
+    })
+
+    // Plain Date arithmetic says 31 January and a month is 3 March, which is a
+    // date two days into a month nobody asked for.
+    it('stops at the end of a shorter month', () => {
+        expect(addMonths('2026-01-31', 1)).toBe('2026-02-28')
+        expect(addMonths('2026-11-30', 3)).toBe('2027-02-28')
+        expect(addMonths('2028-01-31', 1)).toBe('2028-02-29')
+        expect(addMonths('2026-03-31', -1)).toBe('2026-02-28')
+    })
+
+    it('keeps the day where the month has it', () => {
+        expect(addMonths('2026-06-12', 3)).toBe('2026-09-12')
     })
 })
 

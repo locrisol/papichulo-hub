@@ -751,11 +751,40 @@ function paperwork(state, title) {
     </td></tr>`
 }
 
+// The printed allergen sheet, only while a new one is due. His ask of 29
+// September 2026. Frozen with the report as the sentence the Public Allergens
+// page shows (reprintDue in allergenSheet.js), because nothing outside this
+// folder is deployed with it. Absent from a report frozen before it existed,
+// which says nothing, the same as a sheet that is not due.
+//
+// The same card as the paperwork above it. What sits in the header is short
+// and cannot wrap; the sentence goes underneath, where it can.
+function allergenSheet(due) {
+    if (!due?.words) return ''
+
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${AMBER};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                            font-weight:700;color:${AMBER};white-space:nowrap;">Print a new one</td>
+                    </tr>
+                </table>
+            </td></tr>
+            <tr><td style="padding:12px 14px 14px;font-family:${FONT};font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
+        </table>
+    </td></tr>`
+}
+
 function peopleAndOps(section, f) {
     const paper = f.paperwork || {}
     return heading(section.title, section.number)
         + paperwork(paper.food, 'Food safety certificates')
         + paperwork(paper.permits, 'Right to work')
+        + allergenSheet(paper.allergenSheet)
         + comments(sectionComments(section))
 }
 
@@ -1322,6 +1351,10 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 group('Out of date:', state.expired)
                 group('Runs out soon:', state.expiring)
                 group('Nothing on file:', state.missing)
+            }
+            if (f.paperwork?.allergenSheet?.words) {
+                out.push('  Allergen sheet')
+                out.push(`  ${f.paperwork.allergenSheet.words}`)
             }
         } else if (section.key === 'cleaning') {
             const c = f.cleaning

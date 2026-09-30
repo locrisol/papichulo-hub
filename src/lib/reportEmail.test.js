@@ -1230,6 +1230,43 @@ describe('the people section, with renewals', () => {
     })
 })
 
+// His ask of 29 September: a line in the paperwork while a new allergen sheet
+// is due, frozen with the report in the words the Allergens page uses.
+describe('the allergen sheet', () => {
+    const words = 'Last printed 12 June. The allergen information has changed since then. Print a new sheet.'
+    const due = reportEmail({
+        ...base,
+        figures: { ...figures, paperwork: { ...figures.paperwork, allergenSheet: { reason: 'changed', words } } },
+    })
+
+    it('says a new one is due, under People and operations', () => {
+        expect(due.html).toContain('Allergen sheet')
+        expect(due.html).toContain(words)
+        expect(due.html.indexOf(words)).toBeGreaterThan(due.html.indexOf('People and operations'))
+        expect(due.html.indexOf(words)).toBeLessThan(due.html.indexOf('Marketing and sales development'))
+    })
+
+    it('says it in the plain copy too', () => {
+        expect(due.text).toContain('  Allergen sheet')
+        expect(due.text).toContain(`  ${words}`)
+    })
+
+    // Not due, or a report frozen before this existed.
+    it('says nothing while it is not due', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).not.toContain('Allergen sheet')
+        expect(mail.text).not.toContain('Allergen sheet')
+    })
+
+    it('keeps everything that cannot wrap narrow enough for a phone', () => {
+        const lines = [...due.html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+            .flatMap(m => m[1].split(/<br\s*\/?>/))
+            .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+        expect(lines).toContain('Print a new one')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
+    })
+})
+
 // The price section is worked out in the app and frozen onto the report, and
 // the mail only lays it out. So the test freezes a real one the way publishing
 // does and hands it over, which is what holds the two halves to one shape.

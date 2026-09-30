@@ -128,6 +128,67 @@ describe('the pay period', () => {
     })
 })
 
+// His ask of 29 September: how many months a printed allergen sheet stays up
+// before the Hub asks for a new one, 1 to 24, 3 unless somebody says.
+describe('the allergen sheet', () => {
+    const monthsBox = () => screen.getByLabelText(/print a new allergen sheet every/i)
+
+    it('shows three months until somebody changes it', () => {
+        answers(() => ({ ...restaurant }))
+        renderWithRouter(<RestaurantPage />)
+        expect(monthsBox()).toHaveValue('3')
+    })
+
+    it('writes the months when the box is left', async () => {
+        restaurant = { ...EMPTY, allergen_sheet_every_months: 3 }
+        answers(() => ({ ...restaurant, allergen_sheet_every_months: 6 }))
+        const me = userEvent.setup()
+        renderWithRouter(<RestaurantPage />)
+
+        await me.clear(monthsBox())
+        await me.type(monthsBox(), '6')
+        await me.tab()
+
+        await waitFor(() => expect(setActiveRestaurant).toHaveBeenCalled())
+        expect(setActiveRestaurant.mock.calls[0][0].allergen_sheet_every_months).toBe(6)
+    })
+
+    it('writes nothing outside 1 to 24', async () => {
+        restaurant = { ...EMPTY, allergen_sheet_every_months: 3 }
+        answers(() => ({ ...restaurant }))
+        const me = userEvent.setup()
+        renderWithRouter(<RestaurantPage />)
+
+        await me.clear(monthsBox())
+        await me.type(monthsBox(), '25')
+        await me.tab()
+        await me.clear(monthsBox())
+        await me.type(monthsBox(), '0')
+        await me.tab()
+
+        expect(setActiveRestaurant).not.toHaveBeenCalled()
+    })
+
+    it('says when it was last printed', () => {
+        restaurant = { ...EMPTY, allergen_sheet_printed_at: '2026-06-12T12:00:00Z' }
+        answers(() => ({ ...restaurant }))
+        renderWithRouter(<RestaurantPage />)
+        expect(screen.getByText(/Last printed 12\/06\/2026/)).toBeInTheDocument()
+    })
+
+    it('says when it has never been printed from the Hub', () => {
+        answers(() => ({ ...restaurant }))
+        renderWithRouter(<RestaurantPage />)
+        expect(screen.getByText(/Not printed from the Hub yet/)).toBeInTheDocument()
+    })
+
+    it('says a change to the sheet makes a new one due', () => {
+        answers(() => ({ ...restaurant }))
+        renderWithRouter(<RestaurantPage />)
+        expect(screen.getByText(/Any change to the sheet makes a new one due straight away\./)).toBeInTheDocument()
+    })
+})
+
 describe('the hourly rate', () => {
     it('writes it when the box is left', async () => {
         answers(() => ({ ...restaurant, hourly_rate: 16.5 }))

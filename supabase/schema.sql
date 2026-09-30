@@ -92,8 +92,11 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "timesheet_recipients" "text"[],
     "pay_period_start" "date",
     "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
+    "allergen_sheet_printed_at" timestamp with time zone,
+    "allergen_sheet_every_months" integer DEFAULT 3 NOT NULL,
     -- The payroll list, and nobody is on it by role. See the comment below.,
     CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
+    CONSTRAINT "restaurants_allergen_sheet_every_months_check" CHECK ((("allergen_sheet_every_months" >= 1) AND ("allergen_sheet_every_months" <= 24))),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
@@ -103,6 +106,8 @@ COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually 
 COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
 COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
+COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_printed_at" IS 'When the allergen sheet was last printed from the Hub for this restaurant, stamped by allergen_sheet_printed(). Null means never, which counts as due.';
+COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_every_months" IS 'How many months the printed allergen sheet stays up before it is due again when nothing on it has changed. A change makes it due straight away whatever this says.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -1770,7 +1775,12 @@ ALTER TABLE ONLY "public"."change_log"
 CREATE INDEX "idx_change_log_row" ON "public"."change_log" USING "btree" ("table_name", "row_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_user" ON "public"."change_log" USING "btree" ("user_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_when" ON "public"."change_log" USING "btree" ("changed_at" DESC);
+-- For allergens_changed_at(), which the customer allergen page calls on every
+-- visit. Without it the function walks back through every change to every
+-- table until it meets one of these six.
+CREATE INDEX "idx_change_log_allergen_sheet" ON "public"."change_log" USING "btree" ("changed_at" DESC) WHERE ("table_name" = ANY (ARRAY['product_allergens'::"text", 'menu_items'::"text", 'menu_item_components'::"text", 'menu_categories'::"text", 'mix_recipes'::"text", 'products'::"text"]));
 
+COMMENT ON INDEX "public"."idx_change_log_allergen_sheet" IS 'Only the six tables the allergen sheet is made from, newest first, for allergens_changed_at(), which the customer allergen page calls on every visit.';
 COMMENT ON INDEX "public"."menu_item_components_once_as_ingredient" IS 'A product is in a dish once. Its appearances inside a choice are counted separately.';
 COMMENT ON INDEX "public"."menu_item_components_once_per_choice" IS 'A product is one option of a choice once, and may be an option of a different choice on the same dish.';
 COMMENT ON INDEX "public"."report_items_one_per_key" IS 'One row per key, but only for the kinds where the key names a thing there can be only one of: an overhead line, a platform''s delivery cost, a platform''s rating. Reviews and refunds use the key to say which platform they are about and there can be any number of them.';
@@ -2877,6 +2887,94 @@ begin
 end;
 $$;
 
+-- -- The allergen sheet ------------------------------------------------
+--
+-- When the allergen information last changed, and the stamp the PDF button
+-- leaves when the sheet is printed. His ask of 29 September 2026: an accurate
+-- "Last updated", and a reminder to print a new sheet every so many months
+-- and as soon as anything on it has changed since the last print.
+
+-- The newest change that alters what the allergen sheet says: allergens,
+-- dishes, what is in them and their categories, recipes, and a product
+-- renamed, switched on or off, or made a MIX. A price, the VAT, a quantity or
+-- a note does not count. The customer page is not signed in and cannot read
+-- the change log, so this reads it for them and hands back one date.
+--
+-- Listed by what does not count rather than by what does, on every table but
+-- products: a column added to a dish later reminds somebody to print once too
+-- often, which costs a sheet of paper, where a column missed would let the
+-- paper on the wall go wrong without a word. Products are the other way round
+-- because nearly everything on them is about buying and counting.
+--
+-- So a few things move the date without changing the sheet: the allergen row
+-- a new product is saved with, and any edit to a dish that is switched off.
+-- The customer's Last updated moves with them too. That is the side to be
+-- wrong on, a sheet printed once too often rather than a changed one nobody
+-- is told about.
+create or replace function public.allergens_changed_at() returns timestamp with time zone
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select l.changed_at
+      from public.change_log l
+     where l.table_name in ('product_allergens', 'menu_items', 'menu_item_components',
+                            'menu_categories', 'mix_recipes', 'products')
+       and case
+            -- A new product is on no dish yet. The allergen row it is saved
+            -- with still counts, as an insert on product_allergens.
+            when l.table_name = 'products' and l.action = 'insert' then false
+            when l.action <> 'update' then true
+            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix']
+            when l.table_name = 'menu_items' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['selling_price', 'vat_rate', 'notes']))
+            when l.table_name = 'menu_item_components' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['quantity', 'no_quantity', 'notes']))
+            when l.table_name = 'mix_recipes' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['quantity', 'notes']))
+            else true
+       end
+     order by l.changed_at desc
+     limit 1
+$$;
+
+-- The PDF button says the sheet was printed. An owner can print but cannot
+-- write the restaurant row, so the stamp goes through here. The restaurant is
+-- passed rather than read from the account, because the super admin prints
+-- for whichever restaurant is open; anybody else can only stamp their own.
+create or replace function public.allergen_sheet_printed(restaurant uuid) returns timestamp with time zone
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    stamped timestamp with time zone;
+begin
+    if auth.uid() is null
+       or coalesce(public.get_my_role(), '') not in ('store_manager', 'owner', 'super_admin') then
+        raise exception 'Only a manager can say the allergen sheet was printed';
+    end if;
+
+    if public.get_my_role() <> 'super_admin'
+       and restaurant is distinct from public.get_my_restaurant_id() then
+        raise exception 'That is not your restaurant';
+    end if;
+
+    update public.restaurants
+       set allergen_sheet_printed_at = now()
+     where id = restaurant
+    returning allergen_sheet_printed_at into stamped;
+
+    if stamped is null then
+        raise exception 'That restaurant does not exist';
+    end if;
+
+    return stamped;
+end $$;
+
+COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, or made a MIX. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
 COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted. Nothing younger than a day.';
@@ -2889,6 +2987,10 @@ COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'W
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
+grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
+revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
+grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_photos_due"() to service_role;
 revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sheetRows, sheetName, everyReadArrived } from '@/lib/allergenSheet'
+import { sheetRows, sheetName, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The churros case, which is what this was built for.
@@ -230,5 +230,74 @@ describe('sheetRows', () => {
             products, [], allergens,
         )
         expect(Object.keys(plain[0].allergens)).toEqual(Object.keys(emptyAllergens()))
+    })
+})
+
+// When the paper on the wall wants printing again. His rule, 29 September
+// 2026: every so many months whatever happens, and as soon as anything on it
+// has changed since it was printed.
+describe('reprintDue', () => {
+    // Midday, so no time zone can move any of these onto another day.
+    const JUNE_12 = '2026-06-12T12:00:00Z'
+
+    it('is due when it has never been printed from the Hub', () => {
+        const due = reprintDue({ printedAt: null, everyMonths: 3, changedAt: null, today: '2026-09-30' })
+        expect(due.reason).toBe('never')
+        expect(due.words).toBe('The allergen sheet has not been printed from the Hub yet. Print one now.')
+    })
+
+    it('is not due when nothing has changed and the months have not passed', () => {
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-01T12:00:00Z', today: '2026-09-11' }))
+            .toBeNull()
+    })
+
+    it('is due as soon as something on it changes', () => {
+        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-13T09:00:00Z', today: '2026-06-13' })
+        expect(due.reason).toBe('changed')
+        expect(due.words).toBe('Last printed 12 June. The allergen information has changed since then. Print a new sheet.')
+    })
+
+    it('does not count a change made before it was printed', () => {
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: '2026-06-12T11:59:59Z', today: '2026-06-20' }))
+            .toBeNull()
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 3, changedAt: JUNE_12, today: '2026-06-20' }))
+            .toBeNull()
+    })
+
+    it('is due on the day the months run out, and not the day before', () => {
+        const args = { printedAt: JUNE_12, everyMonths: 3, changedAt: null }
+        expect(reprintDue({ ...args, today: '2026-09-11' })).toBeNull()
+        const due = reprintDue({ ...args, today: '2026-09-12' })
+        expect(due.reason).toBe('every')
+        expect(due.words).toBe('Last printed 12 June. A new sheet is due every 3 months. Print a new one.')
+    })
+
+    it('says every month rather than every 1 months', () => {
+        expect(reprintDue({ printedAt: JUNE_12, everyMonths: 1, changedAt: null, today: '2026-07-12' }).words)
+            .toContain('A new sheet is due every month.')
+    })
+
+    // 30 November and three months is the end of February, not 2 March.
+    it('lands on the last day of a shorter month', () => {
+        const args = { printedAt: '2026-11-30T12:00:00Z', everyMonths: 3, changedAt: null }
+        expect(reprintDue({ ...args, today: '2027-02-27' })).toBeNull()
+        expect(reprintDue({ ...args, today: '2027-02-28' }).reason).toBe('every')
+    })
+
+    it('says the year when it was printed in another one', () => {
+        const due = reprintDue({ printedAt: '2025-12-01T12:00:00Z', everyMonths: 24, changedAt: '2026-01-05T12:00:00Z', today: '2026-01-06' })
+        expect(due.words).toBe('Last printed 1 December 2025. The allergen information has changed since then. Print a new sheet.')
+    })
+
+    it('goes by three months when the restaurant has not said', () => {
+        const args = { printedAt: JUNE_12, changedAt: null }
+        expect(reprintDue({ ...args, today: '2026-09-11' })).toBeNull()
+        expect(reprintDue({ ...args, today: '2026-09-12' }).reason).toBe('every')
+    })
+
+    // The change is the one that makes the paper wrong, so it is the one said.
+    it('says a change before it says the months', () => {
+        const due = reprintDue({ printedAt: JUNE_12, everyMonths: 1, changedAt: '2026-08-01T12:00:00Z', today: '2026-08-02' })
+        expect(due.reason).toBe('changed')
     })
 })

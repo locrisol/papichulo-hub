@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
@@ -16,8 +16,11 @@ const db = mockSupabase({})
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', full_name: 'A Manager', role: 'store_manager' } }) }))
+
+let restaurant = null
+const setActiveRestaurant = vi.fn(next => { restaurant = next })
 vi.mock('@/context/restaurant', () => ({
-    useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus', slug: 'point-campus' } }),
+    useRestaurant: () => ({ activeRestaurant: restaurant, setActiveRestaurant }),
 }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(() => Promise.resolve(true)) }))
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn(() => Promise.resolve('data:image/png;base64,AAAA')) } }))
@@ -55,7 +58,9 @@ const WHOLE = {
     menu_item_components: { data: [{ id: 'k1', menu_item_id: 'm1', product_id: 'p1' }], error: null },
     products: { data: [{ id: 'p1', name: 'Rice', is_mix: false }], error: null },
     mix_recipes: { data: [], error: null },
-    product_allergens: { data: [{ product_id: 'p1', updated_at: '2026-09-01T10:00:00Z' }], error: null },
+    // Older than the last change on purpose: the sheet's date is the change,
+    // not the newest allergen row.
+    product_allergens: { data: [{ product_id: 'p1', updated_at: '2026-08-01T10:00:00Z' }], error: null },
 }
 
 const FAILED = { data: null, error: { message: 'Failed to fetch' } }
@@ -71,10 +76,32 @@ function answer(tables) {
     })
 }
 
+// What the two database functions answer: when anything on the sheet last
+// changed, and the stamp the button leaves once it has printed.
+const STAMP = '2026-09-30T12:05:00+00:00'
+function functions({ changed = { data: '2026-09-01T10:00:00+00:00', error: null },
+    printed = { data: STAMP, error: null } } = {}) {
+    db.rpc.mockImplementation(name => Promise.resolve(
+        name === 'allergens_changed_at' ? changed : printed))
+}
+
 beforeEach(() => {
     db.from.mockReset()
+    functions()
     drawnText.length = 0
     saved.length = 0
+    restaurant = {
+        id: 'r1', name: 'Point Campus', slug: 'point-campus',
+        allergen_sheet_printed_at: '2026-09-02T12:00:00+00:00', allergen_sheet_every_months: 3,
+    }
+    // Only the clock, so the reminder is worked out against a day that
+    // does not move, and every timer the page and the clicks use still runs.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+})
+
+afterEach(() => {
+    vi.useRealTimers()
 })
 
 const button = () => screen.getByRole('button', { name: /Download allergen list/ })
@@ -151,5 +178,92 @@ describe('printing the allergen sheet', () => {
 
         await waitFor(() => expect(saved).toHaveLength(1))
         expect(screen.queryByText(/could not be read just now/)).toBeNull()
+    })
+
+    // The Date on the form is the day anything on it last changed. It was
+    // the newest allergen row, which says nothing about a new dish.
+    it('prints the day anything on it last changed as its date', async () => {
+        answer(WHOLE)
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).toContain('01/09/2026')
+    })
+
+    it('refuses to print when that date cannot be read', async () => {
+        answer(WHOLE)
+        functions({ changed: FAILED })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        expect(await screen.findByText(/could not be read just now, so nothing was printed/)).toBeInTheDocument()
+        expect(saved).toHaveLength(0)
+    })
+})
+
+// His ask of 29 September: a reminder to print a new sheet every so many
+// months, and as soon as anything on it has changed since the last one.
+describe('the reminder to print a new sheet', () => {
+    it('says so at the top while something has changed since the last print', async () => {
+        restaurant.allergen_sheet_printed_at = '2026-06-12T12:00:00+00:00'
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        expect(await screen.findByText(
+            'Last printed 12 June. The allergen information has changed since then. Print a new sheet.')).toBeInTheDocument()
+    })
+
+    it('says so when it has never been printed from the Hub', async () => {
+        restaurant.allergen_sheet_printed_at = null
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        expect(await screen.findByText(/has not been printed from the Hub yet/)).toBeInTheDocument()
+    })
+
+    it('says nothing when it was printed after the last change and the months have not passed', async () => {
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('allergens_changed_at'))
+        expect(screen.queryByText(/Last printed/)).toBeNull()
+        expect(screen.queryByText(/has not been printed/)).toBeNull()
+    })
+
+    // Printing is what stops it, for an owner too, who cannot write the
+    // restaurant row. So the button leaves its stamp through the database.
+    it('goes once the sheet is printed', async () => {
+        restaurant.allergen_sheet_printed_at = '2026-06-12T12:00:00+00:00'
+        answer(WHOLE)
+        const me = userEvent.setup()
+        const { rerender } = renderWithRouter(<PublicAllergensPreviewPage />)
+        await screen.findByText(/The allergen information has changed since then/)
+
+        await me.click(button())
+
+        await waitFor(() => expect(setActiveRestaurant).toHaveBeenCalled())
+        expect(db.rpc).toHaveBeenCalledWith('allergen_sheet_printed', { restaurant: 'r1' })
+        expect(restaurant.allergen_sheet_printed_at).toBe(STAMP)
+
+        rerender(<PublicAllergensPreviewPage />)
+        expect(screen.queryByText(/The allergen information has changed since then/)).toBeNull()
+    })
+
+    it('says so when the print could not be recorded', async () => {
+        answer(WHOLE)
+        functions({ printed: FAILED })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(await screen.findByText(/could not record that it was printed/)).toBeInTheDocument()
+        expect(setActiveRestaurant).not.toHaveBeenCalled()
     })
 })

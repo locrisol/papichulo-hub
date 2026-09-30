@@ -44,8 +44,14 @@ function answer(tables) {
     })
 }
 
+// When anything on the sheet last changed, as allergens_changed_at() answers.
+function changedAt(result) {
+    db.rpc.mockImplementation(() => Promise.resolve(result))
+}
+
 beforeEach(() => {
     db.from.mockReset()
+    changedAt({ data: '2026-09-01T10:00:00+00:00', error: null })
 })
 
 const ASK_STAFF = /We cannot show allergen information right now\. Please ask a member of staff before ordering\./
@@ -59,6 +65,34 @@ describe('the allergen page when everything arrives', () => {
         expect(await screen.findByText('Plain Rice')).toBeInTheDocument()
         expect(screen.getByText('No declared allergens')).toBeInTheDocument()
         expect(screen.queryByText(ASK_STAFF)).toBeNull()
+    })
+})
+
+// It said today's date on every visit, because the view it read has no date
+// on it. It says when something on the sheet last changed now, or nothing.
+describe('Last updated', () => {
+    it('is the day something on the sheet last changed', async () => {
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        expect(await screen.findByText('Last updated: 01/09/2026')).toBeInTheDocument()
+        expect(db.rpc).toHaveBeenCalledWith('allergens_changed_at')
+    })
+
+    it('is left off rather than guessed when there is no date', async () => {
+        changedAt({ data: null, error: null })
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        await screen.findByText('Plain Rice')
+        expect(screen.queryByText(/Last updated/)).toBeNull()
+    })
+
+    // The date is not the allergens. The dishes still show, without it.
+    it('is left off when the date cannot be read', async () => {
+        changedAt({ data: null, error: { message: 'Failed to fetch' } })
+        answer(WHOLE)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        await screen.findByText('Plain Rice')
+        expect(screen.queryByText(/Last updated/)).toBeNull()
     })
 })
 

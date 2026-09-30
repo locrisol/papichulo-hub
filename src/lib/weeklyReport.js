@@ -599,7 +599,11 @@ export function publishCheck(sections = [], figures = null, delivery = []) {
 // 2, 27 September 2026: each online platform carries its statement, what it
 // took over the statement's week and over ours, the share it kept and the
 // cost, and deliveryTotal is those costs added up rather than the statements.
-export const FIGURES_VERSION = 2
+// 3, 30 September 2026: paperwork.allergenSheet, reprintDue's answer for the
+// printed allergen sheet. Null means it was checked and a new one was not
+// due. It is missing when it could not be checked, and on a report frozen
+// before 3, because nobody asked.
+export const FIGURES_VERSION = 3
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }

@@ -99,12 +99,16 @@ export function monthStart(dateStr) {
     return toISODate(d)
 }
 
-// Move a date by a number of months. Always call this on the first of a month:
-// moving 31 January forward gives 3 March, because February has no 31st.
+// Move a date by a number of months, kept inside the month it lands in. 31
+// January and a month is 28 February: plain Date arithmetic says 3 March, and
+// the allergen sheet's reminder would have come two days late for no reason
+// anybody could see. From the first of a month, which is how the calendar and
+// the checklists call it, nothing changes.
 export function addMonths(dateStr, months) {
-    const d = new Date(dateStr + 'T00:00:00')
-    d.setMonth(d.getMonth() + months)
-    return toISODate(d)
+    const [y, m, d] = dateStr.split('-').map(Number)
+    // Day 0 of the month after is the last day of the one landed in.
+    const lastDay = new Date(y, m + months, 0).getDate()
+    return toISODate(new Date(y, m - 1 + months, Math.min(d, lastDay)))
 }
 
 // A month and year, for a heading. For example August 2026.

@@ -16,6 +16,7 @@ import {
     deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords,
 } from '@/lib/weeklyReport'
 import { paperworkFor } from '@/lib/reportPeople'
+import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
 import { FOOD, PACKAGING } from '@/lib/invoiceCategories'
 import { chartSpecs } from '@/lib/reportCharts'
@@ -209,6 +210,9 @@ export default function ReportPage() {
     // list, the same one every week until somebody changes it.
     const [owners, setOwners] = useState([])
     const [extras, setExtras] = useState([])
+    // reprintDue's answer for this restaurant's allergen sheet: null while a
+    // new one is not due, and undefined until it could be worked out.
+    const [allergenSheet, setAllergenSheet] = useState(undefined)
 
     useEffect(() => {
         if (!id) return
@@ -324,7 +328,7 @@ export default function ReportPage() {
                 }))
             }
 
-            const [ownerRows, place] = await Promise.all([
+            const [ownerRows, place, changedRes] = await Promise.all([
                 supabase.from('users')
                     .select('id, full_name')
                     .eq('restaurant_id', head.restaurant_id)
@@ -337,9 +341,30 @@ export default function ReportPage() {
                 supabase.from('restaurants')
                     .select('report_recipients')
                     .eq('id', head.restaurant_id).maybeSingle(),
+                // When anything on the allergen sheet last changed, for the
+                // line in the paperwork saying a new one is due.
+                supabase.rpc('allergens_changed_at'),
             ])
             setOwners(ownerRows.data || [])
             setExtras(place.data?.report_recipients || [])
+
+            // The printed allergen sheet, checked as things stand today like
+            // the rest of the paperwork, and said only while a new one is due.
+            //
+            // When it was printed comes from the restaurant already loaded,
+            // checked above to be this report's, and not from the read of the
+            // recipients. Asked there, a database without the two columns
+            // failed that read and the card showed nobody, and adding one
+            // person back would have saved a list of one over the whole list.
+            //
+            // Left unanswered when the date would not come back, rather than
+            // null, which is what a sheet that is not due gets. A reminder
+            // worked out from half of what it needs would be a guess.
+            setAllergenSheet(changedRes.error || !activeRestaurant ? undefined : reprintDue({
+                printedAt: activeRestaurant.allergen_sheet_printed_at,
+                everyMonths: activeRestaurant.allergen_sheet_every_months,
+                changedAt: changedRes.data,
+            }))
 
             // Our week only. The days read above run a day past it.
             const totals = {}
@@ -682,6 +707,12 @@ export default function ReportPage() {
                 // that is the difference between somebody who cannot legally be
                 // on next week's roster and somebody who is waiting on the post.
                 permits,
+                // Only while a new allergen sheet is due, in the words the
+                // Public Allergens page uses. Null says it was checked and
+                // was not. Undefined, when it could not be checked, is left
+                // out of the stored copy, the same as a report frozen before
+                // version 3.
+                allergenSheet,
             },
         })
     }
@@ -1329,6 +1360,7 @@ export default function ReportPage() {
                                             paperwork={paperworkFor(employees, week, todayISO())}
                                             weekStart={week}
                                             asOf={todayISO()}
+                                            allergenSheet={allergenSheet}
                                         />
                                     )}
                                     {section.key === 'cleaning' && (

@@ -43,6 +43,7 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [products, setProducts] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [allergens, setAllergens] = useState([])
+  const [changedAt, setChangedAt] = useState(null)
 
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -99,7 +100,11 @@ export default function PublicAllergensPage({ slugOverride }) {
     // since been deactivated. The old policy required is_active and quietly
     // dropped exactly that product's allergens from the answer, which is the
     // one thing this page cannot get wrong.
-    const reads = await Promise.all([
+    const [changedRes, ...reads] = await Promise.all([
+      // When anything on the sheet last changed, from the change log, which
+      // a customer cannot read. The view of the allergens has no date on it,
+      // and this used to print today's date on every visit instead.
+      supabase.rpc('allergens_changed_at'),
       supabase.from('public_menu_categories').select('*').order('sort_order'),
       supabase.from('public_menu_items').select('*').order('name'),
       supabase.from('public_menu_item_components').select('*'),
@@ -124,6 +129,9 @@ export default function PublicAllergensPage({ slugOverride }) {
     setProducts(productsRes.data)
     setRecipeLines(recipesRes.data)
     setAllergens(allergensRes.data)
+    // Not one of the reads the rows need. A date that would not come back
+    // is left off the page rather than guessed, and the dishes still show.
+    setChangedAt(changedRes.error ? null : changedRes.data)
 
     setLoading(false)
     }, [slug])
@@ -166,21 +174,6 @@ export default function PublicAllergensPage({ slugOverride }) {
       ),
     }))
     .filter(group => group.rows.length > 0)
-
-  // Find the most recent update across all allergen rows so we can show
-  // a "last updated" timestamp. If no allergens have ever been edited,
-  // we'll show today's date as a fallback so the page doesn't look stale.
-  const lastUpdated = allergens.reduce((latest, a) => {
-    if (!a.updated_at) return latest
-    if (!latest || a.updated_at > latest) return a.updated_at
-    return latest
-  }, null)
-
-  // The day the sheet was last touched. Falls back to today, because a sheet
-  // with no date on it reads as one nobody has checked.
-  function formatDate(iso) {
-    return stampDate(iso || new Date().toISOString())
-  }
 
   if (loading) {
     return (
@@ -229,7 +222,12 @@ export default function PublicAllergensPage({ slugOverride }) {
         <header className="mb-6">
           <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-          <p className="text-xs text-gray-500 mt-2">Last updated: {formatDate(lastUpdated)}</p>
+          {/* The day anything on the sheet last changed, and nothing when
+              there is no such day to say. It used to fall back to today,
+              which is a freshness nobody vouched for. */}
+          {changedAt && (
+            <p className="text-xs text-gray-500 mt-2">Last updated: {stampDate(changedAt)}</p>
+          )}
         </header>
 
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4 mb-6">

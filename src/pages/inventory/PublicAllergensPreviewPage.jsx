@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
-import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { stampDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
 import { useAuth } from '@/context/auth'
 import { useState, useEffect } from 'react'
@@ -42,7 +44,7 @@ function loadImage(src) {
 }
 
 export default function PublicAllergensPreviewPage() {
-    const { activeRestaurant } = useRestaurant()
+    const { activeRestaurant, setActiveRestaurant } = useRestaurant()
     // Named notify rather than confirm: these two only tell you something, there
     // is nothing to say yes or no to.
     const notify = useConfirm()
@@ -52,11 +54,37 @@ export default function PublicAllergensPreviewPage() {
     // Why the allergen list did not print, said beside the button that was
     // pressed rather than by the button quietly doing nothing.
     const [printProblem, setPrintProblem] = useState('')
+    // When anything on the sheet last changed, for the reminder. Nothing is
+    // said about printing until it has been asked, so the notice does not
+    // appear a moment after the page does and push everything down.
+    const [changed, setChanged] = useState({ read: false, at: null })
 
     const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin
     const publicUrl = activeRestaurant
         ? `${baseUrl}/allergens/${activeRestaurant.slug}`
         : ''
+
+    useEffect(() => {
+        let current = true
+        supabase.rpc('allergens_changed_at').then(({ data, error }) => {
+            // A date that would not come back leaves the reminder to the
+            // months alone. The button reads it again and will not print
+            // without it.
+            if (current) setChanged({ read: true, at: error ? null : data })
+        })
+        return () => { current = false }
+    }, [])
+
+    // Every so many months, and as soon as anything on the sheet has changed
+    // since the last print. The weekly report says the same thing in the
+    // same words, from the same function.
+    const due = changed.read && activeRestaurant
+        ? reprintDue({
+            printedAt: activeRestaurant.allergen_sheet_printed_at,
+            everyMonths: activeRestaurant.allergen_sheet_every_months,
+            changedAt: changed.at,
+        })
+        : null
 
     useEffect(() => {
         if (!publicUrl) return
@@ -137,7 +165,11 @@ export default function PublicAllergensPreviewPage() {
     // of the allergens came out as a grid with no marks in it, which reads as
     // none of the fourteen. That paper sits on the counter for months.
     async function readSheet() {
-        const reads = await Promise.all([
+        const [changedRes, ...reads] = await Promise.all([
+            // The date the form carries, which is the day anything on it last
+            // changed. It was the newest allergen row, which says nothing about
+            // a new dish or a changed recipe.
+            supabase.rpc('allergens_changed_at'),
             supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
             supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
             supabase.from('menu_item_components').select('*'),
@@ -145,10 +177,11 @@ export default function PublicAllergensPreviewPage() {
             supabase.from('mix_recipes').select('*'),
             supabase.from('product_allergens').select('*'),
         ])
-        if (!everyReadArrived(reads)) return null
+        if (changedRes.error || !everyReadArrived(reads)) return null
 
         const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
         return {
+            changedAt: changedRes.data,
             categories: categoriesRes.data,
             menuItems: menuItemsRes.data,
             components: componentsRes.data,
@@ -171,6 +204,19 @@ export default function PublicAllergensPreviewPage() {
                 return
             }
             await drawAllergenListPdf(menuData)
+            setChanged({ read: true, at: menuData.changedAt })
+
+            // Printing is what stops the reminder, so the button says it
+            // happened. Through the database rather than onto the row, because
+            // an owner can print but cannot write the restaurant.
+            const { data: stamp, error: stampError } = await supabase
+                .rpc('allergen_sheet_printed', { restaurant: activeRestaurant.id })
+            if (stampError) {
+                setPrintProblem('The sheet was made, but the Hub could not record that it was printed, '
+                    + `so the reminder may still show. ${friendlyError(stampError)}`)
+                return
+            }
+            setActiveRestaurant({ ...activeRestaurant, allergen_sheet_printed_at: stamp })
         } finally {
             setPrinting(false)
         }
@@ -184,14 +230,11 @@ export default function PublicAllergensPreviewPage() {
         const marginY = 10
         const contentWidth = pageWidth - marginX * 2
 
-        const lastUpdated = menuData.allergens.reduce((latest, a) => {
-            if (!a.updated_at) return latest
-            if (!latest || a.updated_at > latest) return a.updated_at
-            return latest
-        }, null)
-        const lastUpdatedStr = lastUpdated
-            ? new Date(lastUpdated).toLocaleDateString('en-IE', { dateStyle: 'short' })
-            : new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
+        // The day anything on the sheet last changed. Today only when the
+        // change log holds no such day, which means nothing on the sheet has
+        // changed since the log began in September 2026: today is then the
+        // day the form was made, which is true.
+        const lastUpdatedStr = stampDate(menuData.changedAt || new Date().toISOString())
         const todayStr = new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
 
         // Loaded before anything is drawn, because it goes on every page and a
@@ -298,9 +341,10 @@ export default function PublicAllergensPreviewPage() {
             const labelW = 35
             const valueW = metaLeftWidth - labelW
 
-            // No reviewed date. A new one is printed on every change, so the
-            // date it was made is the date it was reviewed, and a second box
-            // saying so was two boxes for one fact.
+            // No reviewed date. A new one is printed on every change, and the
+            // page reminds whoever runs it to, so the day the information last
+            // changed is the date that matters, and a second box saying when
+            // it was reviewed was two boxes for one fact.
             const rows = [
                 ['Date:', lastUpdatedStr],
                 ['Created by:', userName],
@@ -622,6 +666,15 @@ export default function PublicAllergensPreviewPage() {
                     This is exactly what customers see when they scan the QR code or open the public URL. Print the QR code below and place it on tables, menus, or counters.
                 </p>
             </header>
+
+            {/* The reminder to print a new sheet, at the top because the
+                paper on the wall is what an inspector reads. It goes once the
+                button below has printed one. */}
+            {due && (
+                <div role="status" className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3 mb-6">
+                    {due.words}
+                </div>
+            )}
 
             {/* QR + actions bar */}
             <div className={`${card} p-5 mb-6`}>
