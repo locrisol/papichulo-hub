@@ -2188,6 +2188,36 @@ begin
     return new;
 end $$;
 
+-- Where a diary entry is on Google is the calendar function's to write.
+--
+-- diary-calendar acts on google_event_ids as hub@, which reaches every
+-- calendar in the group, so a person able to write that column could point it
+-- at somebody else's event: a store manager copied an owner's group event ids
+-- onto a private entry of their own, and saving it deleted the owner's event.
+-- A person saving an entry leaves both Google columns as they were, and a new
+-- one starts with neither. The function, which writes with the service key,
+-- and the database itself are let through.
+create or replace function public.diary_calendar_ids_guard() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    arrived text := nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role';
+begin
+    -- A person through the API, signed in or not. Anything else is the
+    -- calendar function with the service key, or the database itself.
+    if arrived in ('authenticated', 'anon') then
+        if tg_op = 'INSERT' then
+            new.google_event_ids := null;
+            new.google_synced_at := null;
+        else
+            new.google_event_ids := old.google_event_ids;
+            new.google_synced_at := old.google_synced_at;
+        end if;
+    end if;
+    return new;
+end $$;
+
 -- A swap request says what the two people agreed, and only that. A new one
 -- starts as asked, gives a shift of the asker's own and takes one of the
 -- person asked. After that the two of them can answer it or take it back and
@@ -3069,6 +3099,8 @@ revoke all on function "public"."checklist_tick_finishes"() from public, anon, a
 grant execute on function "public"."checklist_tick_finishes"() to service_role;
 revoke all on function "public"."checklist_tick_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_tick_guard"() to service_role;
+revoke all on function "public"."diary_calendar_ids_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."diary_calendar_ids_guard"() to service_role;
 revoke all on function "public"."finish_checklist_round"("round" "uuid") from public, anon;
 grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
@@ -4011,6 +4043,7 @@ CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "publi
 CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "diary_entries_calendar_ids_guard" BEFORE INSERT OR UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."diary_calendar_ids_guard"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();

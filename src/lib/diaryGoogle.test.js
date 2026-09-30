@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
     TZID, colourFor, dayAfter, eventTimes, description, eventBody, calendarsFor, plan,
+    API, GONE, eventUrl, idsFrom, reachOf, carryOut, hubAddress,
 } from '../../supabase/functions/diary-calendar/google'
 import { kindGoogleColour, KINDS } from './diary'
 
@@ -313,5 +314,188 @@ describe('a label reaches Google', () => {
 
     it('ignores an empty one rather than writing a pair of brackets', () => {
         expect(eventBody({ ...promo, labels: ['', '  '] }).summary).toBe('15% off wraps')
+    })
+})
+
+// ---- who may change which calendar, and how the ids are used ----
+//
+// Found by the audit of 28 September. The function writes as hub@, which
+// reaches every calendar in the group, and it trusted the ids stored on the
+// entry. A store manager could copy an owner's group event ids onto a private
+// entry of their own, and saving it deleted the owner's event.
+
+const PC_MANAGER = { id: 'u1', role: 'store_manager', restaurant_id: 'pc' }
+const PC_OWNER = { id: 'u2', role: 'owner', restaurant_id: 'pc' }
+const SUPER = { id: 'u3', role: 'super_admin', restaurant_id: null }
+const POINT = 'point@group.calendar.google.com'
+const DUN = 'dunlaoghaire@group.calendar.google.com'
+
+// A pretend Google that remembers what it was asked and answers from a list.
+function google(...answers) {
+    const asked = []
+    const call = async (url, method, body) => {
+        asked.push({ url, method, body })
+        const next = answers.length ? answers.shift() : { id: 'made' }
+        if (next instanceof Error) throw next
+        return next
+    }
+    return { call, asked }
+}
+
+describe('the address of an event', () => {
+    // The id went into the address as it was stored, and .. means up one.
+    it('keeps an event id from walking onto another calendar', () => {
+        const url = eventUrl(POINT, `../../${ALL_SITES}/events/theirs`)
+        const path = new URL(url).pathname
+        const events = new URL(`${API}/${encodeURIComponent(POINT)}/events/`).pathname
+
+        expect(path.startsWith(events)).toBe(true)
+        expect(path.slice(events.length)).not.toContain('/')
+    })
+
+    it('leaves an ordinary id as it is', () => {
+        expect(eventUrl(POINT, 'abc123def')).toBe(`${API}/${encodeURIComponent(POINT)}/events/abc123def`)
+        expect(eventUrl(POINT)).toBe(`${API}/${encodeURIComponent(POINT)}/events`)
+    })
+})
+
+describe('the ids stored on an entry', () => {
+    it('keeps the ones Google gave', () => {
+        expect(idsFrom({ [POINT]: 'abc123', [DUN]: 'v0v0_20260101' }))
+            .toEqual({ [POINT]: 'abc123', [DUN]: 'v0v0_20260101' })
+    })
+
+    // Treated as never written, so the entry goes on the calendar fresh rather
+    // than an address being built out of it.
+    it('drops anything that is not an id', () => {
+        expect(idsFrom({ [POINT]: '..', [DUN]: '../../x/events/y', [ALL_SITES]: 42 })).toEqual({})
+    })
+
+    it('copes with nothing, or with something that is not a map', () => {
+        expect(idsFrom(null)).toEqual({})
+        expect(idsFrom(['abc'])).toEqual({})
+        expect(idsFrom('abc')).toEqual({})
+    })
+})
+
+describe('which calendars a person may change', () => {
+    it('gives a store manager their own restaurant', () => {
+        expect([...reachOf(PC_MANAGER, RESTAURANTS, ALL_SITES)]).toEqual([POINT])
+    })
+
+    // Only an owner or a super admin speaks for the whole group.
+    it('gives an owner their own and the group', () => {
+        expect([...reachOf(PC_OWNER, RESTAURANTS, ALL_SITES)].sort()).toEqual([ALL_SITES, POINT].sort())
+    })
+
+    it('gives a super admin every one', () => {
+        expect(reachOf(SUPER, RESTAURANTS, ALL_SITES)).toBe(null)
+    })
+
+    it('gives nobody anything', () => {
+        expect([...reachOf(null, RESTAURANTS, ALL_SITES)]).toEqual([])
+    })
+})
+
+describe('carrying out the plan', () => {
+    const body = { summary: 'Lunch for twelve' }
+
+    // The whole finding, start to finish.
+    it('will not let a store manager delete the group event through a private entry', async () => {
+        const copied = { [ALL_SITES]: 'ownersevent' }
+        const mine = { scope: 'private', google_event_ids: copied }
+        const ids = idsFrom(mine.google_event_ids)
+        const jobs = plan(calendarsFor(mine, RESTAURANTS, ALL_SITES), ids)
+        const { call, asked } = google()
+
+        const out = await carryOut(jobs, { call, body, ids, reach: reachOf(PC_MANAGER, RESTAURANTS, ALL_SITES) })
+
+        expect(asked).toEqual([])
+        expect(out.failed).toHaveLength(1)
+        expect(out.ids).toEqual({})
+    })
+
+    it('lets an owner take their own entry off the group calendar', async () => {
+        const ids = { [ALL_SITES]: 'groupevent' }
+        const { call, asked } = google(null)
+        const out = await carryOut(plan([], ids), { call, body, ids, reach: reachOf(PC_OWNER, RESTAURANTS, ALL_SITES) })
+
+        expect(asked.map(a => a.method)).toEqual(['DELETE'])
+        expect(out).toMatchObject({ ids: {}, failed: [] })
+    })
+
+    it('updates an event where it already is', async () => {
+        const ids = { [POINT]: 'ev1' }
+        const { call, asked } = google({ id: 'ev1' })
+        const out = await carryOut(plan([POINT], ids), { call, body, ids, reach: reachOf(PC_MANAGER, RESTAURANTS, ALL_SITES) })
+
+        expect(asked).toEqual([{ url: eventUrl(POINT, 'ev1'), method: 'PUT', body }])
+        expect(out).toEqual({ ids: { [POINT]: 'ev1' }, failed: [], written: 1 })
+    })
+
+    it('creates one where it has never been', async () => {
+        const { call, asked } = google({ id: 'new1' })
+        const out = await carryOut(plan([POINT], {}), { call, body, ids: {}, reach: null })
+
+        expect(asked.map(a => [a.url, a.method])).toEqual([[eventUrl(POINT), 'POST']])
+        expect(out.ids).toEqual({ [POINT]: 'new1' })
+    })
+
+    // Somebody deleted it in Google. Counting the update as written left the
+    // entry saying it was on Google when it was not.
+    it('puts an event back when the one it was updating is gone', async () => {
+        const ids = { [POINT]: 'deletedingoogle' }
+        const { call, asked } = google(GONE, { id: 'again' })
+        const out = await carryOut(plan([POINT], ids), { call, body, ids, reach: null })
+
+        expect(asked.map(a => a.method)).toEqual(['PUT', 'POST'])
+        expect(out).toEqual({ ids: { [POINT]: 'again' }, failed: [], written: 1 })
+    })
+
+    it('never counts a calendar Google cannot find as written', async () => {
+        const { call } = google(GONE)
+        const out = await carryOut(plan([POINT], {}), { call, body, ids: {}, reach: null })
+
+        expect(out.written).toBe(0)
+        expect(out.failed).toHaveLength(1)
+        expect(out.ids).toEqual({})
+    })
+
+    it('treats a delete of something already gone as done', async () => {
+        const ids = { [POINT]: 'ev1' }
+        const { call } = google(GONE)
+        const out = await carryOut(plan([], ids), { call, body, ids, reach: null })
+
+        expect(out).toMatchObject({ ids: {}, failed: [] })
+    })
+
+    it('keeps going past one calendar that refuses', async () => {
+        const { call } = google(new Error('Google said 403'), { id: 'dl1' })
+        const out = await carryOut(plan([POINT, DUN], {}), { call, body, ids: {}, reach: null })
+
+        expect(out.failed).toEqual([`${POINT}: Google said 403`])
+        expect(out.ids).toEqual({ [DUN]: 'dl1' })
+        expect(out.written).toBe(1)
+    })
+})
+
+// The link on the event says Open in Papi Chulo Hub to everybody who can see
+// the calendar, so where it points is not taken on the app's word alone. The
+// same rule roster-email follows.
+describe('where the link back to the Hub points', () => {
+    const where = { appUrl: 'https://papichulo-hub.vercel.app', also: 'http://localhost:5173, https://preview.vercel.app/' }
+
+    it('is the real site unless told otherwise', () => {
+        expect(hubAddress('', where)).toBe('https://papichulo-hub.vercel.app')
+        expect(hubAddress('https://somewhere-else.example', where)).toBe('https://papichulo-hub.vercel.app')
+    })
+
+    it('is where the app is being used from when that is on the list', () => {
+        expect(hubAddress('http://localhost:5173/', where)).toBe('http://localhost:5173')
+        expect(hubAddress('https://preview.vercel.app', where)).toBe('https://preview.vercel.app')
+    })
+
+    it('is nothing when nothing is set', () => {
+        expect(hubAddress('https://somewhere-else.example', {})).toBe('')
     })
 })

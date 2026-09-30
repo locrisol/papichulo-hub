@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `024` are in here. `001` to `022` are run on live, `023` to `024` are not yet, and the next one is `025`.**
+**`001` to `025` are in here. `001` to `022` are run on live, `023` to `025` are not yet, and the next one is `026`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -89,6 +89,10 @@ it starts as asked, gives the asker's own shift and takes one of the person
 asked, and after that the two of them can only answer it or take it back.
 Before, a hand written call could send one already agreed, or change it after
 the other person said yes.
+`025` is **not run yet**. It makes where a diary entry is on Google the
+calendar function's to write: a person saving an entry can no longer change
+the Google event ids, which a store manager could use to delete an owner's
+event from the group calendar.
 
 ## What was here before
 
