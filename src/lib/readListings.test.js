@@ -5,6 +5,9 @@ import {
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
     isServiceRole, roleOf,
 } from '../../supabase/functions/read-listings/reading'
+import {
+    addressProblem, privateAddress, readPage, MOST_REDIRECTS,
+} from '../../supabase/functions/read-listings/fetching'
 import { sourceKeyFor as browserSourceKeyFor } from '@/lib/nearby'
 
 // The function deploys on its own, so its reading lives in its own folder along
@@ -464,5 +467,172 @@ describe('who is calling', () => {
     it('is not, for nothing at all', () => {
         expect(isServiceRole('')).toBe(false)
         expect(roleOf('not a token')).toBe(null)
+    })
+})
+
+// A page address is typed by a manager and fetched from inside Supabase's own
+// network, with the service key beside it. An address pointing inward was a way
+// to knock on doors that are not ours. Found by the audit of 28 September.
+describe('which addresses may be read', () => {
+    it.each([
+        'https://paviliontheatre.ie/events',
+        'https://www.dlrcoco.ie/dlr-events?page=2',
+        'http://rsgyc.ie/events/month/2026-09/?ical=1',
+        'https://cruisemapper.com/ports/dublin-port-555?month=2026-10',
+    ])('reads %s', address => {
+        expect(addressProblem(address)).toBe('')
+    })
+
+    it.each([
+        ['ftp://x.ie/events', 'another kind of address'],
+        ['file:///etc/passwd', 'a file on the server'],
+        ['javascript:alert(1)', 'a script'],
+        ['http://10.0.0.1:8080/', 'a private network'],
+        ['http://169.254.169.254/latest/meta-data/', 'the cloud metadata address'],
+        ['http://127.0.0.1/', 'the machine itself'],
+        ['http://2130706433/', 'the machine itself, spelt as one number'],
+        ['http://0x7f.1/', 'the machine itself, spelt in hex'],
+        ['http://[::1]/', 'the machine itself, in IPv6'],
+        ['http://[fd00:ec2::254]/', 'a private IPv6 address'],
+        ['http://8.8.8.8/', 'a public address with no name'],
+        ['http://localhost:54321/', 'localhost'],
+        ['http://LOCALHOST./', 'localhost, shouted, with a dot on the end'],
+        ['http://kong:8000/', 'a name with no dot, which only a private network answers'],
+        ['http://metadata.google.internal/', 'a name ending .internal'],
+        ['http://printer.local/', 'a name ending .local'],
+        ['https://user:secret@x.ie/events', 'an address with a login in it'],
+        ['not an address', 'something that is not an address'],
+        ['', 'nothing at all'],
+    ])('refuses %s, which is %s', address => {
+        expect(addressProblem(address)).not.toBe('')
+    })
+
+    it('copes with nothing at all', () => {
+        expect(addressProblem(null)).not.toBe('')
+    })
+})
+
+// What a name points at, when the platform can say.
+describe('which addresses are private', () => {
+    it.each([
+        '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '127.0.0.1',
+        '169.254.169.254', '100.64.0.1', '0.0.0.0', '224.0.0.1', '255.255.255.255',
+        '::1', '::', 'fd00:ec2::254', 'fe80::1', 'fe80::1%eth0', 'ff02::1',
+        '::ffff:10.0.0.1', '::ffff:7f00:1', '64:ff9b::a9fe:a9fe', '2002:a00:1::1',
+        'not an address',
+    ])('%s is private', address => {
+        expect(privateAddress(address)).toBe(true)
+    })
+
+    it.each([
+        '93.184.216.34', '8.8.8.8', '172.32.0.1', '100.128.0.1', '192.169.0.1',
+        '2a00:1450:4009:81f::200e', '2606:4700::6810:84e5', '::ffff:8.8.8.8',
+    ])('%s is public', address => {
+        expect(privateAddress(address)).toBe(false)
+    })
+})
+
+describe('reading a page', () => {
+    // A pretend fetch that answers from a list, one answer per request, and
+    // remembers what it was asked.
+    function answering(...answers) {
+        const asked = []
+        const get = (url, init) => {
+            asked.push({ url, init })
+            const next = answers.shift()
+            return Promise.resolve(typeof next === 'function' ? next(url, init) : next)
+        }
+        return { get, asked }
+    }
+
+    const moved = to => new Response(null, { status: 302, headers: { location: to } })
+
+    it('reads an ordinary page', async () => {
+        const { get, asked } = answering(new Response('Pentangle, Fri 19 Nov'))
+        expect(await readPage('https://paviliontheatre.ie/events', { get })).toBe('Pentangle, Fri 19 Nov')
+        expect(asked).toHaveLength(1)
+    })
+
+    it('never fetches an address it refuses', async () => {
+        const { get, asked } = answering(new Response('secret'))
+        await expect(readPage('http://169.254.169.254/latest/meta-data/', { get })).rejects.toThrow()
+        expect(asked).toHaveLength(0)
+    })
+
+    // Every request carries a time limit and follows no redirect on its own.
+    it('asks with a time limit and follows redirects itself', async () => {
+        const { get, asked } = answering(new Response('ok'))
+        await readPage('https://x.ie/events', { get })
+        expect(asked[0].init.signal).toBeInstanceOf(AbortSignal)
+        expect(asked[0].init.redirect).toBe('manual')
+    })
+
+    it('follows a redirect to another public page', async () => {
+        const { get, asked } = answering(moved('/events/'), new Response('the page'))
+        expect(await readPage('http://x.ie/events', { get })).toBe('the page')
+        expect(asked.map(a => a.url)).toEqual(['http://x.ie/events', 'http://x.ie/events/'])
+    })
+
+    // The reason redirects are followed by hand. A check that only looked at
+    // the first address would let a public page send the request anywhere.
+    it('refuses a redirect to a private address', async () => {
+        const { get, asked } = answering(moved('http://169.254.169.254/latest/meta-data/'), new Response('secret'))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow()
+        expect(asked).toHaveLength(1)
+    })
+
+    it('gives up on a page that keeps redirecting', async () => {
+        const { get, asked } = answering(...Array(10).fill(0).map(() => () => moved('https://x.ie/again')))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow(/redirect/)
+        expect(asked).toHaveLength(MOST_REDIRECTS + 1)
+    })
+
+    it('says so when a page refuses', async () => {
+        const { get } = answering(new Response('gone', { status: 404 }))
+        await expect(readPage('https://x.ie/events', { get })).rejects.toThrow(/404/)
+    })
+
+    // A name can point at a private address as easily as a number can be one.
+    it('refuses a name that points at a private address', async () => {
+        const { get, asked } = answering(new Response('secret'))
+        const resolve = () => ['10.0.0.5']
+        await expect(readPage('https://inside.example.ie/', { get, resolve })).rejects.toThrow(/private/)
+        expect(asked).toHaveLength(0)
+    })
+
+    it('reads a name that points at a public address, or that nothing could look up', async () => {
+        for (const points of [['93.184.216.34'], [], null]) {
+            const { get } = answering(new Response('ok'))
+            expect(await readPage('https://x.ie/events', { get, resolve: () => points })).toBe('ok')
+        }
+    })
+
+    // One slow page used to hold the whole Monday run until the platform
+    // stopped it, and every place after it went unread that week.
+    it('gives up on a page that never answers', async () => {
+        const get = () => new Promise(() => {})
+        await expect(readPage('https://x.ie/events', { get, wait: 50 })).rejects.toThrow(/longer than/)
+    })
+
+    it('gives up on a page that answers and then never finishes', async () => {
+        const dripping = new ReadableStream({
+            start(c) { c.enqueue(new TextEncoder().encode('a start')) },
+            pull() { return new Promise(() => {}) },
+        })
+        const { get } = answering(new Response(dripping))
+        await expect(readPage('https://x.ie/events', { get, wait: 50 })).rejects.toThrow(/longer than/)
+    })
+
+    // A page with no end would otherwise be read into memory until the
+    // function fell over.
+    it('stops reading at the cap and keeps what came before it', async () => {
+        let pulls = 0
+        const endless = new ReadableStream({
+            pull(c) { pulls += 1; c.enqueue(new TextEncoder().encode('x'.repeat(1000))) },
+        })
+        const { get } = answering(new Response(endless))
+        const text = await readPage('https://x.ie/events', { get, most: 5500 })
+        expect(text).toBe('x'.repeat(5500))
+        expect(pulls).toBeLessThan(10)
     })
 })

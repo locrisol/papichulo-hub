@@ -62,6 +62,12 @@ const MANAGERS = ['owner', 'store_manager']
 // real name and a way to be contacted, and giving them one is the rent.
 const AGENT = 'PapiChuloHub/1.0 (hub@papichulo.ie)'
 
+// How long any one request to Ticketmaster or OpenStreetMap may take. Both
+// answer in a second or two on a normal day. Without a limit one that hung held
+// the schedule's whole run, and every restaurant after it went without, until
+// the platform stopped the function. Found by the audit of 28 September.
+const WAIT_MS = 15000
+
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
         const value = Deno.env.get(name)
@@ -96,7 +102,9 @@ type Place = { id: string; name: string; ticketmaster_venue_id: string | null }
 // this the table was one flat list with no venue on it at all, and Dun Laoghaire
 // was shown the Arena's.
 async function syncOne(admin: Admin, place: Place, key: string) {
-    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key))
+    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key), {
+        signal: AbortSignal.timeout(WAIT_MS),
+    })
     if (!res.ok) {
         // Deliberately not the body. Ticketmaster puts the key back in its own
         // error text, and this answer goes to a browser.
@@ -318,8 +326,13 @@ Deno.serve(async (request) => {
         // in ten seconds.
         if (!point) {
             if (!address) return json({ error: 'No address to look up' }, 400)
-            const res = await fetch(geocodeUrl(address), { headers: { 'User-Agent': AGENT } })
-            if (!res.ok) {
+            // A lookup that took too long is the same answer as one that said
+            // no, and gets the same way round it.
+            const res = await fetch(geocodeUrl(address), {
+                headers: { 'User-Agent': AGENT },
+                signal: AbortSignal.timeout(WAIT_MS),
+            }).catch(() => null)
+            if (!res || !res.ok) {
                 return json({
                     error: 'The address lookup would not answer. Paste the coordinates instead, '
                         + 'for example 53.348071, -6.229920.',
@@ -341,7 +354,10 @@ Deno.serve(async (request) => {
                 .eq('id', restaurantId)
         }
 
-        const res = await fetch(venuesUrl(point.latitude, point.longitude, key))
+        const res = await fetch(venuesUrl(point.latitude, point.longitude, key), {
+            signal: AbortSignal.timeout(WAIT_MS),
+        }).catch(() => null)
+        if (!res) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
         if (!res.ok) return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
 
         const found = suggestions(point, venuesFrom(await res.json()))
