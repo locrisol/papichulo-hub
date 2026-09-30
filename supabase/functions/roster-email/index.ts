@@ -63,9 +63,9 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     requestEmail, answerEmail, isPartDay,
     swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor,
+    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName,
 } from './email.js'
-import { mimeParts } from './mime.js'
+import { mimeParts, headersFor, base64Pdf } from './mime.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -183,6 +183,11 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 tls: smtpPort === 465,
                 auth: { username: user, password },
             },
+            // The subject, the sender's name and the To line, put right
+            // after denomailer has worked them out and before any of it is
+            // written, because it gets all three wrong once there is an
+            // accent or more than one recipient. See headersFor in mime.js.
+            client: { preprocessors: [headersFor(mail)] },
         })
 
         try {
@@ -356,12 +361,14 @@ Deno.serve(async (request) => {
         requestId?: string
         event?: string
         pdf?: string
+        // Still sent by the app and not used: the name is made here, see
+        // recordName.
         pdfName?: string
         origin?: string
     }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }
 
-    const { absenceId, requestId, event, pdf, pdfName, origin } = payload
+    const { absenceId, requestId, event, pdf, origin } = payload
 
     // Somebody who could answer one of these. Three of the five events are only
     // ever set off by a manager.
@@ -691,6 +698,14 @@ Deno.serve(async (request) => {
             appUrl,
         })
 
+        // The record is drawn in the browser and arrives as base64, and it is
+        // written into the mail as it is. So it goes only when it is a PDF in
+        // base64 and nothing else, and its name is made here. Without it the
+        // answer still goes: the answer is the point and the record is the
+        // receipt.
+        const record = base64Pdf(pdf)
+        if (pdf && !record) console.warn('the time off record was not a PDF in base64, so it was left off')
+
         await send({
             to: [to],
             from: from(house.name, house.address),
@@ -700,7 +715,9 @@ Deno.serve(async (request) => {
             subject: mail.subject,
             html: mail.html,
             text: mail.text,
-            attachment: pdf ? { filename: `${pdfName || 'time-off-record'}.pdf`, content: pdf } : undefined,
+            attachment: record
+                ? { filename: `${recordName(absence, employee.full_name)}.pdf`, content: record }
+                : undefined,
         })
         return json({ sent: 1 })
     } catch (err) {

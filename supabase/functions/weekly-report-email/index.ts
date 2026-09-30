@@ -44,7 +44,7 @@ import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
-import { base64, mimeParts } from './mime.js'
+import { base64, mimeParts, headersFor } from './mime.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -156,6 +156,11 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 tls: smtpPort === 465,
                 auth: { username: user, password },
             },
+            // The subject, the sender's name and the To line, put right
+            // after denomailer has worked them out and before any of it is
+            // written, because it gets all three wrong once there is an
+            // accent or more than one recipient. See headersFor in mime.js.
+            client: { preprocessors: [headersFor(mail)] },
         })
 
         try {

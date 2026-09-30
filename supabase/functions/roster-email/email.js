@@ -10,6 +10,8 @@
 // for them, so a header that is a picture is a header that is usually blank.
 // The band at the top is a coloured table cell with the name typed into it.
 
+import { oneLine } from './mime.js'
+
 const GREEN = '#2E7D52'
 const RED = '#B91C1C'
 const CREAM = '#F7F5F0'
@@ -258,6 +260,19 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         text,
         employeeName,
     }
+}
+
+// What to call the record attached to an answer: the person's name and the
+// date, in letters, numbers and dashes. The same rule as recordName in
+// src/lib/timeOffPdf.js, which makes the PDF, and a test holds the two
+// together.
+//
+// Worked out here off the database rather than taken from the request, because
+// denomailer writes the name into two header lines as it is, and a name from a
+// request could carry a line break and a header of its own.
+export function recordName(absence, employeeName) {
+    const who = String(employeeName || 'employee').replace(/[^a-z0-9]+/gi, '-')
+    return `${who}-${absence.starts_on}-time-off`.toLowerCase().replace(/^-+|-+$/g, '')
 }
 
 // ------------------------------------------------- somebody wants to swap
@@ -630,10 +645,11 @@ export function replyToFor(restaurantAddress, fallback) {
 // only place the restaurant appears in the header: the address is the same for
 // both, so anybody sorting by sender sorts on this.
 //
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, or when
+// MAIL_FROM holds no address. An accent in the name is fine: it used to fall
+// back for that too, because denomailer encoded it badly, and headersFor in
+// mime.js now encodes it properly on the way out. A line break is not fine,
+// since it would start a header of its own, so it becomes a space.
 export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
@@ -651,10 +667,9 @@ export function senderFor(mailFrom, restaurantName, address) {
     const fallback = (bracketed ? bracketed[1] : raw).trim()
     const chosen = String(address || '').trim() || fallback
 
-    const name = String(restaurantName || '').trim()
+    const name = oneLine(restaurantName)
     if (!chosen.includes('@')) return raw
     if (!name) return chosen === fallback ? raw : chosen
-    if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
     // somebody renames a restaurant to include the brand.

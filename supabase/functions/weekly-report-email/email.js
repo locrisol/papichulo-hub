@@ -22,6 +22,8 @@
 // for why, which is a real bug in the library we send through rather than a
 // matter of taste.
 
+import { oneLine } from './mime.js'
+
 const GREEN = '#1F7A4C'
 const DARK = '#182F24'
 const BLUE = '#2C6FCF'
@@ -1486,27 +1488,11 @@ export function replyToFor(restaurantAddress, fallback) {
 // only place the restaurant appears in the header: the address is the same for
 // both, so anybody sorting by sender sorts on this.
 //
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
-
-// Who the mail comes from.
-//
-// One Workspace account sends for every restaurant, and the restaurant's own
-// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
-// SMTP when it is not the account that authenticated, but it leaves the display
-// name alone, so this is how one mailbox and one app password can still say
-// which restaurant a mail is about.
-//
-// It is the display name people actually read in a list of mail, and it is the
-// only place the restaurant appears in the header: the address is the same for
-// both, so anybody sorting by sender sorts on this.
-//
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, or when
+// MAIL_FROM holds no address. An accent in the name is fine: it used to fall
+// back for that too, because denomailer encoded it badly, and headersFor in
+// mime.js now encodes it properly on the way out. A line break is not fine,
+// since it would start a header of its own, so it becomes a space.
 export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
@@ -1524,10 +1510,9 @@ export function senderFor(mailFrom, restaurantName, address) {
     const fallback = (bracketed ? bracketed[1] : raw).trim()
     const chosen = String(address || '').trim() || fallback
 
-    const name = String(restaurantName || '').trim()
+    const name = oneLine(restaurantName)
     if (!chosen.includes('@')) return raw
     if (!name) return chosen === fallback ? raw : chosen
-    if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
     // somebody renames a restaurant to include the brand.

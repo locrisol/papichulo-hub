@@ -201,3 +201,124 @@ describe.each(FOLDERS)('%s sends through Gmail', folder => {
         expect(block).not.toMatch(/html: mail\.html/)
     })
 })
+
+// ---------------------------------------------------------------- the header
+
+// What a mail app shows for a header: folds undone, each encoded word read
+// back, and the space between two encoded words dropped (RFC 2047, 6.2).
+const shown = value => String(value)
+    .replace(/\r\n /g, ' ')
+    .replace(/\?=\s+=\?/g, '?==?')
+    .replace(/=\?UTF-8\?B\?([A-Za-z0-9+/=]*)\?=/g, (_, b) => new TextDecoder().decode(
+        Uint8Array.from(atob(b), c => c.charCodeAt(0))))
+
+describe.each([
+    ['weekly-report-email', reportMime],
+    ['roster-email', rosterMime],
+])('the header %s writes', (_, { oneLine, encodedWords, displayName, headersFor, base64Pdf }) => {
+    const LONG = 'María Arredondo Escalante wants to swap a shift with you, Dún Laoghaire'
+
+    it('leaves a plain subject exactly as it is', () => {
+        expect(encodedWords('Majo asked for time off, Point Campus'))
+            .toBe('Majo asked for time off, Point Campus')
+    })
+
+    // denomailer's own encoding left the spaces raw inside the encoded word,
+    // which RFC 2047 does not allow, and cut a long one with no space at the
+    // start of the next line, which ends the header early.
+    it('encodes an accent so it reads back exactly, however long', () => {
+        const subject = encodedWords(LONG)
+        expect(subject).toMatch(/^=\?UTF-8\?B\?/)
+        expect(shown(subject)).toBe(LONG)
+    })
+
+    it('keeps every line of an encoded subject inside 76, folded with a space', () => {
+        const lines = `Subject:  ${encodedWords(LONG)}`.split('\r\n')
+        expect(lines.length).toBeGreaterThan(1)
+        expect(lines.every(l => l.length <= 76)).toBe(true)
+        expect(lines.slice(1).every(l => l.startsWith(' '))).toBe(true)
+    })
+
+    // A header ends at a line break, so one inside a name would start a header
+    // of its own: a Reply-To pointing anywhere, or worse.
+    it('turns a line break in a name into a space', () => {
+        expect(oneLine('Majo\r\nBcc: someone@else.com')).toBe('Majo Bcc: someone@else.com')
+        expect(oneLine('Majo\n\n\tRuiz')).toBe('Majo Ruiz')
+        expect(encodedWords('María\r\nReply-To: x@y.com')).not.toMatch(/\r\n(?! )/)
+        expect(shown(encodedWords('María\r\nReply-To: x@y.com'))).toBe('María Reply-To: x@y.com')
+    })
+
+    it('encodes an accented sender name and folds before the address', () => {
+        const name = displayName('Papi Chulo Dún Laoghaire <hub@papichulo.ie>')
+        expect(shown(name).trim()).toBe('Papi Chulo Dún Laoghaire')
+        expect(`From:  ${name} <hub@papichulo.ie>`.split('\r\n').every(l => l.length <= 76)).toBe(true)
+    })
+
+    it('keeps a plain sender name, quoted when it needs to be', () => {
+        expect(displayName('Papi Chulo Point Campus <hub@papichulo.ie>')).toBe('Papi Chulo Point Campus')
+        expect(displayName('"Papi Chulo Smith, Jones" <hub@papichulo.ie>')).toBe('"Papi Chulo Smith, Jones"')
+        expect(displayName('hub@papichulo.ie')).toBe('')
+        expect(displayName('Papi\r\nChulo <hub@papichulo.ie>')).toBe('Papi Chulo')
+    })
+
+    // What denomailer has already worked out, the way it hands it to a
+    // preprocessor, with its own broken encoding in it.
+    const resolved = () => ({
+        to: [{ mail: 'ana@papichulo.ie', name: '' }, { mail: 'accounts@firm.ie', name: '' }],
+        cc: [],
+        bcc: [],
+        from: { mail: 'hub@papichulo.ie', name: '=?utf-8?Q?Papi Chulo D=c3=ban?=' },
+        subject: '=?utf-8?Q?Mar=c3=ada asked for time off?=',
+        headers: {},
+    })
+    const mail = {
+        subject: 'María asked for time off, Point Campus',
+        from: 'Papi Chulo Dún Laoghaire <hub@papichulo.ie>',
+    }
+
+    it('puts its own subject and sender name over the library\'s', () => {
+        const done = headersFor(mail)(resolved())
+        expect(shown(done.subject)).toBe(mail.subject)
+        expect(shown(done.from.name).trim()).toBe('Papi Chulo Dún Laoghaire')
+        expect(done.from.mail).toBe('hub@papichulo.ie')
+    })
+
+    // denomailer joins To with a semicolon. Every recipient still gets it, as
+    // the envelope's own list, and the To line people see is written with
+    // commas, which is what Reply All reads.
+    it('writes To with commas and still delivers to everybody', () => {
+        const done = headersFor(mail)(resolved())
+        expect(done.headers.To).toBe('ana@papichulo.ie, accounts@firm.ie')
+        expect(done.to).toEqual([])
+        expect(done.bcc.map(m => m.mail)).toEqual(['ana@papichulo.ie', 'accounts@firm.ie'])
+    })
+
+    it('drops an address the library would refuse, rather than half sending', () => {
+        const odd = resolved()
+        odd.to.push({ mail: 'not an address', name: '' })
+        const done = headersFor(mail)(odd)
+        expect(done.headers.To).toBe('ana@papichulo.ie, accounts@firm.ie')
+        expect(done.bcc).toHaveLength(2)
+    })
+
+    // A PDF arrives from the browser as base64 and denomailer writes it into
+    // the mail as it is, a line at a time. Anything else in there, a line
+    // break and a full stop above all, would be written straight into the
+    // conversation with the mail server.
+    it('takes a PDF only as plain base64 of a PDF', () => {
+        const pdf = btoa('%PDF-1.4 a record')
+        expect(base64Pdf(pdf)).toBe(pdf)
+        expect(base64Pdf(`${pdf}\r\n.\r\nMAIL FROM:<x@y.com>`)).toBeNull()
+        expect(base64Pdf(btoa('<html>not a pdf</html>'))).toBeNull()
+        expect(base64Pdf('')).toBeNull()
+        expect(base64Pdf(null)).toBeNull()
+    })
+})
+
+describe.each(FOLDERS)('%s hands its header to the library', folder => {
+    const source = readFileSync(`supabase/functions/${folder}/index.ts`, 'utf8')
+
+    it('puts the header right before anything is written', () => {
+        expect(source).toContain('preprocessors: [headersFor(mail)]')
+    })
+})

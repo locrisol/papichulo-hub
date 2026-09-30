@@ -918,11 +918,18 @@ describe('senderFor', () => {
         expect(senderFor(FROM, null)).toBe(FROM)
     })
 
-    it('keeps MAIL_FROM as it is rather than send a name that needs encoding', () => {
-        // A display name with an accent has to be encoded to travel in a
-        // header, and a name that arrives as mojibake is worse than a
-        // generic one.
-        expect(senderFor(FROM, 'D\u00fan Laoghaire')).toBe(FROM)
+    it('keeps an accent in the name, because the send encodes it properly now', () => {
+        // It used to fall back to MAIL_FROM, because denomailer's own encoding
+        // of a name like this was broken. headersFor in mime.js does it right.
+        expect(senderFor(FROM, 'D\u00fan Laoghaire'))
+            .toBe('Papi Chulo D\u00fan Laoghaire <point@papichulo.ie>')
+    })
+
+    it('turns a line break in the name into a space', () => {
+        // A line break in a header starts a header of its own.
+        expect(senderFor(FROM, 'Dun\r\nBcc: x@y.com'))
+            .toBe('"Papi Chulo Dun Bcc: x@y.com" <point@papichulo.ie>')
+        expect(senderFor(FROM, '\r\n')).toBe(FROM)
     })
 
     it('quotes a name a header parser would read as punctuation', () => {

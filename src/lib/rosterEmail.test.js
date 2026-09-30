@@ -4,8 +4,10 @@ import {
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
     swapHalves, halfWords, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    deliverable, isJustTheGoodbye, replyToFor,
+    deliverable, isJustTheGoodbye, replyToFor, recordName,
 } from '../../supabase/functions/roster-email/email'
+import { readFileSync } from 'node:fs'
+import { recordName as appRecordName } from '@/lib/timeOffPdf'
 
 // The words in the emails. It lives in the function's own folder because only
 // what is inside that folder gets deployed with it, and it is tested from here
@@ -146,6 +148,33 @@ describe('somebody answered', () => {
     it('names the person who answered it', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).html)
             .toContain('Leandro Presti')
+    })
+})
+
+// The record's file name goes into two header lines of the mail as it is, so
+// it is made here from the employee and the date, and never taken from the
+// request, where it could carry a line break.
+describe('the name of the record attached to an answer', () => {
+    it('is the same name the app gives it', () => {
+        for (const name of ['Ana Ferreira', 'María José', "O'Brien", '', null]) {
+            expect(recordName(holiday(), name)).toBe(appRecordName(holiday(), name))
+        }
+    })
+
+    it('holds nothing a header could trip on', () => {
+        expect(recordName(holiday(), 'Majo\r\nContent-Type: text/html'))
+            .toMatch(/^[a-z0-9-]+$/)
+    })
+
+    it('is what the function uses, whatever the request says', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toContain('recordName(absence, employee.full_name)')
+        expect(source).not.toMatch(/pdfName \|\|/)
+        // And the record that goes is the one checked for base64, never the
+        // raw value from the request, which could end the mail early.
+        expect(source).toContain('const record = base64Pdf(pdf)')
+        expect(source).toContain('content: record')
+        expect(source).not.toMatch(/content: pdf\b/)
     })
 })
 
