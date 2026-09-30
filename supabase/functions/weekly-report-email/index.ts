@@ -42,7 +42,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -284,8 +284,13 @@ Deno.serve(async (req) => {
         if (!caller) return json({ error: 'Not logged in.' }, 401)
 
         const { data: account } = await admin
-            .from('users').select('id, full_name, role, restaurant_id')
+            .from('users').select('id, full_name, role, restaurant_id, is_active')
             .eq('id', caller.id).maybeSingle()
+
+        // Before the role, because a manager who has left is still a manager
+        // on their row. Without this a leaver could still have every
+        // colleague's hours mailed to them. See switchedOff in email.js.
+        if (account && switchedOff(account)) return json({ error: 'Your login is switched off.' }, 403)
 
         if (!account || !['store_manager', 'super_admin'].includes(account.role)) {
             return json({ error: 'Only a manager can send a report.' }, 403)

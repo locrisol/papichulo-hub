@@ -4,7 +4,7 @@ import {
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
     swapHalves, halfWords, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    deliverable, isJustTheGoodbye, replyToFor, recordName,
+    deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
 } from '../../supabase/functions/roster-email/email'
 import { readFileSync } from 'node:fs'
 import { recordName as appRecordName } from '@/lib/timeOffPdf'
@@ -175,6 +175,34 @@ describe('the name of the record attached to an answer', () => {
         expect(source).toContain('const record = base64Pdf(pdf)')
         expect(source).toContain('content: record')
         expect(source).not.toMatch(/content: pdf\b/)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        for (const role of ['employee', 'store_manager', 'owner', 'super_admin']) {
+            expect(switchedOff({ role, is_active: false })).toBe(true)
+        }
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'employee', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'employee' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before anything is read', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', user\.id\)/)
+        const asked = source.indexOf('switchedOff(me)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('await request.json()'))
     })
 })
 

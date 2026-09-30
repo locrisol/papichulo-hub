@@ -63,7 +63,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     requestEmail, answerEmail, isPartDay,
     swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName,
+    senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
 } from './email.js'
 import { mimeParts, headersFor, base64Pdf } from './mime.js'
 
@@ -351,9 +351,14 @@ Deno.serve(async (request) => {
     if (!user) return json({ error: 'Not signed in' }, 401)
 
     const { data: me } = await admin
-        .from('users').select('id, full_name, role, restaurant_id')
+        .from('users').select('id, full_name, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
+
+    // Whatever the role. A switched off login still signs in, and this reads
+    // users with the service key, so the database's own refusal never
+    // happens here. See switchedOff in email.js.
+    if (switchedOff(me)) return json({ error: 'Your login is switched off' }, 403)
 
     // ---------- what happened ----------
     let payload: {

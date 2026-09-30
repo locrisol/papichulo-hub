@@ -580,6 +580,20 @@ export function isJustTheGoodbye(err) {
         || said.includes('unexpectedeof')
 }
 
+// A login that is switched off gets nothing out of this function.
+//
+// Switching somebody off, on the Users page or by the nightly job once their
+// last day has passed, only sets users.is_active. Their password still signs
+// them in and their token is still good. Everywhere else the database itself
+// refuses them, but this function reads users with the service key, which row
+// level security does not stop, so it has to ask for itself.
+//
+// Anything short of is_active being true is refused, so a row read without the
+// column fails shut rather than open.
+export function switchedOff(account) {
+    return account?.is_active !== true
+}
+
 // An address nobody can ever receive mail at.
 //
 // RFC 2606 and RFC 6761 set aside .test, .example, .invalid and .localhost, and

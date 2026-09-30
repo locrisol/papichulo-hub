@@ -3,8 +3,9 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff,
 } from '../../supabase/functions/weekly-report-email/email'
+import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek } from '@/lib/invoiceReport'
@@ -1019,6 +1020,33 @@ describe('the figure column is only as wide as the money', () => {
     it('keeps the target colour on the share where there is one', () => {
         expect(mail.html).toContain('(32.00%)</span>')
         expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: false })).toBe(true)
+        expect(switchedOff({ role: 'super_admin', is_active: false })).toBe(true)
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'store_manager' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before either mail is built', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', caller\.id\)/)
+        const asked = source.indexOf('switchedOff(account)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf("if (kind === 'timesheet')"))
     })
 })
 
