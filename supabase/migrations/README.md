@@ -169,3 +169,12 @@ since live is what actually runs:
   `INSERT` without a column list anywhere in the schema or the seed, but leaving
   it means the next person doing this check has six tables to re-derive as
   harmless.
+
+**The comparison only sees `public`.** Both dumps are of that schema, so the
+two triggers on `auth.users` that give a new login its `users` row were never
+in it, and they went missing from `schema.sql` in the rewrite without the check
+noticing. They are back, and `npm run db:local` now fails without them. On live
+they have to be looked at by hand, read only:
+
+    select tgname, pg_get_triggerdef(oid) from pg_trigger
+     where tgrelid = 'auth.users'::regclass and not tgisinternal;

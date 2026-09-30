@@ -4097,6 +4097,15 @@ CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "p
 CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
 
+-- These two are on auth.users, not in public, so a dump of public never shows
+-- them and the comparison with live cannot see them. They went missing from
+-- this file in the September rewrite while live kept them. Without the first,
+-- a new login has no users row and every policy refuses it. The second is
+-- BEFORE DELETE because the users row points at the login, and the check on
+-- that key would refuse the delete before an AFTER trigger could clear it.
+CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_new_user"();
+CREATE OR REPLACE TRIGGER "on_auth_user_deleted" BEFORE DELETE ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_delete_user"();
+
 -- The audit triggers, put on by the function rather than listed here. There
 -- are sixty six of them and they are all the same two.
 select public.watch_changes();
