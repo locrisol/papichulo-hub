@@ -39,6 +39,8 @@ export default function SalesImportDialog({
     const [remembered, setRemembered] = useState([])
     const [answers, setAnswers] = useState({})
     const [asked, setAsked] = useState(false)
+    // "Keep what is here", by date, where he has changed what it started as.
+    const [keep, setKeep] = useState({})
 
     const weekEnd = addDays(weekStart, 6)
     const active = tenders.filter(t => t.is_active)
@@ -89,7 +91,7 @@ export default function SalesImportDialog({
     for (const m of matches) places[m.name] = m.key || answers[m.name]?.key || null
 
     const plan = weekHere && !waiting.length
-        ? planSalesImport({ read, places, days, shownTenders, trackingPlatforms, today: todayISO() })
+        ? planSalesImport({ read, places, days, shownTenders, trackingPlatforms, today: todayISO(), keep })
         : null
 
     const stage = !read ? 'pick'
@@ -100,21 +102,25 @@ export default function SalesImportDialog({
 
     const toFill = plan ? Object.keys(plan.days).length : 0
 
+    // Only "this is our row", and only rows answered in this file. A mistake
+    // put under another row is not kept, so the next one is asked about rather
+    // than quietly put in the same place.
+    const remember = unknown
+        .filter(m => answers[m.name]?.remember && answers[m.name]?.key !== 'out')
+        .map(m => ({
+            restaurant_id: restaurantId,
+            name: m.name,
+            tender_key: answers[m.name].key,
+            created_by: user?.id,
+        }))
+
+    // Saves the names to remember, then fills the week in. When there is
+    // nothing to fill, because every day is the till's already or is being
+    // kept, it only saves the names. The button that did this used to go with
+    // the filling, so the answers were asked for again next week.
     async function fill() {
         setBusy(true)
         setError('')
-
-        // Only "this is our row", and only rows answered in this file. A
-        // mistake put under another row is not kept, so the next one is asked
-        // about rather than quietly put in the same place.
-        const remember = unknown
-            .filter(m => answers[m.name]?.remember && answers[m.name]?.key !== 'out')
-            .map(m => ({
-                restaurant_id: restaurantId,
-                name: m.name,
-                tender_key: answers[m.name].key,
-                created_by: user?.id,
-            }))
 
         if (remember.length) {
             const { error: failed } = await supabase
@@ -124,7 +130,8 @@ export default function SalesImportDialog({
         }
 
         setBusy(false)
-        onFill(plan.days)
+        if (toFill) onFill(plan.days)
+        else onClose()
     }
 
     return (
@@ -177,7 +184,13 @@ export default function SalesImportDialog({
                     />
                 )}
 
-                {stage === 'ready' && plan && <Ready read={read} plan={plan} />}
+                {stage === 'ready' && plan && (
+                    <Ready
+                        read={read}
+                        plan={plan}
+                        onKeep={(date, kept) => setKeep(was => ({ ...was, [date]: kept }))}
+                    />
+                )}
             </div>
 
             <div className={modalFooter}>
@@ -221,16 +234,18 @@ export default function SalesImportDialog({
                             </button>
                         )}
                         <button type="button" onClick={onClose} className={secondaryButton}>
-                            {toFill ? 'Cancel' : 'Close'}
+                            {toFill || remember.length ? 'Cancel' : 'Close'}
                         </button>
-                        {toFill > 0 && (
+                        {(toFill > 0 || remember.length > 0) && (
                             <button
                                 type="button"
                                 disabled={busy}
                                 onClick={fill}
                                 className={primaryButton('md', 'good')}
                             >
-                                {busy ? 'Filling in...' : 'Fill in the week'}
+                                {toFill
+                                    ? (busy ? 'Filling in...' : 'Fill in the week')
+                                    : (busy ? 'Saving...' : 'Done')}
                             </button>
                         )}
                     </>
@@ -356,7 +371,7 @@ function Questions({ read, unknown, active, restaurantName, answers, onAnswer })
 }
 
 // What filling it in will do, before it does it.
-function Ready({ read, plan }) {
+function Ready({ read, plan, onKeep }) {
     const gross = read.days.reduce((t, d) => t + num(d.gross), 0)
     const net = read.days.reduce((t, d) => t + num(d.net), 0)
     const toFill = Object.keys(plan.days).length
@@ -371,7 +386,7 @@ function Ready({ read, plan }) {
                 Gross {fmtMoney(gross)} · Net {fmtMoney(net)}
             </p>
 
-            {toFill === 0 && (
+            {toFill === 0 && plan.changed.length === 0 && (
                 <p className="text-sm text-gray-900 mb-3">
                     Everything here already matches the till&apos;s report. There is nothing to fill in.
                 </p>
@@ -384,10 +399,38 @@ function Ready({ read, plan }) {
                 {plan.same.length > 0 && toFill > 0 && (
                     <Line quiet>{plan.same.length} already exactly the same</Line>
                 )}
+                {/* A day put right here since the till's report was read
+                    must not be undone without a word, so each one can be
+                    kept. It starts ticked when the day still comes to the
+                    till's gross and net, since then only the split between
+                    the rows differs. */}
                 {plan.changed.map(c => (
                     <Line key={c.date} warn>
-                        <strong>{dayLabel(c.date)}</strong> will change:{' '}
-                        {c.diffs.map(d => `${d.label} ${fmtMoney(d.was)} here, ${fmtMoney(d.now)} on the till`).join('; ')}
+                        <strong>{dayLabel(c.date)}</strong>{c.keep ? ' is different on the till' : ' will change'}:{' '}
+                        {c.diffs.map(d => `${d.label} ${fmtMoney(d.was)} here, ${fmtMoney(d.now)} on the till`).join('; ')}.
+                        {c.follows.map(f => (
+                            <span key={f.label} className="block mt-1">
+                                {f.label} under Corporate would go back to the till&apos;s figure too:{' '}
+                                {fmtMoney(f.was)} here, {fmtMoney(f.now)} on the till.
+                            </span>
+                        ))}
+                        <label className={`${checkRow} mt-2 cursor-pointer`}>
+                            <input
+                                type="checkbox"
+                                checked={c.keep}
+                                onChange={e => onKeep(c.date, e.target.checked)}
+                                className={checkbox}
+                            />
+                            <span className="text-sm text-gray-700">
+                                Keep what is here
+                                {c.handMade && (
+                                    <span className="block text-xs text-muted">
+                                        It still adds up to the till&apos;s gross and net, so it looks like it was
+                                        corrected by hand.
+                                    </span>
+                                )}
+                            </span>
+                        </label>
                     </Line>
                 ))}
                 {plan.opened.map(o => (
@@ -459,11 +502,13 @@ function Steps() {
     )
 }
 
+// The words sit in a div rather than a span, so a line can carry a tick box
+// under its sentence.
 const Line = ({ children, tick, quiet, warn }) => (
     <li className="flex gap-2">
         <span className={quiet ? 'text-muted' : warn ? 'text-accent-ink' : 'text-green-700'}>
             {quiet ? '–' : warn ? '!' : tick ? '✓' : '•'}
         </span>
-        <span className={quiet ? 'text-muted' : ''}>{children}</span>
+        <div className={quiet ? 'text-muted' : ''}>{children}</div>
     </li>
 )

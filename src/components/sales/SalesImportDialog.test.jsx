@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeQuery } from '@/test/helpers'
 import { exportOf, WEEK, TENDERS, blankWeek } from '@/test/weeklySalesExport'
@@ -25,8 +25,9 @@ const { default: SalesImportDialog } = await import('./SalesImportDialog')
 
 const onFill = vi.fn()
 const onGoToWeek = vi.fn()
+const onClose = vi.fn()
 
-function open({ weekStart = '2026-09-06', days = blankWeek(), loading = false } = {}) {
+function open({ weekStart = '2026-09-06', days = blankWeek(), loading = false, trackingPlatforms = [] } = {}) {
     return render(
         <SalesImportDialog
             restaurantId="r1"
@@ -35,11 +36,11 @@ function open({ weekStart = '2026-09-06', days = blankWeek(), loading = false } 
             days={days}
             tenders={TENDERS}
             shownTenders={TENDERS.filter(t => t.is_active)}
-            trackingPlatforms={[]}
+            trackingPlatforms={trackingPlatforms}
             loading={loading}
             onGoToWeek={onGoToWeek}
             onFill={onFill}
-            onClose={() => {}}
+            onClose={onClose}
         />,
     )
 }
@@ -146,6 +147,94 @@ describe('filling the week in', () => {
         await upload()
         expect(await screen.findByRole('alert')).toBeInTheDocument()
         expect(onFill).not.toHaveBeenCalled()
+    })
+})
+
+// Reading a week in again, after a day was put right by hand. His answer of
+// 30 September: each day the file would change gets a "Keep what is here" tick
+// box, ticked for him when the day still comes to the till's gross and net.
+describe('a week read in again', () => {
+    // Tuesday with 12.50 of the kiosk money moved to cash by hand. Everything
+    // else about it is what the till says.
+    function correctedWeek(over = {}) {
+        const week = blankWeek()
+        week['2026-09-08'] = {
+            ...week['2026-09-08'],
+            gross: '532.50', net: '488.40',
+            tenderValues: { cash: '32.5', card: '100', kiosk: '400', online_sales: '0', feedr: '0' },
+            ...over,
+        }
+        return week
+    }
+
+    async function readIn(options) {
+        open(options)
+        await upload()
+        await userEvent.selectOptions(await screen.findByLabelText('Where Ordu App goes'), 'kiosk')
+        await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    }
+
+    it('keeps a day corrected by hand, ticked for him', async () => {
+        await readIn({ days: correctedWeek() })
+        const keep = screen.getByRole('checkbox', { name: /Keep what is here/ })
+        expect(keep).toBeChecked()
+        expect(keep.closest('li')).toHaveTextContent('Tue 8 Sept')
+
+        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await waitFor(() => expect(onFill).toHaveBeenCalled())
+        expect(onFill.mock.calls[0][0]).not.toHaveProperty('2026-09-08')
+    })
+
+    it('fills that day in once the tick is taken off', async () => {
+        await readIn({ days: correctedWeek() })
+        await userEvent.click(screen.getByRole('checkbox', { name: /Keep what is here/ }))
+
+        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await waitFor(() => expect(onFill).toHaveBeenCalled())
+        expect(onFill.mock.calls[0][0]['2026-09-08'].tenderValues.cash).toBe('20')
+    })
+
+    it('does not tick a day that no longer comes to the till\'s gross', async () => {
+        await readIn({ days: correctedWeek({ gross: '540' }) })
+        expect(screen.getByRole('checkbox', { name: /Keep what is here/ })).not.toBeChecked()
+    })
+
+    // Every day already the till's except the one kept, so there is nothing
+    // to fill. The names he answered for still have to be remembered, and
+    // they were not: the only button that saved them went with the filling.
+    it('still remembers the names when every day that would change is kept', async () => {
+        await readIn()
+        await userEvent.click(screen.getByRole('button', { name: 'Fill in the week' }))
+        await waitFor(() => expect(onFill).toHaveBeenCalled())
+        const days = { ...blankWeek(), ...onFill.mock.calls[0][0] }
+        const tuesday = days['2026-09-08']
+        days['2026-09-08'] = { ...tuesday, tenderValues: { ...tuesday.tenderValues, cash: '32.5', kiosk: '400' } }
+        cleanup()
+        asked.length = 0
+        onFill.mockClear()
+
+        await readIn({ days })
+        expect(screen.getByRole('checkbox', { name: /Keep what is here/ })).toBeChecked()
+        await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+        await waitFor(() => expect(onClose).toHaveBeenCalled())
+        expect(remembered()).toEqual([[
+            { restaurant_id: 'r1', name: 'CASH', tender_key: 'cash', created_by: 'me' },
+            { restaurant_id: 'r1', name: 'Credit Card', tender_key: 'card', created_by: 'me' },
+        ]])
+        expect(onFill).not.toHaveBeenCalled()
+    })
+
+    it('says when a Corporate row would go back to the till\'s figure', async () => {
+        const week = blankWeek()
+        week['2026-09-07'] = {
+            ...week['2026-09-07'],
+            gross: '800', net: '740',
+            tenderValues: { cash: '10', card: '100', kiosk: '500', online_sales: '0', feedr: '190' },
+            platformValues: { Feedr: '190' },
+        }
+        await readIn({ days: week, trackingPlatforms: [{ key: 'Feedr', name: 'Feedr', bucket: 'catering' }] })
+        expect(screen.getByText(/Feedr under Corporate would go back to the till's figure/))
+            .toHaveTextContent('€190.00 here, €200.00 on the till')
     })
 })
 
