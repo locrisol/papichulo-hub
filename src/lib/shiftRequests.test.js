@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
@@ -354,6 +355,76 @@ describe('writesFor', () => {
         // one change of name rather than a split.
         expect(plan.updates).toHaveLength(1)
         expect(plan.inserts).toHaveLength(0)
+    })
+
+    // A shift the way the roster page holds it: select('*'), every column.
+    const PUBLISHED = '2026-08-20T10:00:00+00:00'
+    const saved = (id, employee, date, from, to) => shift(id, employee, date, from, to, {
+        restaurant_id: 'r1', position_id: 'bar', note: 'Cashes up', break_is_manual: false,
+        published_at: PUBLISHED, created_by: 'u1', created_at: PUBLISHED, updated_at: PUBLISHED,
+    })
+
+    // The ordinary cover my evening, to somebody who is off that day. Nothing
+    // of theirs to join it to, so it is the one case that writes a new row,
+    // and approving it used to fail half way: the giver's shift was cut short
+    // and then the new row was refused.
+    it('gives a new row to somebody who is off that day', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '15:00', give_to: '21:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.updates[0]).toMatchObject({ id: 's1', employee_id: 'ana', ends_at: '15:00' })
+        expect(plan.removes).toEqual([])
+        expect(plan.inserts).toHaveLength(1)
+        expect(plan.inserts[0]).toMatchObject({
+            employee_id: 'ben', shift_date: WED, starts_at: '15:00', ends_at: '21:00',
+            // The same work, so the same position, and still published.
+            position_id: 'bar', published_at: PUBLISHED,
+            // The note was written about Ana's shift, and she keeps it.
+            note: null,
+        })
+    })
+
+    it('leaves the giver both ends when the middle of a shift goes', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '12:00', give_to: '15:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.updates[0]).toMatchObject({ id: 's1', starts_at: '09:00', ends_at: '12:00' })
+
+        const byStart = [...plan.inserts].sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+        expect(byStart).toHaveLength(2)
+        expect(byStart[0]).toMatchObject({
+            employee_id: 'ben', starts_at: '12:00', ends_at: '15:00', position_id: 'bar', note: null,
+        })
+        // Still Ana's shift, so it keeps everything hers had.
+        expect(byStart[1]).toMatchObject({
+            employee_id: 'ana', starts_at: '15:00', ends_at: '21:00', position_id: 'bar', note: 'Cashes up',
+        })
+    })
+
+    // The page sends these rows as they are. A key the table does not have
+    // gets the whole insert refused, which is what notes for note did.
+    it('writes a new row with only columns the table has', () => {
+        const schema = readFileSync('supabase/schema.sql', 'utf8')
+        const table = /CREATE TABLE IF NOT EXISTS "public"\."roster_shifts" \(([\s\S]*?)\n\);/.exec(schema)
+        expect(table).not.toBeNull()
+        const columns = [...table[1].matchAll(/^\s+"(\w+)"/gm)].map(m => m[1])
+
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '12:00', give_to: '15:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        for (const row of plan.inserts) {
+            for (const key of Object.keys(row)) expect(columns).toContain(key)
+            // The database gives it one. Sending null would be refused.
+            expect(row).not.toHaveProperty('id')
+        }
     })
 })
 

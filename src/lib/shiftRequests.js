@@ -156,12 +156,16 @@ export function weekAfter(request, shifts, breakRules) {
         for (const extra of keep.slice(1)) {
             all.push({ ...shift, id: null, starts_at: extra.starts_at, ends_at: extra.ends_at })
         }
+        // The position comes across, because it is the same work. The note
+        // does not: it was written about the giver's shift, and what is left
+        // of that shift still carries it.
         all.push({
             ...shift,
             id: null,
             employee_id: side.taker,
             starts_at: window.from,
             ends_at: window.to,
+            note: null,
         })
     }
 
@@ -324,6 +328,11 @@ export function requestDate(request, shiftById) {
 // that already went out rather than pulling it back for a re-publish: the swap
 // is the roster now, and marking the week unpublished would tell everybody the
 // thing they just agreed had been undone.
+//
+// A new row comes back holding only columns roster_shifts has, ready to send
+// once the page adds where and who. The page used to pick them out itself and
+// sent notes where the table has note, so the insert was refused after the
+// giver's shift had already been cut short, and it left the position behind.
 export function writesFor(request, shifts, breakRules) {
     const { shifts: after, removedIds } = weekAfter(request, shifts, breakRules)
     const before = new Map((shifts || []).map(s => [s.id, s]))
@@ -337,7 +346,17 @@ export function writesFor(request, shifts, breakRules) {
 
     return {
         updates: after.filter(s => s.id && before.has(s.id) && !same(before.get(s.id), s)),
-        inserts: after.filter(s => !s.id),
+        inserts: after.filter(s => !s.id).map(s => ({
+            employee_id: s.employee_id,
+            shift_date: s.shift_date,
+            starts_at: s.starts_at,
+            ends_at: s.ends_at,
+            position_id: s.position_id ?? null,
+            break_minutes: s.break_minutes,
+            break_is_manual: s.break_is_manual ?? false,
+            note: s.note ?? null,
+            published_at: s.published_at ?? null,
+        })),
         removes: removedIds,
     }
 }

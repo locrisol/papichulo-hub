@@ -515,7 +515,15 @@ export default function RosterPage() {
         setSaving(true)
         setError('')
         const plan = writesFor(request, shifts, activeRestaurant?.break_rules)
-        const fail = problem => { setSaving(false); setError(friendlyError(problem)) }
+        // The writes go one at a time, so a refusal can come after some of
+        // them have landed. Fetching again shows the week as it now is rather
+        // than as it was planned. The message is set after, because load
+        // clears it as it starts.
+        const fail = problem => {
+            setSaving(false)
+            load({ quiet: true })
+            setError(friendlyError(problem))
+        }
 
         if (plan.removes.length > 0) {
             const { error: err } = await supabase.from('roster_shifts')
@@ -537,18 +545,7 @@ export default function RosterPage() {
 
         if (plan.inserts.length > 0) {
             const { error: err } = await supabase.from('roster_shifts').insert(
-                plan.inserts.map(row => ({
-                    restaurant_id: restaurantId,
-                    employee_id: row.employee_id,
-                    shift_date: row.shift_date,
-                    starts_at: row.starts_at,
-                    ends_at: row.ends_at,
-                    break_minutes: row.break_minutes,
-                    break_is_manual: row.break_is_manual,
-                    notes: row.notes || null,
-                    published_at: row.published_at || null,
-                    created_by: user?.id,
-                })),
+                plan.inserts.map(row => ({ ...row, restaurant_id: restaurantId, created_by: user?.id })),
             )
             if (err) return fail(err)
         }
@@ -558,9 +555,9 @@ export default function RosterPage() {
             decided_at: new Date().toISOString(),
             decided_by: user?.id,
         }).eq('id', request.id)
+        if (err) return fail(err)
 
         setSaving(false)
-        if (err) { setError(friendlyError(err)); return }
         // Last, after every write above has gone through. Both of them are
         // being told the roster has changed, and it has to have changed first.
         emailTheShiftDecision(request.id)
