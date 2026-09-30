@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toISODate, todayISO, weekStartOf, weekDates, shortDate, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from '@/lib/dates'
+import { toISODate, todayISO, weekStartOf, weekDates, shortDate, dayLabel, dayList, addDays, monthStart, addMonths, monthLabel, fullDate, weekMonthLabel, weekNumber, weekRange , stampDate, stampDateTime, monthYearOf } from '@/lib/dates'
 
 describe('toISODate', () => {
     it('formats a date as YYYY-MM-DD', () => {
@@ -105,6 +105,20 @@ describe('shortDate', () => {
 
     it('does not shift the day', () => {
         expect(shortDate('2026-08-01')).toBe('1 Aug')
+    })
+})
+
+describe('dayLabel and dayList', () => {
+    it('names a day with its date', () => {
+        expect(dayLabel('2026-09-08')).toBe('Tue 8 Sept')
+    })
+
+    it('lists days the way a sentence would', () => {
+        expect(dayList([])).toBe('')
+        expect(dayList(['2026-09-07'])).toBe('Mon 7 Sept')
+        expect(dayList(['2026-09-07', '2026-09-08'])).toBe('Mon 7 Sept and Tue 8 Sept')
+        expect(dayList(['2026-09-07', '2026-09-08', '2026-09-09']))
+            .toBe('Mon 7 Sept, Tue 8 Sept and Wed 9 Sept')
     })
 })
 

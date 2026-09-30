@@ -56,6 +56,8 @@ describe('the shared helpers are declared in one place', () => {
         weekDates: 'lib/dates.js',
         addDays: 'lib/dates.js',
         shortDate: 'lib/dates.js',
+        dayLabel: 'lib/dates.js',
+        dayList: 'lib/dates.js',
         stampDateTime: 'lib/dates.js',
         DAY_NAMES: 'lib/events.js',
         toMinutes: 'lib/roster.js',

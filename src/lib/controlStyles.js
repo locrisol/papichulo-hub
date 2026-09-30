@@ -109,6 +109,15 @@ export const compactField =
 // sixty five hand written ones were missing.
 export const errorBanner = 'text-sm text-red-700 bg-red-50 rounded-lg p-3'
 
+// Something to know before carrying on that is not an error, like unsaved
+// changes that were not brought back.
+//
+// Amber with an amber edge, which is what most of the hand written ones already
+// are. There are over a dozen of those and they differ in text size and
+// padding, so they move over as each screen is next worked on rather than all
+// at once. No margin, for the same reason as errorBanner.
+export const warningNote = 'text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3'
+
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".

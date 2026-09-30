@@ -3,8 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { friendlyError } from '@/lib/errors'
 import { fmtMoney, num } from '@/lib/format'
-import { shortDate, fullDate, addDays, todayISO } from '@/lib/dates'
-import { DAY_NAMES } from '@/lib/events'
+import { shortDate, fullDate, addDays, todayISO, dayLabel, dayList } from '@/lib/dates'
 import {
     readWeeklySales, salesFileFits, matchTillLines, planSalesImport, lineByDay,
 } from '@/lib/salesImport'
@@ -242,16 +241,6 @@ export default function SalesImportDialog({
             </div>
         </Modal>
     )
-}
-
-function dayLabel(date) {
-    return `${DAY_NAMES[new Date(date + 'T00:00:00').getDay()]} ${shortDate(date)}`
-}
-
-function dayList(dates) {
-    const names = dates.map(dayLabel)
-    if (names.length <= 1) return names[0] || ''
-    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 // Why a file was turned away, one sentence per mistake.

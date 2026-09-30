@@ -4,12 +4,15 @@ import { supabase } from '@/lib/supabase'
 import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
+import { useConfirm } from '@/context/confirm'
 import { fmtMoney, num } from '@/lib/format'
-import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel, dayList } from '@/lib/dates'
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
-import { secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+    secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton, warningNote,
+} from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
 import DateStepper from '@/components/ui/DateStepper'
 import { DAY_NAMES } from '@/lib/events'
@@ -49,37 +52,74 @@ function draftKey(restaurantId, weekStart) {
 // The blocks Tab moves across rather than down. See handleGridKeyDown.
 const ACROSS_BLOCKS = new Set(['online_platform'])
 
-// Fields compared when deciding whether a draft genuinely differs from what is
-// already stored. A draft matching the database is not an unsaved change.
+// Fields compared when deciding whether a day genuinely differs from another
+// copy of it. A draft matching the database is not an unsaved change.
 const DRAFT_FIELDS = ['gross', 'net', 'staffFood']
+
+// One box against another. Empty and a typed nought are different answers
+// here, the same as everywhere else on this screen: nobody filled it in, or the
+// till took nothing. Otherwise the figures are compared, so 500 and 500.00 are
+// the same.
+function sameBox(a, b) {
+    const emptyA = a === '' || a == null
+    const emptyB = b === '' || b == null
+    if (emptyA || emptyB) return emptyA && emptyB
+    return num(a) === num(b)
+}
 
 function sameDay(a, b) {
     if (!a || !b) return false
     if ((a.isClosed ?? false) !== (b.isClosed ?? false)) return false
     for (const f of DRAFT_FIELDS) {
-        if (num(a[f]) !== num(b[f])) return false
+        if (!sameBox(a[f], b[f])) return false
     }
-    const tenderKeys = new Set([
-        ...Object.keys(a.tenderValues || {}),
-        ...Object.keys(b.tenderValues || {}),
-    ])
-    for (const k of tenderKeys) {
-        if (num(a.tenderValues?.[k]) !== num(b.tenderValues?.[k])) return false
-    }
-    const names = new Set([
-        ...Object.keys(a.platformValues || {}),
-        ...Object.keys(b.platformValues || {}),
-    ])
-    for (const n of names) {
-        if (num(a.platformValues?.[n]) !== num(b.platformValues?.[n])) return false
+    for (const group of ['tenderValues', 'platformValues']) {
+        const keys = new Set([...Object.keys(a[group] || {}), ...Object.keys(b[group] || {})])
+        for (const k of keys) {
+            if (!sameBox(a[group]?.[k], b[group]?.[k])) return false
+        }
     }
     return true
+}
+
+// A stored day the way the grid holds it: strings for the boxes, and what the
+// database held kept beside them.
+//
+// The roster's day note decides whether it is closed. Without one it is what
+// the row itself says, which is how Save week tells a day the roster has shut
+// since from a row that already says so.
+function dayFromRecord(r, note) {
+    const platformValues = {}
+    if (r?.platform_sales && typeof r.platform_sales === 'object') {
+        for (const [k, v] of Object.entries(r.platform_sales)) platformValues[k] = String(v)
+    }
+    return {
+        id: r?.id ?? null,
+        isClosed: dayIsClosed(note, r),
+        gross: r?.gross_sales != null ? String(r.gross_sales) : '',
+        net: r?.net_sales != null ? String(r.net_sales) : '',
+        staffFood: r?.staff_food != null ? String(r.staff_food) : '',
+        // What is on screen, and what came out of the database. Both are
+        // kept because a save writes the typed values over the stored ones
+        // rather than replacing them, which is how a figure belonging to no
+        // row on screen survives.
+        tenderValues: tenderValuesFromRecord(r?.tender_sales),
+        storedTenders: r?.tender_sales ?? {},
+        platformValues,
+    }
+}
+
+// Whether a stored row is still what it was. Two missing rows agree.
+function sameRow(a, b) {
+    if (!a || !b) return !a && !b
+    return sameDay(dayFromRecord(a, null), dayFromRecord(b, null))
 }
 
 export default function WeeklySalesPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
+    const confirm = useConfirm()
 
     const [weekStart, setWeekStart] = useState(weekStartOf(todayISO()))
     // Raw value of the week picker. Kept separate from weekStart so choosing a
@@ -100,6 +140,10 @@ export default function WeeklySalesPage() {
     // a form on a phone, the top of the page is not on the screen at all.
     const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
+    // Days whose unsaved changes on this device were not brought back, because
+    // the day was changed somewhere else since: saved on a phone, or opened or
+    // closed on the roster. See loadWeek.
+    const [notRestored, setNotRestored] = useState([])
 
     // True once something has been edited but not yet saved.
     const [dirty, setDirty] = useState(false)
@@ -114,6 +158,12 @@ export default function WeeklySalesPage() {
     // (and so discarding unsaved edits) when nothing has actually changed.
     const loadedKey = useRef(null)
 
+    // The week as it came out of the database, before anything was typed or
+    // brought back from a draft: `view` is each day as the grid first showed
+    // it, and `rows` is the stored rows themselves. What is unsaved, and what
+    // Save week has to write, is whatever differs from these.
+    const loaded = useRef({ view: {}, rows: {} })
+
     const dates = weekDates(weekStart)
     const restaurantId = activeRestaurant?.id
 
@@ -124,12 +174,28 @@ export default function WeeklySalesPage() {
     // Keep a local draft of anything unsaved. Guarded by loadedKey: when the week
     // changes, weekStart updates before loadWeek replaces `days`, so without this
     // check the previous week's figures get written under the new week's key.
+    //
+    // Only the days that differ from what was loaded go in, each with the day
+    // as it was loaded beside it. It used to be all seven, blanks included, so
+    // a draft left on the office computer on Monday came back on Saturday over
+    // every day entered on a phone in between, and Save week wrote the blanks
+    // as zeros. Keeping the day as loaded is what lets loadWeek tell whether
+    // the database has moved on since.
     useEffect(() => {
         if (!dirty || !restaurantId) return
         const key = `${restaurantId}:${weekStart}`
         if (loadedKey.current !== key) return
         try {
-            localStorage.setItem(draftKey(restaurantId, weekStart), JSON.stringify(days))
+            const draft = {}
+            for (const [date, day] of Object.entries(days)) {
+                const base = loaded.current.view[date]
+                if (!sameDay(day, base)) draft[date] = { base, edit: day }
+            }
+            if (Object.keys(draft).length) {
+                localStorage.setItem(draftKey(restaurantId, weekStart), JSON.stringify(draft))
+            } else {
+                localStorage.removeItem(draftKey(restaurantId, weekStart))
+            }
         } catch {
             // Storage may be full or blocked; a failed draft must not break entry.
         }
@@ -161,6 +227,7 @@ export default function WeeklySalesPage() {
         setLoading(true)
         setError('')
         setSuccess('')
+        setNotRestored([])
 
         // Four at once. None of them needs anything from another, and this
         // grid is the slowest screen in the app to open.
@@ -215,57 +282,45 @@ export default function WeeklySalesPage() {
         for (const n of notes || []) noteByDate[n.note_date] = n
         setDayNotes(notes || [])
 
-        const next = {}
-        for (const d of dates) {
-            const r = byDate[d]
-            const platformValues = {}
-            if (r?.platform_sales && typeof r.platform_sales === 'object') {
-                for (const [k, v] of Object.entries(r.platform_sales)) platformValues[k] = String(v)
-            }
-            next[d] = {
-                id: r?.id ?? null,
-                isClosed: dayIsClosed(noteByDate[d], r),
-                gross: r?.gross_sales != null ? String(r.gross_sales) : '',
-                net: r?.net_sales != null ? String(r.net_sales) : '',
-                staffFood: r?.staff_food != null ? String(r.staff_food) : '',
-                // What is on screen, and what came out of the database. Both are
-                // kept because a save writes the typed values over the stored
-                // ones rather than replacing them, which is how a figure
-                // belonging to no row on screen survives.
-                tenderValues: tenderValuesFromRecord(r?.tender_sales),
-                storedTenders: r?.tender_sales ?? {},
-                platformValues,
-            }
-        }
+        const view = {}
+        for (const d of dates) view[d] = dayFromRecord(byDate[d], noteByDate[d])
+        const next = { ...view }
 
-        // A draft only counts if it actually differs from the database. Anything
-        // matching what is already stored is discarded rather than reported as
-        // an unsaved change.
-        let restored = false
+        // A draft day comes back only if the database still holds what it was
+        // typed over. If the day has been saved somewhere else since, on a
+        // phone or in the day view, what is stored now is newer than the
+        // draft, so the draft is dropped and the screen says which days. A
+        // draft day that already matches the database is simply not an
+        // unsaved change.
+        //
+        // A draft from before 30 September holds the day alone, with nothing
+        // to say what it was typed over, so it cannot be checked and is not
+        // brought back.
+        const restored = []
+        const moved = []
         try {
             const raw = localStorage.getItem(draftKey(restaurantId, weekStart))
             if (raw) {
                 const draft = JSON.parse(raw)
                 for (const d of dates) {
-                    if (!draft[d]) continue
-                    const merged = {
-                        ...next[d], ...draft[d],
-                        id: next[d].id,
-                        storedTenders: next[d].storedTenders,
-                    }
-                    if (sameDay(merged, next[d])) continue
-                    next[d] = merged
-                    restored = true
+                    const { base, edit } = draft?.[d] || {}
+                    if (!base || !edit) continue
+                    if (sameDay(edit, view[d])) continue
+                    if (!sameDay(base, view[d])) { moved.push(d); continue }
+                    next[d] = { ...edit, id: view[d].id, storedTenders: view[d].storedTenders }
+                    restored.push(d)
                 }
-                if (!restored) localStorage.removeItem(draftKey(restaurantId, weekStart))
+                if (!restored.length) localStorage.removeItem(draftKey(restaurantId, weekStart))
             }
         } catch {
             localStorage.removeItem(draftKey(restaurantId, weekStart))
         }
 
+        loaded.current = { view, rows: byDate }
         setDays(next)
-        setDirty(restored)
-        if (restored) setSuccess('Restored unsaved changes from this device.')
+        setDirty(restored.length > 0)
+        setNotRestored(moved)
+        if (restored.length) setSuccess('Restored unsaved changes from this device.')
         loadedKey.current = key
         setLoading(false)
         }, [restaurantId, weekStart])
@@ -441,6 +496,17 @@ export default function WeeklySalesPage() {
     // real state rather than writing seven rows of zeros for every week, which
     // would make a day nobody touched look like a day we took nothing.
     //
+    // A stored day is only written when it differs from what was stored, so a
+    // correction made on a phone to a day this screen never touched is left
+    // alone. It used to write all seven. The one change it makes on its own is
+    // a day the roster has shut since, which it writes as closed, the same as
+    // it always has, so the sales row agrees with the roster.
+    //
+    // Just before writing, the week is read again. Two screens open on the
+    // same week used to mean the second save quietly undid the first, so a day
+    // saved somewhere else since this screen loaded is named, and nothing is
+    // written unless the person says to.
+    //
     // Marking a day closed writes zeros across the board on purpose. Closed and
     // empty are different things: closed means we did not trade, and closed days
     // are then left out of daily averages so a bank holiday does not drag down
@@ -454,12 +520,11 @@ export default function WeeklySalesPage() {
         setFormProblem(''); setSuccess('')
         setSaving(true)
 
-        const toInsert = []
-        const toUpdate = []
-
-        for (const date of dates) {
+        const stored = loaded.current.rows
+        const toWrite = dates.filter(date => {
             const day = days[date]
-            if (!day) continue
+            if (!day) return false
+            if (day.id) return !sameDay(day, dayFromRecord(stored[date], null))
 
             const hasAnyValue =
                 day.gross !== '' || day.net !== '' || day.staffFood !== '' ||
@@ -467,7 +532,43 @@ export default function WeeklySalesPage() {
                 Object.values(day.platformValues || {}).some(v => v !== '' && v != null)
 
             // Nothing entered and nothing stored: leave this day alone.
-            if (!hasAnyValue && !day.isClosed && !day.id) continue
+            return hasAnyValue || day.isClosed
+        })
+
+        // What the database holds now, which is what gets written over.
+        const now = {}
+        if (toWrite.length) {
+            const { data: fresh, error: e0 } = await supabase.from('sales_records')
+                .select('*')
+                .eq('restaurant_id', restaurantId)
+                .gte('sale_date', dates[0])
+                .lte('sale_date', dates[6])
+            if (e0) { setFormProblem(friendlyError(e0)); setSaving(false); return }
+            for (const r of fresh || []) now[r.sale_date] = r
+
+            const movedOn = toWrite.filter(date => !sameRow(now[date], stored[date]))
+            if (movedOn.length) {
+                const one = movedOn.length === 1
+                const ok = await confirm({
+                    title: 'Saved somewhere else',
+                    message: `${dayList(movedOn)} ${one ? 'was' : 'were'} saved on another screen after you `
+                        + `opened this week. Saving now replaces ${one ? 'it' : 'them'} with what is on this screen.`,
+                    confirmLabel: 'Save anyway',
+                    tone: 'danger',
+                    dangerNote: `The other changes to ${one ? 'that day' : 'those days'} will be lost.`,
+                })
+                if (!ok) { setSaving(false); return }
+            }
+        }
+
+        const toInsert = []
+        const toUpdate = []
+
+        for (const date of toWrite) {
+            const day = days[date]
+            // The row as it is now, so a day saved somewhere else since is
+            // written over rather than inserted a second time.
+            const id = now[date]?.id ?? null
 
             const platformSales = {}
             if (!day.isClosed) {
@@ -506,7 +607,7 @@ export default function WeeklySalesPage() {
                     instore_variance: varianceFor(date),
                 }
 
-            if (day.id) toUpdate.push({ id: day.id, payload })
+            if (id) toUpdate.push({ id, payload })
             else toInsert.push(payload)
         }
 
@@ -517,23 +618,50 @@ export default function WeeklySalesPage() {
             closed: !!days[d]?.isClosed,
         })))
 
+        // Each write hands back the rows it wrote, and they are taken as what
+        // is stored the moment they land. If a later write fails, the next
+        // Save week then knows these days are saved. Without it, it named
+        // them as saved on another screen and tried to add them again.
+        function landed(rows) {
+            for (const r of rows || []) {
+                loaded.current.rows[r.sale_date] = r
+                loaded.current.view[r.sale_date] = dayFromRecord(r, dayNotes.find(n => n.note_date === r.sale_date))
+            }
+            setDays(prev => {
+                const next = { ...prev }
+                for (const r of rows || []) {
+                    if (!next[r.sale_date]) continue
+                    next[r.sale_date] = {
+                        ...next[r.sale_date],
+                        id: r.id,
+                        storedTenders: r.tender_sales ?? {},
+                        storedPlatforms: r.platform_sales ?? {},
+                    }
+                }
+                return next
+            })
+        }
+
         if (toInsert.length > 0) {
-            const { error: e1 } = await supabase.from('sales_records').insert(toInsert)
+            const { data: added, error: e1 } = await supabase.from('sales_records').insert(toInsert).select()
             if (e1) {
                 setFormProblem(friendlyError(e1))
                 discardDraftIfRefused(e1)
                 setSaving(false)
                 return
             }
+            landed(added)
         }
         for (const u of toUpdate) {
-            const { error: e2 } = await supabase.from('sales_records').update(u.payload).eq('id', u.id)
+            const { data: changed, error: e2 } = await supabase.from('sales_records')
+                .update(u.payload).eq('id', u.id).select()
             if (e2) {
                 setFormProblem(friendlyError(e2))
                 discardDraftIfRefused(e2)
                 setSaving(false)
                 return
             }
+            landed(changed)
         }
 
         // The database now matches the screen, so the draft is no longer needed.
@@ -930,6 +1058,13 @@ export default function WeeklySalesPage() {
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
             {success && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
+            {notRestored.length > 0 && (
+                <div className={`${warningNote} mb-4`}>
+                    Unsaved changes to {dayList(notRestored)} on this device were not restored,
+                    because {notRestored.length === 1 ? 'that day was' : 'those days were'} changed
+                    somewhere else since. What is showing now is what was saved.
+                </div>
+            )}
 
             {/* Week navigation */}
             <div className={`${card} p-4 mb-4`}>

@@ -30,6 +30,22 @@ export function shortDate(dateStr) {
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })
 }
 
+// A day named in a sentence, for example Tue 8 Sept.
+export function dayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return `${d.toLocaleDateString('en-IE', { weekday: 'short' })} ${shortDate(dateStr)}`
+}
+
+// Several of them, for example Mon 7 Sept, Tue 8 Sept and Wed 9 Sept.
+//
+// The sales upload and the weekly grid both say which days something happened
+// to, and they had a copy each.
+export function dayList(dates) {
+    const names = (dates || []).map(dayLabel)
+    if (names.length <= 1) return names[0] || ''
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 // A date with the month written out, for example 6 September.
 //
 // The short form is right in a table, where the column is narrow and the month
