@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
-    claimAmount, claimBalance, claimIsOpen, claimCandidates, claimMatch,
-    creditSettles, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
+    claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
+    creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -219,6 +219,37 @@ describe('the balance', () => {
     })
 })
 
+// What a claim takes off the week of its delivery, which the delete dialog on
+// the Invoices page counts. It has to be the view's own rule, or the dialog
+// says money still comes off when it does not.
+describe('what a claim takes off its week', () => {
+    it('is the whole ask while it is open, and what came back once it is not', () => {
+        expect(claimTakesOff(claim())).toBe(69.98)
+        expect(claimTakesOff(claim({ status: 'settled', credited_amount: 60 }))).toBe(60)
+        expect(claimTakesOff(claim({ status: 'refused', credited_amount: 10 }))).toBe(10)
+    })
+
+    it('is nothing for a refusal with nothing back, or one taken back', () => {
+        expect(claimTakesOff(claim({ status: 'refused', credited_amount: 0 }))).toBe(0)
+        expect(claimTakesOff(claim({ status: 'void' }))).toBe(0)
+    })
+
+    it('is nothing until the claim has an amount and a week', () => {
+        expect(claimTakesOff(claim({ amount: null }))).toBe(0)
+        expect(claimTakesOff(claim({ counted_week: null }))).toBe(0)
+    })
+
+    it('follows the rule invoice_cost_by_category takes claims off by', () => {
+        const schema = readFileSync('supabase/schema.sql', 'utf8')
+        const view = schema.slice(schema.indexOf('VIEW "public"."invoice_cost_by_category"'))
+        const claims = view.slice(view.indexOf('FROM (("public"."invoice_line_claims" "c"'), view.indexOf('COMMENT ON'))
+        expect(claims).toContain(`"c"."status" = ANY (ARRAY['open'::"text", 'settled'::"text", 'refused'::"text"])`)
+        expect(claims).toContain('"c"."counted_week" IS NOT NULL')
+        expect(claims).toContain('"c"."amount" IS NOT NULL')
+        expect(claims).toContain(`CASE WHEN ("c"."status" = 'open'::"text") THEN "c"."amount" ELSE "c"."credited_amount" END > (0)::numeric`)
+    })
+})
+
 describe('matching a note to a line', () => {
     const invoices = [
         {
@@ -402,6 +433,122 @@ describe('the claim that carries the money, week by week', () => {
         expect(offWeek(after)).toBe(69.98)
         // And in the same week, even though the credit is dated the week after.
         expect(after.counted_week).toBe(before.counted_week)
+    })
+})
+
+// The audit of 28 September. A credit that settled a claim was deleted on the
+// Invoices page and imported again. The claim was left settled, so the second
+// import found nothing open, counted the credit on its own date, and the same
+// money came off twice.
+describe('deleting a credit note that settled a claim', () => {
+    const invoice = { id: 'i1', invoice_date: '2026-09-14' }
+    const offWeek = c => (c.status === 'open' ? c.amount : c.credited_amount)
+    const imported = (id, claims) => creditSettles({
+        credit: { id, orderReference: '45612214', date: '2026-09-15', goodsTotal: -69.98 },
+        against: invoice, claims, supplierId: 's1', restaurantId: 'r1',
+    })
+    const imported50 = (id, claims) => creditSettles({
+        credit: { id, orderReference: '45612214', date: '2026-09-16', goodsTotal: -50 },
+        against: invoice, claims, supplierId: 's1', restaurantId: 'r1',
+    })
+    const apply = (claims, changes) => claims.map(c => {
+        const change = changes.find(x => x.id === c.id)
+        return change ? { ...c, ...change.patch } : c
+    })
+
+    it('takes the money off once when it is imported again', () => {
+        const first = imported('cr1', [claim({ invoice_id: 'i1' })])
+        const settled = apply([claim({ invoice_id: 'i1' })], first.settle)
+        expect(settled[0].status).toBe('settled')
+
+        const back = creditTakenBack({ id: 'cr1', total_amount: -69.98 }, settled)
+        const reopened = apply(settled, back.change)
+        expect(reopened[0]).toMatchObject({
+            status: 'open', credited_amount: 0, settled_on: null, credit_invoice_id: null,
+        })
+        // Still coming off the delivery's week while the credit is gone.
+        expect(offWeek(reopened[0])).toBe(69.98)
+
+        const again = imported('cr2', reopened)
+        expect(again.countsInCost).toBe(false)
+        expect(offWeek(apply(reopened, again.settle)[0])).toBe(69.98)
+    })
+
+    it('deletes the claim it made for money nobody logged', () => {
+        const other = claim({ id: 'x', kind: 'other', status: 'settled', credited_amount: 20.02, credit_invoice_id: 'cr1' })
+        const back = creditTakenBack({ id: 'cr1', total_amount: -90 }, [other])
+        expect(back.remove).toEqual(['x'])
+        expect(back.change).toEqual([])
+    })
+
+    // A claim only keeps its running total and the last credit that touched
+    // it. An earlier credit's part stays.
+    it('keeps what an earlier credit brought back', () => {
+        const twice = claim({ status: 'settled', credited_amount: 69.98, credit_invoice_id: 'cr2' })
+        const back = creditTakenBack({ id: 'cr2', total_amount: -39.98 }, [twice])
+        expect(back.change[0].patch).toMatchObject({ credited_amount: 30, status: 'open' })
+        expect(back.waiting).toBe(1)
+    })
+
+    // The review of 30 September. One credit took the whole of itself off
+    // every claim, so an earlier credit's part on the older claim went too,
+    // and importing it again gave that claim money the newer one was owed.
+    it('takes back only what it gave, from the newest claim first', () => {
+        const older = claim({ id: 'a', invoice_id: 'i1', amount: 50, raised_on: '2026-09-14' })
+        const newer = claim({ id: 'b', invoice_id: 'i1', amount: 30, raised_on: '2026-09-15' })
+
+        // An earlier credit gave the older claim 30 of its 50.
+        const first = creditSettles({
+            credit: { id: 'cr1', orderReference: '45612214', date: '2026-09-15', goodsTotal: -30 },
+            against: invoice, claims: [older], supplierId: 's1', restaurantId: 'r1',
+        })
+        const part = apply([older, newer], first.settle)
+        expect(part[0]).toMatchObject({ status: 'open', credited_amount: 30 })
+
+        // This one gave the older claim its last 20 and the newer one 30.
+        const second = imported50('cr2', part)
+        const settled = apply(part, second.settle)
+        expect(settled.map(c => c.credited_amount)).toEqual([50, 30])
+
+        const back = creditTakenBack({ id: 'cr2', total_amount: -50 }, settled)
+        const reopened = apply(settled, back.change)
+        expect(reopened.map(c => c.credited_amount)).toEqual([30, 0])
+        expect(reopened.map(c => c.status)).toEqual(['open', 'open'])
+
+        // Imported again, each gets what it got the first time.
+        const again = apply(reopened, imported50('cr2', reopened).settle)
+        expect(again.map(c => [c.status, c.credited_amount])).toEqual([['settled', 50], ['settled', 30]])
+    })
+
+    // The total and its lines can be a cent or two apart, and that is
+    // rounding, not an earlier credit.
+    it('gives everything back when it covers what its claims hold', () => {
+        const settled = [
+            claim({ id: 'a', status: 'settled', credited_amount: 22.34, credit_invoice_id: 'cr1' }),
+            claim({ id: 'b', status: 'settled', credited_amount: 10, credit_invoice_id: 'cr1', raised_on: '2026-09-15' }),
+        ]
+        const back = creditTakenBack({ id: 'cr1', total_amount: -32.33 }, settled)
+        expect(back.change.map(c => c.patch.credited_amount)).toEqual([0, 0])
+    })
+
+    it('keeps a refusal, and takes the credit out of what came back', () => {
+        const refused = claim({ status: 'refused', credited_amount: 10, credit_invoice_id: 'cr1' })
+        const back = creditTakenBack({ id: 'cr1', total_amount: -10 }, [refused])
+        expect(back.change[0].patch).toEqual({ credited_amount: 0, credit_invoice_id: null })
+        expect(back.waiting).toBe(0)
+    })
+
+    it('leaves claims settled by another credit, and ones taken back, alone', () => {
+        const back = creditTakenBack({ id: 'cr1', total_amount: -10 }, [
+            claim({ id: 'a', status: 'settled', credited_amount: 10, credit_invoice_id: 'cr9' }),
+            claim({ id: 'b', status: 'void', credited_amount: 10, credit_invoice_id: 'cr1' }),
+        ])
+        expect(back).toEqual({ change: [], remove: [], waiting: 0 })
+    })
+
+    it('does nothing for an invoice nothing was settled by', () => {
+        const back = creditTakenBack({ id: 'i1', total_amount: 163.03 }, [claim({ invoice_id: 'i1' })])
+        expect(back).toEqual({ change: [], remove: [], waiting: 0 })
     })
 })
 
