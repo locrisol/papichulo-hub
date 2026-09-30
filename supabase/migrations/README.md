@@ -92,7 +92,9 @@ the other person said yes.
 `025` is **not run yet**. It makes where a diary entry is on Google the
 calendar function's to write: a person saving an entry can no longer change
 the Google event ids, which a store manager could use to delete an owner's
-event from the group calendar.
+event from the group calendar. And a manager can no longer delete a place
+somebody watches or has listings from, nor delete a listing, which took the
+other restaurant's pairing and listings with it. A super admin still can.
 
 ## What was here before
 

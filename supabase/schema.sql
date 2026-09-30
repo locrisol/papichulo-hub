@@ -3541,12 +3541,27 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 -- Everybody working a concert night needs to know it is happening, so all
 -- three read to any signed in account. Only a manager decides which places
 -- we watch, and only for their own restaurant.
+--
+-- A place is shared, so any manager may add one or correct one: it is the
+-- venue itself, and both restaurants see the same page and the same feed. What
+-- a manager may not do is delete one somebody watches, or one with listings
+-- read from it, because the pairings and the listings cascade from the place
+-- and a manager at one restaurant took the other's with it. Nor delete a
+-- listing, which nothing in the app does: a dismissal is how one goes away. A
+-- super admin still can. Both are restrictive policies beside the _write ones,
+-- so they only ever narrow them.
 
 ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
 CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+CREATE POLICY "places_delete_only_when_unused" ON "public"."places" AS RESTRICTIVE FOR DELETE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((NOT (EXISTS ( SELECT 1
+   FROM "public"."restaurant_places" "rp"
+  WHERE ("rp"."place_id" = "places"."id")))) AND (NOT (EXISTS ( SELECT 1
+   FROM "public"."events" "e"
+  WHERE ("e"."place_id" = "places"."id")))))));
 
 ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
 
@@ -3561,6 +3576,8 @@ CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated"
 CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+CREATE POLICY "events_delete_super_admin_only" ON "public"."events" AS RESTRICTIVE FOR DELETE TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 
 -- -- The diary --------------------------------------------------------
