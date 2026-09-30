@@ -268,6 +268,16 @@ maybe('what each role can see and do', () => {
             const strays = (data || []).filter(u => u.restaurant_id && u.restaurant_id !== ownRestaurantId)
             expect(strays).toHaveLength(0)
         })
+
+        // The sales grid reads and writes a platform's figures under its key
+        // since 026, so a manager who could not read it could not draw a
+        // single platform row. Every platform has one.
+        it('can read the key each delivery platform keeps its figures under', async () => {
+            const { data, error } = await manager.from('sales_platforms').select('id, key, name')
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+            expect(data.filter(p => !p.key)).toEqual([])
+        })
     })
 
     describe('owner', () => {

@@ -13,8 +13,9 @@ import { card, cardHeader, badge, secondaryButton } from '@/lib/controlStyles'
 import { useState as useLocalState } from 'react'
 import {
     reportFigures, sectionKey, publishCheck, figuresToStore, platformShare,
-    deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords,
+    deliveryRows, deliveryBlockers, deliveryCost, platformTaken, statementWeek, statementWords, platformWeeks,
 } from '@/lib/weeklyReport'
+import { keyedPlatforms, platformsToShow } from '@/lib/salesTenders'
 import { paperworkFor } from '@/lib/reportPeople'
 import { reprintDue } from '@/lib/allergenSheet'
 import { weeksBack, byWeek } from '@/lib/reportChart'
@@ -257,19 +258,21 @@ export default function ReportPage() {
             const weekStart = head.week_start
             const end = addDays(weekStart, 6)
 
-            // Every active platform, both buckets, and what each took.
-            // platform_sales is keyed by platform name rather than id, which is
-            // a known weakness of that table, so the name is what has to be
-            // matched on. Everything the report itself stores is keyed by id.
+            // Every platform, both buckets, and what each took. platform_sales
+            // is kept under each platform's key, which never changes, so that
+            // is what is matched on. Everything the report itself stores is
+            // keyed by id.
             //
             // Read to the Sunday after the week, not to its Saturday, because
             // that Sunday is the last day of the delivery platforms' statements
             // and what each one kept is worked out over their week.
+            // Every column rather than a list naming key, so the report still
+            // draws its platforms on a database 026 has not reached, where
+            // naming a column that is not there fails the whole read.
             const [plats, days2] = await Promise.all([
                 supabase.from('sales_platforms')
-                    .select('id, name, bucket, is_active, sort_order')
+                    .select('*')
                     .eq('restaurant_id', head.restaurant_id)
-                    .eq('is_active', true)
                     .order('sort_order'),
                 supabase.from('sales_records')
                     .select('sale_date, platform_sales, is_closed')
@@ -277,8 +280,12 @@ export default function ReportPage() {
                     .gte('sale_date', weekStart).lte('sale_date', addDays(end, 1)),
             ])
 
-            const activePlatforms = plats.data || []
-            setPlatforms(activePlatforms)
+            // The active ones, and any retired since that took money in these
+            // days, the same as the week grid shows. Retiring one mid week
+            // must not take what it took out of that week's report.
+            const allPlatforms = keyedPlatforms(plats.data)
+            const shownPlatforms = platformsToShow(allPlatforms, (days2.data || []).map(d => d.platform_sales))
+            setPlatforms(shownPlatforms)
             setAround(days2.data || [])
 
             // A published report reads the figures frozen into it. A draft
@@ -314,7 +321,7 @@ export default function ReportPage() {
                 // the share it kept over its own. The same rows the section
                 // draws, so the total there and the one here are one sum.
                 const rows = deliveryRows({
-                    platforms: activePlatforms.filter(p => p.bucket === 'online_platform'),
+                    platforms: shownPlatforms.filter(p => p.bucket === 'online_platform'),
                     items: all,
                     days: days2.data || [],
                     weekStart,
@@ -368,8 +375,8 @@ export default function ReportPage() {
 
             // Our week only. The days read above run a day past it.
             const totals = {}
-            for (const p of activePlatforms) {
-                totals[p.id] = platformTaken(days2.data, p.name, weekStart, end)
+            for (const p of shownPlatforms) {
+                totals[p.id] = platformTaken(days2.data, p.key, weekStart, end)
             }
             setTaken(totals)
 
@@ -416,12 +423,6 @@ export default function ReportPage() {
                 'cost_date', r => r.amount)
             const labourWeeks = byWeek(hLabour.data || [], 'entry_date', l => l.labour_cost)
 
-            // Each platform's own weekly line, and the two totals.
-            //
-            // Keyed by name, because that is what platform_sales stores. The
-            // chart keys are prefixed rather than used raw: a platform called
-            // "net" or "food" would otherwise collide with a column on the same
-            // row and quietly draw the wrong line.
             // What each past report typed into its profit and loss.
             const reported = new Map()
             for (const r of hReports.data || []) {
@@ -438,11 +439,15 @@ export default function ReportPage() {
                 let deliveryTotal = 0
                 const { from, to } = statementWeek(r.week_start)
                 for (const i of items.filter(i => i.kind === 'delivery')) {
-                    const name = activePlatforms.find(p => p.id === i.key)?.name || i.label
+                    // Every platform, retired or not, since a past week's
+                    // statement can belong to one retired since. A line
+                    // from a platform deleted outright only has the name it
+                    // was written with.
+                    const key = allPlatforms.find(p => p.id === i.key)?.key ?? i.label
                     const { cost } = deliveryCost({
                         statement: i.amount,
-                        statementTaken: platformTaken(hDays.data, name, from, to),
-                        weekTaken: platformTaken(hDays.data, name, r.week_start, addDays(r.week_start, 6)),
+                        statementTaken: platformTaken(hDays.data, key, from, to),
+                        weekTaken: platformTaken(hDays.data, key, r.week_start, addDays(r.week_start, 6)),
                     })
                     delivery[i.key] = cost
                     deliveryTotal += cost
@@ -450,11 +455,14 @@ export default function ReportPage() {
                 reported.set(r.week_start, { standing, delivery, deliveryTotal })
             }
 
-            const platWeeks = {}
-            for (const p of activePlatforms) {
-                platWeeks[p.id] = byWeek(hDays.data || [], 'sale_date',
-                    d => d.platform_sales?.[p.name])
-            }
+            // Each platform's own weekly line, and the two totals. Over every
+            // platform that took money this year, not only the ones this week
+            // shows, so retiring one does not take it out of past weeks.
+            //
+            // The chart keys are prefixed rather than used raw: a platform
+            // called "net" or "food" would otherwise collide with a column on
+            // the same row and quietly draw the wrong line.
+            const platformRows = platformWeeks({ platforms: allPlatforms, days: hDays.data || [], weeks: weekStarts })
 
             setHistory(weekStarts.map(week => {
                 const row = {
@@ -464,15 +472,7 @@ export default function ReportPage() {
                     food: foodWeeks.get(week) || 0,
                     packaging: packWeeks.get(week) || 0,
                     labour: labourWeeks.get(week) || 0,
-                    onlineTotal: 0,
-                    corporateTotal: 0,
-                }
-
-                for (const p of activePlatforms) {
-                    const amount = platWeeks[p.id].get(week) || 0
-                    row[`p_${p.id}`] = amount
-                    if (p.bucket === 'online_platform') row.onlineTotal += amount
-                    else row.corporateTotal += amount
+                    ...platformRows.get(week),
                 }
 
                 // Null, not nought, for a week nobody wrote up. The chart
@@ -480,11 +480,11 @@ export default function ReportPage() {
                 const pl = reported.get(week)
                 row.earnings = null
                 row.deliveryTotal = null
-                for (const p of activePlatforms) row[`d_${p.id}`] = null
+                for (const p of shownPlatforms) row[`d_${p.id}`] = null
 
                 if (pl) {
                     row.deliveryTotal = pl.deliveryTotal
-                    for (const p of activePlatforms) {
+                    for (const p of shownPlatforms) {
                         if (p.id in pl.delivery) row[`d_${p.id}`] = pl.delivery[p.id]
                     }
                     row.earnings = row.net - row.food - row.packaging - row.labour
@@ -596,7 +596,7 @@ export default function ReportPage() {
     //
     // A rating, a review and a refund all hang off a platform by its id rather
     // than its name, so renaming a platform in settings does not orphan a
-    // week's notes the way platform_sales does.
+    // week's notes, the way it used to orphan its takings.
     const online = () => sections.find(s => s.key === 'online_sales')
 
     async function saveRating(platform, value) {

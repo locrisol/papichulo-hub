@@ -297,7 +297,8 @@ export function planSalesImport({
 
         // The Corporate rows follow their till row exactly as they do when a
         // figure is typed, and stop following the same way: once one says
-        // something the till row did not, it is somebody's figure.
+        // something the till row did not, it is somebody's figure. Matched to
+        // the till row by name, and kept under the platform's key.
         const platformValues = { ...(here.platformValues || {}) }
         for (const p of trackingPlatforms) {
             const tender = active.find(t => sameLabel(t.label, p.name))
@@ -305,9 +306,9 @@ export function planSalesImport({
             const copy = trackedCopy({
                 typed: incoming.tenders[tender.key],
                 previousTillValue: here.isClosed ? '' : here.tenderValues?.[tender.key],
-                trackedValue: here.isClosed ? '' : platformValues[p.name],
+                trackedValue: here.isClosed ? '' : platformValues[p.key],
             })
-            if (copy != null) platformValues[p.name] = copy
+            if (copy != null) platformValues[p.key] = copy
         }
 
         // A day that already says exactly what the file says is left as it

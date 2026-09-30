@@ -74,8 +74,7 @@ export function tenderVariance(gross, values, shownTenders) {
 //
 // Starts from what is already stored and writes the typed values over it, which
 // means a key belonging to no row on screen is left exactly as it was. That
-// matters: sales_platforms rebuilds its field from the active list instead, so
-// re-saving an old week quietly erases the figures of any platform that has
+// matters: re-saving an old week must not erase the figures of a row that has
 // since been retired. Money that reconciles cannot work that way.
 //
 // Zeros are written, not skipped. A stored zero says the row was on the till
@@ -85,6 +84,61 @@ export function mergeTenderSales(stored, values, shownTenders) {
     const out = { ...(stored || {}) }
     for (const t of shownTenders || []) {
         out[t.key] = num(values?.[t.key])
+    }
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// The delivery platforms
+// ---------------------------------------------------------------------------
+//
+// The tracking rows beside the till: Deliveroo, Just Eat, Feedr and the rest.
+// Their figures live in sales_records.platform_sales, keyed by the platform's
+// key, which is set once when the platform is added and never changes.
+//
+// They used to be keyed by the name. Renaming a platform in settings left every
+// past figure under the old name where nothing looked for it, and saving an old
+// week rebuilt the field from the active platforms only, so a retired
+// platform's figures went the next time any of its weeks was saved. Found by
+// the audit of 28 September. They now work the way the till rows do.
+
+// The platforms as they come out of the database, each with its key.
+//
+// Until migration 026 is run there is no key column, and then the name is the
+// key, which is what it always was. Without this, the app going out before the
+// migration had every box on a day share one figure, kept under "undefined".
+export function keyedPlatforms(platforms) {
+    return (platforms || []).map(p => (p.key == null ? { ...p, key: p.name } : p))
+}
+
+// Which platforms to draw: the active ones, plus any retired one that one of
+// the days shown still has a figure for, the same as tendersToShow.
+export function platformsToShow(platforms, storedDays) {
+    const seen = new Set()
+    for (const stored of storedDays || []) {
+        for (const key of Object.keys(stored || {})) seen.add(key)
+    }
+
+    return (platforms || [])
+        .filter(p => p.is_active || seen.has(p.key))
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+}
+
+// What to write back for one day, the same way as mergeTenderSales: what is
+// stored, with each platform on screen written over it, and every other key
+// left exactly as it was.
+//
+// One difference. A platform with nothing, or nought, has no key at all rather
+// than a zero, which is what platform_sales has always done and what the report
+// relies on to tell a Sunday nobody entered. So a box on screen that is empty
+// takes its key away, or clearing a mistyped figure would quietly keep it.
+export function mergePlatformSales(stored, values, shownPlatforms) {
+    const out = { ...(stored || {}) }
+    for (const p of shownPlatforms || []) {
+        const v = num(values?.[p.key])
+        if (v !== 0) out[p.key] = v
+        else delete out[p.key]
     }
     return out
 }

@@ -495,7 +495,7 @@ CREATE TABLE IF NOT EXISTS "public"."sales_records" (
 
 COMMENT ON COLUMN "public"."sales_records"."cash_banked" IS 'Cash removed from the drawer at close (banked/dropped). Used in the cash drawer variance: end_float - (start_float + cash_sales - petty_cash_total - cash_banked).';
 COMMENT ON COLUMN "public"."sales_records"."is_closed" IS 'True if the restaurant was closed that day (no trading). Distinct from a day with no record entered. Closed days are excluded from per-day averages and trading-day counts so they do not depress typical-day figures or pollute forecasting data.';
-COMMENT ON COLUMN "public"."sales_records"."platform_sales" IS 'Per-platform sales amounts keyed by platform name, e.g. {"Deliveroo": 120.50, "Feedr": 45.00}. The online and catering bucket totals remain in online_sales / catering_sales.';
+COMMENT ON COLUMN "public"."sales_records"."platform_sales" IS 'Per-platform sales amounts keyed by sales_platforms.key, e.g. {"Deliveroo": 120.50, "Feedr": 45.00}. The key starts as the platform''s name and stays when it is renamed. The online and catering bucket totals remain in online_sales / catering_sales.';
 COMMENT ON COLUMN "public"."sales_records"."tender_sales" IS 'The day''s amounts, keyed by sales_tenders.key, e.g. {"cash": 109.04, "kiosk": 1464.47}. Zeros are stored on purpose, unlike platform_sales which drops them: a stored zero means the row existed on the till that day and took nothing, while a missing key means the row did not exist yet. That difference is what lets an old week draw the till exactly as it was.';
 ALTER TABLE ONLY "public"."sales_records"
     ADD CONSTRAINT "sales_records_pkey" PRIMARY KEY ("id");
@@ -516,7 +516,7 @@ CREATE TABLE IF NOT EXISTS "public"."sales_tenders" (
 COMMENT ON TABLE "public"."sales_tenders" IS 'The rows of the till receipt, one record per row per restaurant. Managers read them so the sales grid can draw itself; only a Super Admin can change them.';
 COMMENT ON COLUMN "public"."sales_tenders"."counts_toward_gross" IS 'Whether this row is part of the day balancing. Every row on the current receipt counts: cash, card, kiosk and the six third party ones add up to gross sales exactly. It exists because a future POS may well print a subtotal line, and ticking a box is better than another migration.';
 COMMENT ON COLUMN "public"."sales_tenders"."is_active" IS 'False means retired: it is gone from new days but still shown on any past day that has a figure for it. That is how a March week keeps showing Outside Catering without anything anywhere having to store when the till changed.';
-COMMENT ON COLUMN "public"."sales_tenders"."key" IS 'The internal name, and the key the amounts are stored under. It never changes once created. This is the one thing sales_platforms got wrong: it keys its stored amounts by the platform name, so renaming a platform orphans every figure it ever took. Here the label can be rewritten as often as the till changes and the history follows it.';
+COMMENT ON COLUMN "public"."sales_tenders"."key" IS 'The internal name, and the key the amounts are stored under. It never changes once created, so the label can be rewritten as often as the till changes and the history follows it. sales_platforms works the same way.';
 COMMENT ON COLUMN "public"."sales_tenders"."label" IS 'What is shown on screen. Free to change. "Online Sales" became "Online Platforms" without touching a single stored figure.';
 ALTER TABLE ONLY "public"."sales_tenders"
     ADD CONSTRAINT "sales_tenders_pkey" PRIMARY KEY ("id");
@@ -532,14 +532,18 @@ CREATE TABLE IF NOT EXISTS "public"."sales_platforms" (
     "is_active" boolean DEFAULT true NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "key" "text" NOT NULL,
     CONSTRAINT "sales_platforms_bucket_check" CHECK (("bucket" = ANY (ARRAY['online_platform'::"text", 'catering'::"text"])))
 );
 
 COMMENT ON TABLE "public"."sales_platforms" IS 'Manager-configurable third-party sales platforms, grouped into two buckets: online_platform (Deliveroo, Just Eat, Uber Eats) and catering (Lunch Team, Clockmeal, Feedr, etc.). Lets managers add/deactivate platforms without a schema change.';
+COMMENT ON COLUMN "public"."sales_platforms"."key" IS 'What platform_sales keeps this platform''s takings under. Set once, from the name it was added with, and never changed, so renaming a platform keeps its history.';
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_name_key" UNIQUE ("restaurant_id", "name");
+ALTER TABLE ONLY "public"."sales_platforms"
+    ADD CONSTRAINT "sales_platforms_restaurant_id_key_key" UNIQUE ("restaurant_id", "key");
 CREATE INDEX "idx_sales_platforms_restaurant" ON "public"."sales_platforms" USING "btree" ("restaurant_id");
 
 -- What the till calls a row of the receipt, answered once when its weekly
@@ -2218,6 +2222,24 @@ begin
     return new;
 end $$;
 
+-- A platform's figures are kept under its key, which starts as its name. A new
+-- platform is given its name as its key, so the app never sends one, and an
+-- update cannot change the key, by the app or by hand, because that would lose
+-- the figures the same way a rename used to.
+CREATE OR REPLACE FUNCTION "public"."sales_platform_key"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    if tg_op = 'UPDATE' then
+        new.key := old.key;
+    else
+        new.key := coalesce(new.key, new.name);
+    end if;
+    return new;
+end;
+$$;
+
 -- A swap request says what the two people agreed, and only that. A new one
 -- starts as asked, gives a shift of the asker's own and takes one of the
 -- person asked. After that the two of them can answer it or take it back and
@@ -3078,6 +3100,7 @@ COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one chang
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
 COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
 COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'Which row this is, in words, worked out from its own columns and its foreign keys. Never raises: a label that cannot be built comes back null.';
+COMMENT ON FUNCTION "public"."sales_platform_key"() IS 'Gives a platform added without a key its name as the key, the way every platform already there got one, and keeps the key as it was on every update.';
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
@@ -3117,6 +3140,8 @@ revoke all on function "public"."restaurant_settings_guard"() from public, anon,
 grant execute on function "public"."restaurant_settings_guard"() to service_role;
 revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") from public, anon, authenticated, service_role;
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
+revoke all on function "public"."sales_platform_key"() from public, anon, authenticated, service_role;
+grant execute on function "public"."sales_platform_key"() to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
 revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
@@ -4055,6 +4080,7 @@ CREATE OR REPLACE TRIGGER "restaurants_settings_guard" BEFORE UPDATE ON "public"
 CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();

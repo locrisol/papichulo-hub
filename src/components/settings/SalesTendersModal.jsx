@@ -24,10 +24,10 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // Turns a label into the key the amounts get stored under.
 //
 // The key never changes once a row exists. That is the whole reason there is a
-// key at all: sales_platforms stores its amounts under the platform's name, so
-// renaming a platform orphans every figure it ever took. Here the label is only
-// ever what you read, so "Online Sales" could become "Online Platforms" with
-// every figure back to March following it.
+// key at all: the delivery platforms kept their amounts under the platform's
+// name until September 2026, so renaming one orphaned every figure it ever
+// took. Here the label is only ever what you read, so "Online Sales" could
+// become "Online Platforms" with every figure back to March following it.
 function keyFrom(label) {
   return label
     .toLowerCase()

@@ -5,7 +5,10 @@ import { dayIsClosed, planNoteWrites, applyNoteWrites } from '@/lib/closedDays'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import {
+    tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
+    keyedPlatforms, platformsToShow, mergePlatformSales,
+} from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
 import { bankHolidayOn, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
@@ -78,10 +81,9 @@ export default function SalesPage() {
     // The roster's word on this day, which decides the box above.
     const [dayNote, setDayNote] = useState(null)
 
+    // Every platform and every tender for this restaurant, retired ones
+    // included, so an old day can still show the rows it was entered with.
     const [platforms, setPlatforms] = useState([])
-
-    // Every tender for this restaurant, retired ones included, so an old day can
-    // still show the rows it was entered with.
     const [tenders, setTenders] = useState([])
 
     // Gross and net only. Every other row on the receipt is a tender now.
@@ -94,8 +96,10 @@ export default function SalesPage() {
     const [storedTenders, setStoredTenders] = useState({})
     const [staffFood, setStaffFood] = useState('')
 
-    // Per-platform amounts, keyed by platform name: { Deliveroo: "120.50" }
+    // Per-platform amounts, keyed by the platform's key: { Deliveroo: "120.50" }.
+    // And what the database holds, for the same reason as the tenders.
     const [platformSales, setPlatformSales] = useState({})
+    const [storedPlatforms, setStoredPlatforms] = useState({})
 
     const restaurantId = activeRestaurant?.id
 
@@ -109,18 +113,17 @@ export default function SalesPage() {
         setError('')
         setSuccess('')
 
+        // Neither is filtered by is_active: a day from March has to be able to
+        // show Outside Catering, which it can only do if the retired row is here.
         const { data: plats, error: pErr } = await supabase
             .from('sales_platforms')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
             .order('sort_order')
             .order('name')
 
         if (pErr) { setError(friendlyError(pErr)); setLoading(false); return }
 
-        // Not filtered by is_active: a day from March has to be able to show
-        // Outside Catering, which it can only do if the retired row is here.
         const { data: tends, error: tErr } = await supabase
             .from('sales_tenders')
             .select('*')
@@ -130,12 +133,8 @@ export default function SalesPage() {
 
         if (tErr) { setError(friendlyError(tErr)); setLoading(false); return }
         setTenders(tends || [])
-
-        // Sort by the manager-defined order, falling back to alphabetical.
-        const sortedPlats = (plats || []).sort(
-            (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-        )
-        setPlatforms(sortedPlats)
+        // Put in order by platformsToShow.
+        setPlatforms(keyedPlatforms(plats))
 
         const { data: note } = await supabase
             .from('day_notes')
@@ -171,6 +170,7 @@ export default function SalesPage() {
                 for (const [k, v] of Object.entries(rec.platform_sales)) ps[k] = String(v)
             }
             setPlatformSales(ps)
+            setStoredPlatforms(rec.platform_sales ?? {})
         } else {
             setIsClosed(dayIsClosed(note, null))
             setRecordId(null)
@@ -180,6 +180,7 @@ export default function SalesPage() {
             setStoredTenders({})
             setStaffFood('')
             setPlatformSales({})
+            setStoredPlatforms({})
         }
 
         setLoading(false)
@@ -191,6 +192,7 @@ export default function SalesPage() {
 
     // Same as the weekly grid: a till figure fills the Corporate tracking row
     // of the same name, and stops as soon as that row is given its own figure.
+    // Found by name, kept under the platform's key.
     function setTenderValue(key, value) {
         const tender = tenders.find(t => t.key === key)
         const tracking = tender && cateringPlatforms.find(p => sameLabel(p.name, tender.label))
@@ -198,17 +200,17 @@ export default function SalesPage() {
             const copy = trackedCopy({
                 typed: value,
                 previousTillValue: tenderValues[key],
-                trackedValue: platformSales[tracking.name],
+                trackedValue: platformSales[tracking.key],
             })
             if (copy != null) {
-                setPlatformSales(prev => ({ ...prev, [tracking.name]: copy }))
+                setPlatformSales(prev => ({ ...prev, [tracking.key]: copy }))
             }
         }
         setTenderValues(prev => ({ ...prev, [key]: value }))
     }
 
-    function setPlatformAmount(name, value) {
-        setPlatformSales(prev => ({ ...prev, [name]: value }))
+    function setPlatformAmount(key, value) {
+        setPlatformSales(prev => ({ ...prev, [key]: value }))
     }
 
     function shiftDate(days) {
@@ -217,18 +219,19 @@ export default function SalesPage() {
 
     // ---- derived values -------------------------------------------------
 
-    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    const cateringPlatforms = platforms.filter(p => p.bucket === 'catering')
+    // The rows this day draws: the active ones, plus any retired row this day
+    // still holds a figure for.
+    const shownTenders = tendersToShow(tenders, [storedTenders])
+    const shownPlatforms = platformsToShow(platforms, [storedPlatforms])
+
+    const onlinePlatforms = shownPlatforms.filter(p => p.bucket === 'online_platform')
+    const cateringPlatforms = shownPlatforms.filter(p => p.bucket === 'catering')
 
     // Sum of the tracking rows for a bucket, compared against the receipt figure
     // for information only.
     function platformSum(bucketPlatforms) {
-        return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.name]), 0)
+        return bucketPlatforms.reduce((sum, p) => sum + num(platformSales[p.key]), 0)
     }
-
-    // The rows this day draws: the active ones, plus any retired row this day
-    // still holds a figure for.
-    const shownTenders = tendersToShow(tenders, [storedTenders])
 
     // Reconciliation uses only the till receipt block.
     const variance = tenderVariance(values.gross, tenderValues, shownTenders)
@@ -261,13 +264,6 @@ export default function SalesPage() {
 
         setSaving(true)
 
-        // Only store platforms that actually have a value, to keep the JSONB tidy.
-        const ps = {}
-        for (const p of platforms) {
-            const v = num(platformSales[p.name])
-            if (v !== 0) ps[p.name] = v
-        }
-
         const base = {
             restaurant_id: restaurantId,
             sale_date: saleDate,
@@ -293,8 +289,10 @@ export default function SalesPage() {
                 // stored rather than replacing it, so a figure belonging to no
                 // row on screen is left where it is.
                 tender_sales: mergeTenderSales(storedTenders, tenderValues, shownTenders),
-                // Tracking detail, not required to match the receipt.
-                platform_sales: ps,
+                // Tracking detail, not required to match the receipt. Written
+                // over what was stored the same way, so a platform retired
+                // since keeps its figure.
+                platform_sales: mergePlatformSales(storedPlatforms, platformSales, shownPlatforms),
                 staff_food: num(staffFood),
                 instore_variance: variance,
             }
@@ -376,13 +374,18 @@ export default function SalesPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
                     {bucketPlatforms.map(p => (
                         <div key={p.id}>
-                            <label className={labelClass}>{p.name}</label>
+                            <label className={labelClass}>
+                                {p.name}
+                                {!p.is_active && (
+                                    <span className="ml-2 text-muted">retired</span>
+                                )}
+                            </label>
                             <input
                                 {...numberField({
-                                    value: platformSales[p.name],
-                                    onChange: v => setPlatformAmount(p.name, v),
+                                    value: platformSales[p.key],
+                                    onChange: v => setPlatformAmount(p.key, v),
                                 })}
-                                className={fieldWith(platformSales[p.name])}
+                                className={fieldWith(platformSales[p.key])}
                             />
                         </div>
                     ))}

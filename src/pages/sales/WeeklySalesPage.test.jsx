@@ -14,18 +14,19 @@ import { todayISO, weekStartOf, weekDates } from '@/lib/dates'
 // September: "only online platforms should tabulate to the right and then
 // jump to the next row when reaching the end".
 
+const platform = (id, name, bucket, sort_order, extra = {}) => ({
+    id, key: name, name, bucket, sort_order, is_active: true, ...extra,
+})
+const PLATFORMS = [
+    platform('p1', 'Deliveroo', 'online_platform', 1),
+    platform('p2', 'Just Eat', 'online_platform', 2),
+    platform('p3', 'Uber Eats', 'online_platform', 3),
+    platform('p4', 'Clockmeal', 'catering', 4),
+    platform('p5', 'Feedr', 'catering', 5),
+]
+
 // Changed by the tests below, so the database can move on between two visits.
 const tables = {
-    sales_platforms: {
-        data: [
-            { id: 'p1', name: 'Deliveroo', bucket: 'online_platform', sort_order: 1, is_active: true },
-            { id: 'p2', name: 'Just Eat', bucket: 'online_platform', sort_order: 2, is_active: true },
-            { id: 'p3', name: 'Uber Eats', bucket: 'online_platform', sort_order: 3, is_active: true },
-            { id: 'p4', name: 'Clockmeal', bucket: 'catering', sort_order: 4, is_active: true },
-            { id: 'p5', name: 'Feedr', bucket: 'catering', sort_order: 5, is_active: true },
-        ],
-        error: null,
-    },
     sales_tenders: {
         data: [
             { key: 'cash', label: 'Cash Sales', sort_order: 1, is_active: true, counts_toward_gross: true },
@@ -39,11 +40,16 @@ const db = mockSupabase(tables)
 let refuseUpdate = null
 // As much of the real database as these tests need. An insert or an update
 // hands back the rows it wrote, the way the page asks it to, and an update can
-// be made to fail.
+// be made to fail. And a page asking for active platforms only gets active
+// ones, as it would for real. Without that a retired platform would be on
+// screen whatever the page asked for.
 db.from.mockImplementation(table => {
     const query = makeQuery(tables[table] || { data: [], error: null })
     query.then = (resolve, reject) => {
-        let result = query.result
+        const activeOnly = query.eq.mock.calls.some(([field, value]) => field === 'is_active' && value === true)
+        let result = activeOnly && Array.isArray(query.result.data)
+            ? { ...query.result, data: query.result.data.filter(row => row.is_active) }
+            : query.result
         if (query.insert.mock.calls.length) {
             result = { data: query.insert.mock.calls[0][0].map(r => ({ id: `id-${r.sale_date}`, ...r })), error: null }
         } else if (query.update.mock.calls.length) {
@@ -70,13 +76,15 @@ const { default: WeeklySalesPage } = await import('./WeeklySalesPage')
 // Saturday along each.
 const boxes = block => Array.from(document.querySelectorAll(`input[data-block="${block}"]`))
 
-async function openGrid() {
+// Three online platforms across seven days, unless a test brings in another.
+async function openGrid(onlineBoxes = 21) {
     const view = renderWithRouter(<WeeklySalesPage />)
-    await waitFor(() => expect(boxes('online_platform')).toHaveLength(21))
+    await waitFor(() => expect(boxes('online_platform')).toHaveLength(onlineBoxes))
     return { ...view, user: userEvent.setup() }
 }
 
 beforeEach(() => {
+    tables.sales_platforms = { data: PLATFORMS, error: null }
     tables.sales_records = { data: [], error: null }
     tables.day_notes = { data: [], error: null }
     confirm.mockImplementation(() => Promise.resolve(true))
@@ -131,43 +139,44 @@ describe('everything else', () => {
     })
 })
 
+const WEEK = weekDates(weekStartOf(todayISO()))
+const [SUNDAY, MONDAY, TUESDAY] = WEEK
+
+function row(date, over = {}) {
+    return {
+        id: `id-${date}`, restaurant_id: 'r1', sale_date: date,
+        gross_sales: 500, net_sales: 450, staff_food: 0, is_closed: false,
+        tender_sales: { cash: 100, card: 400 }, platform_sales: {},
+        ...over,
+    }
+}
+
+const grossBox = i => screen.getByText('Gross sales').closest('tr').querySelectorAll('input')[i]
+const rowBoxes = label => screen.getByText(label).closest('tr').querySelectorAll('input')
+
+async function retype(user, box, value) {
+    await user.clear(box)
+    await user.type(box, value)
+}
+
+// Every write to sales_records, as [payload, id] for an update and
+// [rows] for an insert.
+function written(step) {
+    return db.from.mock.results
+        .filter((_, i) => db.from.mock.calls[i][0] === 'sales_records')
+        .flatMap(({ value: q }) => q[step].mock.calls.map(c => [c[0], q.eq.mock.calls[0]?.[1]]))
+}
+
+async function saveWeek(user) {
+    await user.click(screen.getByRole('button', { name: 'Save week' }))
+}
+
 // An unsaved week is kept on the computer it was typed on, and Save week
 // writes it. The audit of 28 September found the two together could undo a
 // week: a draft left on the office computer held all seven days, blanks
 // included, and brought them back over days entered on a phone since, and Save
 // week then wrote every one of them, zeros and all.
 describe('the unsaved draft and Save week', () => {
-    const WEEK = weekDates(weekStartOf(todayISO()))
-    const [SUNDAY, MONDAY, TUESDAY] = WEEK
-
-    function row(date, over = {}) {
-        return {
-            id: `id-${date}`, restaurant_id: 'r1', sale_date: date,
-            gross_sales: 500, net_sales: 450, staff_food: 0, is_closed: false,
-            tender_sales: { cash: 100, card: 400 }, platform_sales: {},
-            ...over,
-        }
-    }
-
-    const grossBox = i => screen.getByText('Gross sales').closest('tr').querySelectorAll('input')[i]
-
-    async function retype(user, box, value) {
-        await user.clear(box)
-        await user.type(box, value)
-    }
-
-    // Every write to sales_records, as [payload, id] for an update and
-    // [rows] for an insert.
-    function written(step) {
-        return db.from.mock.results
-            .filter((_, i) => db.from.mock.calls[i][0] === 'sales_records')
-            .flatMap(({ value: q }) => q[step].mock.calls.map(c => [c[0], q.eq.mock.calls[0]?.[1]]))
-    }
-
-    async function saveWeek(user) {
-        await user.click(screen.getByRole('button', { name: 'Save week' }))
-    }
-
     it('brings back what was typed when nothing else has changed', async () => {
         const view = await openGrid()
         await retype(view.user, grossBox(0), '300')
@@ -285,5 +294,63 @@ describe('the unsaved draft and Save week', () => {
         await saveWeek(user)
         await screen.findByText('Saved 1 day.')
         expect(written('update')[0][0]).toMatchObject({ is_closed: true, gross_sales: 0 })
+    })
+})
+
+// A delivery platform's figures are kept under a key that never changes. They
+// used to be kept under its name, so retiring one or renaming it in settings
+// lost its past figures the next time one of those weeks was saved. Found by
+// the audit of 28 September.
+describe('the delivery platforms', () => {
+    it('shows a retired platform on a week that has figures for it, and keeps them', async () => {
+        const manna = platform('p6', 'Manna', 'online_platform', 6, { is_active: false })
+        tables.sales_platforms = { data: [...PLATFORMS, manna], error: null }
+        tables.sales_records = {
+            data: [row(MONDAY, { platform_sales: { Deliveroo: 100, Manna: 40 } })], error: null,
+        }
+        const { user } = await openGrid(28)
+        expect(screen.getByText('Manna').closest('tr')).toHaveTextContent('retired')
+        expect(rowBoxes('Manna')[1]).toHaveValue('40')
+
+        await retype(user, grossBox(1), '510')
+        await saveWeek(user)
+        await screen.findByText('Saved 1 day.')
+        expect(written('update')[0][0].platform_sales).toEqual({ Deliveroo: 100, Manna: 40 })
+    })
+
+    it('shows and saves a renamed platform under the key its figures are kept under', async () => {
+        tables.sales_platforms = {
+            data: PLATFORMS.map(p => (p.id === 'p2' ? { ...p, name: 'JustEat' } : p)), error: null,
+        }
+        tables.sales_records = { data: [row(MONDAY, { platform_sales: { 'Just Eat': 60 } })], error: null }
+        const { user } = await openGrid()
+        expect(rowBoxes('JustEat')[1]).toHaveValue('60')
+
+        await retype(user, rowBoxes('JustEat')[1], '65')
+        await saveWeek(user)
+        await screen.findByText('Saved 1 day.')
+        expect(written('update')[0][0].platform_sales).toEqual({ 'Just Eat': 65 })
+    })
+
+    // The app going out before migration 026 is run. The platforms have no key
+    // then, and every box on a day used to share one figure kept under
+    // "undefined". The name is the key until 026 gives them one.
+    const withoutKey = p => {
+        const old = { ...p }
+        delete old.key
+        return old
+    }
+
+    it('keeps each platform apart on a database with no keys yet', async () => {
+        tables.sales_platforms = { data: PLATFORMS.map(withoutKey), error: null }
+        tables.sales_records = { data: [row(MONDAY, { platform_sales: { Deliveroo: 100, 'Just Eat': 20 } })], error: null }
+        const { user } = await openGrid()
+        expect(rowBoxes('Deliveroo')[1]).toHaveValue('100')
+        expect(rowBoxes('Just Eat')[1]).toHaveValue('20')
+
+        await retype(user, rowBoxes('Just Eat')[1], '25')
+        await saveWeek(user)
+        await screen.findByText('Saved 1 day.')
+        expect(written('update')[0][0].platform_sales).toEqual({ Deliveroo: 100, 'Just Eat': 25 })
     })
 })

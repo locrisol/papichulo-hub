@@ -256,7 +256,7 @@ describe('what reading it in does to the week', () => {
     })
 
     describe('the Corporate rows', () => {
-        const feedr = [{ name: 'Feedr', bucket: 'catering' }]
+        const feedr = [{ key: 'Feedr', name: 'Feedr', bucket: 'catering' }]
 
         it('follow their till row the way typing does', () => {
             const p = plan({ trackingPlatforms: feedr })
@@ -269,6 +269,14 @@ describe('what reading it in does to the week', () => {
             week['2026-09-07'].platformValues = { Feedr: '180' }
             const p = plan({ days: week, trackingPlatforms: feedr })
             expect(p.days['2026-09-07'].platformValues.Feedr).toBe('180')
+        })
+
+        // Matched to the till row by the name it goes by now, and written
+        // under the key its figures have always been kept under.
+        it('fill a renamed row under its key', () => {
+            const renamed = [{ key: 'Feedr Lunches', name: 'Feedr', bucket: 'catering' }]
+            const p = plan({ trackingPlatforms: renamed })
+            expect(p.days['2026-09-07'].platformValues).toEqual({ 'Feedr Lunches': '200' })
         })
     })
 })

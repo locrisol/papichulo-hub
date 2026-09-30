@@ -8,7 +8,10 @@ import { useConfirm } from '@/context/confirm'
 import { fmtMoney, num } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMonthLabel, dayList } from '@/lib/dates'
 import { friendlyError, isPermissionError } from '@/lib/errors'
-import { tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import {
+    tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
+    keyedPlatforms, platformsToShow, mergePlatformSales,
+} from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import {
     secondaryButton, dateField, tableHeadRow, card, checkbox, pageTitle, primaryButton, warningNote,
@@ -102,10 +105,11 @@ function dayFromRecord(r, note) {
         // What is on screen, and what came out of the database. Both are
         // kept because a save writes the typed values over the stored ones
         // rather than replacing them, which is how a figure belonging to no
-        // row on screen survives.
+        // row on screen survives. The platforms are keyed by their key.
         tenderValues: tenderValuesFromRecord(r?.tender_sales),
         storedTenders: r?.tender_sales ?? {},
         platformValues,
+        storedPlatforms: r?.platform_sales ?? {},
     }
 }
 
@@ -126,9 +130,10 @@ export default function WeeklySalesPage() {
     // Wednesday does not rewrite the input to Sunday while the picker is open.
     const [pickerDate, setPickerDate] = useState(weekStart)
 
+    // Every platform and every tender for this restaurant, retired ones
+    // included. The retired ones are needed so an old week can still draw the
+    // rows it was entered with.
     const [platforms, setPlatforms] = useState([])
-    // Every tender for this restaurant, retired ones included. The retired ones
-    // are needed so an old week can still draw the rows it was entered with.
     const [tenders, setTenders] = useState([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -232,10 +237,10 @@ export default function WeeklySalesPage() {
         // Four at once. None of them needs anything from another, and this
         // grid is the slowest screen in the app to open.
         //
-        // The tenders are deliberately not filtered by is_active. A week from
-        // March has to be able to show Outside Catering, and it can only do
-        // that if the retired row is here to be matched against what that week
-        // has stored.
+        // The platforms and the tenders are deliberately not filtered by
+        // is_active. A week from March has to be able to show Outside Catering,
+        // and it can only do that if the retired row is here to be matched
+        // against what that week has stored.
         const [
             { data: plats, error: pErr },
             { data: tends, error: tErr },
@@ -245,7 +250,6 @@ export default function WeeklySalesPage() {
             supabase.from('sales_platforms')
                 .select('*')
                 .eq('restaurant_id', restaurantId)
-                .eq('is_active', true)
                 .order('sort_order')
                 .order('name'),
             supabase.from('sales_tenders')
@@ -269,10 +273,8 @@ export default function WeeklySalesPage() {
         const failed = [pErr, tErr, rErr].find(Boolean)
         if (failed) { setError(friendlyError(failed)); setLoading(false); return }
 
-        const sortedPlats = (plats || []).sort(
-            (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-        )
-        setPlatforms(sortedPlats)
+        // Both are put in order by platformsToShow and tendersToShow.
+        setPlatforms(keyedPlatforms(plats))
         setTenders(tends || [])
 
         const byDate = {}
@@ -307,7 +309,12 @@ export default function WeeklySalesPage() {
                     if (!base || !edit) continue
                     if (sameDay(edit, view[d])) continue
                     if (!sameDay(base, view[d])) { moved.push(d); continue }
-                    next[d] = { ...edit, id: view[d].id, storedTenders: view[d].storedTenders }
+                    next[d] = {
+                        ...edit,
+                        id: view[d].id,
+                        storedTenders: view[d].storedTenders,
+                        storedPlatforms: view[d].storedPlatforms,
+                    }
                     restored.push(d)
                 }
                 if (!restored.length) localStorage.removeItem(draftKey(restaurantId, weekStart))
@@ -354,16 +361,18 @@ export default function WeeklySalesPage() {
                 tenderValues: { ...day.tenderValues, [key]: value },
             }
 
+            // Found by name, since that is all the two tables share, and kept
+            // under the platform's key.
             const tender = tenders.find(t => t.key === key)
             const tracking = tender && cateringPlatforms.find(p => sameLabel(p.name, tender.label))
             if (tracking) {
                 const copy = trackedCopy({
                     typed: value,
                     previousTillValue: day.tenderValues?.[key],
-                    trackedValue: day.platformValues?.[tracking.name],
+                    trackedValue: day.platformValues?.[tracking.key],
                 })
                 if (copy != null) {
-                    next.platformValues = { ...day.platformValues, [tracking.name]: copy }
+                    next.platformValues = { ...day.platformValues, [tracking.key]: copy }
                 }
             }
 
@@ -371,13 +380,13 @@ export default function WeeklySalesPage() {
         })
     }
 
-    function setPlatformValue(date, platformName, value) {
+    function setPlatformValue(date, platformKey, value) {
         setDirty(true)
         setDays(prev => ({
             ...prev,
             [date]: {
                 ...prev[date],
-                platformValues: { ...prev[date].platformValues, [platformName]: value },
+                platformValues: { ...prev[date].platformValues, [platformKey]: value },
             },
         }))
     }
@@ -411,21 +420,22 @@ export default function WeeklySalesPage() {
 
     // ---- derived values -------------------------------------------------
 
-    const onlinePlatforms = platforms.filter(p => p.bucket === 'online_platform')
-    const cateringPlatforms = platforms.filter(p => p.bucket === 'catering')
+    // The rows this week draws: the active ones, plus any retired row that one
+    // of these seven days still holds a figure for. Worked out across the whole
+    // week rather than per day, because the grid is one set of rows.
+    const shownTenders = tendersToShow(tenders, dates.map(d => days[d]?.storedTenders))
+    const shownPlatforms = platformsToShow(platforms, dates.map(d => days[d]?.storedPlatforms))
+
+    const onlinePlatforms = shownPlatforms.filter(p => p.bucket === 'online_platform')
+    const cateringPlatforms = shownPlatforms.filter(p => p.bucket === 'catering')
 
     // Sum of the tracking rows for a bucket, compared against the receipt figure
     // for information only.
     function platformSumFor(date, bucketPlatforms) {
         const day = days[date]
         if (!day || day.isClosed) return 0
-        return bucketPlatforms.reduce((sum, p) => sum + num(day.platformValues?.[p.name]), 0)
+        return bucketPlatforms.reduce((sum, p) => sum + num(day.platformValues?.[p.key]), 0)
     }
-
-    // The rows this week draws: the active ones, plus any retired row that one
-    // of these seven days still holds a figure for. Worked out across the whole
-    // week rather than per day, because the grid is one set of rows.
-    const shownTenders = tendersToShow(tenders, dates.map(d => days[d]?.storedTenders))
 
     // Reconciliation uses only the till receipt block.
     function varianceFor(date) {
@@ -454,11 +464,11 @@ export default function WeeklySalesPage() {
         return dates.reduce((sum, d) => sum + platformSumFor(d, bucketPlatforms), 0)
     }
 
-    function weekPlatformTotal(platformName) {
+    function weekPlatformTotal(platformKey) {
         return dates.reduce((sum, d) => {
             const day = days[d]
             if (!day || day.isClosed) return sum
-            return sum + num(day.platformValues?.[platformName])
+            return sum + num(day.platformValues?.[platformKey])
         }, 0)
     }
 
@@ -570,14 +580,6 @@ export default function WeeklySalesPage() {
             // written over rather than inserted a second time.
             const id = now[date]?.id ?? null
 
-            const platformSales = {}
-            if (!day.isClosed) {
-                for (const p of platforms) {
-                    const v = num(day.platformValues?.[p.name])
-                    if (v !== 0) platformSales[p.name] = v
-                }
-            }
-
             const base = {
                 restaurant_id: restaurantId,
                 sale_date: date,
@@ -602,7 +604,9 @@ export default function WeeklySalesPage() {
                     // belonging to no row on screen is left where it is.
                     tender_sales: mergeTenderSales(day.storedTenders, day.tenderValues, shownTenders),
                     // Tracking detail, not required to match the receipt.
-                    platform_sales: platformSales,
+                    // Written over what was stored the same way, so a
+                    // platform retired since keeps its figures.
+                    platform_sales: mergePlatformSales(day.storedPlatforms, day.platformValues, shownPlatforms),
                     staff_food: num(day.staffFood),
                     instore_variance: varianceFor(date),
                 }
@@ -822,9 +826,14 @@ export default function WeeklySalesPage() {
                     {tender.label}
                     {/* Only ever appears on an old week. It is here so nobody
                         wonders why a row they cannot find in settings is on the
-                        screen in front of them. */}
+                        screen in front of them.
+
+                        On a line of its own under the name. The column is the
+                        same width on every screen and does not wrap, so beside
+                        a longer name like Lunch Team Catering it ran over the
+                        Sunday box. */}
                     {!tender.is_active && (
-                        <span className="ml-2 text-xs font-normal text-muted">retired</span>
+                        <span className="block text-xs font-normal text-muted">retired</span>
                     )}
                 </td>
                 {dates.map((d, i) => (
@@ -846,26 +855,35 @@ export default function WeeklySalesPage() {
         )
     }
 
+    // Shown by its name, kept by its key.
     function platformRow(platform) {
         return (
             <tr key={platform.id} className="border-b border-border">
-                <td className={`${labelCellCls} pl-6 text-gray-600`}>{platform.name}</td>
+                <td className={`${labelCellCls} pl-6 text-gray-600`}>
+                    {platform.name}
+                    {/* Only on a week that has figures for it, the same as a
+                        retired till row, and under the name for the same
+                        reason. */}
+                    {!platform.is_active && (
+                        <span className="block text-xs font-normal text-muted">retired</span>
+                    )}
+                </td>
                 {dates.map((d, i) => (
                     <td key={d} className={`px-1.5 py-1.5 ${closedCol(d)}`}>
                         <input
                             {...numberField({
-                                value: days[d]?.platformValues?.[platform.name],
-                                onChange: v => setPlatformValue(d, platform.name, v),
+                                value: days[d]?.platformValues?.[platform.key],
+                                onChange: v => setPlatformValue(d, platform.key, v),
                             })}
                             data-col={i}
                             data-block={platform.bucket}
                             disabled={days[d]?.isClosed}
-                            className={cellCls(days[d]?.platformValues?.[platform.name], days[d]?.isClosed)}
+                            className={cellCls(days[d]?.platformValues?.[platform.key], days[d]?.isClosed)}
                         />
                     </td>
                 ))}
                 <td className={`${totalCellCls} font-normal text-gray-600`}>
-                    {fmtMoney(weekPlatformTotal(platform.name))}
+                    {fmtMoney(weekPlatformTotal(platform.key))}
                 </td>
             </tr>
         )

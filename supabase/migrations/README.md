@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `025` are in here. `001` to `022` are run on live, `023` to `025` are not yet, and the next one is `026`.**
+**`001` to `026` are in here. `001` to `022` are run on live, `023` to `026` are not yet, and the next one is `027`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -95,6 +95,11 @@ the Google event ids, which a store manager could use to delete an owner's
 event from the group calendar. And a manager can no longer delete a place
 somebody watches or has listings from, nor delete a listing, which took the
 other restaurant's pairing and listings with it. A super admin still can.
+`026` is **not run yet**. It gives each delivery platform a key that never
+changes, starting as the name it has now, and its figures are kept under
+that, so renaming or retiring a platform no longer loses its past weeks. Not
+one stored figure moves. It can go before or after the new app, which falls
+back to the name without it, but a rename only keeps its figures once it is run.
 
 ## What was here before
 
