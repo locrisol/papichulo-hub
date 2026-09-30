@@ -64,6 +64,7 @@ import {
     requestEmail, answerEmail, isPartDay,
     swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
     senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
+    tooLate,
 } from './email.js'
 import { mimeParts, headersFor, base64Pdf } from './mime.js'
 
@@ -471,7 +472,8 @@ Deno.serve(async (request) => {
             const { data: ask } = await admin
                 .from('shift_requests')
                 .select('id, restaurant_id, from_employee_id, to_employee_id, give_shift_id,'
-                    + ' give_from, give_to, take_shift_id, take_from, take_to, message, status, decided_by')
+                    + ' give_from, give_to, take_shift_id, take_from, take_to, message, status, decided_by,'
+                    + ' created_at, answered_at')
                 .eq('id', requestId).maybeSingle()
             // Gone rather than never there, sometimes. Both shift columns are ON
             // DELETE CASCADE, so a roster row deleted while a week is rebuilt
@@ -501,9 +503,10 @@ Deno.serve(async (request) => {
             }
             if (event === 'swap-decided' && !isManager) return json({ error: 'Not yours' }, 403)
 
-            // The status has to agree with the event. Posting the same id twice
-            // then sends nothing the second time, instead of mailing somebody an
-            // answer that has already been overtaken by the next one.
+            // The status has to agree with the event, so nobody is mailed an
+            // answer that has already been overtaken by the next one. That does
+            // not stop the same one twice while the status stands still, and
+            // a no stands still for good; tooLate below is what does.
             const expected: Record<string, string[]> = {
                 'swap-asked': ['asked'],
                 'swap-answered': ['accepted', 'declined'],
@@ -511,6 +514,9 @@ Deno.serve(async (request) => {
             }
             if (!expected[event].includes(ask.status)) {
                 return json({ sent: 0, why: `it is ${ask.status}` })
+            }
+            if (tooLate(event, ask, new Date().toISOString())) {
+                return json({ sent: 0, why: 'too long after it happened' })
             }
 
             const { data: rows } = await admin
@@ -615,6 +621,14 @@ Deno.serve(async (request) => {
         const house = await houseOf(absence.restaurant_id)
 
         if (event === 'asked') {
+            // Only while it is waiting, and only right after it was asked. It
+            // used to go again for every post of the same id, answered or not.
+            // See tooLate in email.js.
+            if (absence.status !== 'requested') return json({ sent: 0, why: `it is ${absence.status}` })
+            if (tooLate(event, absence, new Date().toISOString())) {
+                return json({ sent: 0, why: 'too long after it happened' })
+            }
+
             // Who hears about it depends on who asked.
             //
             // Staff ask the managers, whatever it is they are asking for. A

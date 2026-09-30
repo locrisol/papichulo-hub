@@ -559,6 +559,48 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// The same mail twice.
+//
+// Every mail here is set off by the app straight after the change it is about:
+// a request saved, a swap asked, a swap answered. Posting the same id again
+// used to send the same mail again, as often as anybody liked, and a loop of
+// those from one staff login would use up the Gmail account's daily limit and
+// stop every mail the Hub sends, the weekly report and the hours included.
+//
+// So the three that anybody can set off go out while the change is fresh, and
+// not after. Ten minutes, and either side of now, because an answer is timed by
+// the phone that gave it and a phone's clock can be a little out. The app posts
+// within a second or two, so nothing real is ever that late.
+//
+// The two a manager sends, answered and swap-decided, are left alone. Only a
+// manager can set them off, and a manager who changes an answer has to be able
+// to tell the person again.
+//
+// It is a limit, not a lock. Inside those ten minutes the same post still sends
+// again, and a new request is a new mail. Stopping either needs a record of
+// what went, which is a table and a migration.
+export const FRESH_MINUTES = 10
+
+export function fresh(stamp, now, minutes = FRESH_MINUTES) {
+    const at = Date.parse(stamp ?? '')
+    const then = Date.parse(now ?? '')
+    if (isNaN(at) || isNaN(then)) return false
+    return Math.abs(then - at) <= minutes * 60000
+}
+
+// The moment each of the three is about, off its own row.
+const CHANGED_AT = {
+    'asked': 'created_at',
+    'swap-asked': 'created_at',
+    'swap-answered': 'answered_at',
+}
+
+export function tooLate(event, row, now) {
+    const field = CHANGED_AT[event]
+    if (!field) return false
+    return !fresh(row?.[field], now)
+}
+
 // Gmail's untidy goodbye.
 //
 // smtp.gmail.com can accept a message, answer QUIT and drop the socket without
