@@ -240,6 +240,22 @@ export function idsFrom(stored) {
     return out
 }
 
+// Whether a person may ask for a calendar write at all, and if not, why. An
+// empty answer means go ahead.
+//
+// Managers and above, the same as who may write an entry. me is their users
+// row, and it is read with the service key, which sees **a login that is
+// switched off** as plainly as one that is not. Every rule in the database asks
+// get_my_role, which gives a switched-off login nothing, and none of those rules
+// run for a function holding the service key, so it is asked here. Found by the
+// audit of 28 September.
+export function callerRefusal(me) {
+    if (!me) return 'Not allowed'
+    if (me.is_active !== true) return 'Your login is switched off'
+    if (!['super_admin', 'owner', 'store_manager'].includes(me.role)) return 'Not allowed'
+    return ''
+}
+
 // Which calendars this person may change an event on.
 //
 // The same lines the diary's own rules draw: a store manager their own

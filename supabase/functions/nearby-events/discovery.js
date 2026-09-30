@@ -167,6 +167,30 @@ export function isServiceRole(bearer, keys = []) {
     return roleOf(token) === 'service_role'
 }
 
+const MANAGERS = ['owner', 'store_manager']
+
+// Whether a person may ask about a restaurant, and if not, what to answer.
+// Null means go ahead.
+//
+// A manager at that restaurant, or a super admin. An employee has no reason to
+// spend the quota and nobody outside the restaurant has any reason at all.
+//
+// me is their users row, and it is read with the service key, which sees **a
+// login that is switched off** as plainly as one that is not. Every rule in the
+// database asks get_my_role, which gives a switched-off login nothing, and none
+// of those rules run for a function holding the service key, so it is asked
+// here. Found by the audit of 28 September. The same rule is in read-listings,
+// and the tests check the two agree.
+export function refusalFor(me, restaurantId) {
+    if (!me) return { status: 401, error: 'Not signed in' }
+    if (me.is_active !== true) return { status: 403, error: 'Your login is switched off' }
+    if (me.role === 'super_admin') return null
+    if (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role)) {
+        return { status: 403, error: 'Not yours' }
+    }
+    return null
+}
+
 // ------------------------------------------------- finding a venue by where it is
 
 // A geohash, which is what the Discovery API wants for a point.

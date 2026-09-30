@@ -57,11 +57,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom, sourceKeyFor,
-    urlsFor, joinPages, isServiceRole, roleOf,
+    urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
 } from './reading.js'
 import { readPage } from './fetching.js'
-
-const MANAGERS = ['owner', 'store_manager']
 
 // How far ahead to ask about. One month at his word, against the Arena's six.
 //
@@ -363,7 +361,7 @@ Deno.serve(async (request) => {
     }
 
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id')
+        .from('users').select('id, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
 
@@ -373,10 +371,10 @@ Deno.serve(async (request) => {
     const restaurantId = payload.restaurantId
     if (!restaurantId) return json({ error: 'Bad request' }, 400)
 
-    const isSuper = me.role === 'super_admin'
-    if (!isSuper && (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role))) {
-        return json({ error: 'Not yours' }, 403)
-    }
+    // A manager there or a super admin, with a login that is switched on. See
+    // refusalFor in reading.js.
+    const refused = refusalFor(me, restaurantId)
+    if (refused) return json({ error: refused.error }, refused.status)
 
     const done = await readAll(await pagesFor(admin, restaurantId))
     return json({ ran: done.length, pages: done })

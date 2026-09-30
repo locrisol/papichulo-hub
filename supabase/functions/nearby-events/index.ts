@@ -53,10 +53,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
-    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions,
+    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
 } from './discovery.js'
-
-const MANAGERS = ['owner', 'store_manager']
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
 // real name and a way to be contacted, and giving them one is the rent.
@@ -276,7 +274,7 @@ Deno.serve(async (request) => {
     }
 
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id')
+        .from('users').select('id, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
 
@@ -286,13 +284,10 @@ Deno.serve(async (request) => {
     const restaurantId = payload.find?.restaurantId || payload.restaurantId
     if (!restaurantId) return json({ error: 'Bad request' }, 400)
 
-    // A manager at that restaurant, or a super admin. An employee has no reason
-    // to spend the quota and nobody outside the restaurant has any reason at
-    // all.
-    const isSuper = me.role === 'super_admin'
-    if (!isSuper && (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role))) {
-        return json({ error: 'Not yours' }, 403)
-    }
+    // A manager at that restaurant or a super admin, with a login that is
+    // switched on. See refusalFor in discovery.js.
+    const refused = refusalFor(me, restaurantId)
+    if (refused) return json({ error: refused.error }, refused.status)
 
     // ---------- what is near an address ----------
     //

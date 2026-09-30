@@ -471,3 +471,25 @@ export function isServiceRole(bearer, keys = []) {
     if (keys.filter(Boolean).includes(token)) return true
     return roleOf(token) === 'service_role'
 }
+
+const MANAGERS = ['owner', 'store_manager']
+
+// Whether a person may ask for a restaurant's pages to be read, and if not,
+// what to answer. Null means go ahead.
+//
+// A manager at that restaurant, or a super admin. me is their users row, and
+// it is read with the service key, which sees **a login that is switched off**
+// as plainly as one that is not. Every rule in the database asks get_my_role,
+// which gives a switched-off login nothing, and none of those rules run for a
+// function holding the service key, so it is asked here. Found by the audit of
+// 28 September. The same rule is in nearby-events, and the tests check the two
+// agree.
+export function refusalFor(me, restaurantId) {
+    if (!me) return { status: 401, error: 'Not signed in' }
+    if (me.is_active !== true) return { status: 403, error: 'Your login is switched off' }
+    if (me.role === 'super_admin') return null
+    if (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role)) {
+        return { status: 403, error: 'Not yours' }
+    }
+    return null
+}

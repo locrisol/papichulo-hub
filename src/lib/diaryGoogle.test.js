@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
     TZID, colourFor, dayAfter, eventTimes, description, eventBody, calendarsFor, plan,
-    API, GONE, eventUrl, idsFrom, reachOf, carryOut, hubAddress,
+    API, GONE, eventUrl, idsFrom, reachOf, carryOut, hubAddress, callerRefusal,
 } from '../../supabase/functions/diary-calendar/google'
 import { kindGoogleColour, KINDS } from './diary'
 
@@ -375,6 +375,35 @@ describe('the ids stored on an entry', () => {
         expect(idsFrom(null)).toEqual({})
         expect(idsFrom(['abc'])).toEqual({})
         expect(idsFrom('abc')).toEqual({})
+    })
+})
+
+// Whether somebody may ask for a calendar write at all. The row is read with
+// the service key, which sees a switched-off account as plainly as a working
+// one, so the function has to ask. Found by the audit of 28 September.
+describe('who may ask for a calendar write', () => {
+    it.each([
+        ['a store manager', PC_MANAGER],
+        ['an owner', PC_OWNER],
+        ['a super admin', SUPER],
+    ])('lets %s ask', (_, me) => {
+        expect(callerRefusal({ ...me, is_active: true })).toBe('')
+    })
+
+    it('refuses an employee, and nobody', () => {
+        expect(callerRefusal({ role: 'employee', restaurant_id: 'pc', is_active: true })).toBe('Not allowed')
+        expect(callerRefusal(null)).toBe('Not allowed')
+    })
+
+    it('refuses a login that is switched off, whatever its role', () => {
+        for (const me of [PC_MANAGER, PC_OWNER, SUPER]) {
+            expect(callerRefusal({ ...me, is_active: false })).toBe('Your login is switched off')
+        }
+    })
+
+    // A row that does not say is not taken as a yes.
+    it('refuses a row that does not say whether it is switched on', () => {
+        expect(callerRefusal(SUPER)).not.toBe('')
     })
 })
 

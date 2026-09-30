@@ -42,7 +42,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
-    eventBody, calendarsFor, plan, idsFrom, reachOf, carryOut, hubAddress, GONE,
+    eventBody, calendarsFor, plan, idsFrom, reachOf, carryOut, hubAddress, GONE, callerRefusal,
 } from './google.js'
 
 const CORS = {
@@ -197,11 +197,12 @@ Deno.serve(async (request) => {
     const { data: { user } } = await caller.auth.getUser()
     if (!user) return json({ error: 'Not signed in' }, 401)
 
+    // Managers and above, with a login that is switched on. See callerRefusal
+    // in google.js.
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id').eq('id', user.id).maybeSingle()
-    if (!me || !['super_admin', 'owner', 'store_manager'].includes(me.role)) {
-        return json({ error: 'Not allowed' }, 403)
-    }
+        .from('users').select('id, role, restaurant_id, is_active').eq('id', user.id).maybeSingle()
+    const refused = callerRefusal(me)
+    if (refused) return json({ error: refused }, 403)
 
     let payload: { entryId?: string, origin?: string, clear?: boolean }
     try { payload = await request.json() } catch { return json({ error: 'Bad request' }, 400) }

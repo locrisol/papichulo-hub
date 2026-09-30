@@ -3,8 +3,9 @@ import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
     endpoint, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
-    isServiceRole, roleOf,
+    isServiceRole, roleOf, refusalFor,
 } from '../../supabase/functions/read-listings/reading'
+import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
     addressProblem, privateAddress, readPage, MOST_REDIRECTS,
 } from '../../supabase/functions/read-listings/fetching'
@@ -467,6 +468,45 @@ describe('who is calling', () => {
     it('is not, for nothing at all', () => {
         expect(isServiceRole('')).toBe(false)
         expect(roleOf('not a token')).toBe(null)
+    })
+})
+
+// A person asking for a restaurant's pages to be read now. The row is read with
+// the service key, which sees a switched-off account as plainly as a working
+// one, so the function has to ask. Found by the audit of 28 September.
+const CALLERS = [
+    ['a manager there', { role: 'store_manager', restaurant_id: 'pc', is_active: true }, null],
+    ['the owner there', { role: 'owner', restaurant_id: 'pc', is_active: true }, null],
+    ['a super admin', { role: 'super_admin', restaurant_id: null, is_active: true }, null],
+    ['a manager somewhere else', { role: 'store_manager', restaurant_id: 'dl', is_active: true }, 403],
+    ['an employee there', { role: 'employee', restaurant_id: 'pc', is_active: true }, 403],
+    ['a manager switched off', { role: 'store_manager', restaurant_id: 'pc', is_active: false }, 403],
+    ['an owner switched off', { role: 'owner', restaurant_id: 'pc', is_active: false }, 403],
+    ['a super admin switched off', { role: 'super_admin', restaurant_id: null, is_active: false }, 403],
+    ['nobody', null, 401],
+]
+
+describe('who may ask for a read', () => {
+    it.each(CALLERS)('%s', (_, me, status) => {
+        expect(refusalFor(me, 'pc')?.status ?? null).toBe(status)
+    })
+
+    it('says a switched-off login is switched off, whatever its role', () => {
+        for (const role of ['super_admin', 'owner', 'store_manager']) {
+            expect(refusalFor({ role, restaurant_id: 'pc', is_active: false }, 'pc'))
+                .toEqual({ status: 403, error: 'Your login is switched off' })
+        }
+    })
+
+    // A row that does not say is not taken as a yes.
+    it('refuses a row that does not say whether it is switched on', () => {
+        expect(refusalFor({ role: 'super_admin', restaurant_id: null }, 'pc')?.status).toBe(403)
+    })
+
+    // nearby-events carries the same rule, written out again because each
+    // function deploys on its own.
+    it.each(CALLERS)('nearby-events agrees about %s', (_, me) => {
+        expect(nearbyRefusalFor(me, 'pc')).toEqual(refusalFor(me, 'pc'))
     })
 })
 
