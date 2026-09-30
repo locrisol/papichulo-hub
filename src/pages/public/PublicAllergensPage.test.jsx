@@ -62,6 +62,43 @@ describe('the allergen page when everything arrives', () => {
     })
 })
 
+describe('a dish with nothing in it yet', () => {
+    // Saved before its recipe. The row used to read No declared allergens
+    // until somebody added the ingredients.
+    it('tells the customer to ask staff', async () => {
+        answer({ ...WHOLE, public_menu_item_components: { data: [], error: null } })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        expect(await screen.findByText('Plain Rice')).toBeInTheDocument()
+        expect(screen.getByText('Please ask a member of staff')).toBeInTheDocument()
+        expect(screen.queryByText('No declared allergens')).toBeNull()
+    })
+
+    // Opened, it used to list all fourteen as Not present under the warning,
+    // which is the same claim in a longer form.
+    it('lists none of the fourteen as not present when opened', async () => {
+        answer({ ...WHOLE, public_menu_item_components: { data: [], error: null } })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        await me.click(await screen.findByRole('button', { name: /Plain Rice/ }))
+
+        expect(screen.getByText(/We cannot confirm the full allergen list for this dish/)).toBeInTheDocument()
+        // The one left is the key at the top of the page.
+        expect(screen.getAllByText('Not present')).toHaveLength(1)
+    })
+
+    it('still lists all fourteen for a dish it can vouch for', async () => {
+        answer(WHOLE)
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        await me.click(await screen.findByRole('button', { name: /Plain Rice/ }))
+
+        expect(screen.getAllByText('Not present')).toHaveLength(15)
+    })
+})
+
 describe('the allergen page when one read fails', () => {
     it.each([
         'public_product_allergens',

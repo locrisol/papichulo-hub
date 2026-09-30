@@ -41,18 +41,25 @@ export function sheetName(item) {
     return given || item?.name || ''
 }
 
-// Whether everything this row is built from actually arrived.
+// Whether this row has something to be worked out from, and all of it arrived.
 //
-// A customer is not signed in and only gets active products, so an ingredient
-// deactivated while the dish is still on sale simply does not come back. The
-// page has to say "ask staff" rather than show a list that looks whole.
+// Nothing at all is not an answer. A dish is saved before its recipe, and with
+// no components there is nothing to work its allergens out from, which read as
+// No declared allergens until somebody added them. Any component counts, a
+// choice included: a dish that is only a choice is allowed, and its options are
+// listed in their own right. Each dish in the row is asked on its own, because
+// an XL size given the regular one's sheet name before its own recipe is in
+// would otherwise be vouched for by the regular one.
 //
-// Deliberately stricter than the row's own allergens: a missing sauce does not
-// change the churros row, but it does mean a sauce that should have had a line
-// of its own has silently no line at all, and nobody reading the sheet could
-// know. So anything unreadable on any of the dish's components marks it.
-function everythingArrived(components, products) {
-    return components.every(c => (products || []).some(p => p.id === c.product_id))
+// A component whose product did not come back is the other gap. The page has
+// to say "ask staff" rather than show a list that looks whole. Deliberately
+// stricter than the row's own allergens: a missing sauce does not change the
+// churros row, but it does mean a sauce that should have had a line of its own
+// has silently no line at all, and nobody reading the sheet could know. So
+// anything unreadable on any of the dish's components marks it.
+function everythingArrived(items, components, products) {
+    return items.every(i => components.some(c => c.menu_item_id === i.id))
+        && components.every(c => (products || []).some(p => p.id === c.product_id))
 }
 
 export function sheetRows(menuItems, allComponents, products, recipeLines, allergens) {
@@ -87,7 +94,7 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
             key: `item:${name}`,
             name,
             order: orderOf(items),
-            complete: everythingArrived(all, products),
+            complete: everythingArrived(items, all, products),
             // The choices are dropped by deriveMenuItemAllergens itself, so
             // this hands it everything rather than filtering here as well. Two
             // places doing the same job is two places to forget it.

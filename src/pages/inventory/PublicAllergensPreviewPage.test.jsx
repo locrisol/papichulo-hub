@@ -92,6 +92,31 @@ describe('printing the allergen sheet', () => {
         expect(drawnText).toContain('Plain Rice')
     })
 
+    // A dish saved before its recipe. Fourteen empty cells read as none of
+    // the fourteen, so the row says what the customer page says instead.
+    it('marks a dish with nothing in it the way the customer page does', async () => {
+        answer({ ...WHOLE, menu_item_components: { data: [], error: null } })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).toContain('Plain Rice')
+        expect(drawnText).toContain('Please ask a member of staff')
+    })
+
+    it('leaves a dish that is whole unmarked', async () => {
+        answer(WHOLE)
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).not.toContain('Please ask a member of staff')
+    })
+
     it.each([
         'product_allergens',
         'menu_item_components',

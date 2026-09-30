@@ -507,6 +507,22 @@ export default function PublicAllergensPreviewPage() {
                 pdf.text(line, marginX + 2, nameTop + n * 4)
             })
 
+            // A row the sheet cannot vouch for, such as a dish saved before its
+            // recipe, says what the customer page says, across the whole row.
+            // Fourteen empty cells would read as none of the fourteen.
+            if (!item.complete) {
+                const x = marginX + nameColWidth
+                const width = allergenColWidth * allergens.length
+                pdf.setFillColor(255, 255, 255)
+                pdf.rect(x, y, width, rowHeight, 'FD')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(9)
+                pdf.setTextColor(...INK)
+                pdf.text('Please ask a member of staff', x + width / 2, y + rowHeight / 2 + 1.5, { align: 'center' })
+                y += rowHeight
+                return
+            }
+
             // Allergen cells
             allergens.forEach((allergen, i) => {
                 const x = marginX + nameColWidth + i * allergenColWidth

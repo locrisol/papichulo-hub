@@ -189,6 +189,40 @@ describe('sheetRows', () => {
         expect(sheetRows()).toEqual([])
     })
 
+    // A dish saved before its recipe. Nothing in it means nothing to work its
+    // allergens out from, which is not the same as no allergens, and the row
+    // used to say No declared allergens until somebody added the ingredients.
+    it('does not vouch for a dish with nothing in it', () => {
+        const bowl = [{ id: 'xl', name: 'XL Chicken Bowl', category_id: 'mains' }]
+        expect(sheetRows(bowl, [], products, [], allergens)[0].complete).toBe(false)
+        expect(sheetRows(bowl, components, products, [], allergens)[0].complete).toBe(false)
+    })
+
+    // An XL size given the regular bowl's sheet name before its own recipe is
+    // in. The regular bowl's components used to vouch for the pair.
+    it('does not vouch for two sizes when one of them has nothing in it', () => {
+        const bowls = [
+            { id: 'reg', name: 'Chicken Bowl', category_id: 'mains' },
+            { id: 'xl', name: 'XL Chicken Bowl', sheet_name: 'Chicken Bowl', category_id: 'mains' },
+        ]
+        const comps = [{ menu_item_id: 'reg', product_id: 'churro', quantity: 1 }]
+        const rows = sheetRows(bowls, comps, products, [], allergens)
+        expect(rows).toHaveLength(1)
+        expect(rows[0].complete).toBe(false)
+    })
+
+    it('still vouches for a dish that is only a choice', () => {
+        // Allowed by the choices model: the options are listed in their own
+        // right, so the dish is not a gap.
+        const dip = [{ id: 'd', name: 'Dip Pot', category_id: 'sides' }]
+        const comps = [{ menu_item_id: 'd', product_id: 'chipotle', quantity: 1, choice_group: 'Salsa' }]
+        expect(sheetRows(dip, comps, products, [], allergens)[0].complete).toBe(true)
+    })
+
+    it('still vouches for the churros', () => {
+        expect(rowsOf().every(r => r.complete)).toBe(true)
+    })
+
     it('answers for all fourteen even where nothing is set', () => {
         const plain = sheetRows(
             [{ id: 'p', name: 'Plain' }],
