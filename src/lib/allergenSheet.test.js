@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sheetRows, sheetName } from '@/lib/allergenSheet'
+import { sheetRows, sheetName, everyReadArrived } from '@/lib/allergenSheet'
 import { emptyAllergens } from '@/lib/allergens'
 
 // The churros case, which is what this was built for.
@@ -37,6 +37,26 @@ const components = [
 function rowsOf(items = menuItems, comps = components) {
     return sheetRows(items, comps, products, [], allergens)
 }
+
+describe('everyReadArrived', () => {
+    it('is happy with lists, including empty ones', () => {
+        expect(everyReadArrived([{ data: [1], error: null }, { data: [], error: null }])).toBe(true)
+    })
+
+    // supabase-js hands a failure back rather than throwing it, and kept with
+    // `|| []` a failed read of the allergens is products with none.
+    it('says no when any one of them failed', () => {
+        expect(everyReadArrived([
+            { data: [1], error: null },
+            { data: null, error: { message: 'Failed to fetch' } },
+        ])).toBe(false)
+    })
+
+    it('says no to a read with nothing in it at all', () => {
+        expect(everyReadArrived([{ data: null, error: null }])).toBe(false)
+        expect(everyReadArrived([undefined])).toBe(false)
+    })
+})
 
 describe('sheetName', () => {
     it('uses the name given for the sheet', () => {

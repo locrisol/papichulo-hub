@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { sheetRows } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
 import { useAuth } from '@/context/auth'
 import { useState, useEffect } from 'react'
@@ -10,16 +10,15 @@ import { useRestaurant } from '@/context/restaurant'
 import PublicAllergensPage from '@/pages/public/PublicAllergensPage'
 import { card } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.
 //
 // The preview is the real page rather than a copy of it, so there is only one
-// place the customer view is written. One thing to know though: the manager is
-// signed in while looking at it, and the database policies that hide inactive
-// dishes only apply to somebody who is not. So the preview can show a
-// deactivated dish that a customer scanning the code would never see. There is a
-// note about it in PublicAllergensPage.
+// place the customer view is written. It reads the same public_ views a
+// customer does, which leave out inactive dishes for everybody, so what is
+// shown here is what a customer scanning the code gets.
 //
 // There are two different PDFs here and they are for different jobs. The QR one
 // is A6, sized to sit on a table. The allergen list is A4 landscape and is the
@@ -49,7 +48,10 @@ export default function PublicAllergensPreviewPage() {
     const notify = useConfirm()
     const { user } = useAuth()
     const [qrDataUrl, setQrDataUrl] = useState('')
-    const [menuData, setMenuData] = useState(null)
+    const [printing, setPrinting] = useState(false)
+    // Why the allergen list did not print, said beside the button that was
+    // pressed rather than by the button quietly doing nothing.
+    const [printProblem, setPrintProblem] = useState('')
 
     const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin
     const publicUrl = activeRestaurant
@@ -70,32 +72,6 @@ export default function PublicAllergensPreviewPage() {
             .then(setQrDataUrl)
             .catch(err => console.error('QR generation failed:', err))
     }, [publicUrl])
-
-    useEffect(() => {
-        if (!activeRestaurant) return
-
-        async function fetchMenuData() {
-            const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
-                supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-                supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-                supabase.from('menu_item_components').select('*'),
-                supabase.from('products').select('*').order('name'),
-                supabase.from('mix_recipes').select('*'),
-                supabase.from('product_allergens').select('*'),
-            ])
-
-            setMenuData({
-                categories: categoriesRes.data || [],
-                menuItems: menuItemsRes.data || [],
-                components: componentsRes.data || [],
-                products: productsRes.data || [],
-                recipeLines: recipesRes.data || [],
-                allergens: allergensRes.data || [],
-            })
-        }
-
-        fetchMenuData()
-    }, [activeRestaurant])
 
     async function handleDownloadPng() {
         if (!qrDataUrl) return
@@ -152,9 +128,55 @@ export default function PublicAllergensPreviewPage() {
         pdf.save(`papi-chulo-allergens-${activeRestaurant.slug}.pdf`)
     }
 
-    async function handleDownloadAllergenListPdf() {
-        if (!menuData || !activeRestaurant) return
+    // The sheet is read when the button is pressed rather than when the page
+    // opened. It used to be held from opening, so a sheet printed after an
+    // allergen was changed in another tab printed the old answer, and the
+    // preview below is a separate read that cannot vouch for it.
+    //
+    // All six or nothing. It used to print whatever arrived, and a failed read
+    // of the allergens came out as a grid with no marks in it, which reads as
+    // none of the fourteen. That paper sits on the counter for months.
+    async function readSheet() {
+        const reads = await Promise.all([
+            supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
+            supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
+            supabase.from('menu_item_components').select('*'),
+            supabase.from('products').select('*').order('name'),
+            supabase.from('mix_recipes').select('*'),
+            supabase.from('product_allergens').select('*'),
+        ])
+        if (!everyReadArrived(reads)) return null
 
+        const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
+        return {
+            categories: categoriesRes.data,
+            menuItems: menuItemsRes.data,
+            components: componentsRes.data,
+            products: productsRes.data,
+            recipeLines: recipesRes.data,
+            allergens: allergensRes.data,
+        }
+    }
+
+    async function handleDownloadAllergenListPdf() {
+        if (!activeRestaurant || printing) return
+
+        setPrinting(true)
+        setPrintProblem('')
+        try {
+            const menuData = await readSheet()
+            if (!menuData) {
+                setPrintProblem('The allergen list could not be read just now, so nothing was printed. '
+                    + 'Check the connection and try again.')
+                return
+            }
+            await drawAllergenListPdf(menuData)
+        } finally {
+            setPrinting(false)
+        }
+    }
+
+    async function drawAllergenListPdf(menuData) {
         const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
         const pageWidth = pdf.internal.pageSize.getWidth()   // 297
         const pageHeight = pdf.internal.pageSize.getHeight() // 210
@@ -614,7 +636,7 @@ export default function PublicAllergensPreviewPage() {
                             <button
                                 type="button"
                                 onClick={handleDownloadAllergenListPdf}
-                                disabled={!menuData}
+                                disabled={printing}
                                 className="inline-flex items-center gap-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -664,6 +686,7 @@ export default function PublicAllergensPreviewPage() {
                                 Open in new tab ↗
                             </button>
                         </div>
+                        <ErrorBanner className="mt-3">{printProblem}</ErrorBanner>
                     </div>
                 </div>
             </div>

@@ -20,6 +20,20 @@ import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from 
 // the two must never answer differently. One of them being right is worse than
 // both being wrong, because nobody would think to check.
 
+// Whether every read the sheet is built from came back.
+//
+// supabase-js does not throw when a read fails, it hands back { data: null,
+// error }. Kept with `|| []`, a failed read of the allergens looks exactly like
+// products with none, and a failed read of the components looks like dishes
+// with nothing in them. Either way every row says No declared allergens, and
+// nothing on the page says a read went wrong. So the customer page and the
+// printed sheet both ask this first, and one failed read means no rows at all.
+//
+// An empty list is a real answer and passes. Only a failure does not.
+export function everyReadArrived(results) {
+    return (results || []).every(r => Boolean(r) && !r.error && Array.isArray(r.data))
+}
+
 // What a menu item is called on the sheet. Its own name unless it has been
 // given one, which is how two portion sizes become one row.
 export function sheetName(item) {

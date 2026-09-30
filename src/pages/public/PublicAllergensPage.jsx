@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { sheetRows } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
-import { card } from '@/lib/controlStyles'
+import { card, primaryButton } from '@/lib/controlStyles'
 import { stampDate } from '@/lib/dates'
 
 
@@ -47,11 +47,19 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
-  
+  // A read that failed, as against an address that leads nowhere. Kept apart
+  // from error because that one says Page not found, and a customer whose
+  // phone lost signal halfway through is standing in the restaurant.
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
+    setError('')
+    setLoadFailed(false)
+    // The manager's preview changes restaurant on the same page, and the card
+    // below names whichever restaurant is held here. Kept, a failed read of
+    // the next one would carry the last one's name.
+    setRestaurant(null)
 
     // Find the restaurant by slug. Even though selling prices are uniform,
     // the page is keyed to a restaurant so the displayed name and any
@@ -62,7 +70,12 @@ export default function PublicAllergensPage({ slugOverride }) {
       .eq('slug', slug)
       .maybeSingle()
 
-    if (restRes.error || !restRes.data) {
+    if (restRes.error) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    if (!restRes.data) {
       setError('Restaurant not found')
       setLoading(false)
       return
@@ -86,7 +99,7 @@ export default function PublicAllergensPage({ slugOverride }) {
     // since been deactivated. The old policy required is_active and quietly
     // dropped exactly that product's allergens from the answer, which is the
     // one thing this page cannot get wrong.
-    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
+    const reads = await Promise.all([
       supabase.from('public_menu_categories').select('*').order('sort_order'),
       supabase.from('public_menu_items').select('*').order('name'),
       supabase.from('public_menu_item_components').select('*'),
@@ -95,12 +108,22 @@ export default function PublicAllergensPage({ slugOverride }) {
       supabase.from('public_product_allergens').select('*'),
     ])
 
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (menuItemsRes.data) setMenuItems(menuItemsRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (recipesRes.data) setRecipeLines(recipesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
+    // All of them or none of them. A failed read of the allergens used to
+    // leave every product with none, and every dish said No declared
+    // allergens with nothing on the page to say anything had gone wrong.
+    if (!everyReadArrived(reads)) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+
+    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
+    setCategories(categoriesRes.data)
+    setMenuItems(menuItemsRes.data)
+    setComponents(componentsRes.data)
+    setProducts(productsRes.data)
+    setRecipeLines(recipesRes.data)
+    setAllergens(allergensRes.data)
 
     setLoading(false)
     }, [slug])
@@ -119,12 +142,9 @@ export default function PublicAllergensPage({ slugOverride }) {
   // to be three functions here, and the printed sheet had its own copy of the
   // same reasoning a few hundred lines away in another file.
   //
-  // The one worth keeping in mind: a customer is not signed in, so the database
-  // only hands an anonymous reader active products. An ingredient deactivated
-  // while the dish is still on sale simply does not arrive, and a list that
-  // looks whole is the worst way to be wrong on this page in particular. When
-  // that happens the row says to ask staff. A manager viewing this through the
-  // preview is signed in and gets everything, so it never fires for them.
+  // The one worth keeping in mind: a list that looks whole is the worst way to
+  // be wrong on this page in particular. So a row whose ingredients did not
+  // all arrive says to ask staff rather than showing what it could work out.
 
 
   // Build the grouped, ordered, filtered structure for rendering.
@@ -166,6 +186,27 @@ export default function PublicAllergensPage({ slugOverride }) {
     return (
       <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
         <p className="text-sm text-gray-500">Loading allergen information...</p>
+      </div>
+    )
+  }
+
+  // No rows at all, and the reason is not the customer's to work out. Asking
+  // staff is the one answer that is right whatever did not arrive.
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
+        <div className={`${card} p-8 max-w-sm w-full text-center`} role="alert">
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
+          {restaurant && (
+            <h1 className="font-serif text-2xl font-bold text-gray-900 mb-3">{restaurant.name}</h1>
+          )}
+          <p className="text-sm text-gray-700 mb-5">
+            We cannot show allergen information right now. Please ask a member of staff before ordering.
+          </p>
+          <button type="button" onClick={fetchAll} className={primaryButton()}>
+            Try again
+          </button>
+        </div>
       </div>
     )
   }
