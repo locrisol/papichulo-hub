@@ -684,10 +684,12 @@ export default function RosterPage() {
         // It can still be got past, deliberately and by somebody who has read
         // what they are getting past.
         if (blocks.length > 0) {
+            // The sentence is the red line under the dialog, never notice.
+            // A notice is one button with no way back.
             const past = await confirm({
                 title: 'This week cannot go out as it is',
                 message: blocks.map(b => b.text).join('\n\n'),
-                notice: 'These are limits on the company rather than on the person. Publishing anyway is a decision, not a shortcut.',
+                dangerNote: 'These are limits on the company rather than on the person. Publishing anyway is a decision, not a shortcut.',
                 confirmLabel: 'Publish it anyway',
                 cancelLabel: 'Go back and fix it',
                 tone: 'danger',
@@ -704,7 +706,11 @@ export default function RosterPage() {
                 { label: 'Hours', value: `${fmtHours(week.hours)}` },
             ],
             confirmLabel: 'Publish the week',
-            notice: clashes.length
+            // A double booking turns it red and says so under the details,
+            // with Cancel still there. Without one there is no red line at
+            // all, since the week can still be changed after it goes out.
+            tone: clashes.length > 0 ? 'danger' : 'default',
+            dangerNote: clashes.length > 0
                 ? `${clashes.length} ${clashes.length === 1 ? 'person is' : 'people are'} double booked. Worth fixing first.`
                 : undefined,
         })
