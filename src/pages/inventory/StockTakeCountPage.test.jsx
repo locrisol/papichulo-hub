@@ -93,3 +93,22 @@ describe('a super admin counting one restaurant', () => {
         expect(screen.queryByText('Case of 6')).not.toBeInTheDocument()
     })
 })
+
+describe('an employee counting a MIX', () => {
+    // Since 29 September an employee can read recipes, so a MIX they count is
+    // worth the same as one a manager counts. 5 kg of tomatoes at 2.00 make a
+    // 4 kg batch, so a kilo of salsa is 2.50.
+    it('values it from its recipe', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({
+            products: [
+                { id: 'm1', name: 'House Salsa', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: true, batch_yield: 4 },
+                { id: 'p2', name: 'Tomatoes', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: false },
+            ],
+            prices: [{ id: 'pr3', product_id: 'p2', restaurant_id: 'r1', is_preferred: true, price_per_unit: 2 }],
+            recipes: [{ id: 'mr1', mix_product_id: 'm1', ingredient_product_id: 'p2', quantity: 5 }],
+        })
+        const line = await count(open(), 'House Salsa', 'Quantity', '3')
+        expect(line).toMatchObject({ product_id: 'm1', unit_cost: 2.5, line_total: 7.5 })
+    })
+})

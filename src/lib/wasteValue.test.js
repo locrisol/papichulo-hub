@@ -51,6 +51,18 @@ describe('calculateWasteValue', () => {
         expect(r.hasCost).toBe(false)
     })
 
+    // So the screen can say what is missing. For a MIX it is never a price of
+    // its own: it is an ingredient's price, or the recipe.
+    it('says why there is no cost', () => {
+        const at = (product, prices, lines = allRecipeLines) =>
+            calculateWasteValue(product, 1, allProducts, lines, prices).status
+        expect(at(noPrice, preferredPrices)).toBe('missing_price')
+        expect(at(salsa, [])).toBe('missing_price')
+        expect(at(salsa, preferredPrices, [])).toBe('no_recipe')
+        expect(at({ ...salsa, batch_yield: null }, preferredPrices)).toBe('no_batch_yield')
+        expect(at(salsa, preferredPrices)).toBe('ok')
+    })
+
     it('returns nothing for a quantity of zero', () => {
         const r = calculateWasteValue(chicken, 0, allProducts, allRecipeLines, preferredPrices)
         expect(r.hasCost).toBe(false)

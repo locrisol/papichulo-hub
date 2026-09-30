@@ -53,7 +53,7 @@ export default function WasteSummaryPage() {
 
             const { data: logs, error: wErr } = await supabase
                 .from('waste_logs')
-                .select('*, products(name, unit)')
+                .select('*, products(name, unit, is_mix)')
                 .eq('restaurant_id', restaurantId)
                 .gte('log_date', weekStart)
                 .lte('log_date', end)
@@ -103,6 +103,9 @@ export default function WasteSummaryPage() {
                 value: 0,
                 reasons: {},
                 anyMissingPrice: false,
+                // A MIX has no price of its own, so when one has no value it
+                // is the recipe that could not be costed, not a price missing.
+                missing: e.products?.is_mix ? 'value missing' : 'price missing',
             }
             byProduct.push(index[id])
         }
@@ -269,7 +272,7 @@ export default function WasteSummaryPage() {
                                     </span>
                                 </div>
                                 {row.anyMissingPrice && (
-                                    <p className="text-xs text-amber-600 mt-0.5">price missing</p>
+                                    <p className="text-xs text-amber-600 mt-0.5">{row.missing}</p>
                                 )}
                             </div>
                         ))}
@@ -307,7 +310,7 @@ export default function WasteSummaryPage() {
                                     <td className="px-3 py-2 text-right text-gray-900 font-medium whitespace-nowrap">
                                         {fmtMoney(row.value)}
                                         {row.anyMissingPrice && (
-                                            <span className="block text-xs text-amber-600">price missing</span>
+                                            <span className="block text-xs text-amber-600">{row.missing}</span>
                                         )}
                                     </td>
                                 </tr>
