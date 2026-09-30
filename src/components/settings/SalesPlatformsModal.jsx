@@ -159,6 +159,21 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       setError('Name is required')
       return
     }
+
+    // The group decides which total a platform's figures count toward, and it
+    // is read off the platform, not kept with each day. So moving one takes
+    // every week already entered with it, which can be right but should not
+    // happen by a slip of the select.
+    if (editBucket !== p.bucket) {
+      const ok = await confirm({
+        title: `Move ${p.name} to ${BUCKET_LABEL[editBucket]}?`,
+        message: `Its figures in every week already entered will count toward ${BUCKET_LABEL[editBucket]} `
+          + `instead of ${BUCKET_LABEL[p.bucket]}, not only the weeks from now on.`,
+        confirmLabel: 'Move it',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('sales_platforms')
       .update({ name, bucket: editBucket })

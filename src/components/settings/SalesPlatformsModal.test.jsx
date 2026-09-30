@@ -23,10 +23,15 @@ const tables = {
 }
 const db = mockSupabase(tables)
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// One object, as the real context gives. A new one on every render would load
+// the list again each time and take the edit boxes away mid word.
+const RESTAURANT = { id: 'r1', name: 'Testville' }
 vi.mock('@/context/restaurant', () => ({
-    useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Testville' } }),
+    useRestaurant: () => ({ activeRestaurant: RESTAURANT }),
 }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+// What the "are you sure" dialog answers.
+const confirm = vi.fn(() => Promise.resolve(true))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => options => confirm(options) }))
 
 const { default: SalesPlatformsModal } = await import('./SalesPlatformsModal')
 
@@ -42,8 +47,50 @@ async function add(name) {
     await user.click(screen.getByRole('button', { name: 'Add' }))
 }
 
+function updated() {
+    return db.from.mock.results.flatMap(({ value: q }) => q.update.mock.calls.map(c => c[0]))
+}
+
 beforeEach(() => {
     db.from.mockClear()
+    confirm.mockImplementation(() => Promise.resolve(true))
+})
+
+// Changing a platform's group takes every week already entered with it: its
+// figures count under the other total from then on, not only new weeks. That
+// can be what is wanted, but not by a slip of the select.
+describe('editing a platform', () => {
+    async function edit({ name, group }) {
+        render(<SalesPlatformsModal onClose={() => {}} />)
+        await screen.findAllByText('Deliveroo')
+        const user = userEvent.setup()
+        await user.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+        if (name) {
+            await user.clear(screen.getByLabelText('Platform name'))
+            await user.type(screen.getByLabelText('Platform name'), name)
+        }
+        if (group) await user.selectOptions(screen.getByLabelText('Which group'), group)
+        await user.click(screen.getAllByRole('button', { name: 'Save' })[0])
+    }
+
+    it('asks before moving one to the other group, and moves nothing unless told to', async () => {
+        confirm.mockImplementation(() => Promise.resolve(false))
+        await edit({ group: 'catering' })
+        await waitFor(() => expect(confirm).toHaveBeenCalled())
+        expect(confirm.mock.calls[0][0].title).toBe('Move Deliveroo to Corporate?')
+        expect(updated()).toEqual([])
+    })
+
+    it('moves it once told to', async () => {
+        await edit({ group: 'catering' })
+        await waitFor(() => expect(updated()).toEqual([{ name: 'Deliveroo', bucket: 'catering' }]))
+    })
+
+    it('does not ask about a new name alone', async () => {
+        await edit({ name: 'Deliveroo IE' })
+        await waitFor(() => expect(updated()).toEqual([{ name: 'Deliveroo IE', bucket: 'online_platform' }]))
+        expect(confirm).not.toHaveBeenCalled()
+    })
 })
 
 describe('adding a platform', () => {
