@@ -90,6 +90,17 @@ export default function ShiftRequestDialog({
             .filter(s => s.employee_id === meId)
             .sort((a, b) => a.shift_date.localeCompare(b.shift_date))
 
+    // A shift already picked to take back belongs to whoever was being asked,
+    // so it goes when they change. Kept, the request named one person's shift
+    // and asked somebody else, and the database refuses that.
+    const pickWho = id => {
+        setToEmployeeId(id)
+        if (takeShift && takeShift.employee_id !== id) {
+            setTakeShift(null)
+            setTakePart(false)
+        }
+    }
+
     const draft = {
         from_employee_id: meId,
         to_employee_id: toEmployeeId,
@@ -182,7 +193,7 @@ export default function ShiftRequestDialog({
                             hint="Already in that day and free for these hours. The likeliest yes."
                             entries={list.finishing}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                         />
@@ -191,7 +202,7 @@ export default function ShiftRequestDialog({
                             hint="Nothing on at all, so it is a day off you are asking for."
                             entries={list.free}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                         />
@@ -200,7 +211,7 @@ export default function ShiftRequestDialog({
                             hint="Already on those hours, or down as away."
                             entries={list.cannot}
                             chosen={toEmployeeId}
-                            onPick={setToEmployeeId}
+                            onPick={pickWho}
                             hoursOn={hoursOn}
                             colourOf={colourOf}
                             shut

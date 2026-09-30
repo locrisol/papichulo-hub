@@ -2188,24 +2188,87 @@ begin
     return new;
 end $$;
 
+-- A swap request says what the two people agreed, and only that. A new one
+-- starts as asked, gives a shift of the asker's own and takes one of the
+-- person asked. After that the two of them can answer it or take it back and
+-- nothing else. Whose shift is whose is checked when it is made and never at
+-- approval, because approving moves the shifts before it marks the request
+-- approved; the manager's desk checks it before offering Approve.
 CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
 declare
     me uuid;
+    manager boolean;
 begin
-    -- Same as 066: only what comes through the API is guarded, so the
-    -- database can still maintain its own rows.
+    -- Same as restaurant_settings_guard: only what comes through the API is
+    -- guarded, so the database can still maintain its own rows.
     if current_setting('request.jwt.claims', true) is null then
         return new;
+    end if;
+
+    manager := coalesce(public.get_my_role() in ('super_admin', 'owner', 'store_manager'), false);
+
+    if tg_op = 'INSERT' then
+        -- Whoever sends it, managers included. The only way in is somebody
+        -- asking as themselves, and an answer on it would be the other
+        -- person's word given for them.
+        if new.status is distinct from 'asked'
+           or new.answered_at is not null
+           or new.decided_at is not null
+           or new.decided_by is not null then
+            raise exception 'A new request has to wait for the other person to answer';
+        end if;
+
+        new.created_by := auth.uid();
+
+        if new.give_shift_id is not null and not exists (
+            select 1 from public.roster_shifts s
+             where s.id = new.give_shift_id
+               and s.employee_id = new.from_employee_id
+               and s.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only give away a shift of your own';
+        end if;
+
+        if new.take_shift_id is not null and not exists (
+            select 1 from public.roster_shifts s
+             where s.id = new.take_shift_id
+               and s.employee_id = new.to_employee_id
+               and s.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only ask for a shift of the person you are asking';
+        end if;
+
+        if not exists (
+            select 1 from public.employees e
+             where e.id = new.to_employee_id
+               and e.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only ask somebody at your own restaurant';
+        end if;
+
+        return new;
+    end if;
+
+    -- The people in it can answer it and nothing else. Held by what may
+    -- change rather than by what may not, so a column added later is held too
+    -- until somebody decides otherwise. Before the status test below, because
+    -- that is how a change with the status left alone got through.
+    if not manager then
+        if (to_jsonb(new) - 'status' - 'answered_at')
+           is distinct from (to_jsonb(old) - 'status' - 'answered_at') then
+            raise exception 'A request cannot be changed once it is sent';
+        end if;
+        new.answered_at := old.answered_at;
     end if;
 
     if new.status is not distinct from old.status then
         return new;
     end if;
 
-    if public.get_my_role() in ('super_admin', 'owner', 'store_manager') then
+    if manager then
         return new;
     end if;
 
@@ -2216,6 +2279,7 @@ begin
     end if;
 
     if new.status in ('accepted', 'declined') and old.to_employee_id = me then
+        new.answered_at := now();
         return new;
     end if;
 
@@ -3948,7 +4012,7 @@ CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
-CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
+CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();

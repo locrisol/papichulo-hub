@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `023` are in here. `001` to `022` are run on live, `023` is not yet, and the next one is `024`.**
+**`001` to `024` are in here. `001` to `022` are run on live, `023` to `024` are not yet, and the next one is `025`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -84,6 +84,11 @@ and how many months it stays up; and `allergen_sheet_printed()`, which the PDF
 button calls, because an owner can print but cannot write the restaurant row.
 **Run it before the branch is merged.** Merging is what deploys the site, and
 until it is run the PDF button will not print the allergen sheet at all.
+`024` is **not run yet**. It guards a swap request from the moment it is sent:
+it starts as asked, gives the asker's own shift and takes one of the person
+asked, and after that the two of them can only answer it or take it back.
+Before, a hand written call could send one already agreed, or change it after
+the other person said yes.
 
 ## What was here before
 

@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
+    canTakeBack, shiftsMoved,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -284,6 +285,70 @@ describe('waitingOn', () => {
 
     it('is nobody once it is done', () => {
         expect(waitingOn({ status: 'approved' }, 'ana', true)).toBe(null)
+    })
+})
+
+describe('taking a request back', () => {
+    const mine = { from_employee_id: 'ana', to_employee_id: 'ben' }
+
+    it('is for the person who asked, while nobody has answered', () => {
+        expect(canTakeBack({ ...mine, status: 'asked' }, 'ana')).toBe(true)
+        expect(canTakeBack({ ...mine, status: 'asked' }, 'ben')).toBe(false)
+    })
+
+    // The database refuses it once there is an answer, so a button there
+    // could never work, and on an approved swap it read as an undo.
+    it('is gone once there is an answer', () => {
+        for (const status of ['accepted', 'declined', 'approved', 'refused', 'withdrawn']) {
+            expect(canTakeBack({ ...mine, status }, 'ana')).toBe(false)
+        }
+    })
+
+    it('is nobody when nobody is signed in', () => {
+        expect(canTakeBack({ ...mine, status: 'asked' }, undefined)).toBe(false)
+    })
+})
+
+describe('shifts that changed hands after the ask', () => {
+    const request = {
+        from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 's1', take_shift_id: 's3',
+    }
+    const find = week => id => week.find(s => s.id === id) || null
+
+    it('is nothing while each shift is still with the person it names', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'), shift('s3', 'ben', THU, '09:00', '17:00'),
+        ]))).toBe(false)
+    })
+
+    // Approving moves whichever shift the request points at, so a manager
+    // moving Ana's Wednesday to Cal after she asked would hand Cal's shift
+    // to Ben.
+    it('notices the shift being given now belongs to somebody else', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'cal', WED, '09:00', '21:00'), shift('s3', 'ben', THU, '09:00', '17:00'),
+        ]))).toBe(true)
+    })
+
+    it('notices the shift being taken now belongs to somebody else', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'), shift('s3', 'cal', THU, '09:00', '17:00'),
+        ]))).toBe(true)
+    })
+
+    // An approval that moved the shifts and then failed to mark itself
+    // approved. Approve has to stay on, because pressing it again is what
+    // finishes it.
+    it('is nothing when a shift is already with the person taking it', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ben', WED, '09:00', '21:00'), shift('s3', 'ana', THU, '09:00', '17:00'),
+        ]))).toBe(false)
+    })
+
+    it('says nothing about a half the request does not have', () => {
+        expect(shiftsMoved({ ...request, take_shift_id: null }, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'),
+        ]))).toBe(false)
     })
 })
 

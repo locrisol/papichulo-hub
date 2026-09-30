@@ -279,6 +279,33 @@ export function waitingOn(request, meId, isManager) {
     return null
 }
 
+// Whether I can still take a request back: my own, and only while nobody has
+// answered it. The database refuses it after that, so the button was one that
+// could never work, and on an approved swap it read as an undo.
+export function canTakeBack(request, meId) {
+    return !!meId && request?.from_employee_id === meId && request?.status === 'asked'
+}
+
+// Whether a shift the request names now belongs to somebody outside the two
+// people in it.
+//
+// The database checks whose shift is whose when a request is made. A manager
+// can still move one afterwards, and approving moves whichever shift the
+// request points at, so approving then would hand a third person's shift over.
+//
+// A shift already with the person taking it is fine. That is how an approval
+// looks when it moved the shifts and then failed to mark itself approved, and
+// pressing Approve again is what finishes it. A shift not in hand says nothing
+// either way.
+export function shiftsMoved(request, findShift) {
+    const two = [request?.from_employee_id, request?.to_employee_id]
+    const elsewhere = id => {
+        const shift = id ? findShift(id) : null
+        return !!shift && !two.includes(shift.employee_id)
+    }
+    return elsewhere(request?.give_shift_id) || elsewhere(request?.take_shift_id)
+}
+
 // Everything about a shift that somebody has already asked about, so the week
 // can mark it rather than leaving two people to ask the same person twice.
 export function requestsOnShift(requests, shiftId) {
