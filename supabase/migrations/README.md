@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `020` are in here. `001` to `019` are run on live, `020` is not yet, and the next one is `021`.**
+**`001` to `022` are in here. `001` to `020` are run on live, `021` and `022` are not yet, and the next one is `023`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -68,8 +68,14 @@ never be changed, a private `checklist-photos` bucket with its three policies,
 the functions the nightly photo job calls, and the Cleaning section on the
 report still being written. The job itself is the `checklist-photos` edge
 function, scheduled as cron job 7.
-`020` is **not run yet**. It lets a checklist task carry up to four guide
+`020` is run on live. It lets a checklist task carry up to four guide
 pictures instead of one, moving any picture already added into the new list.
+`021` is **not run yet**. It makes every view read only. The seven views
+behind the allergen page read one table each, so the database would write
+through them as their owner, past row level security, and anybody with the
+website's key held write access to them. Reading does not change.
+`022` is **not run yet**. It lets employees read MIX recipes, so what they
+count or log as waste is valued. Writing a recipe stays with managers.
 
 ## What was here before
 

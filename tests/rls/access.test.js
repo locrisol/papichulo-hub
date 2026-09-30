@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { signInAs, anonClient, countVisible, writeRefused, credentialsPresent } from './helpers'
+import { signInAs, anonClient, countVisible, writeRefused, changesRefused, credentialsPresent, NOBODY } from './helpers'
 
 // These check what the database allows, not what the app shows. The app hiding
 // a page is a convenience. This is the part that actually protects the data.
@@ -156,6 +156,23 @@ maybe('what each role can see and do', () => {
                 restaurant_id: ownRestaurantId,
                 type: 'monthly',
                 status: 'in_progress',
+            })
+            expect(refused).toBe(true)
+        })
+
+        // Since 022. A MIX is valued from its recipe, and without it every
+        // MIX an employee counted or wasted was saved at nothing.
+        it('can read MIX recipes, which value what they count and waste', async () => {
+            const { count, error } = await countVisible(employee, 'mix_recipes')
+            expect(error).toBeNull()
+            expect(count).toBeGreaterThan(0)
+        })
+
+        it('is refused when writing a MIX recipe', async () => {
+            const refused = await writeRefused(employee, 'mix_recipes', {
+                mix_product_id: NOBODY,
+                ingredient_product_id: NOBODY,
+                quantity: 1,
             })
             expect(refused).toBe(true)
         })
@@ -337,6 +354,16 @@ maybe('what each role can see and do', () => {
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
         })
+
+        // roster_away reads one table, so the database would write through
+        // it as its owner. Until 021 any employee could delete or move a
+        // colleague's approved holiday this way.
+        it('neither view can be written through', async () => {
+            expect(await changesRefused(employee, 'roster_away', 'employee_id', { starts_on: '2026-01-01' }),
+                'roster_away can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'roster_colleagues', 'id', { full_name: 'x' }),
+                'roster_colleagues can be changed by an employee').toBe(true)
+        })
     })
 
     describe('nobody signed in', () => {
@@ -383,6 +410,25 @@ maybe('what each role can see and do', () => {
             const { data: places } = await anon.from('public_restaurants').select('*').limit(1)
             if (places?.length) {
                 expect(Object.keys(places[0]).sort()).toEqual(['id', 'name', 'slug'])
+            }
+        })
+
+        // Reading them is the whole point; changing anything through them is
+        // not. Each view reads one table, so the database would write through
+        // it as its owner, past row level security. Until 021 this was open:
+        // the website's own key could set every allergen to none.
+        it('cannot change anything through the allergen views', async () => {
+            const views = [
+                ['public_product_allergens', 'product_id', { gluten: 'none' }],
+                ['public_menu_items', 'id', { name: 'x' }],
+                ['public_menu_item_components', 'id', { choice_group: 'x' }],
+                ['public_menu_categories', 'id', { on_allergen_sheet: false }],
+                ['public_mix_recipes', 'id', { mix_product_id: NOBODY }],
+                ['public_products', 'id', { name: 'x' }],
+                ['public_restaurants', 'id', { name: 'x' }],
+            ]
+            for (const [view, key, change] of views) {
+                expect(await changesRefused(anon, view, key, change), `${view} can be changed by anybody`).toBe(true)
             }
         })
 
