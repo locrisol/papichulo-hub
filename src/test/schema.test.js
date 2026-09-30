@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
+import { photoPath } from '@/lib/photo'
 
 // What supabase/schema.sql must hold that no comparison with live can catch.
 //
@@ -29,5 +30,21 @@ describe('a database built from schema.sql', () => {
             'CREATE OR REPLACE TRIGGER "on_auth_user_deleted" BEFORE DELETE ON "auth"."users" '
             + 'FOR EACH ROW EXECUTE FUNCTION "public"."handle_delete_user"();',
         )
+    })
+})
+
+describe('the nightly photo job', () => {
+    // It keeps a photo while its round is open, and finds the round from the
+    // third folder of the path. Pinned against where the app puts the photo,
+    // so the round cannot move in the path without a test saying the job
+    // would then delete photos still waiting to be submitted. Live would agree
+    // with the file either way, so no comparison would notice.
+    it('keeps an open round\'s photos, looking for the round where the app puts it', () => {
+        const round = 'b3f1c2d4-0000-4000-8000-000000000001'
+        expect(photoPath('R1', 'round', round).split('/')[2]).toBe(round)
+
+        const due = schema.slice(schema.indexOf('function public.checklist_photos_due()'))
+        expect(due.slice(0, due.indexOf('$$;')))
+            .toMatch(/r\.id::text = split_part\(o\.name, '\/', 3\)\s+and r\.ended_at is null/)
     })
 })

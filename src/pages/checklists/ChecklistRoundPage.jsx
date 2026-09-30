@@ -30,8 +30,10 @@ import { signer } from '@/components/checklists/signPhotos'
 // somebody else on another phone sees what has been submitted and nothing else.
 //
 // A photo is uploaded the moment it is taken, because that is where the waiting
-// is, and only joined to its tick on Submit. One taken and never submitted is
-// deleted by the nightly job after a day.
+// is, and only joined to its tick on Submit. The nightly job keeps it while the
+// round is open, however long that is, and deletes one never submitted once the
+// round has ended. A photo that went missing anyway is refused on Submit, with
+// the task named, so it can be taken again.
 export default function ChecklistRoundPage() {
     const { id } = useParams()
     const navigate = useNavigate()

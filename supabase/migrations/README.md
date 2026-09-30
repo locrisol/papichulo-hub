@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `026` are in here. `001` to `022` are run on live, `023` to `026` are not yet, and the next one is `027`.**
+**`001` to `027` are in here. `001` to `022` are run on live, `023` to `027` are not yet, and the next one is `028`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -100,6 +100,9 @@ changes, starting as the name it has now, and its figures are kept under
 that, so renaming or retiring a platform no longer loses its past weeks. Not
 one stored figure moves. It can go before or after the new app, which falls
 back to the name without it, but a rename only keeps its figures once it is run.
+`027` is **not run yet**. The nightly job keeps the photos of a checklist
+round still going, so a tick submitted days after its photo was taken still
+has it, and a tick is refused if its photo is no longer in storage.
 
 ## What was here before
 

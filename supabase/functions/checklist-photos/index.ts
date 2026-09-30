@@ -4,7 +4,8 @@
 // and of the one in progress, and nothing older, so there are never two old
 // rounds and a new one all holding pictures. A list done once keeps its photos
 // two weeks after it finishes. A guide picture never expires while its task is
-// on a list in use. And a photo taken and never submitted goes after a day.
+// on a list in use. And a photo taken and never submitted goes once its round
+// has ended, never while it is still open.
 //
 // Which photos those are is the database's to say, in
 // public.checklist_photos_due(), so the rule lives in one place and is written

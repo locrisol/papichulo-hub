@@ -2506,8 +2506,8 @@ begin
 end $$;
 
 -- A tick is for something at the bottom of the list, on an open round, with
--- the photos it needs, in that round's own folder. Who and when come from
--- here.
+-- the photos it needs, in that round's own folder and really there. Who and
+-- when come from here.
 create or replace function public.checklist_tick_guard() returns trigger
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
@@ -2556,6 +2556,13 @@ begin
     foreach p in array new.photos loop
         if left(p, length(folder)) <> folder then
             raise exception 'A photo has to be taken for this round';
+        end if;
+        -- A path with no file behind it is not proof of anything. The way
+        -- to get here from the app was a photo left on a phone for days,
+        -- back when the nightly job could delete it before Submit.
+        if not exists (select 1 from storage.objects o
+                        where o.bucket_id = 'checklist-photos' and o.name = p) then
+            raise exception 'The photo for % is missing. Remove it and take a new one.', t.name;
         end if;
     end loop;
 
@@ -2634,8 +2641,11 @@ end $$;
 -- once keeps its photos two weeks after it is finished. A guide picture never
 -- expires: it goes when it is taken off its task, when its task is deleted or
 -- taken off the list, or when the whole list is. And a photo taken and never
--- submitted goes after a day, which is also the grace every file gets so
--- nothing is deleted between being uploaded and being saved.
+-- submitted goes once its round has ended, since nothing can be ticked on it
+-- after that. Never while the round is open: ticks wait on the phone until
+-- Submit, for days if need be, and a photo deleted in between left a tick
+-- pointing at nothing. Every file also gets a day's grace, so nothing is
+-- deleted between being uploaded and being saved.
 create or replace function public.checklist_photos_due() returns setof text
     language sql stable security definer
     set search_path to 'public', 'pg_temp'
@@ -2662,7 +2672,10 @@ create or replace function public.checklist_photos_due() returns setof text
      where o.bucket_id = 'checklist-photos'
        and o.created_at < now() - interval '1 day'
        and ((split_part(o.name, '/', 2) = 'rounds'
-             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos)))
+             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos))
+             and not exists (select 1 from public.checklist_rounds r
+                              where r.id::text = split_part(o.name, '/', 3)
+                                and r.ended_at is null))
          or (split_part(o.name, '/', 2) = 'guides'
              and not exists (select 1
                                from public.checklist_tasks k
@@ -3093,7 +3106,7 @@ COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'S
 COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, or made a MIX. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
-COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted. Nothing younger than a day.';
+COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted once its round has ended. Nothing younger than a day.';
 COMMENT ON FUNCTION "public"."checklist_photos_removed"("names" "text"[]) IS 'Marks the ticks whose photos the nightly job has just deleted, and clears a guide picture it deleted off the task taken off the list.';
 COMMENT ON FUNCTION "public"."finish_checklist_round"("round" "uuid") IS 'Ends a round when everything on its list is ticked. Returns whether it did. Safe to call any time: it does nothing to a round with something left or one already ended.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
