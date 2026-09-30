@@ -25,7 +25,10 @@ export async function sendTimesheet({
     //
     // The browser draws the PDF, because that is where jsPDF and the logo are,
     // and the function attaches it, because that is where the mail is sent. So
-    // it is put down in a bucket in between and the function is told where.
+    // it is put down in a bucket in between. The function works out the same
+    // path for itself from the restaurant and the period, and only takes
+    // `attachment` as a yes: a path from a browser is not something it reads
+    // with the service key.
     //
     // The bucket is private and the function reads it with the service role.
     // Nothing ever fetches it by url: the bytes travel inside the mail. A

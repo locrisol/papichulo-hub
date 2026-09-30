@@ -75,6 +75,22 @@ export function addDays(iso, days) {
     return d.toISOString().slice(0, 10)
 }
 
+// Where the browser put the hours PDF: the restaurant's folder, named for the
+// period, the same as src/lib/timesheetMail.js uploads it.
+//
+// Built here and never taken from the request. The function reads it with the
+// service key, which no bucket rule stops, and a path is a piece of a url: '..'
+// in one walked out of the restaurant's folder, out of the bucket, and on to
+// anything else the service key can read. So both halves have to look exactly
+// like what they are, an id and a date, or there is no path at all.
+export function hoursPdfPath(restaurantId, periodStart) {
+    const id = String(restaurantId ?? '')
+    const date = String(periodStart ?? '')
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+    return `${id}/${date}.pdf`
+}
+
 // The whole pay period, which is always a fortnight.
 export function periodWords(periodStart) {
     const from = new Date(`${String(periodStart).slice(0, 10)}T00:00:00Z`)

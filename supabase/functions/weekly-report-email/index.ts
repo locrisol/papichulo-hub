@@ -43,7 +43,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
-import { timesheetEmail, personPeriod, addDays } from './timesheet.js'
+import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -562,7 +562,9 @@ async function sendTimesheet({
     restaurantId?: string,
     comment?: string,
     test?: boolean,
-    attachment?: string,
+    // Only whether there is a PDF. The app still posts the path it uploaded
+    // to, and any value at all means yes: the path itself is never used.
+    attachment?: unknown,
 }) {
     const period = String(periodStart || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period)) return json({ error: 'Which pay period?' }, 400)
@@ -572,6 +574,13 @@ async function sendTimesheet({
     if (account.role !== 'super_admin' && forRestaurant !== account.restaurant_id) {
         return json({ error: 'That pay period belongs to another restaurant.' }, 403)
     }
+
+    // Where the PDF is, if there is one, built from the two things just
+    // checked. A super admin's restaurant is not compared with their own, so
+    // this is also what makes sure it is an id before it goes anywhere near
+    // a path.
+    const pdfPath = hoursPdfPath(forRestaurant, period)
+    if (!pdfPath) return json({ error: 'Which restaurant?' }, 400)
 
     // **A pay period is always a fortnight.** His, 23 September 2026, and the
     // reason the hours leave the building two weeks at a time rather than one:
@@ -657,17 +666,15 @@ async function sendTimesheet({
     // **The paper the browser drew, fetched with the service role.**
     //
     // The bucket is private and nothing ever fetches this by url: the bytes go
-    // inside the mail. The path always starts with the restaurant's id, and it
-    // is checked here as well as by the bucket's own policy, because this read
-    // goes round that policy.
+    // inside the mail. This read goes round the bucket's own policy, so the
+    // path is the one built above from the restaurant and the period, never
+    // the one in the request. That used to be checked only for starting with
+    // the restaurant's id, and '<id>/../' passes that check and then walks out
+    // of the folder once it is part of a url.
     const attachments: Attachment[] = []
     if (attachment) {
-        if (!String(attachment).startsWith(`${forRestaurant}/`)) {
-            return json({ error: 'That file belongs to another restaurant.' }, 403)
-        }
-
         const { data: file, error: missing } = await admin.storage
-            .from('timesheet-hours').download(attachment)
+            .from('timesheet-hours').download(pdfPath)
 
         // He asked for the hours and the paper together, so a mail without it
         // is not the thing he asked to send.
