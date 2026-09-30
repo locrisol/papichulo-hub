@@ -45,7 +45,9 @@ vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Testville' } }),
 }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+// What the "are you sure" dialog answers.
+const confirm = vi.fn(() => Promise.resolve(true))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => options => confirm(options) }))
 
 const { default: SalesPage } = await import('./SalesPage')
 
@@ -69,18 +71,65 @@ async function openDay() {
     return userEvent.setup()
 }
 
+// Every write of a given kind to sales_records, as [payload, id].
+function writes(step) {
+    return db.from.mock.results
+        .filter((_, i) => db.from.mock.calls[i][0] === 'sales_records')
+        .flatMap(({ value: q }) => q[step].mock.calls.map(c => [c[0], q.eq.mock.calls[0]?.[1]]))
+}
+
 // The one update the save sends.
 function saved() {
-    const updates = db.from.mock.results
-        .filter((_, i) => db.from.mock.calls[i][0] === 'sales_records')
-        .flatMap(({ value: q }) => q.update.mock.calls.map(c => c[0]))
+    const updates = writes('update')
     expect(updates).toHaveLength(1)
-    return updates[0]
+    return updates[0][0]
 }
 
 beforeEach(() => {
     tables.sales_platforms = { data: PLATFORMS, error: null }
     tables.day_notes = { data: null, error: null }
+    confirm.mockImplementation(() => Promise.resolve(true))
+})
+
+// Two screens on one day. The day view used to ask "Overwrite this day?"
+// whenever the day had a record, whether or not it had changed since it was
+// opened, so a correction made on a phone was written over without a word.
+describe('a day saved somewhere else since it was opened', () => {
+    it('asks as usual when nothing has changed', async () => {
+        tables.sales_records = today({})
+        const user = await openDay()
+        await user.click(screen.getByRole('button', { name: 'Update day' }))
+        await waitFor(() => expect(confirm).toHaveBeenCalled())
+        expect(confirm.mock.calls[0][0].title).toBe('Overwrite this day?')
+    })
+
+    it('says so when it has, and writes nothing unless told to', async () => {
+        tables.sales_records = today({})
+        const user = await openDay()
+        tables.sales_records = { data: { ...today({}).data, gross_sales: 520 }, error: null }
+        confirm.mockImplementation(() => Promise.resolve(false))
+
+        await user.click(screen.getByRole('button', { name: 'Update day' }))
+        await waitFor(() => expect(confirm).toHaveBeenCalled())
+        expect(confirm.mock.calls[0][0].title).toBe('Changed somewhere else')
+        expect(writes('update')).toEqual([])
+    })
+
+    // Nothing was stored when the day was opened and something is now. Saving
+    // anyway writes over that row, where it used to try to add the day a
+    // second time and be turned down.
+    it('writes over a day added somewhere else since', async () => {
+        tables.sales_records = { data: null, error: null }
+        const user = await openDay()
+        await user.type(boxUnder('Gross sales'), '300')
+        tables.sales_records = today({})
+
+        await user.click(screen.getByRole('button', { name: 'Save day' }))
+        await waitFor(() => expect(writes('update')).toHaveLength(1))
+        expect(confirm.mock.calls[0][0].title).toBe('Changed somewhere else')
+        expect(writes('update')[0]).toEqual([expect.objectContaining({ gross_sales: 300 }), 'rec1'])
+        expect(writes('insert')).toEqual([])
+    })
 })
 
 describe('the delivery platforms on the day form', () => {

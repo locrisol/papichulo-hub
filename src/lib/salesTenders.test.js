@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { num, tendersToShow, tenderVariance, mergeTenderSales, keyedPlatforms, platformsToShow, mergePlatformSales, tenderValuesFromRecord, sameLabel, trackedCopy } from '@/lib/salesTenders'
+import { num, tendersToShow, tenderVariance, mergeTenderSales, keyedPlatforms, platformsToShow, mergePlatformSales, tenderValuesFromRecord, sameLabel, trackedCopy, sameStoredDay } from '@/lib/salesTenders'
 
 // The five rows the till printed before August 2026, and the ones it prints now.
 const t = (key, label, sort_order, extra = {}) => ({
@@ -287,5 +287,34 @@ describe('tenderValuesFromRecord', () => {
 
     it('copes with nothing stored', () => {
         expect(tenderValuesFromRecord(null)).toEqual({})
+    })
+})
+
+// Whether a day was saved somewhere else since a screen read it. Both sales
+// screens ask this just before they write.
+describe('sameStoredDay', () => {
+    const DAY = {
+        id: 'r1', sale_date: '2026-09-07', is_closed: false,
+        gross_sales: 500, net_sales: 450, staff_food: 12,
+        tender_sales: { cash: 100, card: 400 }, platform_sales: { Deliveroo: 60 },
+        created_at: '2026-09-07T22:00:00Z',
+    }
+
+    it('agrees with itself read again', () => {
+        expect(sameStoredDay(DAY, { ...DAY, tender_sales: { card: 400, cash: 100.0 } })).toBe(true)
+    })
+
+    it('sees any figure the screens write change', () => {
+        expect(sameStoredDay(DAY, { ...DAY, gross_sales: 520 })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, staff_food: null })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, is_closed: true })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, tender_sales: { cash: 100, card: 400, kiosk: 0 } })).toBe(false)
+        expect(sameStoredDay(DAY, { ...DAY, platform_sales: {} })).toBe(false)
+    })
+
+    it('knows a day added or taken away since', () => {
+        expect(sameStoredDay(null, DAY)).toBe(false)
+        expect(sameStoredDay(DAY, null)).toBe(false)
+        expect(sameStoredDay(null, undefined)).toBe(true)
     })
 })

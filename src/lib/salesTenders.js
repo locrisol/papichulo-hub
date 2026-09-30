@@ -181,3 +181,31 @@ export function tenderValuesFromRecord(stored) {
     }
     return out
 }
+
+// Is a stored day still what it was when a screen read it?
+//
+// Both sales screens ask this just before they write, with the row as they
+// read it and the row as it is now. Anything else means it was saved on
+// another screen in between, and writing without asking would quietly undo
+// that. Two missing rows agree, and a row added or taken away since does not.
+//
+// Only what the screens write is compared, and as figures, so 500 and 500.00
+// are the same. Nothing is not nought: a figure nobody entered and a typed 0
+// are different answers.
+export function sameStoredDay(a, b) {
+    if (!a || !b) return !a && !b
+    if (!!a.is_closed !== !!b.is_closed) return false
+    return ['gross_sales', 'net_sales', 'staff_food'].every(f => sameFigure(a[f], b[f]))
+        && sameFigures(a.tender_sales, b.tender_sales)
+        && sameFigures(a.platform_sales, b.platform_sales)
+}
+
+function sameFigure(a, b) {
+    if (a == null || b == null) return a == null && b == null
+    return num(a) === num(b)
+}
+
+function sameFigures(a, b) {
+    const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})])
+    return [...keys].every(k => sameFigure(a?.[k], b?.[k]))
+}

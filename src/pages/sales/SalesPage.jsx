@@ -7,7 +7,7 @@ import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
 import {
     tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
-    keyedPlatforms, platformsToShow, mergePlatformSales,
+    keyedPlatforms, platformsToShow, mergePlatformSales, sameStoredDay,
 } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import { todayISO, addDays, fullDate } from '@/lib/dates'
@@ -73,8 +73,12 @@ export default function SalesPage() {
     const [formProblem, setFormProblem] = useState('')
     const [success, setSuccess] = useState('')
 
-    // Id of the existing record for this date, if any. Drives insert vs update.
+    // Id of the existing record for this date, if any. Drives the words on the
+    // save button.
     const [recordId, setRecordId] = useState(null)
+    // The record as it was read, to tell on save whether it has been saved
+    // somewhere else since.
+    const [loadedRecord, setLoadedRecord] = useState(null)
 
     // Marks a non-trading day. Closed days are excluded from per-day averages.
     const [isClosed, setIsClosed] = useState(false)
@@ -154,6 +158,7 @@ export default function SalesPage() {
 
         if (rErr) { setError(friendlyError(rErr)); setLoading(false); return }
 
+        setLoadedRecord(rec || null)
         if (rec) {
             setRecordId(rec.id)
             setIsClosed(dayIsClosed(note, rec))
@@ -249,18 +254,42 @@ export default function SalesPage() {
 
     async function handleSave() {
         setFormProblem(''); setSuccess('')
+        setSaving(true)
+
+        // What is stored for this day now. A phone, the week grid or another
+        // tab may have saved it since this screen opened it, and "Overwrite
+        // this day?" used to be asked the same either way, so a correction
+        // made there was written over without anybody knowing it existed.
+        const { data: now, error: e0 } = await supabase
+            .from('sales_records')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('sale_date', saleDate)
+            .maybeSingle()
+        setSaving(false)
+        if (e0) { setFormProblem(friendlyError(e0)); return }
 
         // One record per date per restaurant, so confirm before replacing one.
-        if (recordId) {
-            const ok = await confirm({
+        let ok = true
+        if (!sameStoredDay(now, loadedRecord)) {
+            ok = await confirm({
+                title: 'Changed somewhere else',
+                message: 'This day was saved on another screen after you opened it. Saving now replaces it with what is on this screen.',
+                details: [{ label: 'Day', value: fullDate(saleDate) }],
+                confirmLabel: 'Save anyway',
+                tone: 'danger',
+                dangerNote: 'The other changes to this day will be lost.',
+            })
+        } else if (now) {
+            ok = await confirm({
                 title: 'Overwrite this day?',
                 message: 'There is already a record for this day. Saving replaces it with what is on screen now.',
                 details: [{ label: 'Day', value: fullDate(saleDate) }],
                 confirmLabel: 'Overwrite',
                 tone: 'danger',
             })
-            if (!ok) return
         }
+        if (!ok) return
 
         setSaving(true)
 
@@ -297,9 +326,11 @@ export default function SalesPage() {
                 instore_variance: variance,
             }
 
+        // The row as it is now, so a day added somewhere else since is written
+        // over rather than added a second time and turned down.
         let resErr
-        if (recordId) {
-            const { error: e1 } = await supabase.from('sales_records').update(payload).eq('id', recordId)
+        if (now) {
+            const { error: e1 } = await supabase.from('sales_records').update(payload).eq('id', now.id)
             resErr = e1
         } else {
             const { error: e1 } = await supabase.from('sales_records').insert(payload)

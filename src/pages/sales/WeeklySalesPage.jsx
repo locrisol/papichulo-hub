@@ -10,7 +10,7 @@ import { todayISO, weekStartOf, weekDates, shortDate, addDays, fullDate, weekMon
 import { friendlyError, isPermissionError } from '@/lib/errors'
 import {
     tendersToShow, tenderVariance, mergeTenderSales, tenderValuesFromRecord, sameLabel, trackedCopy,
-    keyedPlatforms, platformsToShow, mergePlatformSales,
+    keyedPlatforms, platformsToShow, mergePlatformSales, sameStoredDay,
 } from '@/lib/salesTenders'
 import { numberField } from '@/lib/numberInput'
 import {
@@ -111,12 +111,6 @@ function dayFromRecord(r, note) {
         platformValues,
         storedPlatforms: r?.platform_sales ?? {},
     }
-}
-
-// Whether a stored row is still what it was. Two missing rows agree.
-function sameRow(a, b) {
-    if (!a || !b) return !a && !b
-    return sameDay(dayFromRecord(a, null), dayFromRecord(b, null))
 }
 
 export default function WeeklySalesPage() {
@@ -556,7 +550,7 @@ export default function WeeklySalesPage() {
             if (e0) { setFormProblem(friendlyError(e0)); setSaving(false); return }
             for (const r of fresh || []) now[r.sale_date] = r
 
-            const movedOn = toWrite.filter(date => !sameRow(now[date], stored[date]))
+            const movedOn = toWrite.filter(date => !sameStoredDay(now[date], stored[date]))
             if (movedOn.length) {
                 const one = movedOn.length === 1
                 const ok = await confirm({
