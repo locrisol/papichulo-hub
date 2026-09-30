@@ -44,6 +44,7 @@ import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
 import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
+import { base64, mimeParts } from './mime.js'
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -112,20 +113,6 @@ globalThis.addEventListener('unhandledrejection', (event) => {
 })
 
 
-// Bytes to base64, in chunks.
-//
-// String.fromCharCode(...bytes) on a whole PDF blows the argument limit and
-// throws RangeError, which arrives as "failed to send a request to the edge
-// function" and says nothing at all. Eight thousand at a time is well inside it.
-function base64(bytes: Uint8Array) {
-    let binary = ''
-    const step = 8192
-    for (let i = 0; i < bytes.length; i += step) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + step))
-    }
-    return btoa(binary)
-}
-
 async function byGmail(mail: Mail, user: string, password: string) {
     const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts')
 
@@ -177,8 +164,10 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 to: mail.to,
                 replyTo: replyToFor(mail.replyTo, Deno.env.get('MAIL_REPLY_TO')),
                 subject: mail.subject,
-                content: mail.text,
-                html: mail.html,
+                // Finished base64 parts rather than content and html, which
+                // denomailer would write as quoted printable and lose a full
+                // stop wherever one starts a line. See mime.js.
+                mimeContent: mimeParts(mail),
                 // Left out entirely when there are none. denomailer walks
                 // whatever it is given, and an empty array still turns a plain
                 // mail into a multipart one for no reason.

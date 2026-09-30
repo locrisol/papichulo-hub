@@ -78,6 +78,10 @@ export const SIDE = 16
 //
 // It also means no layout in this file may depend on a space between two tags,
 // because that space is about to be removed.
+//
+// The mail goes as base64 now (see mime.js), which never reaches that encoder,
+// so the =20 cannot happen any more. tidy() stays all the same, because every
+// layout in this file was measured with it.
 export function tidy(html) {
     return html
         .replace(/>\s+</g, '><')
@@ -1268,7 +1272,9 @@ export function reportEmail({
 // cannot carry.
 //
 // Every line is trimmed on the way out, for the same reason the HTML is sent as
-// one line: a space at the end of a line arrives as "=20".
+// one line: a space at the end of a line arrived as "=20" while the mail went
+// as quoted printable. It goes as base64 now (see mime.js), and the trimming
+// stays along with tidy().
 
 function plainText({ report, restaurant, sections, figures: f, publisher, appUrl, changes, isTest, correction }) {
     const out = []

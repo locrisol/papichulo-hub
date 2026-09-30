@@ -65,6 +65,7 @@ import {
     swapHalves, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
     senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor,
 } from './email.js'
+import { mimeParts } from './mime.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -199,8 +200,10 @@ async function byGmail(mail: Mail, user: string, password: string) {
                 from: mail.from,
                 to: mail.to,
                 subject: mail.subject,
-                content: mail.text,
-                html: mail.html,
+                // Finished base64 parts rather than content and html, which
+                // denomailer would write as quoted printable and lose a full
+                // stop wherever one starts a line. See mime.js.
+                mimeContent: mimeParts(mail),
                 // Optional keys are left out when empty rather than passed as
                 // undefined, which is how the weekly report's call is shaped
                 // and it is the one that works. This one always passed
