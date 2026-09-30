@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
@@ -396,10 +396,17 @@ export default function ReportPage() {
                     .select('sale_date, net_sales, gross_sales, platform_sales, is_closed')
                     .eq('restaurant_id', head.restaurant_id)
                     .gte('sale_date', yearFrom).lte('sale_date', addDays(end, 1)),
-                supabase.from('invoice_cost_by_category')
+                // Not like the rest: one row per typed invoice and per claim,
+                // so a year of it can pass a thousand rows, and a single read
+                // stops there. Paged, and ordered by every column it returns
+                // because the view has no id. Two rows tied on all three are
+                // the same figures, so whichever page each lands on, nothing
+                // is counted twice or missed.
+                everyRow(() => supabase.from('invoice_cost_by_category')
                     .select('cost_date, category, amount')
                     .eq('restaurant_id', head.restaurant_id)
-                    .gte('cost_date', yearFrom).lte('cost_date', end),
+                    .gte('cost_date', yearFrom).lte('cost_date', end)
+                    .order('cost_date').order('category').order('amount')),
                 supabase.from('labour_by_day')
                     .select('entry_date, labour_cost')
                     .eq('restaurant_id', head.restaurant_id)

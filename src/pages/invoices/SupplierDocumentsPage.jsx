@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { shortDate, fullDate, todayISO, addDays } from '@/lib/dates'
@@ -53,11 +53,15 @@ export default function SupplierDocumentsPage() {
 
         async function load() {
             setError('')
+            // Every invoice held, a page at a time, since there are more than
+            // one read hands back. One missing would show a document the Hub
+            // has as not downloaded.
             const [sup, inv] = await Promise.all([
                 supabase.from('suppliers').select('id, name').eq('is_active', true),
-                supabase.from('invoices')
+                everyRow(() => supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount, supplier_id, document_type')
-                    .eq('restaurant_id', restaurantId),
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
             ])
             if (!alive) return
             if (sup.error || inv.error) { setError(friendlyError(sup.error || inv.error)); return }

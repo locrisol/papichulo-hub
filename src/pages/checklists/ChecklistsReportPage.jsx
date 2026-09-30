@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { addDays, shortDate, todayISO, weekStartOf } from '@/lib/dates'
@@ -61,8 +61,10 @@ export default function ChecklistsReportPage() {
             ids.length ? supabase.from('checklist_tasks').select('*').in('checklist_id', ids) : { data: [] },
             supabase.from('checklist_rounds').select('*').eq('restaurant_id', activeRestaurant.id)
                 .or(`ended_at.is.null,ended_at.gte.${start}`).order('started_at', { ascending: false }),
-            supabase.from('checklist_ticks').select('round_id, task_id, done_at').eq('restaurant_id', activeRestaurant.id)
-                .gte('done_at', start),
+            // A page at a time: one busy weekly list is past a thousand ticks
+            // inside six months, and a single read stops there.
+            everyRow(() => supabase.from('checklist_ticks').select('round_id, task_id, done_at')
+                .eq('restaurant_id', activeRestaurant.id).gte('done_at', start).order('id')),
         ])
         const failed = cats.error || tasks.error || rounds.error || ticks.error
         if (failed) { setError(friendlyError(failed)); return }

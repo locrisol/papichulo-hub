@@ -76,6 +76,7 @@ describe('the shared helpers are declared in one place', () => {
         friendlyError: 'lib/errors.js',
         EMPTY_EMPLOYEE: 'lib/team.js',
         employeeRow: 'lib/team.js',
+        everyRow: 'lib/supabase.js',
     }
 
     it.each(Object.entries(ONE_PLACE))('%s lives in %s and nowhere else', (name, home) => {

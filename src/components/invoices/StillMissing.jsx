@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { fmtMoney } from '@/lib/format'
 import { shortDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
@@ -37,13 +37,19 @@ export default function StillMissing({ restaurantId, refresh = 0, pasteLink = fa
 
         async function load() {
             setError('')
+            // Every list ever recorded against every invoice ever held, a
+            // page at a time. Both pass a thousand rows, and a read that
+            // stopped there listed the newest documents, the ones just
+            // imported, as still to download.
             const [recorded, held, suppliers] = await Promise.all([
-                supabase.from('supplier_documents')
+                everyRow(() => supabase.from('supplier_documents')
                     .select('id, supplier_id, document_id, order_reference, document_date, document_type, value, not_needed_at')
-                    .eq('restaurant_id', restaurantId),
-                supabase.from('invoices')
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
+                everyRow(() => supabase.from('invoices')
                     .select('id, supplier_id, invoice_number, invoice_date, total_amount')
-                    .eq('restaurant_id', restaurantId),
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
                 supabase.from('suppliers').select('id, name'),
             ])
 

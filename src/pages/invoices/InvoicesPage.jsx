@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
@@ -169,18 +169,20 @@ export default function InvoicesPage() {
 
             // Who we actually buy from, so the dropdown can lead with them
             // rather than with whoever the alphabet favours. One column and a
-            // year of it, which is a few hundred rows at the volume this runs
-            // at, and it is re-read whenever the list reloads so saving an
-            // invoice moves that supplier up straight away.
+            // year of it, and it is re-read whenever the list reloads so saving
+            // an invoice moves that supplier up straight away. A year is more
+            // than a thousand invoices at twenty odd a week, which is as many
+            // as one read hands back, so it is read a page at a time.
             //
             // Ordered here rather than in the query because Postgres cannot
             // sort one table by a count taken from another without a view or an
             // RPC, and neither is worth it for a list this size.
-            const { data: history } = await supabase
+            const { data: history } = await everyRow(() => supabase
                 .from('invoices')
                 .select('supplier_id')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', addDays(todayISO(), -USE_WINDOW_DAYS))
+                .order('id'))
 
             setSuppliers(orderByUse(sup || [], history || []))
 
