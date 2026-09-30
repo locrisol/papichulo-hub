@@ -102,4 +102,16 @@ if (places < 1) {
     process.exit(1)
 }
 
+// The two triggers on auth.users. A dump of public never shows them, so they
+// once went missing from schema.sql with nothing to say so: a database without
+// them builds perfectly well and only fails when somebody new signs in.
+const authTriggers = one(
+    "select count(*) from pg_trigger where tgrelid = 'auth.users'::regclass "
+    + "and tgname in ('on_auth_user_created', 'on_auth_user_deleted')",
+)
+if (authTriggers < 2) {
+    console.error('The triggers on auth.users are missing, so a new login would get no users row.')
+    process.exit(1)
+}
+
 console.log('Done.')

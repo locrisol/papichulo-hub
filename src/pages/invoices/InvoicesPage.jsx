@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney, num } from '@/lib/format'
@@ -17,6 +17,7 @@ import {
 } from '@/lib/invoiceCategories'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
+import { creditTakenBack, claimTakesOff } from '@/lib/invoiceClaims'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
 
@@ -42,6 +43,25 @@ function validate(f) {
     const amount = parseFloat(f.totalAmount)
     if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
     return null
+}
+
+// What the delete dialog says, which is only true if it counts the delivery
+// problems, because they are not deleted with the document. A credit note that
+// settled some leaves them waiting again and still coming off the delivery's
+// week, since its own money was only ever counted through them.
+function deleteWords(waiting, kept) {
+    if (waiting === 1) {
+        return 'It settled one delivery problem. It goes back to Still waiting on Delivery problems '
+            + 'until this credit note is imported again.'
+    }
+    if (waiting) {
+        return `It settled ${waiting} delivery problems. They go back to Still waiting on Delivery problems `
+            + 'until this credit note is imported again.'
+    }
+    const gone = 'It will be taken off the week straight away and off the cost dashboard with it.'
+    if (!kept) return gone
+    return `${gone} ${kept === 1 ? 'The delivery problem logged against it is' : `The ${kept} delivery problems logged against it are`} `
+        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off that week.`
 }
 
 // Is this the same invoice somebody already entered?
@@ -149,18 +169,20 @@ export default function InvoicesPage() {
 
             // Who we actually buy from, so the dropdown can lead with them
             // rather than with whoever the alphabet favours. One column and a
-            // year of it, which is a few hundred rows at the volume this runs
-            // at, and it is re-read whenever the list reloads so saving an
-            // invoice moves that supplier up straight away.
+            // year of it, and it is re-read whenever the list reloads so saving
+            // an invoice moves that supplier up straight away. A year is more
+            // than a thousand invoices at twenty odd a week, which is as many
+            // as one read hands back, so it is read a page at a time.
             //
             // Ordered here rather than in the query because Postgres cannot
             // sort one table by a count taken from another without a view or an
             // RPC, and neither is worth it for a list this size.
-            const { data: history } = await supabase
+            const { data: history } = await everyRow(() => supabase
                 .from('invoices')
                 .select('supplier_id')
                 .eq('restaurant_id', restaurantId)
                 .gte('invoice_date', addDays(todayISO(), -USE_WINDOW_DAYS))
+                .order('id'))
 
             setSuppliers(orderByUse(sup || [], history || []))
 
@@ -334,6 +356,18 @@ export default function InvoicesPage() {
     }
 
     async function handleDelete(inv) {
+        // The delivery problems that point at it. Deleting leaves them in
+        // place, still coming off the week of the delivery, so the dialog says
+        // so. A credit note that settled some opens them again first, or
+        // importing it again would take the same money off twice. See
+        // creditTakenBack.
+        const { data: claims, error: e0 } = await supabase.from('invoice_line_claims')
+            .select('id, kind, status, amount, credited_amount, counted_week, raised_on, invoice_id, credit_invoice_id')
+            .or(`invoice_id.eq.${inv.id},credit_invoice_id.eq.${inv.id}`)
+        if (e0) { setError(friendlyError(e0)); return }
+        const back = creditTakenBack(inv, claims)
+        const kept = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0).length
+
         // Read back what is about to go, laid out rather than squeezed into one
         // sentence. Several invoices from the same supplier on the same day are
         // normal here, so the supplier's name on its own does not tell you which
@@ -341,7 +375,7 @@ export default function InvoicesPage() {
         const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
         const ok = await confirm({
             title: 'Delete this invoice?',
-            message: 'It will be taken off the week straight away and off the cost dashboard with it.',
+            message: deleteWords(back.waiting, kept),
             details: [
                 { label: 'Supplier', value: inv.suppliers?.name || 'Unknown supplier' },
                 { label: 'Category', value: cat.label },
@@ -353,6 +387,21 @@ export default function InvoicesPage() {
             tone: 'danger',
         })
         if (!ok) return
+
+        // The claims first, so a delete that fails leaves the credit note on
+        // screen to try again rather than claims pointing at nothing. It is not
+        // all in one go: if the delete fails, the credit note counts nowhere
+        // and its problems wait until it is deleted again, which then finds
+        // nothing left to open and only deletes it.
+        for (const { id, patch } of back.change) {
+            const { error: e2 } = await supabase.from('invoice_line_claims').update(patch).eq('id', id)
+            if (e2) { setError(friendlyError(e2)); return }
+        }
+        if (back.remove.length) {
+            const { error: e3 } = await supabase.from('invoice_line_claims').delete().in('id', back.remove)
+            if (e3) { setError(friendlyError(e3)); return }
+        }
+
         const { error: e1 } = await supabase.from('invoices').delete().eq('id', inv.id)
         if (e1) setError(friendlyError(e1))
         else setRefresh(n => n + 1)

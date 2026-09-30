@@ -29,6 +29,7 @@ import {
     deliveryRows,
     statementSundayIn,
     deliveryBlockers,
+    platformWeeks,
 } from '@/lib/weeklyReport'
 
 // The till, as it stands. Every row counts toward the day balancing.
@@ -616,8 +617,8 @@ describe('blockedBy', () => {
 // that raised it.
 describe("the delivery platforms' own week", () => {
     const WEEK = '2026-09-20'
-    const ROO = { id: 'p1', name: 'Deliveroo' }
-    const EAT = { id: 'p2', name: 'Just Eat' }
+    const ROO = { id: 'p1', key: 'Deliveroo', name: 'Deliveroo' }
+    const EAT = { id: 'p2', key: 'Just Eat', name: 'Just Eat' }
 
     // Deliveroo takes 100 every day from Sunday 20 to Sunday 27, except the
     // two Sundays, which take 50 and 150.
@@ -675,6 +676,18 @@ describe("the delivery platforms' own week", () => {
         expect(rows[1]).toMatchObject({ statement: null, statementTaken: 60, weekTaken: 60, cost: 0, typed: false })
     })
 
+    // Renamed in settings after the figures went in. They are stored under the
+    // key, so the takings are still found and the share is still worked out,
+    // rather than the whole statement landing on our week.
+    it('finds a renamed platform by its key', () => {
+        const renamed = { ...ROO, name: 'Roo' }
+        const [row] = deliveryRows({
+            platforms: [renamed], items: [{ kind: 'delivery', key: 'p1', amount: 225 }], days: DAYS, weekStart: WEEK,
+        })
+        expect(row).toMatchObject({ statementTaken: 750, weekTaken: 650, cost: 195 })
+        expect(statementSundayIn(DAYS, [renamed], WEEK)).toBe(true)
+    })
+
     it("knows whether the statement's Sunday is in", () => {
         expect(statementSundayIn(DAYS, [ROO], WEEK)).toBe(true)
         expect(statementSundayIn(DAYS.slice(0, -1), [ROO], WEEK)).toBe(false)
@@ -727,5 +740,32 @@ describe("the delivery platforms' own week", () => {
             const check = publishCheck([], null, ['Waiting for Monday.'])
             expect(check.blockers).toEqual(['Waiting for Monday.'])
         })
+    })
+})
+
+// The report's charts, a week at a time. Manna was retired after the week of
+// 6 September, and what it took that week is still part of that week.
+describe('platformWeeks', () => {
+    const platform = (id, key, bucket, extra = {}) => ({
+        id, key, name: key, bucket, sort_order: 0, is_active: true, ...extra,
+    })
+    const ROO = platform('p1', 'Deliveroo', 'online_platform')
+    const MANNA = platform('p2', 'Manna', 'online_platform', { is_active: false })
+    const FEEDR = platform('p3', 'Feedr', 'catering')
+    const DAYS = [
+        { sale_date: '2026-09-07', platform_sales: { Deliveroo: 100, Manna: 40, Feedr: 25 } },
+        { sale_date: '2026-09-14', platform_sales: { Deliveroo: 120 } },
+    ]
+    const WEEKS = ['2026-09-06', '2026-09-13']
+
+    it('keeps a retired platform in the weeks it took money', () => {
+        const weeks = platformWeeks({ platforms: [ROO, MANNA, FEEDR], days: DAYS, weeks: WEEKS })
+        expect(weeks.get('2026-09-06')).toEqual({ p_p1: 100, p_p2: 40, p_p3: 25, onlineTotal: 140, corporateTotal: 25 })
+        expect(weeks.get('2026-09-13')).toEqual({ p_p1: 120, p_p2: 0, p_p3: 0, onlineTotal: 120, corporateTotal: 0 })
+    })
+
+    it('leaves out a retired platform that took nothing in any of them', () => {
+        const weeks = platformWeeks({ platforms: [ROO, platform('p4', 'Uber', 'online_platform', { is_active: false })], days: DAYS, weeks: WEEKS })
+        expect(weeks.get('2026-09-06')).toEqual({ p_p1: 100, onlineTotal: 100, corporateTotal: 0 })
     })
 })

@@ -476,6 +476,27 @@ describe('the four piles', () => {
         expect(row.pile).toBe('ignored')
     })
 
+    // Not stock only stops the question. The line is still money on the
+    // invoice, and with no category the cost view counted it nowhere once the
+    // invoice had other lines on it.
+    it('files a not stock line where a line nobody recognises goes, so the week still counts it', () => {
+        const codes = [{ supplier_code: '600100', ignored: true }]
+        const mop = line({ code: '600100', description: 'MOP HEAD', value: 6, vat: 1.38, deposit: 0 })
+        const charge = line({ code: '600200', description: 'DELIVERY CHARGE', value: 5 })
+
+        const [taxed] = matchLines({ lines: [mop], codes, supplier: SUPPLIER })
+        expect(taxed.category).toBe('packaging')
+        expect(linePayload(taxed, 'i1')).toMatchObject({ category: 'packaging', decision: 'ignored' })
+
+        const [plain] = matchLines({
+            lines: [charge], codes: [{ supplier_code: '600200', ignored: true }], supplier: SUPPLIER,
+        })
+        expect(linePayload(plain, 'i1').category).toBe('food')
+
+        const [other] = matchLines({ lines: [mop], codes, supplier: EQUIPMENT })
+        expect(linePayload(other, 'i1').category).toBe('other')
+    })
+
     // supplier_codes is the authority once it has anything in it, and the
     // column on the price row seeds it the first time.
     it('matches off the price row the first time, before any code is recorded', () => {

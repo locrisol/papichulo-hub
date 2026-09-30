@@ -53,14 +53,18 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
-    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions,
+    geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
 } from './discovery.js'
-
-const MANAGERS = ['owner', 'store_manager']
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
 // real name and a way to be contacted, and giving them one is the rent.
 const AGENT = 'PapiChuloHub/1.0 (hub@papichulo.ie)'
+
+// How long any one request to Ticketmaster or OpenStreetMap may take. Both
+// answer in a second or two on a normal day. Without a limit one that hung held
+// the schedule's whole run, and every restaurant after it went without, until
+// the platform stopped the function. Found by the audit of 28 September.
+const WAIT_MS = 15000
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -96,7 +100,9 @@ type Place = { id: string; name: string; ticketmaster_venue_id: string | null }
 // this the table was one flat list with no venue on it at all, and Dun Laoghaire
 // was shown the Arena's.
 async function syncOne(admin: Admin, place: Place, key: string) {
-    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key))
+    const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key), {
+        signal: AbortSignal.timeout(WAIT_MS),
+    })
     if (!res.ok) {
         // Deliberately not the body. Ticketmaster puts the key back in its own
         // error text, and this answer goes to a browser.
@@ -268,7 +274,7 @@ Deno.serve(async (request) => {
     }
 
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id')
+        .from('users').select('id, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
 
@@ -278,13 +284,10 @@ Deno.serve(async (request) => {
     const restaurantId = payload.find?.restaurantId || payload.restaurantId
     if (!restaurantId) return json({ error: 'Bad request' }, 400)
 
-    // A manager at that restaurant, or a super admin. An employee has no reason
-    // to spend the quota and nobody outside the restaurant has any reason at
-    // all.
-    const isSuper = me.role === 'super_admin'
-    if (!isSuper && (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role))) {
-        return json({ error: 'Not yours' }, 403)
-    }
+    // A manager at that restaurant or a super admin, with a login that is
+    // switched on. See refusalFor in discovery.js.
+    const refused = refusalFor(me, restaurantId)
+    if (refused) return json({ error: refused.error }, refused.status)
 
     // ---------- what is near an address ----------
     //
@@ -318,8 +321,13 @@ Deno.serve(async (request) => {
         // in ten seconds.
         if (!point) {
             if (!address) return json({ error: 'No address to look up' }, 400)
-            const res = await fetch(geocodeUrl(address), { headers: { 'User-Agent': AGENT } })
-            if (!res.ok) {
+            // A lookup that took too long is the same answer as one that said
+            // no, and gets the same way round it.
+            const res = await fetch(geocodeUrl(address), {
+                headers: { 'User-Agent': AGENT },
+                signal: AbortSignal.timeout(WAIT_MS),
+            }).catch(() => null)
+            if (!res || !res.ok) {
                 return json({
                     error: 'The address lookup would not answer. Paste the coordinates instead, '
                         + 'for example 53.348071, -6.229920.',
@@ -341,7 +349,10 @@ Deno.serve(async (request) => {
                 .eq('id', restaurantId)
         }
 
-        const res = await fetch(venuesUrl(point.latitude, point.longitude, key))
+        const res = await fetch(venuesUrl(point.latitude, point.longitude, key), {
+            signal: AbortSignal.timeout(WAIT_MS),
+        }).catch(() => null)
+        if (!res) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
         if (!res.ok) return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
 
         const found = suggestions(point, venuesFrom(await res.json()))

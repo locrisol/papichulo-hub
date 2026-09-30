@@ -78,8 +78,11 @@ export default function StockTakeReviewPage() {
       .from('stock_take_lines').select('*').eq('stock_take_id', id)
     setLines(linesData || [])
 
+    // The stock take's own restaurant, for the same reason as on the count:
+    // a super admin can read every restaurant's prices.
     const { data: pricesData } = await supabase
-      .from('product_supplier_prices').select('*').eq('is_preferred', true)
+      .from('product_supplier_prices').select('*')
+      .eq('restaurant_id', sessionData.restaurant_id).eq('is_preferred', true)
     setPreferredPrices(pricesData || [])
 
     const { data: recipesData } = await supabase

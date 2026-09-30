@@ -156,12 +156,16 @@ export function weekAfter(request, shifts, breakRules) {
         for (const extra of keep.slice(1)) {
             all.push({ ...shift, id: null, starts_at: extra.starts_at, ends_at: extra.ends_at })
         }
+        // The position comes across, because it is the same work. The note
+        // does not: it was written about the giver's shift, and what is left
+        // of that shift still carries it.
         all.push({
             ...shift,
             id: null,
             employee_id: side.taker,
             starts_at: window.from,
             ends_at: window.to,
+            note: null,
         })
     }
 
@@ -275,6 +279,33 @@ export function waitingOn(request, meId, isManager) {
     return null
 }
 
+// Whether I can still take a request back: my own, and only while nobody has
+// answered it. The database refuses it after that, so the button was one that
+// could never work, and on an approved swap it read as an undo.
+export function canTakeBack(request, meId) {
+    return !!meId && request?.from_employee_id === meId && request?.status === 'asked'
+}
+
+// Whether a shift the request names now belongs to somebody outside the two
+// people in it.
+//
+// The database checks whose shift is whose when a request is made. A manager
+// can still move one afterwards, and approving moves whichever shift the
+// request points at, so approving then would hand a third person's shift over.
+//
+// A shift already with the person taking it is fine. That is how an approval
+// looks when it moved the shifts and then failed to mark itself approved, and
+// pressing Approve again is what finishes it. A shift not in hand says nothing
+// either way.
+export function shiftsMoved(request, findShift) {
+    const two = [request?.from_employee_id, request?.to_employee_id]
+    const elsewhere = id => {
+        const shift = id ? findShift(id) : null
+        return !!shift && !two.includes(shift.employee_id)
+    }
+    return elsewhere(request?.give_shift_id) || elsewhere(request?.take_shift_id)
+}
+
 // Everything about a shift that somebody has already asked about, so the week
 // can mark it rather than leaving two people to ask the same person twice.
 export function requestsOnShift(requests, shiftId) {
@@ -324,6 +355,11 @@ export function requestDate(request, shiftById) {
 // that already went out rather than pulling it back for a re-publish: the swap
 // is the roster now, and marking the week unpublished would tell everybody the
 // thing they just agreed had been undone.
+//
+// A new row comes back holding only columns roster_shifts has, ready to send
+// once the page adds where and who. The page used to pick them out itself and
+// sent notes where the table has note, so the insert was refused after the
+// giver's shift had already been cut short, and it left the position behind.
 export function writesFor(request, shifts, breakRules) {
     const { shifts: after, removedIds } = weekAfter(request, shifts, breakRules)
     const before = new Map((shifts || []).map(s => [s.id, s]))
@@ -337,7 +373,17 @@ export function writesFor(request, shifts, breakRules) {
 
     return {
         updates: after.filter(s => s.id && before.has(s.id) && !same(before.get(s.id), s)),
-        inserts: after.filter(s => !s.id),
+        inserts: after.filter(s => !s.id).map(s => ({
+            employee_id: s.employee_id,
+            shift_date: s.shift_date,
+            starts_at: s.starts_at,
+            ends_at: s.ends_at,
+            position_id: s.position_id ?? null,
+            break_minutes: s.break_minutes,
+            break_is_manual: s.break_is_manual ?? false,
+            note: s.note ?? null,
+            published_at: s.published_at ?? null,
+        })),
         removes: removedIds,
     }
 }

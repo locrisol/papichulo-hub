@@ -9,14 +9,15 @@ import OpeningHoursModal from '@/components/settings/OpeningHoursModal'
 import PlacesNearUsModal from '@/components/settings/PlacesNearUsModal'
 import BreakRulesModal from '@/components/settings/BreakRulesModal'
 import RosterRulesModal from '@/components/settings/RosterRulesModal'
-import { todayISO, weekStartOf, shortDate, stampDateTime, fullDate } from '@/lib/dates'
+import { todayISO, weekStartOf, shortDate, stampDate, stampDateTime, fullDate } from '@/lib/dates'
+import { REPRINT_EVERY_MONTHS } from '@/lib/allergenSheet'
 import { anchorOf, periodOf, periodWords } from '@/lib/payPeriod'
 import { resolveTarget, describeTargets } from '@/lib/costTargets'
 import { friendlyError } from '@/lib/errors'
 import { DEFAULT_BREAK_RULES, BANK_HOLIDAY } from '@/lib/roster'
 import { DEFAULT_RULES } from '@/lib/workRules'
 import { numberField } from '@/lib/numberInput'
-import { card, rowButton, labelClass, pageTitle, dateField } from '@/lib/controlStyles'
+import { card, rowButton, labelClass, pageTitle, dateField, fieldClass } from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import LockedField from '@/components/ui/LockedField'
 
@@ -47,6 +48,7 @@ export default function RestaurantPage() {
         mail_from: '',
         google_calendar_id: '',
         pay_period_start: '',
+        allergen_sheet_every_months: '',
     })
 
     const [error, setError] = useState('')
@@ -89,6 +91,7 @@ export default function RestaurantPage() {
             mail_from: activeRestaurant.mail_from || '',
             google_calendar_id: activeRestaurant.google_calendar_id || '',
             pay_period_start: activeRestaurant.pay_period_start || '',
+            allergen_sheet_every_months: String(activeRestaurant.allergen_sheet_every_months ?? REPRINT_EVERY_MONTHS),
         })
     }, [activeRestaurant])
 
@@ -488,6 +491,47 @@ export default function RestaurantPage() {
                                 written. Find it in Google Calendar under Settings, Integrate
                                 calendar. Leave it empty and they stay in the Hub, which the
                                 calendar screen says rather than pretending they went out.
+                            </p>
+                        </div>
+
+                        {/* How long a printed allergen sheet stays up when
+                            nothing on it changes. His ask of 29 September: the
+                            Public Allergens page and the weekly report say when
+                            a new one is due, every so many months, and straight
+                            away when anything on it has changed. Printing it
+                            there is what stamps the date shown here. */}
+                        <div className={`${card} p-6 mb-4`}>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">Allergen sheet</h3>
+                            <label className={labelClass} htmlFor="allergen-sheet-months">
+                                Print a new allergen sheet every (months)
+                            </label>
+                            {/* Sized by the wrapper, because fieldClass is
+                                full width and a second width on the box itself
+                                would be decided by stylesheet order. */}
+                            <div className="sm:w-32">
+                                <input
+                                    id="allergen-sheet-months"
+                                    {...numberField({
+                                        value: formData.allergen_sheet_every_months,
+                                        onChange: v => setFormData({ ...formData, allergen_sheet_every_months: v }),
+                                        whole: true,
+                                    })}
+                                    onBlur={() => {
+                                        // 1 to 24, the same as the database
+                                        // allows. Anything else is somebody
+                                        // still typing, so nothing is written.
+                                        const months = parseInt(formData.allergen_sheet_every_months, 10)
+                                        if (isNaN(months) || months < 1 || months > 24) return
+                                        save({ allergen_sheet_every_months: months }, 'allergen_sheet_every_months')
+                                    }}
+                                    className={fieldClass}
+                                />
+                            </div>
+                            <p className="text-xs text-muted mt-1">
+                                {activeRestaurant?.allergen_sheet_printed_at
+                                    ? `Last printed ${stampDate(activeRestaurant.allergen_sheet_printed_at)}. `
+                                    : 'Not printed from the Hub yet. '}
+                                From 1 to 24. Any change to the sheet makes a new one due straight away.
                             </p>
                         </div>
 

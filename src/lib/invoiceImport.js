@@ -413,8 +413,14 @@ export function matchLines({ lines = [], codes = [], prices = [], supplier = nul
     return lines.map(line => {
         const codeRow = byCode.get(line.code) || null
 
+        // Not stock stops the question, not the money. The line gets the
+        // category any line with no product gets. Stored with none, the cost
+        // view counted it nowhere as soon as the invoice had other lines on it.
         if (codeRow?.ignored) {
-            return { line, codeRow, price: null, product: null, pile: 'ignored' }
+            return {
+                line, codeRow, price: null, product: null, pile: 'ignored',
+                category: lineCategory(null, supplier, line),
+            }
         }
 
         // **A number somebody said is the same thing as another still means

@@ -76,6 +76,19 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       return
     }
 
+    // Its figures are kept under a key that never changes, so a rename keeps
+    // them. The database makes a new platform's key the name it is given, so
+    // none is sent here: that also lets this go out before migration 026, when
+    // there is no key column yet. One renamed since still keeps its figures
+    // under the name it had, so that name cannot be a new platform's key or
+    // the two would share one set of figures.
+    const renamed = platforms.find(p => p.key === name && p.name !== name)
+    if (renamed) {
+      setError(`${renamed.name} was called ${name} before, so a new platform cannot use that name. `
+        + `Choose another name, or rename ${renamed.name} back.`)
+      return
+    }
+
     // Goes on the end of its bucket. Arrange is how it gets anywhere else.
     const sortOrder = platformsForBucket(newBucket).length
 
@@ -146,6 +159,21 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
       setError('Name is required')
       return
     }
+
+    // The group decides which total a platform's figures count toward, and it
+    // is read off the platform, not kept with each day. So moving one takes
+    // every week already entered with it, which can be right but should not
+    // happen by a slip of the select.
+    if (editBucket !== p.bucket) {
+      const ok = await confirm({
+        title: `Move ${p.name} to ${BUCKET_LABEL[editBucket]}?`,
+        message: `Its figures in every week already entered will count toward ${BUCKET_LABEL[editBucket]} `
+          + `instead of ${BUCKET_LABEL[p.bucket]}, not only the weeks from now on.`,
+        confirmLabel: 'Move it',
+      })
+      if (!ok) return
+    }
+
     const { error: e1 } = await supabase
       .from('sales_platforms')
       .update({ name, bucket: editBucket })
@@ -166,8 +194,8 @@ export default function SalesPlatformsModal({ onClose, onChange }) {
     if (p.is_active) {
       const ok = await confirm({
         title: `Retire ${p.name}?`,
-        message: 'It stops appearing on the sales screens from now on. Weeks already entered keep their '
-          + 'figures for it, and turning it back on brings the row back.',
+        message: 'It stops appearing on new weeks. Weeks that already have figures for it keep them and '
+          + 'still show it, and turning it back on brings the row back.',
         confirmLabel: 'Retire it',
         tone: 'danger',
       })

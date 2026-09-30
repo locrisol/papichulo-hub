@@ -22,6 +22,8 @@
 // for why, which is a real bug in the library we send through rather than a
 // matter of taste.
 
+import { oneLine } from './mime.js'
+
 const GREEN = '#1F7A4C'
 const DARK = '#182F24'
 const BLUE = '#2C6FCF'
@@ -78,6 +80,10 @@ export const SIDE = 16
 //
 // It also means no layout in this file may depend on a space between two tags,
 // because that space is about to be removed.
+//
+// The mail goes as base64 now (see mime.js), which never reaches that encoder,
+// so the =20 cannot happen any more. tidy() stays all the same, because every
+// layout in this file was measured with it.
 export function tidy(html) {
     return html
         .replace(/>\s+</g, '><')
@@ -751,11 +757,40 @@ function paperwork(state, title) {
     </td></tr>`
 }
 
+// The printed allergen sheet, only while a new one is due. His ask of 29
+// September 2026. Frozen with the report as the sentence the Public Allergens
+// page shows (reprintDue in allergenSheet.js), because nothing outside this
+// folder is deployed with it. Absent from a report frozen before it existed,
+// which says nothing, the same as a sheet that is not due.
+//
+// The same card as the paperwork above it. What sits in the header is short
+// and cannot wrap; the sentence goes underneath, where it can.
+function allergenSheet(due) {
+    if (!due?.words) return ''
+
+    return `<tr><td style="padding:14px ${SIDE}px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="border:1px solid ${BORDER};border-left:5px solid ${AMBER};border-radius:10px;">
+            <tr><td style="background:${CREAM};padding:12px 14px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td width="100%" style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">Allergen sheet</td>
+                        <td width="1%" align="right" style="padding-left:12px;font-family:${FONT};font-size:15px;
+                            font-weight:700;color:${AMBER};white-space:nowrap;">Print a new one</td>
+                    </tr>
+                </table>
+            </td></tr>
+            <tr><td style="padding:12px 14px 14px;font-family:${FONT};font-size:14px;line-height:1.55;color:${INK};">${escapeHtml(due.words)}</td></tr>
+        </table>
+    </td></tr>`
+}
+
 function peopleAndOps(section, f) {
     const paper = f.paperwork || {}
     return heading(section.title, section.number)
         + paperwork(paper.food, 'Food safety certificates')
         + paperwork(paper.permits, 'Right to work')
+        + allergenSheet(paper.allergenSheet)
         + comments(sectionComments(section))
 }
 
@@ -1239,7 +1274,9 @@ export function reportEmail({
 // cannot carry.
 //
 // Every line is trimmed on the way out, for the same reason the HTML is sent as
-// one line: a space at the end of a line arrives as "=20".
+// one line: a space at the end of a line arrived as "=20" while the mail went
+// as quoted printable. It goes as base64 now (see mime.js), and the trimming
+// stays along with tidy().
 
 function plainText({ report, restaurant, sections, figures: f, publisher, appUrl, changes, isTest, correction }) {
     const out = []
@@ -1323,6 +1360,10 @@ function plainText({ report, restaurant, sections, figures: f, publisher, appUrl
                 group('Runs out soon:', state.expiring)
                 group('Nothing on file:', state.missing)
             }
+            if (f.paperwork?.allergenSheet?.words) {
+                out.push('  Allergen sheet')
+                out.push(`  ${f.paperwork.allergenSheet.words}`)
+            }
         } else if (section.key === 'cleaning') {
             const c = f.cleaning
             if (!c?.lists?.length) out.push(c ? '  No checklists were due this week.' : '  The checklists were not read for this week.')
@@ -1381,6 +1422,20 @@ export function isJustTheGoodbye(err) {
     return said.includes('close_notify')
         || said.includes('unexpected eof')
         || said.includes('unexpectedeof')
+}
+
+// A login that is switched off gets nothing out of this function.
+//
+// Switching somebody off, on the Users page or by the nightly job once their
+// last day has passed, only sets users.is_active. Their password still signs
+// them in and their token is still good. Everywhere else the database itself
+// refuses them, but this function reads users with the service key, which row
+// level security does not stop, so it has to ask for itself.
+//
+// Anything short of is_active being true is refused, so a row read without the
+// column fails shut rather than open.
+export function switchedOff(account) {
+    return account?.is_active !== true
 }
 
 // An address nobody can ever receive mail at.
@@ -1447,27 +1502,11 @@ export function replyToFor(restaurantAddress, fallback) {
 // only place the restaurant appears in the header: the address is the same for
 // both, so anybody sorting by sender sorts on this.
 //
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
-
-// Who the mail comes from.
-//
-// One Workspace account sends for every restaurant, and the restaurant's own
-// name goes in front of it. Google rewrites the ADDRESS on a mail sent through
-// SMTP when it is not the account that authenticated, but it leaves the display
-// name alone, so this is how one mailbox and one app password can still say
-// which restaurant a mail is about.
-//
-// It is the display name people actually read in a list of mail, and it is the
-// only place the restaurant appears in the header: the address is the same for
-// both, so anybody sorting by sender sorts on this.
-//
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, or when
+// MAIL_FROM holds no address. An accent in the name is fine: it used to fall
+// back for that too, because denomailer encoded it badly, and headersFor in
+// mime.js now encodes it properly on the way out. A line break is not fine,
+// since it would start a header of its own, so it becomes a space.
 export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
@@ -1485,10 +1524,9 @@ export function senderFor(mailFrom, restaurantName, address) {
     const fallback = (bracketed ? bracketed[1] : raw).trim()
     const chosen = String(address || '').trim() || fallback
 
-    const name = String(restaurantName || '').trim()
+    const name = oneLine(restaurantName)
     if (!chosen.includes('@')) return raw
     if (!name) return chosen === fallback ? raw : chosen
-    if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
     // somebody renames a restaurant to include the brand.

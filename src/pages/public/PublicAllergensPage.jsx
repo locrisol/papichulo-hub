@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { sheetRows } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived } from '@/lib/allergenSheet'
 import AllergenList from '@/components/allergens/AllergenList'
-import { card } from '@/lib/controlStyles'
+import { card, primaryButton } from '@/lib/controlStyles'
 import { stampDate } from '@/lib/dates'
 
 
@@ -43,15 +43,24 @@ export default function PublicAllergensPage({ slugOverride }) {
   const [products, setProducts] = useState([])
   const [recipeLines, setRecipeLines] = useState([])
   const [allergens, setAllergens] = useState([])
+  const [changedAt, setChangedAt] = useState(null)
 
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
-  
+  // A read that failed, as against an address that leads nowhere. Kept apart
+  // from error because that one says Page not found, and a customer whose
+  // phone lost signal halfway through is standing in the restaurant.
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
+    setError('')
+    setLoadFailed(false)
+    // The manager's preview changes restaurant on the same page, and the card
+    // below names whichever restaurant is held here. Kept, a failed read of
+    // the next one would carry the last one's name.
+    setRestaurant(null)
 
     // Find the restaurant by slug. Even though selling prices are uniform,
     // the page is keyed to a restaurant so the displayed name and any
@@ -62,7 +71,12 @@ export default function PublicAllergensPage({ slugOverride }) {
       .eq('slug', slug)
       .maybeSingle()
 
-    if (restRes.error || !restRes.data) {
+    if (restRes.error) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+    if (!restRes.data) {
       setError('Restaurant not found')
       setLoading(false)
       return
@@ -86,7 +100,11 @@ export default function PublicAllergensPage({ slugOverride }) {
     // since been deactivated. The old policy required is_active and quietly
     // dropped exactly that product's allergens from the answer, which is the
     // one thing this page cannot get wrong.
-    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
+    const [changedRes, ...reads] = await Promise.all([
+      // When anything on the sheet last changed, from the change log, which
+      // a customer cannot read. The view of the allergens has no date on it,
+      // and this used to print today's date on every visit instead.
+      supabase.rpc('allergens_changed_at'),
       supabase.from('public_menu_categories').select('*').order('sort_order'),
       supabase.from('public_menu_items').select('*').order('name'),
       supabase.from('public_menu_item_components').select('*'),
@@ -95,12 +113,25 @@ export default function PublicAllergensPage({ slugOverride }) {
       supabase.from('public_product_allergens').select('*'),
     ])
 
-    if (categoriesRes.data) setCategories(categoriesRes.data)
-    if (menuItemsRes.data) setMenuItems(menuItemsRes.data)
-    if (componentsRes.data) setComponents(componentsRes.data)
-    if (productsRes.data) setProducts(productsRes.data)
-    if (recipesRes.data) setRecipeLines(recipesRes.data)
-    if (allergensRes.data) setAllergens(allergensRes.data)
+    // All of them or none of them. A failed read of the allergens used to
+    // leave every product with none, and every dish said No declared
+    // allergens with nothing on the page to say anything had gone wrong.
+    if (!everyReadArrived(reads)) {
+      setLoadFailed(true)
+      setLoading(false)
+      return
+    }
+
+    const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
+    setCategories(categoriesRes.data)
+    setMenuItems(menuItemsRes.data)
+    setComponents(componentsRes.data)
+    setProducts(productsRes.data)
+    setRecipeLines(recipesRes.data)
+    setAllergens(allergensRes.data)
+    // Not one of the reads the rows need. A date that would not come back
+    // is left off the page rather than guessed, and the dishes still show.
+    setChangedAt(changedRes.error ? null : changedRes.data)
 
     setLoading(false)
     }, [slug])
@@ -119,12 +150,9 @@ export default function PublicAllergensPage({ slugOverride }) {
   // to be three functions here, and the printed sheet had its own copy of the
   // same reasoning a few hundred lines away in another file.
   //
-  // The one worth keeping in mind: a customer is not signed in, so the database
-  // only hands an anonymous reader active products. An ingredient deactivated
-  // while the dish is still on sale simply does not arrive, and a list that
-  // looks whole is the worst way to be wrong on this page in particular. When
-  // that happens the row says to ask staff. A manager viewing this through the
-  // preview is signed in and gets everything, so it never fires for them.
+  // The one worth keeping in mind: a list that looks whole is the worst way to
+  // be wrong on this page in particular. So a row whose ingredients did not
+  // all arrive says to ask staff rather than showing what it could work out.
 
 
   // Build the grouped, ordered, filtered structure for rendering.
@@ -147,25 +175,31 @@ export default function PublicAllergensPage({ slugOverride }) {
     }))
     .filter(group => group.rows.length > 0)
 
-  // Find the most recent update across all allergen rows so we can show
-  // a "last updated" timestamp. If no allergens have ever been edited,
-  // we'll show today's date as a fallback so the page doesn't look stale.
-  const lastUpdated = allergens.reduce((latest, a) => {
-    if (!a.updated_at) return latest
-    if (!latest || a.updated_at > latest) return a.updated_at
-    return latest
-  }, null)
-
-  // The day the sheet was last touched. Falls back to today, because a sheet
-  // with no date on it reads as one nobody has checked.
-  function formatDate(iso) {
-    return stampDate(iso || new Date().toISOString())
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
         <p className="text-sm text-gray-500">Loading allergen information...</p>
+      </div>
+    )
+  }
+
+  // No rows at all, and the reason is not the customer's to work out. Asking
+  // staff is the one answer that is right whatever did not arrive.
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-app-bg flex items-center justify-center p-4">
+        <div className={`${card} p-8 max-w-sm w-full text-center`} role="alert">
+          <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
+          {restaurant && (
+            <h1 className="font-serif text-2xl font-bold text-gray-900 mb-3">{restaurant.name}</h1>
+          )}
+          <p className="text-sm text-gray-700 mb-5">
+            We cannot show allergen information right now. Please ask a member of staff before ordering.
+          </p>
+          <button type="button" onClick={fetchAll} className={primaryButton()}>
+            Try again
+          </button>
+        </div>
       </div>
     )
   }
@@ -188,7 +222,12 @@ export default function PublicAllergensPage({ slugOverride }) {
         <header className="mb-6">
           <p className="text-xs font-bold text-accent-ink uppercase tracking-widest mb-1">Allergen Information</p>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-          <p className="text-xs text-gray-500 mt-2">Last updated: {formatDate(lastUpdated)}</p>
+          {/* The day anything on the sheet last changed, and nothing when
+              there is no such day to say. It used to fall back to today,
+              which is a freshness nobody vouched for. */}
+          {changedAt && (
+            <p className="text-xs text-gray-500 mt-2">Last updated: {stampDate(changedAt)}</p>
+          )}
         </header>
 
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4 mb-6">

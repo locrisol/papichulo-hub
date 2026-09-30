@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
+    canTakeBack, shiftsMoved,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -286,6 +288,70 @@ describe('waitingOn', () => {
     })
 })
 
+describe('taking a request back', () => {
+    const mine = { from_employee_id: 'ana', to_employee_id: 'ben' }
+
+    it('is for the person who asked, while nobody has answered', () => {
+        expect(canTakeBack({ ...mine, status: 'asked' }, 'ana')).toBe(true)
+        expect(canTakeBack({ ...mine, status: 'asked' }, 'ben')).toBe(false)
+    })
+
+    // The database refuses it once there is an answer, so a button there
+    // could never work, and on an approved swap it read as an undo.
+    it('is gone once there is an answer', () => {
+        for (const status of ['accepted', 'declined', 'approved', 'refused', 'withdrawn']) {
+            expect(canTakeBack({ ...mine, status }, 'ana')).toBe(false)
+        }
+    })
+
+    it('is nobody when nobody is signed in', () => {
+        expect(canTakeBack({ ...mine, status: 'asked' }, undefined)).toBe(false)
+    })
+})
+
+describe('shifts that changed hands after the ask', () => {
+    const request = {
+        from_employee_id: 'ana', to_employee_id: 'ben', give_shift_id: 's1', take_shift_id: 's3',
+    }
+    const find = week => id => week.find(s => s.id === id) || null
+
+    it('is nothing while each shift is still with the person it names', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'), shift('s3', 'ben', THU, '09:00', '17:00'),
+        ]))).toBe(false)
+    })
+
+    // Approving moves whichever shift the request points at, so a manager
+    // moving Ana's Wednesday to Cal after she asked would hand Cal's shift
+    // to Ben.
+    it('notices the shift being given now belongs to somebody else', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'cal', WED, '09:00', '21:00'), shift('s3', 'ben', THU, '09:00', '17:00'),
+        ]))).toBe(true)
+    })
+
+    it('notices the shift being taken now belongs to somebody else', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'), shift('s3', 'cal', THU, '09:00', '17:00'),
+        ]))).toBe(true)
+    })
+
+    // An approval that moved the shifts and then failed to mark itself
+    // approved. Approve has to stay on, because pressing it again is what
+    // finishes it.
+    it('is nothing when a shift is already with the person taking it', () => {
+        expect(shiftsMoved(request, find([
+            shift('s1', 'ben', WED, '09:00', '21:00'), shift('s3', 'ana', THU, '09:00', '17:00'),
+        ]))).toBe(false)
+    })
+
+    it('says nothing about a half the request does not have', () => {
+        expect(shiftsMoved({ ...request, take_shift_id: null }, find([
+            shift('s1', 'ana', WED, '09:00', '21:00'),
+        ]))).toBe(false)
+    })
+})
+
 describe('requestsOnShift', () => {
     const requests = [
         { id: 'r1', status: 'asked', give_shift_id: 's1' },
@@ -354,6 +420,76 @@ describe('writesFor', () => {
         // one change of name rather than a split.
         expect(plan.updates).toHaveLength(1)
         expect(plan.inserts).toHaveLength(0)
+    })
+
+    // A shift the way the roster page holds it: select('*'), every column.
+    const PUBLISHED = '2026-08-20T10:00:00+00:00'
+    const saved = (id, employee, date, from, to) => shift(id, employee, date, from, to, {
+        restaurant_id: 'r1', position_id: 'bar', note: 'Cashes up', break_is_manual: false,
+        published_at: PUBLISHED, created_by: 'u1', created_at: PUBLISHED, updated_at: PUBLISHED,
+    })
+
+    // The ordinary cover my evening, to somebody who is off that day. Nothing
+    // of theirs to join it to, so it is the one case that writes a new row,
+    // and approving it used to fail half way: the giver's shift was cut short
+    // and then the new row was refused.
+    it('gives a new row to somebody who is off that day', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '15:00', give_to: '21:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.updates[0]).toMatchObject({ id: 's1', employee_id: 'ana', ends_at: '15:00' })
+        expect(plan.removes).toEqual([])
+        expect(plan.inserts).toHaveLength(1)
+        expect(plan.inserts[0]).toMatchObject({
+            employee_id: 'ben', shift_date: WED, starts_at: '15:00', ends_at: '21:00',
+            // The same work, so the same position, and still published.
+            position_id: 'bar', published_at: PUBLISHED,
+            // The note was written about Ana's shift, and she keeps it.
+            note: null,
+        })
+    })
+
+    it('leaves the giver both ends when the middle of a shift goes', () => {
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '12:00', give_to: '15:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        expect(plan.updates).toHaveLength(1)
+        expect(plan.updates[0]).toMatchObject({ id: 's1', starts_at: '09:00', ends_at: '12:00' })
+
+        const byStart = [...plan.inserts].sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+        expect(byStart).toHaveLength(2)
+        expect(byStart[0]).toMatchObject({
+            employee_id: 'ben', starts_at: '12:00', ends_at: '15:00', position_id: 'bar', note: null,
+        })
+        // Still Ana's shift, so it keeps everything hers had.
+        expect(byStart[1]).toMatchObject({
+            employee_id: 'ana', starts_at: '15:00', ends_at: '21:00', position_id: 'bar', note: 'Cashes up',
+        })
+    })
+
+    // The page sends these rows as they are. A key the table does not have
+    // gets the whole insert refused, which is what notes for note did.
+    it('writes a new row with only columns the table has', () => {
+        const schema = readFileSync('supabase/schema.sql', 'utf8')
+        const table = /CREATE TABLE IF NOT EXISTS "public"\."roster_shifts" \(([\s\S]*?)\n\);/.exec(schema)
+        expect(table).not.toBeNull()
+        const columns = [...table[1].matchAll(/^\s+"(\w+)"/gm)].map(m => m[1])
+
+        const plan = writesFor({
+            from_employee_id: 'ana', to_employee_id: 'ben',
+            give_shift_id: 's1', give_from: '12:00', give_to: '15:00',
+        }, [saved('s1', 'ana', WED, '09:00', '21:00')])
+
+        for (const row of plan.inserts) {
+            for (const key of Object.keys(row)) expect(columns).toContain(key)
+            // The database gives it one. Sending null would be refused.
+            expect(row).not.toHaveProperty('id')
+        }
     })
 })
 

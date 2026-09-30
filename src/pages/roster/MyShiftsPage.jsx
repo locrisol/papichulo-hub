@@ -17,7 +17,7 @@ import { AWAY } from '@/lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
     LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift, shiftIdsOf,
-    requestDate,
+    requestDate, canTakeBack,
 } from '@/lib/shiftRequests'
 import { emailTheShiftAsk, emailTheShiftAnswer } from '@/lib/rosterMail'
 import DateStepper from '@/components/ui/DateStepper'
@@ -536,7 +536,7 @@ export default function MyShiftsPage() {
                             saving={saving}
                             dates={dates}
                             onAnswer={waitingOn(r, me.id, false) === 'answer' ? answer : null}
-                            onWithdraw={r.from_employee_id === me.id ? withdraw : null}
+                            onWithdraw={canTakeBack(r, me.id) ? withdraw : null}
                             onGoToWeek={date => setWeekStart(weekStartOf(date))}
                         />
                     ))}

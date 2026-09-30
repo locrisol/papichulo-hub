@@ -1,6 +1,6 @@
 # Migrations
 
-**`001` to `022` are in here. `001` to `020` are run on live, `021` and `022` are not yet, and the next one is `023`.**
+**`001` to `027` are in here. `001` to `022` are run on live, `023` to `027` are not yet, and the next one is `028`.**
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -70,12 +70,39 @@ report still being written. The job itself is the `checklist-photos` edge
 function, scheduled as cron job 7.
 `020` is run on live. It lets a checklist task carry up to four guide
 pictures instead of one, moving any picture already added into the new list.
-`021` is **not run yet**. It makes every view read only. The seven views
+`021` is run on live. It makes every view read only. The seven views
 behind the allergen page read one table each, so the database would write
 through them as their owner, past row level security, and anybody with the
 website's key held write access to them. Reading does not change.
-`022` is **not run yet**. It lets employees read MIX recipes, so what they
+`022` is run on live. It lets employees read MIX recipes, so what they
 count or log as waste is valued. Writing a recipe stays with managers.
+`023` is **not run yet**. It gives the allergen sheet a real date and a
+reminder to print it again: `allergens_changed_at()`, the newest change that
+alters what the sheet says, for the customer page and the PDF, with an index
+so it stays quick; two columns on `restaurants` for when it was last printed
+and how many months it stays up; and `allergen_sheet_printed()`, which the PDF
+button calls, because an owner can print but cannot write the restaurant row.
+**Run it before the branch is merged.** Merging is what deploys the site, and
+until it is run the PDF button will not print the allergen sheet at all.
+`024` is **not run yet**. It guards a swap request from the moment it is sent:
+it starts as asked, gives the asker's own shift and takes one of the person
+asked, and after that the two of them can only answer it or take it back.
+Before, a hand written call could send one already agreed, or change it after
+the other person said yes.
+`025` is **not run yet**. It makes where a diary entry is on Google the
+calendar function's to write: a person saving an entry can no longer change
+the Google event ids, which a store manager could use to delete an owner's
+event from the group calendar. And a manager can no longer delete a place
+somebody watches or has listings from, nor delete a listing, which took the
+other restaurant's pairing and listings with it. A super admin still can.
+`026` is **not run yet**. It gives each delivery platform a key that never
+changes, starting as the name it has now, and its figures are kept under
+that, so renaming or retiring a platform no longer loses its past weeks. Not
+one stored figure moves. It can go before or after the new app, which falls
+back to the name without it, but a rename only keeps its figures once it is run.
+`027` is **not run yet**. The nightly job keeps the photos of a checklist
+round still going, so a tick submitted days after its photo was taken still
+has it, and a tick is refused if its photo is no longer in storage.
 
 ## What was here before
 
@@ -145,3 +172,12 @@ since live is what actually runs:
   `INSERT` without a column list anywhere in the schema or the seed, but leaving
   it means the next person doing this check has six tables to re-derive as
   harmless.
+
+**The comparison only sees `public`.** Both dumps are of that schema, so the
+two triggers on `auth.users` that give a new login its `users` row were never
+in it, and they went missing from `schema.sql` in the rewrite without the check
+noticing. They are back, and `npm run db:local` now fails without them. On live
+they have to be looked at by hand, read only:
+
+    select tgname, pg_get_triggerdef(oid) from pg_trigger
+     where tgrelid = 'auth.users'::regclass and not tgisinternal;

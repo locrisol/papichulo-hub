@@ -1,0 +1,114 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Route, Routes } from 'react-router-dom'
+import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+
+// Counting a Point Campus stock take. Invented products and prices.
+
+const STOCK_TAKE = {
+    id: 'st1', restaurant_id: 'r1', status: 'in_progress', type: 'monthly',
+    notes: 'End of September', started_at: '2026-09-30T08:00:00+00:00',
+}
+const CHEDDAR = { id: 'p1', name: 'Cheddar', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: false }
+
+// The same cheese bought at both restaurants, each with its own price and its
+// own case. A super admin can read both.
+const AT_POINT_CAMPUS = {
+    id: 'pr1', product_id: 'p1', restaurant_id: 'r1', is_preferred: true, price_per_unit: 7.5, allow_loose_count: true,
+}
+const AT_DUN_LAOGHAIRE = {
+    id: 'pr2', product_id: 'p1', restaurant_id: 'r2', is_preferred: true, price_per_unit: 9, allow_loose_count: true,
+}
+const CASES = [
+    { id: 'cu1', price_id: 'pr1', label: 'Case of 12', factor: 12, is_active: true, sort_order: 1 },
+    { id: 'cu2', price_id: 'pr2', label: 'Case of 6', factor: 6, is_active: true, sort_order: 1 },
+]
+
+let db
+let saved
+let user
+function setUp({ products = [CHEDDAR], prices, recipes = [] }) {
+    saved = []
+    const tables = {
+        stock_takes: [STOCK_TAKE],
+        products,
+        stock_take_lines: [],
+        product_supplier_prices: prices,
+        price_count_units: CASES,
+        mix_recipes: recipes,
+    }
+    db = {
+        from: vi.fn(table => {
+            const q = tableOf(tables[table] || [])
+            q.insert = vi.fn(row => {
+                saved.push(row)
+                return makeQuery({ data: { id: `l${saved.length}`, ...row }, error: null })
+            })
+            return q
+        }),
+    }
+}
+
+vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => vi.fn(async () => true) }))
+
+const { default: StockTakeCountPage } = await import('./StockTakeCountPage')
+
+function open() {
+    renderWithRouter(
+        <Routes><Route path="/inventory/stock-takes/:id" element={<StockTakeCountPage />} /></Routes>,
+        { route: '/inventory/stock-takes/st1' },
+    )
+    return userEvent.setup()
+}
+
+// Open the product, type into one of its boxes and press Add.
+async function count(clicker, name, box, quantity) {
+    await clicker.click(await screen.findByText(name))
+    await clicker.type(screen.getByText(box).parentElement.querySelector('input'), quantity)
+    await clicker.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    return saved[0]
+}
+
+describe('a super admin counting one restaurant', () => {
+    beforeEach(() => {
+        user = { id: 'u0', role: 'super_admin', full_name: 'Leandro' }
+    })
+
+    it('values the count at that restaurant\'s price', async () => {
+        setUp({ prices: [AT_DUN_LAOGHAIRE, AT_POINT_CAMPUS] })
+        const line = await count(open(), 'Cheddar', 'Loose', '2')
+        expect(line).toMatchObject({ unit_cost: 7.5, line_total: 15 })
+    })
+
+    it('offers that restaurant\'s cases', async () => {
+        setUp({ prices: [AT_POINT_CAMPUS, AT_DUN_LAOGHAIRE] })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        expect(screen.getByText('Case of 12')).toBeInTheDocument()
+        expect(screen.queryByText('Case of 6')).not.toBeInTheDocument()
+    })
+})
+
+describe('an employee counting a MIX', () => {
+    // Since 29 September an employee can read recipes, so a MIX they count is
+    // worth the same as one a manager counts. 5 kg of tomatoes at 2.00 make a
+    // 4 kg batch, so a kilo of salsa is 2.50.
+    it('values it from its recipe', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({
+            products: [
+                { id: 'm1', name: 'House Salsa', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: true, batch_yield: 4 },
+                { id: 'p2', name: 'Tomatoes', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: false },
+            ],
+            prices: [{ id: 'pr3', product_id: 'p2', restaurant_id: 'r1', is_preferred: true, price_per_unit: 2 }],
+            recipes: [{ id: 'mr1', mix_product_id: 'm1', ingredient_product_id: 'p2', quantity: 5 }],
+        })
+        const line = await count(open(), 'House Salsa', 'Quantity', '3')
+        expect(line).toMatchObject({ product_id: 'm1', unit_cost: 2.5, line_total: 7.5 })
+    })
+})

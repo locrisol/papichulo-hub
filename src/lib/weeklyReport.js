@@ -4,7 +4,8 @@
 // be tested without a database or a browser. The pages fetch, this decides.
 
 import { weekDates, weekStartOf, todayISO, addDays, dayMonth } from '@/lib/dates'
-import { tendersToShow, tenderVariance, num } from '@/lib/salesTenders'
+import { tendersToShow, tenderVariance, platformsToShow, num } from '@/lib/salesTenders'
+import { byWeek } from '@/lib/reportChart'
 import { spendOn, FOOD, PACKAGING } from '@/lib/invoiceCategories'
 
 // The sections every report starts with, in the order they are read.
@@ -355,11 +356,34 @@ export function statementWords(weekStart) {
 }
 
 // What a platform took between two dates, off the tracking rows beside the
-// till. Keyed by name, because that is how platform_sales stores it.
-export function platformTaken(days, name, from, to) {
+// till. By the platform's key, which is what platform_sales is kept under, so
+// a platform renamed since is still found.
+export function platformTaken(days, key, from, to) {
     return (days || [])
         .filter(d => d.sale_date >= from && d.sale_date <= to)
-        .reduce((t, d) => t + num(d.platform_sales?.[name]), 0)
+        .reduce((t, d) => t + num(d.platform_sales?.[key]), 0)
+}
+
+// What each platform took, week by week, with the online and Corporate totals,
+// for the report's charts. A map from each week's Sunday to its row.
+//
+// Every platform that took money on one of these days counts, retired ones
+// included. Only the platforms this week shows used to count, so retiring one
+// took everything it had ever taken out of every past week's total.
+export function platformWeeks({ platforms = [], days = [], weeks = [] }) {
+    const counted = platformsToShow(platforms, days.map(d => d.platform_sales))
+    const taken = counted.map(p => [p, byWeek(days, 'sale_date', d => d.platform_sales?.[p.key])])
+
+    return new Map(weeks.map(week => {
+        const row = { onlineTotal: 0, corporateTotal: 0 }
+        for (const [p, inWeek] of taken) {
+            const amount = inWeek.get(week) || 0
+            row[`p_${p.id}`] = amount
+            if (p.bucket === 'online_platform') row.onlineTotal += amount
+            else row.corporateTotal += amount
+        }
+        return [week, row]
+    }))
 }
 
 const r2 = n => Math.round(num(n) * 100) / 100
@@ -394,8 +418,8 @@ export function deliveryRows({ platforms = [], items = [], days = [], weekStart 
 
     return platforms.map(platform => {
         const item = typed.get(platform.id)
-        const statementTaken = platformTaken(days, platform.name, from, to)
-        const weekTaken = platformTaken(days, platform.name, weekStart, weekEnd)
+        const statementTaken = platformTaken(days, platform.key, from, to)
+        const weekTaken = platformTaken(days, platform.key, weekStart, weekEnd)
         return {
             platform,
             statement: item ? num(item.amount) : null,
@@ -417,7 +441,7 @@ export function statementSundayIn(days, platforms, weekStart) {
     const day = (days || []).find(d => d.sale_date === to)
     if (!day) return false
     if (day.is_closed) return true
-    return (platforms || []).some(p => num(day.platform_sales?.[p.name]) !== 0)
+    return (platforms || []).some(p => num(day.platform_sales?.[p.key]) !== 0)
 }
 
 // What stands between this report and being sent, because of the platforms.
@@ -599,7 +623,11 @@ export function publishCheck(sections = [], figures = null, delivery = []) {
 // 2, 27 September 2026: each online platform carries its statement, what it
 // took over the statement's week and over ours, the share it kept and the
 // cost, and deliveryTotal is those costs added up rather than the statements.
-export const FIGURES_VERSION = 2
+// 3, 30 September 2026: paperwork.allergenSheet, reprintDue's answer for the
+// printed allergen sheet. Null means it was checked and a new one was not
+// due. It is missing when it could not be checked, and on a report frozen
+// before 3, because nobody asked.
+export const FIGURES_VERSION = 3
 
 export function figuresToStore(figures, at = new Date()) {
     return { ...figures, version: FIGURES_VERSION, frozen_at: at.toISOString() }

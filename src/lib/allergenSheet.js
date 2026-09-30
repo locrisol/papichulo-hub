@@ -1,4 +1,5 @@
 import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from '@/lib/allergens'
+import { toISODate, todayISO, dayMonth, addMonths } from '@/lib/dates'
 
 // The rows of the allergen sheet for one category.
 //
@@ -20,6 +21,20 @@ import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from 
 // the two must never answer differently. One of them being right is worse than
 // both being wrong, because nobody would think to check.
 
+// Whether every read the sheet is built from came back.
+//
+// supabase-js does not throw when a read fails, it hands back { data: null,
+// error }. Kept with `|| []`, a failed read of the allergens looks exactly like
+// products with none, and a failed read of the components looks like dishes
+// with nothing in them. Either way every row says No declared allergens, and
+// nothing on the page says a read went wrong. So the customer page and the
+// printed sheet both ask this first, and one failed read means no rows at all.
+//
+// An empty list is a real answer and passes. Only a failure does not.
+export function everyReadArrived(results) {
+    return (results || []).every(r => Boolean(r) && !r.error && Array.isArray(r.data))
+}
+
 // What a menu item is called on the sheet. Its own name unless it has been
 // given one, which is how two portion sizes become one row.
 export function sheetName(item) {
@@ -27,18 +42,25 @@ export function sheetName(item) {
     return given || item?.name || ''
 }
 
-// Whether everything this row is built from actually arrived.
+// Whether this row has something to be worked out from, and all of it arrived.
 //
-// A customer is not signed in and only gets active products, so an ingredient
-// deactivated while the dish is still on sale simply does not come back. The
-// page has to say "ask staff" rather than show a list that looks whole.
+// Nothing at all is not an answer. A dish is saved before its recipe, and with
+// no components there is nothing to work its allergens out from, which read as
+// No declared allergens until somebody added them. Any component counts, a
+// choice included: a dish that is only a choice is allowed, and its options are
+// listed in their own right. Each dish in the row is asked on its own, because
+// an XL size given the regular one's sheet name before its own recipe is in
+// would otherwise be vouched for by the regular one.
 //
-// Deliberately stricter than the row's own allergens: a missing sauce does not
-// change the churros row, but it does mean a sauce that should have had a line
-// of its own has silently no line at all, and nobody reading the sheet could
-// know. So anything unreadable on any of the dish's components marks it.
-function everythingArrived(components, products) {
-    return components.every(c => (products || []).some(p => p.id === c.product_id))
+// A component whose product did not come back is the other gap. The page has
+// to say "ask staff" rather than show a list that looks whole. Deliberately
+// stricter than the row's own allergens: a missing sauce does not change the
+// churros row, but it does mean a sauce that should have had a line of its own
+// has silently no line at all, and nobody reading the sheet could know. So
+// anything unreadable on any of the dish's components marks it.
+function everythingArrived(items, components, products) {
+    return items.every(i => components.some(c => c.menu_item_id === i.id))
+        && components.every(c => (products || []).some(p => p.id === c.product_id))
 }
 
 export function sheetRows(menuItems, allComponents, products, recipeLines, allergens) {
@@ -73,7 +95,7 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
             key: `item:${name}`,
             name,
             order: orderOf(items),
-            complete: everythingArrived(all, products),
+            complete: everythingArrived(items, all, products),
             // The choices are dropped by deriveMenuItemAllergens itself, so
             // this hands it everything rather than filtering here as well. Two
             // places doing the same job is two places to forget it.
@@ -125,4 +147,57 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
     // sorted in among them.
     return rows.sort((a, b) =>
         (a.order - b.order) || a.name.localeCompare(b.name))
+}
+
+// How often the sheet is printed again when nothing has changed, unless the
+// restaurant says otherwise. The same default the database gives the column.
+export const REPRINT_EVERY_MONTHS = 3
+
+// When the printed sheet on the wall wants printing again.
+//
+// His rule, 29 September 2026: every so many months whatever happens, and as
+// soon as anything on the sheet has changed since the last one was printed.
+// Never printed from the Hub is due straight away, because there is no saying
+// what the paper on the wall says.
+//
+// printedAt is restaurants.allergen_sheet_printed_at, changedAt is what
+// allergens_changed_at() answers, and today is a plain date. Null when it is
+// not due. Otherwise why, and the sentence to show, so the Public Allergens
+// page and the weekly report cannot word it two different ways.
+export function reprintDue({ printedAt, everyMonths, changedAt, today = todayISO() } = {}) {
+    const printed = printedAt ? new Date(printedAt) : null
+    if (!printed || isNaN(printed)) {
+        return {
+            reason: 'never',
+            words: 'The allergen sheet has not been printed from the Hub yet. Print one now.',
+        }
+    }
+
+    const printedOn = toISODate(printed)
+    const when = printedOn.slice(0, 4) === today.slice(0, 4)
+        ? dayMonth(printedOn)
+        : `${dayMonth(printedOn)} ${printedOn.slice(0, 4)}`
+
+    // The change first. It is the one that makes the paper wrong rather than
+    // only old.
+    const changed = changedAt ? new Date(changedAt) : null
+    if (changed && changed > printed) {
+        return {
+            reason: 'changed',
+            words: `Last printed ${when}. The allergen information has changed since then. Print a new sheet.`,
+        }
+    }
+
+    const months = Number.isInteger(everyMonths) && everyMonths >= 1 ? everyMonths : REPRINT_EVERY_MONTHS
+    // Kept inside the month it lands in, so 30 November and three months is
+    // 28 February rather than 2 March.
+    if (today >= addMonths(printedOn, months)) {
+        const every = months === 1 ? 'every month' : `every ${months} months`
+        return {
+            reason: 'every',
+            words: `Last printed ${when}. A new sheet is due ${every}. Print a new one.`,
+        }
+    }
+
+    return null
 }

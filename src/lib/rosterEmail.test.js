@@ -4,8 +4,11 @@ import {
     kindWords, kindTitle, hoursWords, noticeWords,
     requestEmail, answerEmail,
     swapHalves, halfWords, swapAskEmail, swapAnswerEmail, swapDeskEmail, swapDecisionEmail,
-    deliverable, isJustTheGoodbye, replyToFor,
+    deliverable, isJustTheGoodbye, replyToFor, recordName, switchedOff,
+    fresh, tooLate, FRESH_MINUTES,
 } from '../../supabase/functions/roster-email/email'
+import { readFileSync } from 'node:fs'
+import { recordName as appRecordName } from '@/lib/timeOffPdf'
 
 // The words in the emails. It lives in the function's own folder because only
 // what is inside that folder gets deployed with it, and it is tested from here
@@ -146,6 +149,110 @@ describe('somebody answered', () => {
     it('names the person who answered it', () => {
         expect(answerEmail({ ...base, absence: holiday({ status: 'approved' }), freedCount: 0 }).html)
             .toContain('Leandro Presti')
+    })
+})
+
+// The record's file name goes into two header lines of the mail as it is, so
+// it is made here from the employee and the date, and never taken from the
+// request, where it could carry a line break.
+describe('the name of the record attached to an answer', () => {
+    it('is the same name the app gives it', () => {
+        for (const name of ['Ana Ferreira', 'María José', "O'Brien", '', null]) {
+            expect(recordName(holiday(), name)).toBe(appRecordName(holiday(), name))
+        }
+    })
+
+    it('holds nothing a header could trip on', () => {
+        expect(recordName(holiday(), 'Majo\r\nContent-Type: text/html'))
+            .toMatch(/^[a-z0-9-]+$/)
+    })
+
+    it('is what the function uses, whatever the request says', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toContain('recordName(absence, employee.full_name)')
+        expect(source).not.toMatch(/pdfName \|\|/)
+        // And the record that goes is the one checked for base64, never the
+        // raw value from the request, which could end the mail early.
+        expect(source).toContain('const record = base64Pdf(pdf)')
+        expect(source).toContain('content: record')
+        expect(source).not.toMatch(/content: pdf\b/)
+    })
+})
+
+// Posting the same id again used to send the same mail again, as often as
+// anybody liked: a loop of those would use up the Gmail account's daily limit
+// and stop every mail the Hub sends. The three mails anybody can set off now go
+// out right after the change they are about, or not at all.
+describe('the same mail again', () => {
+    const NOW_ = '2026-09-30T10:00:00.000Z'
+    const ago = minutes => new Date(Date.parse(NOW_) - minutes * 60000).toISOString()
+
+    it('goes out while the change is fresh, either side, for the clocks', () => {
+        expect(FRESH_MINUTES).toBe(10)
+        expect(fresh(ago(0), NOW_)).toBe(true)
+        expect(fresh(ago(9), NOW_)).toBe(true)
+        expect(fresh(ago(-2), NOW_)).toBe(true)
+        expect(fresh('2026-09-30T09:55:00.123456+00:00', NOW_)).toBe(true)
+    })
+
+    it('does not once the change is old, or when it cannot tell when it was', () => {
+        expect(fresh(ago(11), NOW_)).toBe(false)
+        expect(fresh(ago(-11), NOW_)).toBe(false)
+        expect(fresh(null, NOW_)).toBe(false)
+        expect(fresh('not a time', NOW_)).toBe(false)
+    })
+
+    it('times a request from when it was made, and an answer from when it was answered', () => {
+        expect(tooLate('asked', { created_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('asked', { created_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-asked', { created_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('swap-asked', { created_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-answered', { created_at: ago(3000), answered_at: ago(1) }, NOW_)).toBe(false)
+        expect(tooLate('swap-answered', { created_at: ago(1), answered_at: ago(60) }, NOW_)).toBe(true)
+        expect(tooLate('swap-answered', { created_at: ago(1), answered_at: null }, NOW_)).toBe(true)
+    })
+
+    // Only a manager can set these off, and a manager who changes an answer
+    // has to be able to tell the person again.
+    it('leaves the two a manager sends alone', () => {
+        expect(tooLate('answered', { created_at: ago(9000) }, NOW_)).toBe(false)
+        expect(tooLate('swap-decided', { created_at: ago(9000) }, NOW_)).toBe(false)
+    })
+
+    it('is asked by the function, and a time off request has to be waiting', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source.match(/tooLate\(event, /g)).toHaveLength(2)
+        expect(source).toContain("absence.status !== 'requested'")
+        // The swap row has to be read with the two times the rule needs.
+        expect(source).toMatch(/\.from\('shift_requests'\)\s*\.select\([^)]*created_at[^)]*answered_at/)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        for (const role of ['employee', 'store_manager', 'owner', 'super_admin']) {
+            expect(switchedOff({ role, is_active: false })).toBe(true)
+        }
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'employee', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'employee' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before anything is read', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', user\.id\)/)
+        const asked = source.indexOf('switchedOff(me)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('await request.json()'))
     })
 })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { addDays, todayISO } from '@/lib/dates'
 import { priceWeek, lookBackFrom, DEFAULT_RECIPE_GAP } from '@/lib/invoiceReport'
@@ -13,17 +13,6 @@ import { priceWeek, lookBackFrom, DEFAULT_RECIPE_GAP } from '@/lib/invoiceReport
 // lines are read a page at a time in a fixed order until a page comes back
 // short. Reading them in one request would quietly stop at a thousand and
 // every price older than that would look new.
-const PAGE = 1000
-
-async function everyRow(build) {
-    const out = []
-    for (let from = 0; ; from += PAGE) {
-        const { data, error } = await build().range(from, from + PAGE - 1)
-        if (error) return { error }
-        out.push(...(data || []))
-        if (!data || data.length < PAGE) return { data: out }
-    }
-}
 
 export default function usePriceWeek({ restaurantId, weekStart, threshold, enabled = true, refresh = 0 }) {
     const [data, setData] = useState(null)

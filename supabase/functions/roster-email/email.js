@@ -10,6 +10,8 @@
 // for them, so a header that is a picture is a header that is usually blank.
 // The band at the top is a coloured table cell with the name typed into it.
 
+import { oneLine } from './mime.js'
+
 const GREEN = '#2E7D52'
 const RED = '#B91C1C'
 const CREAM = '#F7F5F0'
@@ -258,6 +260,19 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
         text,
         employeeName,
     }
+}
+
+// What to call the record attached to an answer: the person's name and the
+// date, in letters, numbers and dashes. The same rule as recordName in
+// src/lib/timeOffPdf.js, which makes the PDF, and a test holds the two
+// together.
+//
+// Worked out here off the database rather than taken from the request, because
+// denomailer writes the name into two header lines as it is, and a name from a
+// request could carry a line break and a header of its own.
+export function recordName(absence, employeeName) {
+    const who = String(employeeName || 'employee').replace(/[^a-z0-9]+/gi, '-')
+    return `${who}-${absence.starts_on}-time-off`.toLowerCase().replace(/^-+|-+$/g, '')
 }
 
 // ------------------------------------------------- somebody wants to swap
@@ -544,6 +559,48 @@ ${button(appUrl ? `${appUrl}/my-shifts` : '', 'Open My shifts')}`
     }
 }
 
+// The same mail twice.
+//
+// Every mail here is set off by the app straight after the change it is about:
+// a request saved, a swap asked, a swap answered. Posting the same id again
+// used to send the same mail again, as often as anybody liked, and a loop of
+// those from one staff login would use up the Gmail account's daily limit and
+// stop every mail the Hub sends, the weekly report and the hours included.
+//
+// So the three that anybody can set off go out while the change is fresh, and
+// not after. Ten minutes, and either side of now, because an answer is timed by
+// the phone that gave it and a phone's clock can be a little out. The app posts
+// within a second or two, so nothing real is ever that late.
+//
+// The two a manager sends, answered and swap-decided, are left alone. Only a
+// manager can set them off, and a manager who changes an answer has to be able
+// to tell the person again.
+//
+// It is a limit, not a lock. Inside those ten minutes the same post still sends
+// again, and a new request is a new mail. Stopping either needs a record of
+// what went, which is a table and a migration.
+export const FRESH_MINUTES = 10
+
+export function fresh(stamp, now, minutes = FRESH_MINUTES) {
+    const at = Date.parse(stamp ?? '')
+    const then = Date.parse(now ?? '')
+    if (isNaN(at) || isNaN(then)) return false
+    return Math.abs(then - at) <= minutes * 60000
+}
+
+// The moment each of the three is about, off its own row.
+const CHANGED_AT = {
+    'asked': 'created_at',
+    'swap-asked': 'created_at',
+    'swap-answered': 'answered_at',
+}
+
+export function tooLate(event, row, now) {
+    const field = CHANGED_AT[event]
+    if (!field) return false
+    return !fresh(row?.[field], now)
+}
+
 // Gmail's untidy goodbye.
 //
 // smtp.gmail.com can accept a message, answer QUIT and drop the socket without
@@ -563,6 +620,20 @@ export function isJustTheGoodbye(err) {
     return said.includes('close_notify')
         || said.includes('unexpected eof')
         || said.includes('unexpectedeof')
+}
+
+// A login that is switched off gets nothing out of this function.
+//
+// Switching somebody off, on the Users page or by the nightly job once their
+// last day has passed, only sets users.is_active. Their password still signs
+// them in and their token is still good. Everywhere else the database itself
+// refuses them, but this function reads users with the service key, which row
+// level security does not stop, so it has to ask for itself.
+//
+// Anything short of is_active being true is refused, so a row read without the
+// column fails shut rather than open.
+export function switchedOff(account) {
+    return account?.is_active !== true
 }
 
 // An address nobody can ever receive mail at.
@@ -630,10 +701,11 @@ export function replyToFor(restaurantAddress, fallback) {
 // only place the restaurant appears in the header: the address is the same for
 // both, so anybody sorting by sender sorts on this.
 //
-// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, when
-// MAIL_FROM holds no address, or when the name is not plain ASCII. That last
-// one matters: a display name with an accent in it has to be encoded to travel
-// in a header, and a name that arrives as mojibake is worse than a generic one.
+// Falls back to MAIL_FROM verbatim when there is no restaurant in hand, or when
+// MAIL_FROM holds no address. An accent in the name is fine: it used to fall
+// back for that too, because denomailer encoded it badly, and headersFor in
+// mime.js now encodes it properly on the way out. A line break is not fine,
+// since it would start a header of its own, so it becomes a space.
 export function senderFor(mailFrom, restaurantName, address) {
     const raw = String(mailFrom || '').trim()
     if (!raw) return ''
@@ -651,10 +723,9 @@ export function senderFor(mailFrom, restaurantName, address) {
     const fallback = (bracketed ? bracketed[1] : raw).trim()
     const chosen = String(address || '').trim() || fallback
 
-    const name = String(restaurantName || '').trim()
+    const name = oneLine(restaurantName)
     if (!chosen.includes('@')) return raw
     if (!name) return chosen === fallback ? raw : chosen
-    if (!/^[ -~]+$/.test(name)) return raw
 
     // "Papi Chulo Point Campus", not "Papi Chulo Papi Chulo Point Campus" if
     // somebody renames a restaurant to include the brand.

@@ -92,13 +92,30 @@ function Summary({ title, state, asOf, noun }) {
     )
 }
 
+// The printed allergen sheet, only while a new one is due. His ask of 29
+// September. The words are reprintDue's, the same the Public Allergens page
+// shows, so the report and the page cannot say it two different ways.
+function AllergenSheet({ due }) {
+    if (!due) return null
+    return (
+        <Line>
+            <b className="text-gray-900">Allergen sheet:</b>
+            <p className="text-gray-900 mt-0.5">{due.words}</p>
+        </Line>
+    )
+}
+
 // `paperwork` is paperworkFor's: the people checked, and both kinds summed up.
-export default function ReportPaperwork({ paperwork, weekStart, asOf }) {
+// `allergenSheet` is reprintDue's answer, null while the sheet is not due.
+export default function ReportPaperwork({ paperwork, weekStart, asOf, allergenSheet = null }) {
     if (paperwork.people === 0) {
         return (
-            <p className="text-sm text-muted">
-                Nobody was on the books this week, so there is no paperwork to check.
-            </p>
+            <div className="space-y-2">
+                <p className="text-sm text-muted">
+                    Nobody was on the books this week, so there is no paperwork to check.
+                </p>
+                <AllergenSheet due={allergenSheet} />
+            </div>
         )
     }
 
@@ -111,6 +128,7 @@ export default function ReportPaperwork({ paperwork, weekStart, asOf }) {
             <div className="space-y-2">
                 <Summary title="Food safety" state={paperwork.food} asOf={asOf} noun="certificate" />
                 <Summary title="Right to work" state={paperwork.permits} asOf={asOf} noun="permission" />
+                <AllergenSheet due={allergenSheet} />
             </div>
 
             <p className="text-xs text-muted mt-2">

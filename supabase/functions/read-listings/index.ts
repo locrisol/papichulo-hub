@@ -57,10 +57,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     endpoint, readable, promptFor, SCHEMA, answerFrom, eventsFrom, sourceKeyFor,
-    urlsFor, joinPages, isServiceRole, roleOf,
+    urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
 } from './reading.js'
-
-const MANAGERS = ['owner', 'store_manager']
+import { readPage } from './fetching.js'
 
 // How far ahead to ask about. One month at his word, against the Arena's six.
 //
@@ -76,6 +75,30 @@ const AGENT = 'PapiChuloHub/1.0 (hub@papichulo.ie)'
 // Fifteen a minute on the free tier. Six pages a week is nowhere near it, and
 // this is here so a day somebody adds twenty places does not find the ceiling.
 const GAP_MS = 4500
+
+// A minute for Gemini to read up to a hundred and twenty thousand characters
+// and answer. Longer than any answer has taken, and short enough that a model
+// having a bad day costs one place its week rather than the whole run.
+const ASK_WAIT_MS = 60000
+
+// What a name points at, so readPage can refuse one that points inside a
+// private network.
+//
+// Best effort, and it has to be. If the platform will not look a name up, this
+// says nothing rather than refusing, and the checks readPage makes on the
+// address itself still stand: no bare IP address, no localhost, no name that
+// only means something on a private network.
+async function addressesOf(host: string): Promise<string[]> {
+    try {
+        const [four, six] = await Promise.all([
+            Deno.resolveDns(host, 'A').catch(() => []),
+            Deno.resolveDns(host, 'AAAA').catch(() => []),
+        ])
+        return [...four, ...six]
+    } catch {
+        return []
+    }
+}
 
 function serviceKey() {
     for (const name of ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SB_SECRET_KEY']) {
@@ -121,6 +144,7 @@ async function ask(key: string, prompt: string) {
     const res = await fetch(`${endpoint()}?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(ASK_WAIT_MS),
         body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
@@ -160,13 +184,15 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     const parts: string[] = []
     const missed: string[] = []
 
+    // Through readPage and never a plain fetch. The address was typed by a
+    // person, so it is checked before it goes out and at every redirect, and
+    // the read has a time limit and a size limit. See fetching.js.
     for (const address of addresses) {
         try {
-            const page = await fetch(address, { headers: { 'User-Agent': AGENT } })
-            if (!page.ok) { missed.push(`${address} answered ${page.status}`); continue }
-            parts.push(readable(await page.text()))
+            const page = await readPage(address, { headers: { 'User-Agent': AGENT }, resolve: addressesOf })
+            parts.push(readable(page))
         } catch (err) {
-            missed.push(`${address}: ${err}`)
+            missed.push(`${address}: ${(err as Error).message}`)
         }
     }
 
@@ -298,8 +324,14 @@ Deno.serve(async (request) => {
             } catch (err) {
                 // One page refusing must not stop the others, and the log is
                 // the only place anybody sees this, so it says which.
+                //
+                // The detail stays in the log. It used to go back to the
+                // browser as well, and a status code or a connection error for
+                // an address somebody typed is how you find out what answers
+                // inside a network. The settings screen only ever showed the
+                // place's name, so it loses nothing.
                 console.error('read-listings', place.name, err)
-                done.push({ place: place.name, error: String(err) })
+                done.push({ place: place.name, error: 'could not be read' })
             }
         }
         return done
@@ -329,7 +361,7 @@ Deno.serve(async (request) => {
     }
 
     const { data: me } = await admin
-        .from('users').select('id, role, restaurant_id')
+        .from('users').select('id, role, restaurant_id, is_active')
         .eq('id', user.id).maybeSingle()
     if (!me) return json({ error: 'Not signed in' }, 401)
 
@@ -339,10 +371,10 @@ Deno.serve(async (request) => {
     const restaurantId = payload.restaurantId
     if (!restaurantId) return json({ error: 'Bad request' }, 400)
 
-    const isSuper = me.role === 'super_admin'
-    if (!isSuper && (me.restaurant_id !== restaurantId || !MANAGERS.includes(me.role))) {
-        return json({ error: 'Not yours' }, 403)
-    }
+    // A manager there or a super admin, with a login that is switched on. See
+    // refusalFor in reading.js.
+    const refused = refusalFor(me, restaurantId)
+    if (refused) return json({ error: refused.error }, refused.status)
 
     const done = await readAll(await pagesFor(admin, restaurantId))
     return json({ ran: done.length, pages: done })

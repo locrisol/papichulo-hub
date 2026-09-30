@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
-import { sheetRows } from '@/lib/allergenSheet'
+import { sheetRows, everyReadArrived, reprintDue } from '@/lib/allergenSheet'
+import { stampDate } from '@/lib/dates'
+import { friendlyError } from '@/lib/errors'
 import { SHEET_ORDER, ALLERGEN_SHORT } from '@/lib/allergens'
 import { useAuth } from '@/context/auth'
 import { useState, useEffect } from 'react'
@@ -10,16 +12,15 @@ import { useRestaurant } from '@/context/restaurant'
 import PublicAllergensPage from '@/pages/public/PublicAllergensPage'
 import { card } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 
 // The manager's side of the public allergen page: the QR code to print, the
 // link, and a preview of what customers get.
 //
 // The preview is the real page rather than a copy of it, so there is only one
-// place the customer view is written. One thing to know though: the manager is
-// signed in while looking at it, and the database policies that hide inactive
-// dishes only apply to somebody who is not. So the preview can show a
-// deactivated dish that a customer scanning the code would never see. There is a
-// note about it in PublicAllergensPage.
+// place the customer view is written. It reads the same public_ views a
+// customer does, which leave out inactive dishes for everybody, so what is
+// shown here is what a customer scanning the code gets.
 //
 // There are two different PDFs here and they are for different jobs. The QR one
 // is A6, sized to sit on a table. The allergen list is A4 landscape and is the
@@ -43,18 +44,47 @@ function loadImage(src) {
 }
 
 export default function PublicAllergensPreviewPage() {
-    const { activeRestaurant } = useRestaurant()
+    const { activeRestaurant, setActiveRestaurant } = useRestaurant()
     // Named notify rather than confirm: these two only tell you something, there
     // is nothing to say yes or no to.
     const notify = useConfirm()
     const { user } = useAuth()
     const [qrDataUrl, setQrDataUrl] = useState('')
-    const [menuData, setMenuData] = useState(null)
+    const [printing, setPrinting] = useState(false)
+    // Why the allergen list did not print, said beside the button that was
+    // pressed rather than by the button quietly doing nothing.
+    const [printProblem, setPrintProblem] = useState('')
+    // When anything on the sheet last changed, for the reminder. Nothing is
+    // said about printing until it has been asked, so the notice does not
+    // appear a moment after the page does and push everything down.
+    const [changed, setChanged] = useState({ read: false, at: null })
 
     const baseUrl = import.meta.env.VITE_PUBLIC_URL || window.location.origin
     const publicUrl = activeRestaurant
         ? `${baseUrl}/allergens/${activeRestaurant.slug}`
         : ''
+
+    useEffect(() => {
+        let current = true
+        supabase.rpc('allergens_changed_at').then(({ data, error }) => {
+            // A date that would not come back leaves the reminder to the
+            // months alone. The button reads it again and will not print
+            // without it.
+            if (current) setChanged({ read: true, at: error ? null : data })
+        })
+        return () => { current = false }
+    }, [])
+
+    // Every so many months, and as soon as anything on the sheet has changed
+    // since the last print. The weekly report says the same thing in the
+    // same words, from the same function.
+    const due = changed.read && activeRestaurant
+        ? reprintDue({
+            printedAt: activeRestaurant.allergen_sheet_printed_at,
+            everyMonths: activeRestaurant.allergen_sheet_every_months,
+            changedAt: changed.at,
+        })
+        : null
 
     useEffect(() => {
         if (!publicUrl) return
@@ -70,32 +100,6 @@ export default function PublicAllergensPreviewPage() {
             .then(setQrDataUrl)
             .catch(err => console.error('QR generation failed:', err))
     }, [publicUrl])
-
-    useEffect(() => {
-        if (!activeRestaurant) return
-
-        async function fetchMenuData() {
-            const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = await Promise.all([
-                supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-                supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-                supabase.from('menu_item_components').select('*'),
-                supabase.from('products').select('*').order('name'),
-                supabase.from('mix_recipes').select('*'),
-                supabase.from('product_allergens').select('*'),
-            ])
-
-            setMenuData({
-                categories: categoriesRes.data || [],
-                menuItems: menuItemsRes.data || [],
-                components: componentsRes.data || [],
-                products: productsRes.data || [],
-                recipeLines: recipesRes.data || [],
-                allergens: allergensRes.data || [],
-            })
-        }
-
-        fetchMenuData()
-    }, [activeRestaurant])
 
     async function handleDownloadPng() {
         if (!qrDataUrl) return
@@ -152,9 +156,73 @@ export default function PublicAllergensPreviewPage() {
         pdf.save(`papi-chulo-allergens-${activeRestaurant.slug}.pdf`)
     }
 
-    async function handleDownloadAllergenListPdf() {
-        if (!menuData || !activeRestaurant) return
+    // The sheet is read when the button is pressed rather than when the page
+    // opened. It used to be held from opening, so a sheet printed after an
+    // allergen was changed in another tab printed the old answer, and the
+    // preview below is a separate read that cannot vouch for it.
+    //
+    // All six or nothing. It used to print whatever arrived, and a failed read
+    // of the allergens came out as a grid with no marks in it, which reads as
+    // none of the fourteen. That paper sits on the counter for months.
+    async function readSheet() {
+        const [changedRes, ...reads] = await Promise.all([
+            // The date the form carries, which is the day anything on it last
+            // changed. It was the newest allergen row, which says nothing about
+            // a new dish or a changed recipe.
+            supabase.rpc('allergens_changed_at'),
+            supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
+            supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
+            supabase.from('menu_item_components').select('*'),
+            supabase.from('products').select('*').order('name'),
+            supabase.from('mix_recipes').select('*'),
+            supabase.from('product_allergens').select('*'),
+        ])
+        if (changedRes.error || !everyReadArrived(reads)) return null
 
+        const [categoriesRes, menuItemsRes, componentsRes, productsRes, recipesRes, allergensRes] = reads
+        return {
+            changedAt: changedRes.data,
+            categories: categoriesRes.data,
+            menuItems: menuItemsRes.data,
+            components: componentsRes.data,
+            products: productsRes.data,
+            recipeLines: recipesRes.data,
+            allergens: allergensRes.data,
+        }
+    }
+
+    async function handleDownloadAllergenListPdf() {
+        if (!activeRestaurant || printing) return
+
+        setPrinting(true)
+        setPrintProblem('')
+        try {
+            const menuData = await readSheet()
+            if (!menuData) {
+                setPrintProblem('The allergen list could not be read just now, so nothing was printed. '
+                    + 'Check the connection and try again.')
+                return
+            }
+            await drawAllergenListPdf(menuData)
+            setChanged({ read: true, at: menuData.changedAt })
+
+            // Printing is what stops the reminder, so the button says it
+            // happened. Through the database rather than onto the row, because
+            // an owner can print but cannot write the restaurant.
+            const { data: stamp, error: stampError } = await supabase
+                .rpc('allergen_sheet_printed', { restaurant: activeRestaurant.id })
+            if (stampError) {
+                setPrintProblem('The sheet was made, but the Hub could not record that it was printed, '
+                    + `so the reminder may still show. ${friendlyError(stampError)}`)
+                return
+            }
+            setActiveRestaurant({ ...activeRestaurant, allergen_sheet_printed_at: stamp })
+        } finally {
+            setPrinting(false)
+        }
+    }
+
+    async function drawAllergenListPdf(menuData) {
         const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
         const pageWidth = pdf.internal.pageSize.getWidth()   // 297
         const pageHeight = pdf.internal.pageSize.getHeight() // 210
@@ -162,14 +230,11 @@ export default function PublicAllergensPreviewPage() {
         const marginY = 10
         const contentWidth = pageWidth - marginX * 2
 
-        const lastUpdated = menuData.allergens.reduce((latest, a) => {
-            if (!a.updated_at) return latest
-            if (!latest || a.updated_at > latest) return a.updated_at
-            return latest
-        }, null)
-        const lastUpdatedStr = lastUpdated
-            ? new Date(lastUpdated).toLocaleDateString('en-IE', { dateStyle: 'short' })
-            : new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
+        // The day anything on the sheet last changed. Today only when the
+        // change log holds no such day, which means nothing on the sheet has
+        // changed since the log began in September 2026: today is then the
+        // day the form was made, which is true.
+        const lastUpdatedStr = stampDate(menuData.changedAt || new Date().toISOString())
         const todayStr = new Date().toLocaleDateString('en-IE', { dateStyle: 'short' })
 
         // Loaded before anything is drawn, because it goes on every page and a
@@ -276,9 +341,10 @@ export default function PublicAllergensPreviewPage() {
             const labelW = 35
             const valueW = metaLeftWidth - labelW
 
-            // No reviewed date. A new one is printed on every change, so the
-            // date it was made is the date it was reviewed, and a second box
-            // saying so was two boxes for one fact.
+            // No reviewed date. A new one is printed on every change, and the
+            // page reminds whoever runs it to, so the day the information last
+            // changed is the date that matters, and a second box saying when
+            // it was reviewed was two boxes for one fact.
             const rows = [
                 ['Date:', lastUpdatedStr],
                 ['Created by:', userName],
@@ -485,6 +551,22 @@ export default function PublicAllergensPreviewPage() {
                 pdf.text(line, marginX + 2, nameTop + n * 4)
             })
 
+            // A row the sheet cannot vouch for, such as a dish saved before its
+            // recipe, says what the customer page says, across the whole row.
+            // Fourteen empty cells would read as none of the fourteen.
+            if (!item.complete) {
+                const x = marginX + nameColWidth
+                const width = allergenColWidth * allergens.length
+                pdf.setFillColor(255, 255, 255)
+                pdf.rect(x, y, width, rowHeight, 'FD')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(9)
+                pdf.setTextColor(...INK)
+                pdf.text('Please ask a member of staff', x + width / 2, y + rowHeight / 2 + 1.5, { align: 'center' })
+                y += rowHeight
+                return
+            }
+
             // Allergen cells
             allergens.forEach((allergen, i) => {
                 const x = marginX + nameColWidth + i * allergenColWidth
@@ -585,6 +667,15 @@ export default function PublicAllergensPreviewPage() {
                 </p>
             </header>
 
+            {/* The reminder to print a new sheet, at the top because the
+                paper on the wall is what an inspector reads. It goes once the
+                button below has printed one. */}
+            {due && (
+                <div role="status" className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3 mb-6">
+                    {due.words}
+                </div>
+            )}
+
             {/* QR + actions bar */}
             <div className={`${card} p-5 mb-6`}>
                 <div className="flex flex-col sm:flex-row gap-5 items-start">
@@ -614,7 +705,7 @@ export default function PublicAllergensPreviewPage() {
                             <button
                                 type="button"
                                 onClick={handleDownloadAllergenListPdf}
-                                disabled={!menuData}
+                                disabled={printing}
                                 className="inline-flex items-center gap-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -664,6 +755,7 @@ export default function PublicAllergensPreviewPage() {
                                 Open in new tab ↗
                             </button>
                         </div>
+                        <ErrorBanner className="mt-3">{printProblem}</ErrorBanner>
                     </div>
                 </div>
             </div>

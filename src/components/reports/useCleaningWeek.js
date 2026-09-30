@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { addDays } from '@/lib/dates'
 import { weekCleaning } from '@/lib/checklists'
@@ -12,18 +12,7 @@ import { weekCleaning } from '@/lib/checklists'
 // at a time the way the price section reads its invoice lines: a busy weekly
 // deep clean is two or three thousand ticks a year, more than the database
 // hands back in one go.
-const PAGE = 1000
 const LOOK_BACK_DAYS = 400
-
-async function everyRow(build) {
-    const out = []
-    for (let from = 0; ; from += PAGE) {
-        const { data, error } = await build().range(from, from + PAGE - 1)
-        if (error) return { error }
-        out.push(...(data || []))
-        if (!data || data.length < PAGE) return { data: out }
-    }
-}
 
 export default function useCleaningWeek({ restaurantId, weekStart, enabled = true }) {
     const [data, setData] = useState(null)

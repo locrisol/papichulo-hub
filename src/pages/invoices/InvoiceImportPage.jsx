@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { weekStartOf, todayISO, addDays } from '@/lib/dates'
@@ -68,20 +68,27 @@ export default function InvoiceImportPage() {
             // See the comment on the same line in ClaimsPage: a banner that is
             // never cleared outlives the thing it was about.
             setError('')
+            // Every invoice ever held, every price and code, and every list
+            // pasted all grow past a thousand rows, which is as many as one
+            // read hands back, so they are read a page at a time. An invoice
+            // missing from what is held would let a document already in the
+            // Hub, or a typed day, go in a second time.
             const [accounts, suppliers, prices, codes, held, documents] = await Promise.all([
                 supabase.from('supplier_accounts').select('*'),
                 supabase.from('suppliers').select('id, name, category, is_active'),
-                supabase.from('product_supplier_prices')
+                everyRow(() => supabase.from('product_supplier_prices')
                     .select('*, products(id, name, section, unit, piece_weight)')
-                    .eq('restaurant_id', restaurantId),
-                supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId),
-                supabase.from('invoices')
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
+                everyRow(() => supabase.from('supplier_codes').select('*').eq('restaurant_id', restaurantId).order('id')),
+                everyRow(() => supabase.from('invoices')
                     .select('id, invoice_number, invoice_date, total_amount, supplier_id')
-                    .eq('restaurant_id', restaurantId),
+                    .eq('restaurant_id', restaurantId)
+                    .order('id')),
                 // The supplier's own list, where it has been pasted. It is what
                 // says for certain whether a credit was already taken off a
                 // total typed by hand.
-                supabase.from('supplier_documents').select('*').eq('restaurant_id', restaurantId),
+                everyRow(() => supabase.from('supplier_documents').select('*').eq('restaurant_id', restaurantId).order('id')),
             ])
 
             if (!alive) return

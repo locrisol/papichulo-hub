@@ -263,6 +263,16 @@ export function claimIsOpen(claim) {
     return claim?.status === 'open' && (claimBalance(claim) == null || claimBalance(claim) > 0)
 }
 
+// What a claim takes off the week of its delivery, by the same rule as
+// invoice_cost_by_category: the whole ask while it is open, what came back once
+// it is settled or refused. Nothing once it is taken back, and nothing for a
+// note from the door that has no amount yet.
+export function claimTakesOff(claim) {
+    if (!['open', 'settled', 'refused'].includes(claim?.status)) return 0
+    if (!claim.counted_week || claim.amount == null) return 0
+    return Math.max(0, round2(claim.status === 'open' ? claim.amount : claim.credited_amount))
+}
+
 // ---------------------------------------------------------------------------
 // Matching a note at the door to a line on the paper
 // ---------------------------------------------------------------------------
@@ -414,6 +424,63 @@ export function creditSettles({ credit, lines = [], against = null, claims = [],
     } : null
 
     return { settle, extra, countsInCost: false }
+}
+
+// Deleting a credit note that settled claims.
+//
+// A credit that settles a claim does not count on its own: the claim carries
+// its money, in the week the delivery happened. Left settled, a claim outlives
+// the credit, and importing the credit again finds nothing open to settle, so
+// it counts on its own date as well and the same money comes off twice. So the
+// claims it settled are open again before it goes, and the claim it made for
+// money nobody logged goes with it. Importing it again settles them once, the
+// same way the first import did.
+//
+// A claim keeps only its running total and the last credit that touched it,
+// not what each credit gave. Nearly always this credit is the only one on
+// them, and then every claim goes back to nothing. When the claims hold more
+// than this credit came to, an earlier credit gave some of it, and that part
+// stays. This credit's money comes back off the newest claim first, never more
+// than one holds, because a credit fills the oldest first, so the oldest is the
+// one an earlier credit can have part filled. Where that guess is wrong the
+// split between two claims comes out wrong, never the total.
+//
+// A refusal stands: the claim stays refused, only without this credit's money.
+// One taken back is not counted anywhere, so it is left alone.
+export function creditTakenBack(credit, claims) {
+    const mine = (claims || []).filter(c => c.credit_invoice_id === credit?.id && c.status !== 'void')
+    const made = mine.filter(c => c.kind === NOT_LOGGED.value)
+    const asked = mine.filter(c => c.kind !== NOT_LOGGED.value)
+    const sum = list => round2(list.reduce((t, c) => t + num(c.credited_amount), 0))
+
+    // What this credit gave the claims people asked for: all of it, less the
+    // claim it made for money nobody logged. A few cents between the total and
+    // what its lines came to is rounding, not an earlier credit.
+    const total = Math.abs(num(credit?.total_amount))
+    let left = total ? round2(total - sum(made)) : Infinity
+    if (left + 0.05 >= sum(asked)) left = Infinity
+
+    const back = new Map()
+    const newestFirst = [...asked].sort((a, b) => String(b.raised_on).localeCompare(String(a.raised_on)))
+    for (const c of newestFirst) {
+        const taken = Math.min(num(c.credited_amount), left)
+        back.set(c.id, round2(num(c.credited_amount) - taken))
+        left = round2(left - taken)
+    }
+
+    return {
+        change: asked.map(c => ({
+            id: c.id,
+            patch: {
+                credited_amount: back.get(c.id),
+                credit_invoice_id: null,
+                ...(c.status === 'settled' ? { status: 'open', settled_on: null } : {}),
+            },
+        })),
+        remove: made.map(c => c.id),
+        // How many will be waiting for a credit again, for the dialog.
+        waiting: asked.filter(c => c.status !== 'refused').length,
+    }
 }
 
 // A credit that reverses a whole invoice.

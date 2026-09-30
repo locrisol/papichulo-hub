@@ -92,8 +92,11 @@ CREATE TABLE IF NOT EXISTS "public"."restaurants" (
     "timesheet_recipients" "text"[],
     "pay_period_start" "date",
     "recipe_gap_percent" numeric(5,2) DEFAULT 5.00 NOT NULL,
+    "allergen_sheet_printed_at" timestamp with time zone,
+    "allergen_sheet_every_months" integer DEFAULT 3 NOT NULL,
     -- The payroll list, and nobody is on it by role. See the comment below.,
     CONSTRAINT "restaurants_recipe_gap_percent_check" CHECK ((("recipe_gap_percent" >= (0)::numeric) AND ("recipe_gap_percent" <= (100)::numeric))),
+    CONSTRAINT "restaurants_allergen_sheet_every_months_check" CHECK ((("allergen_sheet_every_months" >= 1) AND ("allergen_sheet_every_months" <= 24))),
     CONSTRAINT "restaurants_mail_from_ours" CHECK ((("mail_from" IS NULL) OR ("mail_from" ~ '^[A-Za-z0-9._%+-]+@papichulo\.ie$'::"text")))
 );
 
@@ -103,6 +106,8 @@ COMMENT ON COLUMN "public"."restaurants"."latitude" IS 'Where the shop actually 
 COMMENT ON COLUMN "public"."restaurants"."timesheet_recipients" IS 'Who the week''s hours are mailed to, typed and kept. Nobody is on it by role: it is the payroll list, not the owners'' list, and it carries no money at all.';
 COMMENT ON COLUMN "public"."restaurants"."pay_period_start" IS 'The first day of any one pay period, which is always a fortnight. Every other period is worked out from this by counting in fourteens, so the exact one that was typed does not matter as long as it really was a period start. It is read back as the Sunday of its own week, because a period that began mid week would put its boundary inside a Hub week and leave the two halves belonging to different weeks. Empty means nobody has said yet, and the hours cannot be sent until they do.';
 COMMENT ON COLUMN "public"."restaurants"."recipe_gap_percent" IS 'How far what recipes cost a product at can be from what was last paid for the version usually bought, before the weekly report lists it. Either way: 5 means five per cent dearer or cheaper. It stays on every report until the two are closer than this.';
+COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_printed_at" IS 'When the allergen sheet was last printed from the Hub for this restaurant, stamped by allergen_sheet_printed(). Null means never, which counts as due.';
+COMMENT ON COLUMN "public"."restaurants"."allergen_sheet_every_months" IS 'How many months the printed allergen sheet stays up before it is due again when nothing on it has changed. A change makes it due straight away whatever this says.';
 COMMENT ON COLUMN "public"."restaurants"."watch_city_events" IS 'Whether something big a few kilometres away is worth a badge. On by default and worth turning off for a restaurant nowhere near a city, where it would only ever be noise.';
 COMMENT ON COLUMN "public"."restaurants"."google_calendar_id" IS 'The Google calendar this restaurant writes to, owned by hub@ rather than by a manager, because a secondary calendar is deleted along with the account that owns it and managers leave. Null means it has none yet and its entries stay in the Hub.';
 COMMENT ON COLUMN "public"."restaurants"."mail_from" IS 'The address this restaurant''s mail comes from, e.g. dunlaoghaire@papichulo.ie. Null means fall back to the MAIL_FROM secret, which is what a restaurant with no address of its own gets. Only the address goes here: the display name is built from the restaurant''s own name, so renaming the restaurant renames the sender.';
@@ -490,7 +495,7 @@ CREATE TABLE IF NOT EXISTS "public"."sales_records" (
 
 COMMENT ON COLUMN "public"."sales_records"."cash_banked" IS 'Cash removed from the drawer at close (banked/dropped). Used in the cash drawer variance: end_float - (start_float + cash_sales - petty_cash_total - cash_banked).';
 COMMENT ON COLUMN "public"."sales_records"."is_closed" IS 'True if the restaurant was closed that day (no trading). Distinct from a day with no record entered. Closed days are excluded from per-day averages and trading-day counts so they do not depress typical-day figures or pollute forecasting data.';
-COMMENT ON COLUMN "public"."sales_records"."platform_sales" IS 'Per-platform sales amounts keyed by platform name, e.g. {"Deliveroo": 120.50, "Feedr": 45.00}. The online and catering bucket totals remain in online_sales / catering_sales.';
+COMMENT ON COLUMN "public"."sales_records"."platform_sales" IS 'Per-platform sales amounts keyed by sales_platforms.key, e.g. {"Deliveroo": 120.50, "Feedr": 45.00}. The key starts as the platform''s name and stays when it is renamed. The online and catering bucket totals remain in online_sales / catering_sales.';
 COMMENT ON COLUMN "public"."sales_records"."tender_sales" IS 'The day''s amounts, keyed by sales_tenders.key, e.g. {"cash": 109.04, "kiosk": 1464.47}. Zeros are stored on purpose, unlike platform_sales which drops them: a stored zero means the row existed on the till that day and took nothing, while a missing key means the row did not exist yet. That difference is what lets an old week draw the till exactly as it was.';
 ALTER TABLE ONLY "public"."sales_records"
     ADD CONSTRAINT "sales_records_pkey" PRIMARY KEY ("id");
@@ -511,7 +516,7 @@ CREATE TABLE IF NOT EXISTS "public"."sales_tenders" (
 COMMENT ON TABLE "public"."sales_tenders" IS 'The rows of the till receipt, one record per row per restaurant. Managers read them so the sales grid can draw itself; only a Super Admin can change them.';
 COMMENT ON COLUMN "public"."sales_tenders"."counts_toward_gross" IS 'Whether this row is part of the day balancing. Every row on the current receipt counts: cash, card, kiosk and the six third party ones add up to gross sales exactly. It exists because a future POS may well print a subtotal line, and ticking a box is better than another migration.';
 COMMENT ON COLUMN "public"."sales_tenders"."is_active" IS 'False means retired: it is gone from new days but still shown on any past day that has a figure for it. That is how a March week keeps showing Outside Catering without anything anywhere having to store when the till changed.';
-COMMENT ON COLUMN "public"."sales_tenders"."key" IS 'The internal name, and the key the amounts are stored under. It never changes once created. This is the one thing sales_platforms got wrong: it keys its stored amounts by the platform name, so renaming a platform orphans every figure it ever took. Here the label can be rewritten as often as the till changes and the history follows it.';
+COMMENT ON COLUMN "public"."sales_tenders"."key" IS 'The internal name, and the key the amounts are stored under. It never changes once created, so the label can be rewritten as often as the till changes and the history follows it. sales_platforms works the same way.';
 COMMENT ON COLUMN "public"."sales_tenders"."label" IS 'What is shown on screen. Free to change. "Online Sales" became "Online Platforms" without touching a single stored figure.';
 ALTER TABLE ONLY "public"."sales_tenders"
     ADD CONSTRAINT "sales_tenders_pkey" PRIMARY KEY ("id");
@@ -527,14 +532,18 @@ CREATE TABLE IF NOT EXISTS "public"."sales_platforms" (
     "is_active" boolean DEFAULT true NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "key" "text" NOT NULL,
     CONSTRAINT "sales_platforms_bucket_check" CHECK (("bucket" = ANY (ARRAY['online_platform'::"text", 'catering'::"text"])))
 );
 
 COMMENT ON TABLE "public"."sales_platforms" IS 'Manager-configurable third-party sales platforms, grouped into two buckets: online_platform (Deliveroo, Just Eat, Uber Eats) and catering (Lunch Team, Clockmeal, Feedr, etc.). Lets managers add/deactivate platforms without a schema change.';
+COMMENT ON COLUMN "public"."sales_platforms"."key" IS 'What platform_sales keeps this platform''s takings under. Set once, from the name it was added with, and never changed, so renaming a platform keeps its history.';
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."sales_platforms"
     ADD CONSTRAINT "sales_platforms_restaurant_id_name_key" UNIQUE ("restaurant_id", "name");
+ALTER TABLE ONLY "public"."sales_platforms"
+    ADD CONSTRAINT "sales_platforms_restaurant_id_key_key" UNIQUE ("restaurant_id", "key");
 CREATE INDEX "idx_sales_platforms_restaurant" ON "public"."sales_platforms" USING "btree" ("restaurant_id");
 
 -- What the till calls a row of the receipt, answered once when its weekly
@@ -1770,7 +1779,12 @@ ALTER TABLE ONLY "public"."change_log"
 CREATE INDEX "idx_change_log_row" ON "public"."change_log" USING "btree" ("table_name", "row_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_user" ON "public"."change_log" USING "btree" ("user_id", "changed_at" DESC);
 CREATE INDEX "idx_change_log_when" ON "public"."change_log" USING "btree" ("changed_at" DESC);
+-- For allergens_changed_at(), which the customer allergen page calls on every
+-- visit. Without it the function walks back through every change to every
+-- table until it meets one of these six.
+CREATE INDEX "idx_change_log_allergen_sheet" ON "public"."change_log" USING "btree" ("changed_at" DESC) WHERE ("table_name" = ANY (ARRAY['product_allergens'::"text", 'menu_items'::"text", 'menu_item_components'::"text", 'menu_categories'::"text", 'mix_recipes'::"text", 'products'::"text"]));
 
+COMMENT ON INDEX "public"."idx_change_log_allergen_sheet" IS 'Only the six tables the allergen sheet is made from, newest first, for allergens_changed_at(), which the customer allergen page calls on every visit.';
 COMMENT ON INDEX "public"."menu_item_components_once_as_ingredient" IS 'A product is in a dish once. Its appearances inside a choice are counted separately.';
 COMMENT ON INDEX "public"."menu_item_components_once_per_choice" IS 'A product is one option of a choice once, and may be an option of a different choice on the same dish.';
 COMMENT ON INDEX "public"."report_items_one_per_key" IS 'One row per key, but only for the kinds where the key names a thing there can be only one of: an overhead line, a platform''s delivery cost, a platform''s rating. Reviews and refunds use the key to say which platform they are about and there can be any number of them.';
@@ -2178,24 +2192,135 @@ begin
     return new;
 end $$;
 
+-- Where a diary entry is on Google is the calendar function's to write.
+--
+-- diary-calendar acts on google_event_ids as hub@, which reaches every
+-- calendar in the group, so a person able to write that column could point it
+-- at somebody else's event: a store manager copied an owner's group event ids
+-- onto a private entry of their own, and saving it deleted the owner's event.
+-- A person saving an entry leaves both Google columns as they were, and a new
+-- one starts with neither. The function, which writes with the service key,
+-- and the database itself are let through.
+create or replace function public.diary_calendar_ids_guard() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    arrived text := nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role';
+begin
+    -- A person through the API, signed in or not. Anything else is the
+    -- calendar function with the service key, or the database itself.
+    if arrived in ('authenticated', 'anon') then
+        if tg_op = 'INSERT' then
+            new.google_event_ids := null;
+            new.google_synced_at := null;
+        else
+            new.google_event_ids := old.google_event_ids;
+            new.google_synced_at := old.google_synced_at;
+        end if;
+    end if;
+    return new;
+end $$;
+
+-- A platform's figures are kept under its key, which starts as its name. A new
+-- platform is given its name as its key, so the app never sends one, and an
+-- update cannot change the key, by the app or by hand, because that would lose
+-- the figures the same way a rename used to.
+CREATE OR REPLACE FUNCTION "public"."sales_platform_key"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    if tg_op = 'UPDATE' then
+        new.key := old.key;
+    else
+        new.key := coalesce(new.key, new.name);
+    end if;
+    return new;
+end;
+$$;
+
+-- A swap request says what the two people agreed, and only that. A new one
+-- starts as asked, gives a shift of the asker's own and takes one of the
+-- person asked. After that the two of them can answer it or take it back and
+-- nothing else. Whose shift is whose is checked when it is made and never at
+-- approval, because approving moves the shifts before it marks the request
+-- approved; the manager's desk checks it before offering Approve.
 CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
     AS $$
 declare
     me uuid;
+    manager boolean;
 begin
-    -- Same as 066: only what comes through the API is guarded, so the
-    -- database can still maintain its own rows.
+    -- Same as restaurant_settings_guard: only what comes through the API is
+    -- guarded, so the database can still maintain its own rows.
     if current_setting('request.jwt.claims', true) is null then
         return new;
+    end if;
+
+    manager := coalesce(public.get_my_role() in ('super_admin', 'owner', 'store_manager'), false);
+
+    if tg_op = 'INSERT' then
+        -- Whoever sends it, managers included. The only way in is somebody
+        -- asking as themselves, and an answer on it would be the other
+        -- person's word given for them.
+        if new.status is distinct from 'asked'
+           or new.answered_at is not null
+           or new.decided_at is not null
+           or new.decided_by is not null then
+            raise exception 'A new request has to wait for the other person to answer';
+        end if;
+
+        new.created_by := auth.uid();
+
+        if new.give_shift_id is not null and not exists (
+            select 1 from public.roster_shifts s
+             where s.id = new.give_shift_id
+               and s.employee_id = new.from_employee_id
+               and s.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only give away a shift of your own';
+        end if;
+
+        if new.take_shift_id is not null and not exists (
+            select 1 from public.roster_shifts s
+             where s.id = new.take_shift_id
+               and s.employee_id = new.to_employee_id
+               and s.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only ask for a shift of the person you are asking';
+        end if;
+
+        if not exists (
+            select 1 from public.employees e
+             where e.id = new.to_employee_id
+               and e.restaurant_id = new.restaurant_id
+        ) then
+            raise exception 'You can only ask somebody at your own restaurant';
+        end if;
+
+        return new;
+    end if;
+
+    -- The people in it can answer it and nothing else. Held by what may
+    -- change rather than by what may not, so a column added later is held too
+    -- until somebody decides otherwise. Before the status test below, because
+    -- that is how a change with the status left alone got through.
+    if not manager then
+        if (to_jsonb(new) - 'status' - 'answered_at')
+           is distinct from (to_jsonb(old) - 'status' - 'answered_at') then
+            raise exception 'A request cannot be changed once it is sent';
+        end if;
+        new.answered_at := old.answered_at;
     end if;
 
     if new.status is not distinct from old.status then
         return new;
     end if;
 
-    if public.get_my_role() in ('super_admin', 'owner', 'store_manager') then
+    if manager then
         return new;
     end if;
 
@@ -2206,6 +2331,7 @@ begin
     end if;
 
     if new.status in ('accepted', 'declined') and old.to_employee_id = me then
+        new.answered_at := now();
         return new;
     end if;
 
@@ -2380,8 +2506,8 @@ begin
 end $$;
 
 -- A tick is for something at the bottom of the list, on an open round, with
--- the photos it needs, in that round's own folder. Who and when come from
--- here.
+-- the photos it needs, in that round's own folder and really there. Who and
+-- when come from here.
 create or replace function public.checklist_tick_guard() returns trigger
     language plpgsql security definer
     set search_path to 'public', 'pg_temp'
@@ -2430,6 +2556,13 @@ begin
     foreach p in array new.photos loop
         if left(p, length(folder)) <> folder then
             raise exception 'A photo has to be taken for this round';
+        end if;
+        -- A path with no file behind it is not proof of anything. The way
+        -- to get here from the app was a photo left on a phone for days,
+        -- back when the nightly job could delete it before Submit.
+        if not exists (select 1 from storage.objects o
+                        where o.bucket_id = 'checklist-photos' and o.name = p) then
+            raise exception 'The photo for % is missing. Remove it and take a new one.', t.name;
         end if;
     end loop;
 
@@ -2508,8 +2641,11 @@ end $$;
 -- once keeps its photos two weeks after it is finished. A guide picture never
 -- expires: it goes when it is taken off its task, when its task is deleted or
 -- taken off the list, or when the whole list is. And a photo taken and never
--- submitted goes after a day, which is also the grace every file gets so
--- nothing is deleted between being uploaded and being saved.
+-- submitted goes once its round has ended, since nothing can be ticked on it
+-- after that. Never while the round is open: ticks wait on the phone until
+-- Submit, for days if need be, and a photo deleted in between left a tick
+-- pointing at nothing. Every file also gets a day's grace, so nothing is
+-- deleted between being uploaded and being saved.
 create or replace function public.checklist_photos_due() returns setof text
     language sql stable security definer
     set search_path to 'public', 'pg_temp'
@@ -2536,7 +2672,10 @@ create or replace function public.checklist_photos_due() returns setof text
      where o.bucket_id = 'checklist-photos'
        and o.created_at < now() - interval '1 day'
        and ((split_part(o.name, '/', 2) = 'rounds'
-             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos)))
+             and not exists (select 1 from public.checklist_ticks t where o.name = any (t.photos))
+             and not exists (select 1 from public.checklist_rounds r
+                              where r.id::text = split_part(o.name, '/', 3)
+                                and r.ended_at is null))
          or (split_part(o.name, '/', 2) = 'guides'
              and not exists (select 1
                                from public.checklist_tasks k
@@ -2877,18 +3016,111 @@ begin
 end;
 $$;
 
+-- -- The allergen sheet ------------------------------------------------
+--
+-- When the allergen information last changed, and the stamp the PDF button
+-- leaves when the sheet is printed. His ask of 29 September 2026: an accurate
+-- "Last updated", and a reminder to print a new sheet every so many months
+-- and as soon as anything on it has changed since the last print.
+
+-- The newest change that alters what the allergen sheet says: allergens,
+-- dishes, what is in them and their categories, recipes, and a product
+-- renamed, switched on or off, or made a MIX. A price, the VAT, a quantity or
+-- a note does not count. The customer page is not signed in and cannot read
+-- the change log, so this reads it for them and hands back one date.
+--
+-- Listed by what does not count rather than by what does, on every table but
+-- products: a column added to a dish later reminds somebody to print once too
+-- often, which costs a sheet of paper, where a column missed would let the
+-- paper on the wall go wrong without a word. Products are the other way round
+-- because nearly everything on them is about buying and counting.
+--
+-- So a few things move the date without changing the sheet: the allergen row
+-- a new product is saved with, and any edit to a dish that is switched off.
+-- The customer's Last updated moves with them too. That is the side to be
+-- wrong on, a sheet printed once too often rather than a changed one nobody
+-- is told about.
+create or replace function public.allergens_changed_at() returns timestamp with time zone
+    language sql stable security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+    select l.changed_at
+      from public.change_log l
+     where l.table_name in ('product_allergens', 'menu_items', 'menu_item_components',
+                            'menu_categories', 'mix_recipes', 'products')
+       and case
+            -- A new product is on no dish yet. The allergen row it is saved
+            -- with still counts, as an insert on product_allergens.
+            when l.table_name = 'products' and l.action = 'insert' then false
+            when l.action <> 'update' then true
+            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix']
+            when l.table_name = 'menu_items' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['selling_price', 'vat_rate', 'notes']))
+            when l.table_name = 'menu_item_components' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['quantity', 'no_quantity', 'notes']))
+            when l.table_name = 'mix_recipes' then exists (
+                select 1 from jsonb_object_keys(l.changes) k
+                 where k <> all (array['quantity', 'notes']))
+            else true
+       end
+     order by l.changed_at desc
+     limit 1
+$$;
+
+-- The PDF button says the sheet was printed. An owner can print but cannot
+-- write the restaurant row, so the stamp goes through here. The restaurant is
+-- passed rather than read from the account, because the super admin prints
+-- for whichever restaurant is open; anybody else can only stamp their own.
+create or replace function public.allergen_sheet_printed(restaurant uuid) returns timestamp with time zone
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+declare
+    stamped timestamp with time zone;
+begin
+    if auth.uid() is null
+       or coalesce(public.get_my_role(), '') not in ('store_manager', 'owner', 'super_admin') then
+        raise exception 'Only a manager can say the allergen sheet was printed';
+    end if;
+
+    if public.get_my_role() <> 'super_admin'
+       and restaurant is distinct from public.get_my_restaurant_id() then
+        raise exception 'That is not your restaurant';
+    end if;
+
+    update public.restaurants
+       set allergen_sheet_printed_at = now()
+     where id = restaurant
+    returning allergen_sheet_printed_at into stamped;
+
+    if stamped is null then
+        raise exception 'That restaurant does not exist';
+    end if;
+
+    return stamped;
+end $$;
+
+COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, or made a MIX. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
-COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted. Nothing younger than a day.';
+COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted once its round has ended. Nothing younger than a day.';
 COMMENT ON FUNCTION "public"."checklist_photos_removed"("names" "text"[]) IS 'Marks the ticks whose photos the nightly job has just deleted, and clears a guide picture it deleted off the task taken off the list.';
 COMMENT ON FUNCTION "public"."finish_checklist_round"("round" "uuid") IS 'Ends a round when everything on its list is ticked. Returns whether it did. Safe to call any time: it does nothing to a round with something left or one already ended.';
 COMMENT ON FUNCTION "public"."record_change"() IS 'Trigger that writes one change_log row per insert, update or delete. An insert stores no payload: the row it made is still there to look at. Columns in audit_ignored_columns() do not count as a change.';
 COMMENT ON FUNCTION "public"."record_logins"() IS 'Copies sign ins out of auth.sessions and keeps their last seen up to date. Idempotent: safe to run by hand, on a schedule, or twice at once.';
 COMMENT ON FUNCTION "public"."switch_off_leavers"() IS 'Switches off the login of anybody whose last day (employees.ended_on) has passed, in Irish time. Run every night by the cron job switch-off-leavers. Never an owner or a super admin, never switches anybody back on. Idempotent: safe to run by hand.';
 COMMENT ON FUNCTION "public"."row_label"("tbl" "text", "row_data" "jsonb") IS 'Which row this is, in words, worked out from its own columns and its foreign keys. Never raises: a label that cannot be built comes back null.';
+COMMENT ON FUNCTION "public"."sales_platform_key"() IS 'Gives a platform added without a key its name as the key, the way every platform already there got one, and keeps the key as it was on every update.';
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
+grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
+revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
+grant execute on function "public"."allergens_changed_at"() to anon, authenticated;
 revoke all on function "public"."checklist_photos_due"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_photos_due"() to service_role;
 revoke all on function "public"."checklist_photos_removed"("names" "text"[]) from public, anon, authenticated, service_role;
@@ -2903,6 +3135,8 @@ revoke all on function "public"."checklist_tick_finishes"() from public, anon, a
 grant execute on function "public"."checklist_tick_finishes"() to service_role;
 revoke all on function "public"."checklist_tick_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."checklist_tick_guard"() to service_role;
+revoke all on function "public"."diary_calendar_ids_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."diary_calendar_ids_guard"() to service_role;
 revoke all on function "public"."finish_checklist_round"("round" "uuid") from public, anon;
 grant execute on function "public"."finish_checklist_round"("round" "uuid") to authenticated, service_role;
 revoke all on function "public"."handle_delete_user"() from public, anon, authenticated, service_role;
@@ -2919,6 +3153,8 @@ revoke all on function "public"."restaurant_settings_guard"() from public, anon,
 grant execute on function "public"."restaurant_settings_guard"() to service_role;
 revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") from public, anon, authenticated, service_role;
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
+revoke all on function "public"."sales_platform_key"() from public, anon, authenticated, service_role;
+grant execute on function "public"."sales_platform_key"() to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
 revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
@@ -3343,12 +3579,27 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 -- Everybody working a concert night needs to know it is happening, so all
 -- three read to any signed in account. Only a manager decides which places
 -- we watch, and only for their own restaurant.
+--
+-- A place is shared, so any manager may add one or correct one: it is the
+-- venue itself, and both restaurants see the same page and the same feed. What
+-- a manager may not do is delete one somebody watches, or one with listings
+-- read from it, because the pairings and the listings cascade from the place
+-- and a manager at one restaurant took the other's with it. Nor delete a
+-- listing, which nothing in the app does: a dismissal is how one goes away. A
+-- super admin still can. Both are restrictive policies beside the _write ones,
+-- so they only ever narrow them.
 
 ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
 CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+CREATE POLICY "places_delete_only_when_unused" ON "public"."places" AS RESTRICTIVE FOR DELETE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((NOT (EXISTS ( SELECT 1
+   FROM "public"."restaurant_places" "rp"
+  WHERE ("rp"."place_id" = "places"."id")))) AND (NOT (EXISTS ( SELECT 1
+   FROM "public"."events" "e"
+  WHERE ("e"."place_id" = "places"."id")))))));
 
 ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
 
@@ -3363,6 +3614,8 @@ CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated"
 CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
 
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
+
+CREATE POLICY "events_delete_super_admin_only" ON "public"."events" AS RESTRICTIVE FOR DELETE TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
 
 -- -- The diary --------------------------------------------------------
@@ -3840,13 +4093,15 @@ CREATE OR REPLACE TRIGGER "restaurants_settings_guard" BEFORE UPDATE ON "public"
 CREATE OR REPLACE TRIGGER "restaurants_updated_at" BEFORE UPDATE ON "public"."restaurants" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON "public"."product_supplier_prices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "diary_entries_calendar_ids_guard" BEFORE INSERT OR UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."diary_calendar_ids_guard"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
-CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
+CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();
@@ -3854,6 +4109,15 @@ CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" 
 CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_rounds" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_round_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
+
+-- These two are on auth.users, not in public, so a dump of public never shows
+-- them and the comparison with live cannot see them. They went missing from
+-- this file in the September rewrite while live kept them. Without the first,
+-- a new login has no users row and every policy refuses it. The second is
+-- BEFORE DELETE because the users row points at the login, and the check on
+-- that key would refuse the delete before an AFTER trigger could clear it.
+CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_new_user"();
+CREATE OR REPLACE TRIGGER "on_auth_user_deleted" BEFORE DELETE ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_delete_user"();
 
 -- The audit triggers, put on by the function rather than listed here. There
 -- are sixty six of them and they are all the same two.

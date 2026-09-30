@@ -71,6 +71,12 @@ function ConfirmDialog({ request, onClose }) {
         notice = false,
     } = request
 
+    // Only a plain true makes a notice, and never one that names its own
+    // cancel button. Publishing the roster passed a sentence here, and any
+    // value at all used to do it: Go back disappeared and the one button left
+    // said Close and published the week.
+    const isNotice = notice === true && request.cancelLabel === undefined
+
     const confirmRef = useRef(null)
 
     // The button that does the thing takes focus, so Enter answers it and a
@@ -89,7 +95,10 @@ function ConfirmDialog({ request, onClose }) {
     return (
         <Modal title={title} onClose={() => onClose(false)} width="max-w-md">
                 <div className="p-5">
-                    {message && <p className="text-sm text-gray-700">{message}</p>}
+                    {/* pre-line so a message made of several paragraphs, like
+                        the reasons a roster is held, reads as paragraphs
+                        rather than running together. */}
+                    {message && <p className="text-sm text-gray-700 whitespace-pre-line">{message}</p>}
 
                     {/* What is actually about to happen, laid out rather than
                         squeezed into the sentence. Reading back the supplier and
@@ -106,13 +115,13 @@ function ConfirmDialog({ request, onClose }) {
                         </dl>
                     )}
 
-                    {tone === 'danger' && !notice && dangerNote && (
+                    {tone === 'danger' && !isNotice && dangerNote && (
                         <p className="mt-4 text-xs text-red-600">{dangerNote}</p>
                     )}
                 </div>
 
                 <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
-                    {!notice && (
+                    {!isNotice && (
                         <button type="button" onClick={() => onClose(false)} className={secondaryButton}>
                             {cancelLabel}
                         </button>
@@ -121,9 +130,9 @@ function ConfirmDialog({ request, onClose }) {
                         ref={confirmRef}
                         type="button"
                         onClick={() => onClose(true)}
-                        className={notice ? secondaryButton : confirmCls}
+                        className={isNotice ? secondaryButton : confirmCls}
                     >
-                        {notice ? 'Close' : confirmLabel}
+                        {isNotice ? 'Close' : confirmLabel}
                     </button>
                 </div>
         </Modal>

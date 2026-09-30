@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
     timesheetEmail, personPeriod, holidayHoursInWeek, bankHolidays, bankHolidayOn,
-    clock, hours, dayWords, weekWords, periodWords, addDays,
+    clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
     AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS,
 } from '../../supabase/functions/weekly-report-email/timesheet'
+import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 import { ABSENCE_KINDS } from '@/lib/absences'
 import {
@@ -460,5 +461,39 @@ describe('the browser and the function agree about a period', () => {
         const nobody = { ...args, people: [...args.people, { id: 'e9', full_name: 'Nobody' }] }
         expect(appPersonPeriod(nobody).map(p => p.name))
             .toEqual(personPeriod(nobody).map(p => p.name))
+    })
+})
+
+// The PDF is read with the service key, which no bucket rule stops, so where it
+// is read from has to be built by the function out of what it has already
+// checked. A path taken from the request walked out of the restaurant's folder
+// with '..' and could read another restaurant's hours, or any file at all.
+describe('where the hours PDF is read from', () => {
+    const PLACE = '0b6f7c2e-3d4a-4f1b-9c8d-2e5a6b7c8d9e'
+
+    it('is the restaurant folder and the period, the same path the app uploads to', () => {
+        // src/lib/timesheetMail.js puts it at `${restaurantId}/${periodStart}.pdf`.
+        expect(hoursPdfPath(PLACE, '2026-10-25')).toBe(`${PLACE}/2026-10-25.pdf`)
+    })
+
+    it('refuses a restaurant that is not an id', () => {
+        expect(hoursPdfPath(`${PLACE}/../other`, '2026-10-25')).toBeNull()
+        expect(hoursPdfPath('..', '2026-10-25')).toBeNull()
+        expect(hoursPdfPath('', '2026-10-25')).toBeNull()
+        expect(hoursPdfPath(null, '2026-10-25')).toBeNull()
+    })
+
+    it('refuses a period that is not a date', () => {
+        expect(hoursPdfPath(PLACE, '../../rest/v1/users')).toBeNull()
+        expect(hoursPdfPath(PLACE, '2026-10-25/../x')).toBeNull()
+        expect(hoursPdfPath(PLACE, '')).toBeNull()
+    })
+
+    // The rule above is only half of it. The function has to read the path it
+    // built, and never the one that came in the request.
+    it('is the path the function reads, whatever the request says', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toContain('.download(pdfPath)')
+        expect(source).not.toMatch(/\.download\(attachment\)/)
     })
 })

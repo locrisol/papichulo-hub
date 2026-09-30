@@ -4,7 +4,7 @@ import { dayName } from '@/lib/events'
 import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
-    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate,
+    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved,
 } from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
@@ -68,6 +68,11 @@ export default function RequestDeskModal({
                     const after = here ? weekAfter(request, shifts, breakRules) : null
                     const change = here ? hoursChange(request, shifts, breakRules) : []
                     const broke = here && check ? newFindings(before, check(after.shifts)) : []
+                    const stops = broke.some(f => f.level === 'block')
+                    // A shift moved to somebody else since the two of them
+                    // agreed. Approving moves whichever shift the request
+                    // names, so it would hand over a shift that is not theirs.
+                    const moved = here && shiftsMoved(request, findShift)
                     const when = requestDate(request, findShift)
 
                     const half = (shiftId, from, to, takerId) => {
@@ -170,7 +175,7 @@ export default function RequestDeskModal({
                                 <div className="flex flex-wrap gap-2 mt-3">
                                     <button
                                         type="button"
-                                        disabled={saving || broke.some(f => f.level === 'block')}
+                                        disabled={saving || stops || moved}
                                         onClick={() => onApprove(request)}
                                         className={rowButton('good')}
                                     >
@@ -184,7 +189,13 @@ export default function RequestDeskModal({
                                     >
                                         Do not approve
                                     </button>
-                                    {broke.some(f => f.level === 'block') && (
+                                    {moved && (
+                                        <span className="text-xs text-red-700 self-center">
+                                            One of these shifts now belongs to somebody else, so this cannot
+                                            be approved.
+                                        </span>
+                                    )}
+                                    {stops && (
                                         <span className="text-xs text-red-700 self-center">
                                             Something here stops the week going out, so it cannot be approved
                                             as it stands.

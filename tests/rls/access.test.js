@@ -176,6 +176,13 @@ maybe('what each role can see and do', () => {
             })
             expect(refused).toBe(true)
         })
+
+        // Since 023. Printing the allergen sheet is a manager's job, and the
+        // stamp is what stops the reminder, so nobody below one can clear it.
+        it('cannot say the allergen sheet was printed', async () => {
+            const { error } = await employee.rpc('allergen_sheet_printed', { restaurant: ownRestaurantId })
+            expect(error, 'an employee stamped the allergen sheet as printed').not.toBeNull()
+        })
     })
 
     describe('store manager', () => {
@@ -242,10 +249,34 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        it('reads when the allergen sheet was printed and how often it is due', async () => {
+            const { data, error } = await manager.from('restaurants')
+                .select('allergen_sheet_printed_at, allergen_sheet_every_months')
+                .eq('id', ownRestaurantId).single()
+            expect(error).toBeNull()
+            expect(data.allergen_sheet_every_months).toBeGreaterThanOrEqual(1)
+            expect(data.allergen_sheet_every_months).toBeLessThanOrEqual(24)
+        })
+
+        it('cannot stamp the other restaurant allergen sheet as printed', async () => {
+            const { error } = await manager.rpc('allergen_sheet_printed', { restaurant: otherRestaurantId })
+            expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()
+        })
+
         it('only sees users from their own restaurant', async () => {
             const { data } = await manager.from('users').select('restaurant_id')
             const strays = (data || []).filter(u => u.restaurant_id && u.restaurant_id !== ownRestaurantId)
             expect(strays).toHaveLength(0)
+        })
+
+        // The sales grid reads and writes a platform's figures under its key
+        // since 026, so a manager who could not read it could not draw a
+        // single platform row. Every platform has one.
+        it('can read the key each delivery platform keeps its figures under', async () => {
+            const { data, error } = await manager.from('sales_platforms').select('id, key, name')
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+            expect(data.filter(p => !p.key)).toEqual([])
         })
     })
 
@@ -430,6 +461,19 @@ maybe('what each role can see and do', () => {
             for (const [view, key, change] of views) {
                 expect(await changesRefused(anon, view, key, change), `${view} can be changed by anybody`).toBe(true)
             }
+        })
+
+        // Since 023: the customer page's Last updated. One date from the
+        // change log, and nothing else of it.
+        it('can ask when the allergen information last changed', async () => {
+            const { data, error } = await anon.rpc('allergens_changed_at')
+            expect(error, 'the allergen page cannot read its own date').toBeNull()
+            expect(data === null || !isNaN(new Date(data))).toBe(true)
+        })
+
+        it('cannot say the allergen sheet was printed', async () => {
+            const { error } = await anon.rpc('allergen_sheet_printed', { restaurant: NOBODY })
+            expect(error, 'anybody can stamp the allergen sheet as printed').not.toBeNull()
         })
 
         it('cannot read what anything costs', async () => {

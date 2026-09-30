@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { screen, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf } from '@/lib/dates'
 
@@ -12,7 +13,7 @@ import { todayISO, weekStartOf } from '@/lib/dates'
 
 const DAY = weekStartOf(todayISO())
 
-const db = mockSupabase({
+const tables = {
     suppliers: { data: [{ id: 's1', name: 'Test Supplier', is_active: true }], error: null },
     invoices: {
         data: [
@@ -34,13 +35,19 @@ const db = mockSupabase({
         ],
         error: null,
     },
-})
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+}
+const db = mockSupabase(tables)
+const { asked } = vi.hoisted(() => ({ asked: vi.fn(() => Promise.resolve(true)) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Testville' } }),
 }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+vi.mock('@/context/confirm', () => ({ useConfirm: () => asked }))
 
 const { default: InvoicesPage } = await import('./InvoicesPage')
 
@@ -62,5 +69,106 @@ describe('the number on an imported document', () => {
         const typed = await screen.findAllByText('Hand Typed Ltd')
         expect(typed).toHaveLength(2)
         for (const name of typed) expect(name.textContent).not.toMatch(/Invoice|Credit note|null/)
+    })
+})
+
+// Deleting a document that delivery problems point at. The dialog says what
+// happens to them, and a credit note that settled one opens it again before it
+// goes, so importing it again settles it once instead of taking the money off
+// twice. See creditTakenBack.
+describe('deleting a document with delivery problems on it', () => {
+    afterEach(() => { delete tables.invoice_line_claims })
+
+    // The delete button on the computer's table row for that document.
+    async function pressDelete(text) {
+        renderWithRouter(<InvoicesPage />)
+        const row = (await screen.findAllByText(text))[1].closest('tr')
+        await userEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+        await waitFor(() => expect(asked).toHaveBeenCalled())
+    }
+
+    // Each chain the page built for a table, in the order it asked.
+    const chains = table => db.from.mock.calls
+        .map(([name], i) => ({ name, i, chain: db.from.mock.results[i].value }))
+        .filter(c => c.name === table)
+
+    it('says the delivery problems a credit note settled wait for a credit again', async () => {
+        tables.invoice_line_claims = {
+            data: [
+                { id: 'c1', kind: 'short', status: 'settled', credited_amount: 11.4, invoice_id: 'i9', credit_invoice_id: 'i2' },
+                { id: 'c2', kind: 'other', status: 'settled', credited_amount: 1, invoice_id: 'i9', credit_invoice_id: 'i2' },
+            ],
+            error: null,
+        }
+        await pressDelete('Credit note C45620001')
+
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It settled one delivery problem. It goes back to Still waiting on Delivery problems until this credit note is imported again.')
+
+        // Opened again before the credit note goes, never after.
+        await waitFor(() => expect(chains('invoices').some(c => c.chain.delete.mock.calls.length)).toBe(true))
+        const opened = chains('invoice_line_claims').find(c => c.chain.update.mock.calls.length)
+        const removed = chains('invoice_line_claims').find(c => c.chain.delete.mock.calls.length)
+        const deleted = chains('invoices').find(c => c.chain.delete.mock.calls.length)
+        expect(opened.chain.update).toHaveBeenCalledWith({
+            credited_amount: 0, credit_invoice_id: null, status: 'open', settled_on: null,
+        })
+        expect(opened.chain.eq).toHaveBeenCalledWith('id', 'c1')
+        expect(removed.chain.in).toHaveBeenCalledWith('id', ['c2'])
+        expect(opened.i).toBeLessThan(deleted.i)
+        expect(removed.i).toBeLessThan(deleted.i)
+    })
+
+    it('says so for several at once', async () => {
+        tables.invoice_line_claims = {
+            data: [
+                { id: 'c1', kind: 'short', status: 'settled', credited_amount: 6.4, invoice_id: 'i9', credit_invoice_id: 'i2' },
+                { id: 'c3', kind: 'damaged', status: 'settled', credited_amount: 6, invoice_id: 'i9', credit_invoice_id: 'i2' },
+            ],
+            error: null,
+        }
+        await pressDelete('Credit note C45620001')
+
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It settled 2 delivery problems. They go back to Still waiting on Delivery problems until this credit note is imported again.')
+    })
+
+    it('says the delivery problems logged against an invoice are kept', async () => {
+        tables.invoice_line_claims = {
+            data: [
+                { id: 'c1', kind: 'short', status: 'open', amount: 20, credited_amount: 0, counted_week: DAY, invoice_id: 'i1', credit_invoice_id: null },
+                { id: 'c3', kind: 'damaged', status: 'open', amount: 8.5, credited_amount: 0, counted_week: DAY, invoice_id: 'i1', credit_invoice_id: null },
+            ],
+            error: null,
+        }
+        await pressDelete('Invoice 45448455')
+
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It will be taken off the week straight away and off the cost dashboard with it. The 2 delivery problems logged against it are kept, and still come off that week.')
+        expect(chains('invoice_line_claims').some(c => c.chain.update.mock.calls.length)).toBe(false)
+    })
+
+    // The review of 30 September. A note from the door with no amount yet, and
+    // a refusal with nothing back, take nothing off the week, so the dialog
+    // does not count them as if they did.
+    it('only counts the delivery problems that still take money off', async () => {
+        tables.invoice_line_claims = {
+            data: [
+                { id: 'c1', kind: 'short', status: 'open', amount: 20, credited_amount: 0, counted_week: DAY, invoice_id: 'i1', credit_invoice_id: null },
+                { id: 'c4', kind: 'short', status: 'open', amount: null, credited_amount: 0, counted_week: DAY, invoice_id: 'i1', credit_invoice_id: null },
+                { id: 'c5', kind: 'damaged', status: 'refused', amount: 8.5, credited_amount: 0, counted_week: DAY, invoice_id: 'i1', credit_invoice_id: null },
+            ],
+            error: null,
+        }
+        await pressDelete('Invoice 45448455')
+
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It will be taken off the week straight away and off the cost dashboard with it. The delivery problem logged against it is kept, and still comes off that week.')
+    })
+
+    it('says nothing about delivery problems when there are none', async () => {
+        await pressDelete('Invoice 45448455')
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It will be taken off the week straight away and off the cost dashboard with it.')
     })
 })

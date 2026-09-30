@@ -3,8 +3,9 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff,
 } from '../../supabase/functions/weekly-report-email/email'
+import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
 import { changesSince } from '../../supabase/functions/weekly-report-email/changes'
 import { priceWeek } from '@/lib/invoiceReport'
@@ -918,11 +919,18 @@ describe('senderFor', () => {
         expect(senderFor(FROM, null)).toBe(FROM)
     })
 
-    it('keeps MAIL_FROM as it is rather than send a name that needs encoding', () => {
-        // A display name with an accent has to be encoded to travel in a
-        // header, and a name that arrives as mojibake is worse than a
-        // generic one.
-        expect(senderFor(FROM, 'D\u00fan Laoghaire')).toBe(FROM)
+    it('keeps an accent in the name, because the send encodes it properly now', () => {
+        // It used to fall back to MAIL_FROM, because denomailer's own encoding
+        // of a name like this was broken. headersFor in mime.js does it right.
+        expect(senderFor(FROM, 'D\u00fan Laoghaire'))
+            .toBe('Papi Chulo D\u00fan Laoghaire <point@papichulo.ie>')
+    })
+
+    it('turns a line break in the name into a space', () => {
+        // A line break in a header starts a header of its own.
+        expect(senderFor(FROM, 'Dun\r\nBcc: x@y.com'))
+            .toBe('"Papi Chulo Dun Bcc: x@y.com" <point@papichulo.ie>')
+        expect(senderFor(FROM, '\r\n')).toBe(FROM)
     })
 
     it('quotes a name a header parser would read as punctuation', () => {
@@ -1012,6 +1020,33 @@ describe('the figure column is only as wide as the money', () => {
     it('keeps the target colour on the share where there is one', () => {
         expect(mail.html).toContain('(32.00%)</span>')
         expect(mail.html).toContain(`color:${costTone(32, 30)};`)
+    })
+})
+
+// Switching somebody off only sets users.is_active. Their password still signs
+// them in, and this function reads users with the service key, which row level
+// security does not stop, so it has to ask for itself.
+describe('a login that is switched off', () => {
+    it('is refused, whatever its role', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: false })).toBe(true)
+        expect(switchedOff({ role: 'super_admin', is_active: false })).toBe(true)
+    })
+
+    it('lets an active one through', () => {
+        expect(switchedOff({ role: 'store_manager', is_active: true })).toBe(false)
+    })
+
+    it('refuses when it cannot tell, rather than letting it through', () => {
+        expect(switchedOff({ role: 'store_manager' })).toBe(true)
+        expect(switchedOff(null)).toBe(true)
+    })
+
+    it('is asked off a row that carries is_active, before either mail is built', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        expect(source).toMatch(/\.from\('users'\)\.select\('[^']*\bis_active\b[^']*'\)\s*\.eq\('id', caller\.id\)/)
+        const asked = source.indexOf('switchedOff(account)')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf("if (kind === 'timesheet')"))
     })
 })
 
@@ -1227,6 +1262,43 @@ describe('the people section, with renewals', () => {
             mail.html.indexOf('Food safety certificates'),
             mail.html.indexOf('Right to work'))
         expect(people).not.toContain('Renewal')
+    })
+})
+
+// His ask of 29 September: a line in the paperwork while a new allergen sheet
+// is due, frozen with the report in the words the Allergens page uses.
+describe('the allergen sheet', () => {
+    const words = 'Last printed 12 June. The allergen information has changed since then. Print a new sheet.'
+    const due = reportEmail({
+        ...base,
+        figures: { ...figures, paperwork: { ...figures.paperwork, allergenSheet: { reason: 'changed', words } } },
+    })
+
+    it('says a new one is due, under People and operations', () => {
+        expect(due.html).toContain('Allergen sheet')
+        expect(due.html).toContain(words)
+        expect(due.html.indexOf(words)).toBeGreaterThan(due.html.indexOf('People and operations'))
+        expect(due.html.indexOf(words)).toBeLessThan(due.html.indexOf('Marketing and sales development'))
+    })
+
+    it('says it in the plain copy too', () => {
+        expect(due.text).toContain('  Allergen sheet')
+        expect(due.text).toContain(`  ${words}`)
+    })
+
+    // Not due, or a report frozen before this existed.
+    it('says nothing while it is not due', () => {
+        const mail = reportEmail(base)
+        expect(mail.html).not.toContain('Allergen sheet')
+        expect(mail.text).not.toContain('Allergen sheet')
+    })
+
+    it('keeps everything that cannot wrap narrow enough for a phone', () => {
+        const lines = [...due.html.matchAll(/<td[^>]*white-space:nowrap[^>]*>([\s\S]*?)<\/td>/g)]
+            .flatMap(m => m[1].split(/<br\s*\/?>/))
+            .map(l => l.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z0-9#]+;/gi, 'x').trim())
+        expect(lines).toContain('Print a new one')
+        expect(lines.filter(l => l.length > 16)).toEqual([])
     })
 })
 

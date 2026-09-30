@@ -33,6 +33,22 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // Employees can see everything logged today at their restaurant, so two people
 // do not log the same dropped tray twice. They cannot see any other day.
 
+// What to say when an item cannot be valued. A MIX is costed from its recipe,
+// so "no price is set" is only ever true of something bought. For a MIX it is
+// an ingredient that cannot be costed (no price, switched off, or a MIX of its
+// own that is not complete), or its own recipe that is not complete.
+//
+// It does not say a manager can fix it later. The value is kept as it was on
+// the day, so setting the price afterwards never reaches this entry.
+function noValueMessage(product, status) {
+    const reason = !product?.is_mix
+        ? 'No price is set for this product'
+        : status === 'missing_price'
+            ? 'An ingredient in this recipe cannot be costed'
+            : 'The recipe for this product is not complete'
+    return `${reason}, so the value cannot be worked out. You can still log it, but it will be saved without a value.`
+}
+
 export default function WasteLogPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
@@ -364,8 +380,10 @@ export default function WasteLogPage() {
                                 </div>
                             </div>
 
-                            {/* The money for this one item, live */}
-                            {selectedProduct && quantity !== '' && (
+                            {/* The money for this one item, live. Nothing until the
+                                quantity is above zero, or typing 0.5 would say for a
+                                moment that something is missing when nothing is. */}
+                            {costing.status && (
                                 <div className="bg-gray-50 rounded-lg p-3 mb-3">
                                     {costing.hasCost ? (
                                         <div className="flex items-center justify-between">
@@ -376,8 +394,7 @@ export default function WasteLogPage() {
                                         </div>
                                     ) : (
                                         <p className="text-sm text-amber-700">
-                                            No price is set for this product, so the value cannot be worked out. You can still
-                                            log it, and a manager can set the price later.
+                                            {noValueMessage(selectedProduct, costing.status)}
                                         </p>
                                     )}
                                 </div>
@@ -424,7 +441,7 @@ export default function WasteLogPage() {
                                             </div>
                                         </div>
                                         <span className={`text-sm whitespace-nowrap ${i.hasCost ? 'text-gray-900 font-medium' : 'text-amber-600'}`}>
-                                            {i.hasCost ? fmtMoney(i.value) : 'No price'}
+                                            {i.hasCost ? fmtMoney(i.value) : (i.product.is_mix ? 'No value' : 'No price')}
                                         </span>
                                         {!reviewing && (
                                             <button onClick={() => removeFromBasket(i.key)}
@@ -441,7 +458,7 @@ export default function WasteLogPage() {
 
                             {basketMissingPrices > 0 && (
                                 <p className="text-xs text-amber-700 mb-3">
-                                    {basketMissingPrices} {basketMissingPrices === 1 ? 'item has' : 'items have'} no price set, so
+                                    {basketMissingPrices} {basketMissingPrices === 1 ? 'item' : 'items'} could not be valued, so
                                     the total is lower than the real cost. They will still be logged.
                                 </p>
                             )}
