@@ -136,9 +136,15 @@ export default function StockTakeCountPage() {
             .eq('stock_take_id', id)
         setLines(linesData || [])
 
+        // Prices belong to a restaurant and products do not, and a super admin
+        // can read every restaurant's. So it is the stock take's own
+        // restaurant, not the switcher's: a count can be opened by its address
+        // whatever the switcher says, and the value and the cases have to be
+        // the ones bought where the shelf is.
         const { data: pricesData } = await supabase
             .from('product_supplier_prices')
             .select('*')
+            .eq('restaurant_id', sessionData.restaurant_id)
             .eq('is_preferred', true)
         setPreferredPrices(pricesData || [])
 

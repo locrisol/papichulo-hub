@@ -33,6 +33,22 @@ export function makeQuery(result = { data: [], error: null }) {
     return chain
 }
 
+// A table that answers for the filters it was asked, the way the database
+// would, for a test about which rows a page asks for rather than what it does
+// with whatever comes back. Only eq and in narrow the rows; the rest of the
+// chain is taken and ignored.
+export function tableOf(rows) {
+    const keep = []
+    const chain = makeQuery()
+    chain.eq = vi.fn((column, value) => { keep.push(r => r[column] === value); return chain })
+    chain.in = vi.fn((column, values) => { keep.push(r => values.includes(r[column])); return chain })
+    const answer = () => ({ data: rows.filter(r => keep.every(k => k(r))), error: null })
+    chain.then = (resolve, reject) => Promise.resolve(answer()).then(resolve, reject)
+    chain.single = vi.fn(() => Promise.resolve({ ...answer(), data: answer().data[0] ?? null }))
+    chain.maybeSingle = chain.single
+    return chain
+}
+
 // tables: { products: { data: [...] }, ... }. Anything not named comes back
 // empty rather than undefined, because an unlisted table is usually a query the
 // test does not care about and should not have to spell out.
