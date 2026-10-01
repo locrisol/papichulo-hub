@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { photoPath } from '@/lib/photo'
+import { ALLERGEN_KEYS } from '@/lib/allergens'
 
 // What supabase/schema.sql must hold that no comparison with live can catch.
 //
@@ -30,6 +31,33 @@ describe('a database built from schema.sql', () => {
             'CREATE OR REPLACE TRIGGER "on_auth_user_deleted" BEFORE DELETE ON "auth"."users" '
             + 'FOR EACH ROW EXECUTE FUNCTION "public"."handle_delete_user"();',
         )
+    })
+})
+
+// The columns the allergen answer depends on. Each one had a default and no
+// NOT NULL, and the app reads an empty one as none or as false: an allergen
+// left empty by a script or a spreadsheet pasted into the table editor read as
+// not present, a MIX whose is_mix was empty was never opened up, and a dish or
+// category with is_active empty dropped off the sheet. Since 032.
+describe('what the allergen answer depends on', () => {
+    // One column's line inside one table, from schema.sql.
+    function columnLine(table, column) {
+        const start = schema.indexOf(`CREATE TABLE IF NOT EXISTS "public"."${table}" (`)
+        expect(start, `${table} is not in schema.sql`).toBeGreaterThan(-1)
+        const body = schema.slice(start, schema.indexOf(');', start))
+        const line = body.split('\n').find(l => l.trim().startsWith(`"${column}" `))
+        expect(line, `${table}.${column} is not in schema.sql`).toBeTruthy()
+        return line
+    }
+
+    it.each([
+        ...ALLERGEN_KEYS.map(key => ['product_allergens', key]),
+        ['products', 'is_mix'],
+        ['products', 'is_active'],
+        ['menu_items', 'is_active'],
+        ['menu_categories', 'is_active'],
+    ])('%s.%s cannot be empty', (table, column) => {
+        expect(columnLine(table, column)).toMatch(/NOT NULL/)
     })
 })
 

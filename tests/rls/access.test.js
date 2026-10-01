@@ -258,6 +258,38 @@ maybe('what each role can see and do', () => {
             expect(data.allergen_sheet_every_months).toBeLessThanOrEqual(24)
         })
 
+        // Since 032. What the allergen answer is worked out from cannot be
+        // left empty: an empty allergen read as not present, and an empty
+        // is_mix kept a MIX's ingredients out of the dish. Every write here is
+        // refused either way, so nothing is ever created on live: before 032
+        // by something else (a product or category that does not exist, a
+        // section that is not one, a name already taken), after it by the
+        // empty column, which is the code checked for.
+        it('cannot leave empty what the allergen answer is worked out from', async () => {
+            const EMPTY = '23502'
+
+            const { error: allergen } = await manager.from('product_allergens')
+                .insert({ product_id: NOBODY, gluten: null })
+            expect(allergen?.code, 'an allergen can be left empty').toBe(EMPTY)
+
+            const { error: product } = await manager.from('products').insert({
+                name: 'RLS test product, should never exist', section: 'Nowhere', unit: 'KG', is_mix: null,
+            })
+            expect(product?.code, 'whether a product is a MIX can be left empty').toBe(EMPTY)
+
+            const { error: dish } = await manager.from('menu_items').insert({
+                name: 'RLS test dish, should never exist', category_id: NOBODY, is_active: null,
+            })
+            expect(dish?.code, 'whether a dish is on can be left empty').toBe(EMPTY)
+
+            const { data: taken } = await manager.from('menu_categories').select('name').limit(1)
+            if (taken?.length) {
+                const { error: category } = await manager.from('menu_categories')
+                    .insert({ name: taken[0].name, is_active: null })
+                expect(category?.code, 'whether a category is on can be left empty').toBe(EMPTY)
+            }
+        })
+
         it('cannot stamp the other restaurant allergen sheet as printed', async () => {
             const { error } = await manager.rpc('allergen_sheet_printed', { restaurant: otherRestaurantId })
             expect(error, 'a manager stamped the other restaurant allergen sheet').not.toBeNull()

@@ -106,9 +106,13 @@ has it, and a tick is refused if its photo is no longer in storage.
 `032` is **not run yet**. It gives `public_products` the section, so the
 customer allergen page can tell a food product nobody entered allergens for
 (it asks the customer to see staff) from a dip pot, which has nothing to
-declare, and the sheet's date counts a product moving section. **Run it
-before the branch is merged**, or the new page asks customers to see staff
-about every dish that comes in a pot.
+declare, and the sheet's date counts a product moving section. And it makes
+the columns the allergen answer is worked out from not null: the fourteen on
+`product_allergens`, `is_mix` and `is_active` on `products`, and `is_active`
+on `menu_items` and `menu_categories`. It checks first, and if any of them is
+empty it stops, names the table and changes nothing. **Run it before the
+branch is merged**, or the new page asks customers to see staff about every
+dish that comes in a pot.
 
 ## What was here before
 

@@ -250,10 +250,10 @@ CREATE TABLE IF NOT EXISTS "public"."products" (
     "name" character varying(255) NOT NULL,
     "section" character varying(20) NOT NULL,
     "unit" character varying(10) NOT NULL,
-    "is_mix" boolean DEFAULT false,
+    "is_mix" boolean DEFAULT false NOT NULL,
     "weight_loss_pct" numeric(5,2) DEFAULT 0,
     "notes" "text",
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "batch_yield" numeric(10,4),
     "count_frequency" "text",
@@ -343,23 +343,27 @@ ALTER TABLE ONLY "public"."mix_recipes"
 CREATE INDEX "idx_mix_recipes_mix" ON "public"."mix_recipes" USING "btree" ("mix_product_id");
 CREATE INDEX "idx_mix_recipes_ingredient" ON "public"."mix_recipes" USING "btree" ("ingredient_product_id");
 
+-- One row per product, and each of the fourteen always says something. Not
+-- null since 032: an empty one read as Not Present, which nobody had said. No
+-- row at all is a different thing, the answer never entered, and the app asks
+-- the customer to see staff about it.
 CREATE TABLE IF NOT EXISTS "public"."product_allergens" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "product_id" "uuid" NOT NULL,
-    "gluten" character varying(15) DEFAULT 'none'::character varying,
-    "crustaceans" character varying(15) DEFAULT 'none'::character varying,
-    "eggs" character varying(15) DEFAULT 'none'::character varying,
-    "fish" character varying(15) DEFAULT 'none'::character varying,
-    "peanuts" character varying(15) DEFAULT 'none'::character varying,
-    "soybeans" character varying(15) DEFAULT 'none'::character varying,
-    "milk" character varying(15) DEFAULT 'none'::character varying,
-    "nuts" character varying(15) DEFAULT 'none'::character varying,
-    "celery" character varying(15) DEFAULT 'none'::character varying,
-    "mustard" character varying(15) DEFAULT 'none'::character varying,
-    "sesame" character varying(15) DEFAULT 'none'::character varying,
-    "sulphites" character varying(15) DEFAULT 'none'::character varying,
-    "lupin" character varying(15) DEFAULT 'none'::character varying,
-    "molluscs" character varying(15) DEFAULT 'none'::character varying,
+    "gluten" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "crustaceans" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "eggs" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "fish" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "peanuts" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "soybeans" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "milk" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "nuts" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "celery" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "mustard" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "sesame" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "sulphites" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "lupin" character varying(15) DEFAULT 'none'::character varying NOT NULL,
+    "molluscs" character varying(15) DEFAULT 'none'::character varying NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"(),
     CONSTRAINT "product_allergens_celery_check" CHECK (("celery" IN ('contains', 'may_contain', 'none'))),
     CONSTRAINT "product_allergens_crustaceans_check" CHECK (("crustaceans" IN ('contains', 'may_contain', 'none'))),
@@ -396,7 +400,7 @@ CREATE TABLE IF NOT EXISTS "public"."menu_categories" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" character varying(100) NOT NULL,
     "sort_order" integer DEFAULT 0 NOT NULL,
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "on_allergen_sheet" boolean DEFAULT true NOT NULL
 );
@@ -413,7 +417,7 @@ CREATE TABLE IF NOT EXISTS "public"."menu_items" (
     "category_id" "uuid" NOT NULL,
     "selling_price" numeric(10,2) DEFAULT 0 NOT NULL,
     "vat_rate" numeric(5,2) DEFAULT 0 NOT NULL,
-    "is_active" boolean DEFAULT true,
+    "is_active" boolean DEFAULT true NOT NULL,
     "notes" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "sheet_name" "text",
