@@ -28,4 +28,35 @@ drop policy if exists "employees_read_own" on public.employees;
 
 comment on view public.roster_colleagues is 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
 
+-- The menu, managers only. Staff could read every dish's selling price, its
+-- VAT and how much of each thing goes into it, and the allergen rows behind
+-- the customer page. No staff screen reads any of the four, and the customer
+-- page reads the public_ views, which leave the money and the quantities out.
+-- Nothing on the site as it is today changes for staff, so this one could
+-- have gone in 033; it is here because it only takes away.
+
+drop policy if exists "menu_items_select" on public.menu_items;
+create policy "menu_items_select" on public.menu_items
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+drop policy if exists "menu_item_components_select" on public.menu_item_components;
+create policy "menu_item_components_select" on public.menu_item_components
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+drop policy if exists "product_allergens_select" on public.product_allergens;
+create policy "product_allergens_select" on public.product_allergens
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+drop policy if exists "menu_categories_select" on public.menu_categories;
+create policy "menu_categories_select" on public.menu_categories
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
 notify pgrst, 'reload schema';

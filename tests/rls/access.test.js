@@ -286,6 +286,24 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
         })
 
+        // Since 034. Every dish's selling price, its VAT and how much of each
+        // thing goes into it. No staff screen reads them, and the allergen
+        // page reads the public_ views, which leave all of that out.
+        it('cannot read the menu, what goes into each dish or the allergen tables', async () => {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+                const { count } = await countVisible(employee, table)
+                expect(count, `an employee can read ${table}`).toBe(0)
+            }
+        })
+
+        it('still reads the allergen page the way a customer does', async () => {
+            for (const view of ['public_menu_items', 'public_menu_item_components', 'public_product_allergens']) {
+                const { count, error } = await countVisible(employee, view)
+                expect(error).toBeNull()
+                expect(count, `an employee cannot read ${view}`).toBeGreaterThan(0)
+            }
+        })
+
         it('is refused when writing a MIX recipe', async () => {
             const refused = await writeRefused(employee, 'mix_recipes', {
                 mix_product_id: NOBODY,
@@ -422,6 +440,16 @@ maybe('what each role can see and do', () => {
                 const { error: category } = await manager.from('menu_categories')
                     .insert({ name: taken[0].name, is_active: null })
                 expect(category?.code, 'whether a category is on can be left empty').toBe(EMPTY)
+            }
+        })
+
+        // The menu pages, the allergen pages and the preview of the customer
+        // page all read these straight off the tables.
+        it('still reads the menu, its prices and what goes into each dish', async () => {
+            for (const table of ['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories']) {
+                const { count, error } = await countVisible(manager, table)
+                expect(error).toBeNull()
+                expect(count, `a manager cannot read ${table}`).toBeGreaterThan(0)
             }
         })
 

@@ -140,6 +140,21 @@ describe('what staff are given of their own record on the team', () => {
     })
 })
 
+describe('what staff are given of the menu', () => {
+    // The selling price, the VAT, how much of each thing goes into a dish, and
+    // the allergen rows behind the customer page. No staff screen reads any of
+    // it, and the customer page reads the public_ views, which leave the money
+    // and the quantities out.
+    it.each(['menu_items', 'menu_item_components', 'product_allergens', 'menu_categories'])(
+        'gives nobody below a manager a read of %s',
+        table => {
+            const policies = policiesOn(table)
+            expect(policies.length, `found no policies on ${table} to check`).toBeGreaterThan(0)
+            expect(policies.filter(p => p.includes("'employee'"))).toEqual([])
+        },
+    )
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

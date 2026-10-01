@@ -3473,28 +3473,34 @@ CREATE POLICY "mix_recipes_write" ON "public"."mix_recipes" TO "authenticated" U
 
 ALTER TABLE "public"."product_allergens" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Managers only, like the menu below. The customer page, and staff looking
+-- at it, read public_product_allergens instead.
+CREATE POLICY "product_allergens_select" ON "public"."product_allergens" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "product_allergens_write" ON "public"."product_allergens" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 
 -- -- The menu ----------------------------------------------------------
+--
+-- Managers only. These carry every dish's selling price, its VAT and how
+-- much of each thing goes into it, and no staff screen reads any of them.
+-- The customer page reads the public_ views, which leave all of that out.
 
 ALTER TABLE "public"."menu_categories" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_categories_select" ON "public"."menu_categories" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_categories_write" ON "public"."menu_categories" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_items" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_items_select" ON "public"."menu_items" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_items_write" ON "public"."menu_items" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 ALTER TABLE "public"."menu_item_components" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+CREATE POLICY "menu_item_components_select" ON "public"."menu_item_components" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "menu_item_components_write" ON "public"."menu_item_components" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
