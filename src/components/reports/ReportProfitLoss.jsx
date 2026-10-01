@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fmtMoney, fmtPct } from '@/lib/format'
 import { numberField } from '@/lib/numberInput'
 import { wasChanged, startsOpen, figureGaps } from '@/lib/weeklyReport'
-import { removeButton, secondaryButton } from '@/lib/controlStyles'
+import { primaryButton, removeButton, secondaryButton } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import AddButton from '@/components/ui/AddButton'
 
@@ -421,7 +421,7 @@ export default function ReportProfitLoss({
                                     setName('')
                                     setAdding(false)
                                 }}
-                                className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-accent-ink transition-colors"
+                                className={primaryButton()}
                             >
                                 Add
                             </button>
