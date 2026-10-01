@@ -182,6 +182,19 @@ describe('buildIcs', () => {
         expect(out.indexOf('BEGIN:VTIMEZONE')).toBeLessThan(out.indexOf('BEGIN:VEVENT'))
     })
 
+    // The calendar's own properties come before anything inside it. After
+    // the clock rules, a strict reader can drop the description or the file.
+    it('says what the calendar is before the clock rules and the events', () => {
+        const out = buildIcs({
+            calendarName: 'Shifts', calendarDescription: 'Published shifts for Ana.', shifts: [shift()], now,
+        })
+        const zone = out.indexOf('BEGIN:VTIMEZONE')
+        expect(out.indexOf('X-WR-CALDESC:Published shifts for Ana.')).toBeGreaterThan(-1)
+        expect(out.indexOf('X-WR-CALDESC:')).toBeLessThan(zone)
+        expect(out.indexOf('\r\nDESCRIPTION:Published shifts for Ana.')).toBeGreaterThan(-1)
+        expect(out.indexOf('\r\nDESCRIPTION:Published shifts for Ana.')).toBeLessThan(zone)
+    })
+
     it('leaves out what it was not given rather than writing an empty line', () => {
         const out = buildIcs({ calendarName: 'Shifts', shifts: [shift()], now })
         expect(out).not.toContain('LOCATION:')

@@ -158,13 +158,18 @@ export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
         `NAME:${escapeIcs(calendarName)}`,
         'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
         'X-PUBLISHED-TTL:PT1H',
-        ...VTIMEZONE,
     ]
 
+    // With the rest of what the calendar says about itself, and before the
+    // clock rules. The format puts every calendar property ahead of the first
+    // block inside it, and a strict reader can drop a description that comes
+    // after one.
     if (calendarDescription) {
         lines.push(`X-WR-CALDESC:${escapeIcs(calendarDescription)}`)
         lines.push(`DESCRIPTION:${escapeIcs(calendarDescription)}`)
     }
+
+    lines.push(...VTIMEZONE)
 
     for (const shift of shifts || []) {
         const { start, end } = eventTimes(shift)
