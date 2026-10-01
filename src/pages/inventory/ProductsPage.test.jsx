@@ -4,6 +4,7 @@ import { act, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { onAllergensChanged } from '@/lib/allergensChanged'
+import { emptyAllergens } from '@/lib/allergens'
 
 // The product catalogue at Point Campus. Invented products and prices.
 
@@ -625,6 +626,80 @@ describe('products with no allergens set', () => {
             expect(await screen.findByText(/Could not check which products have allergens set/)).toBeInTheDocument()
         } finally {
             db.from.mockImplementation(answer)
+        }
+    })
+})
+
+// Opening a product to change it reads its allergen row. A read that failed
+// on a weak signal looked like a product nobody had answered, with the one
+// tap that declares it has none, and saving wrote that over the real answer.
+describe('the allergens on an edit', () => {
+    const allergenReads = (answerFor) => {
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => {
+            if (table !== 'product_allergens') return answer(table)
+            const q = answerFor()
+            q.upsert = vi.fn(row => {
+                written.push({ table, how: 'upsert', row })
+                return makeQuery({ data: null, error: null })
+            })
+            return q
+        })
+        return () => db.from.mockImplementation(answer)
+    }
+
+    it('offers no answer when they could not be read, and saves none', async () => {
+        const restore = allergenReads(() => makeQuery({ data: null, error: WEAK_SIGNAL }))
+        try {
+            const me = userEvent.setup()
+            renderWithRouter(<ProductsPage />)
+            await me.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+            const dialog = within(screen.getByRole('dialog'))
+            expect(await dialog.findByText('Could not be read')).toBeInTheDocument()
+            expect(dialog.queryByRole('button', { name: 'Declare the product has no allergens' })).not.toBeInTheDocument()
+
+            await me.click(dialog.getByRole('button', { name: /^Allergens/ }))
+            expect(dialog.getByText(/The allergens could not be read\. Close this and open it again/)).toBeInTheDocument()
+
+            await me.click(dialog.getByRole('button', { name: 'Save changes' }))
+            await waitFor(() => expect(written.some(w => w.table === 'products' && w.how === 'update')).toBe(true))
+            expect(written.filter(w => w.table === 'product_allergens')).toEqual([])
+        } finally {
+            restore()
+        }
+    })
+
+    // Edit on another product while the first one's read is still on its
+    // way. When it landed late it put the first product's allergens in the
+    // second one's dialog, and saving the second wrote them onto it.
+    it('keeps the product being edited, whatever lands late', async () => {
+        tables.products = [PEPPERS, { ...PEPPERS, id: 'p2', name: 'Red Peppers' }]
+        const late = heldQuery({ data: { product_id: 'p1', ...emptyAllergens(), milk: 'contains' }, error: null })
+        let reads = 0
+        const restore = allergenReads(() => {
+            reads += 1
+            if (reads === 1) return makeQuery({ data: [], error: null })
+            const q = makeQuery({ data: { product_id: 'p2', ...emptyAllergens() }, error: null })
+            if (reads === 2) q.maybeSingle = late.chain.maybeSingle
+            return q
+        })
+        try {
+            const me = userEvent.setup()
+            renderWithRouter(<ProductsPage />)
+            const edits = await screen.findAllByRole('button', { name: 'Edit' })
+            await me.click(edits[0])
+            await me.click(edits[1])
+            // Asked afresh each time: the dialog is drawn again for the
+            // second product.
+            const dialog = () => within(screen.getByRole('dialog'))
+            await waitFor(() => expect(dialog().getByText('None of the 14')).toBeInTheDocument())
+
+            await act(async () => late.release())
+            expect(dialog().getByText('Edit Red Peppers')).toBeInTheDocument()
+            expect(dialog().getByText('None of the 14')).toBeInTheDocument()
+            expect(dialog().queryByText('1 of 14')).not.toBeInTheDocument()
+        } finally {
+            restore()
         }
     })
 })

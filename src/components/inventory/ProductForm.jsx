@@ -33,7 +33,7 @@ export default function ProductForm({
   priceForm, onPriceChange, priceErrors, suppliers, nameClash,
   formats, onFormatsChange,
   recipe, onRecipeChange, ingredientOptions,
-  allergens, onAllergenChange, allergensAnswered, onNoAllergens,
+  allergens, onAllergenChange, allergensAnswered, onNoAllergens, allergensUnread = false,
   extras, openExtra, onOpenExtra,
   otherPriceCount = 0, onOpenPrices, recipeBlock = true, saving = false,
 }) {
@@ -628,11 +628,12 @@ export default function ProductForm({
             tone="allergens"
             title="Allergens"
             summary={(() => {
+              if (allergensUnread) return 'Could not be read'
               const set = declaredCount(allergens)
               if (set > 0) return `${set} of 14`
               return allergensAnswered ? 'None of the 14' : 'Not answered'
             })()}
-            action={!allergensAnswered && declaredCount(allergens) === 0 && (
+            action={!allergensUnread && !allergensAnswered && declaredCount(allergens) === 0 && (
               <button type="button" onClick={onNoAllergens} className={sectionBarAction}>
                 Declare the product has no allergens
               </button>
@@ -642,12 +643,22 @@ export default function ProductForm({
           />}
           {showAllergens && openExtra === 'allergens' && (
             <div className="mb-4">
-              <p className="text-xs text-muted mb-3">
-                The fourteen the law names. Not Present is the answer for most of them, so
-                only change the ones that apply. This is what the public allergen page shows
-                customers, and every dish the product goes into inherits it.
-              </p>
-              <AllergenPicker values={allergens} onChange={onAllergenChange} />
+              {/* A failed read is not a product nobody answered, so there is
+                  nothing here to answer it with. Saving leaves the row alone. */}
+              {allergensUnread ? (
+                <p className="text-xs text-muted mb-3">
+                  The allergens could not be read. Close this and open it again to change them.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted mb-3">
+                    The fourteen the law names. Not Present is the answer for most of them, so
+                    only change the ones that apply. This is what the public allergen page shows
+                    customers, and every dish the product goes into inherits it.
+                  </p>
+                  <AllergenPicker values={allergens} onChange={onAllergenChange} />
+                </>
+              )}
             </div>
           )}
         </div>

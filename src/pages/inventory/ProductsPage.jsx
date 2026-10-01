@@ -196,6 +196,14 @@ export default function ProductsPage() {
   // them at the default. All fourteen at Not Present is a real answer for a bag
   // of rice, so it cannot be told apart from never looking by the values alone.
   const [allergensTouched, setAllergensTouched] = useState(false)
+  // Whether opening a product to change it could not read its allergens. A
+  // failed read looked like a product nobody had answered, with the one tap
+  // that declares it has none, and saving wrote that over the real answer.
+  // So the form offers nothing for them and the save leaves them alone.
+  const [allergensUnread, setAllergensUnread] = useState(false)
+  // Which product the form is for, so a read for one opened earlier that
+  // lands late does not fill in the one open now.
+  const editingId = useRef(null)
   // One section open at a time, and both shut to start with.
   // Open on the supplier when the link brought a price with it, since that
   // is the half already filled in and the half worth checking.
@@ -780,7 +788,7 @@ export default function ProductsPage() {
       // off a product is what the Prices screen is for, and doing it silently
       // because somebody cleared a field would be a poor way to lose a cost.
 
-      if (allergensTouched && declaresAllergens(formData)) {
+      if (allergensTouched && !allergensUnread && declaresAllergens(formData)) {
         const { error: allergenErr } = await supabase
           .from('product_allergens')
           .upsert({ product_id: editingProduct.id, ...allergens, updated_at: new Date().toISOString() },
@@ -930,6 +938,8 @@ export default function ProductsPage() {
     setRecipe(EMPTY_RECIPE)
     setAllergens(emptyAllergens())
     setAllergensTouched(false)
+    setAllergensUnread(false)
+    editingId.current = null
     setOpenExtra(null)
     setEditingProduct(null)
     setShowForm(false)
@@ -993,12 +1003,24 @@ export default function ProductsPage() {
     setOpenExtra(null)
 
     // Whatever is on the row now, so ticking nothing and saving does not read
-    // as declaring the product free of all fourteen.
-    const { data: row } = await supabase
+    // as declaring the product free of all fourteen. Cleared while it is on
+    // its way, so the product open before this one is not what gets saved.
+    setAllergens(emptyAllergens())
+    setAllergensTouched(false)
+    setAllergensUnread(false)
+    editingId.current = product.id
+    const { data: row, error: rowError } = await supabase
       .from('product_allergens')
       .select('*')
       .eq('product_id', product.id)
       .maybeSingle()
+
+    // Another product was opened, or the form shut, while this was on its way.
+    if (editingId.current !== product.id) return
+    if (rowError) {
+      setAllergensUnread(true)
+      return
+    }
 
     if (row) {
       // Only the fourteen. The row also carries its own id and stamps, and
@@ -1333,6 +1355,7 @@ export default function ProductsPage() {
             allergens={allergens}
             onAllergenChange={handleAllergenChange}
             allergensAnswered={allergensTouched}
+            allergensUnread={allergensUnread}
             onNoAllergens={handleNoAllergens}
             recipe={recipe}
             onRecipeChange={setRecipe}
@@ -1536,6 +1559,7 @@ export default function ProductsPage() {
                       allergens={allergens}
                       onAllergenChange={handleAllergenChange}
                       allergensAnswered={allergensTouched}
+                      allergensUnread={allergensUnread}
                       onNoAllergens={handleNoAllergens}
                       recipe={recipe}
                       onRecipeChange={setRecipe}
@@ -1742,6 +1766,7 @@ export default function ProductsPage() {
               allergens={allergens}
               onAllergenChange={handleAllergenChange}
               allergensAnswered={allergensTouched}
+              allergensUnread={allergensUnread}
               onNoAllergens={handleNoAllergens}
               recipe={recipe}
               onRecipeChange={setRecipe}
