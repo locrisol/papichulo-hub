@@ -91,7 +91,8 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <Routes>
-                {/* Managers and above. Employees have no access to money. */}
+                {/* Managers and above. Sales, invoices, labour and the cost
+                    figures are not for employees. */}
                 <Route path="/dashboard" element={<RequireRole allowed={MANAGERS}><CostDashboardPage /></RequireRole>} />
                 <Route path="/sales" element={<RequireRole allowed={MANAGERS}><SalesPage /></RequireRole>} />
                 <Route path="/sales/weekly" element={<RequireRole allowed={MANAGERS}><WeeklySalesPage /></RequireRole>} />
@@ -136,7 +137,10 @@ export default function App() {
                 {/* The catalogue is managers only, because every one of these
                     screens shows what we pay. An employee counting stock sees
                     products and units on the stock take screen instead, with no
-                    money on it.
+                    money on it. The prices still reach their phone, because the
+                    count costs each line as it goes and the Waste page shows
+                    euros. That was his decision on 1 October 2026: they need
+                    them while doing Waste or a stock take.
 
                     Suppliers is the deliberate exception, open to everyone, so
                     anyone taking a wrong delivery can ring the rep.

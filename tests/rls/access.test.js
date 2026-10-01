@@ -174,6 +174,17 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
         })
 
+        // Staff read prices and stock take values on purpose since 1 October,
+        // but only their own restaurant's.
+        it('reads prices and stock takes from their own restaurant only', async () => {
+            for (const table of ['product_supplier_prices', 'stock_takes']) {
+                const { data, error } = await employee.from(table).select('restaurant_id')
+                expect(error).toBeNull()
+                const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
+                expect(strays, `${table} leaked rows from another restaurant`).toHaveLength(0)
+            }
+        })
+
         // The money. None of this is any of their business.
         it('cannot see any sales', async () => {
             const { count } = await countVisible(employee, 'sales_records')

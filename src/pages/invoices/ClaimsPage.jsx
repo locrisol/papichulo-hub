@@ -75,7 +75,7 @@ export default function ClaimsPage() {
                     .eq('restaurant_id', restaurantId)
                     .gte('raised_on', from)
                     .order('raised_on', { ascending: false }),
-                // Only a manager can see what anything cost, so the documents
+                // Only a manager can see the invoices, so the documents
                 // are only asked for where they can be used.
                 manager
                     ? supabase.from('invoices')

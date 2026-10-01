@@ -3375,7 +3375,15 @@ grant execute on function "public"."watch_changes"() to service_role;
 --
 -- The shape repeats. A super admin sees everything. An owner or a store
 -- manager sees their own restaurant. An employee sees the parts of it they
--- need to do the job and none of the money.
+-- need to do the job. Sales, invoices, labour, cost targets and anybody's pay
+-- stay closed to them.
+--
+-- Some money does reach an employee, on purpose: their restaurant's supplier
+-- prices, the values on a stock take and today's waste. A count and the
+-- Waste page cost each line as it is entered, and the euros on Waste catch
+-- 5 kg typed for 0.5 kg. His decision on 1 October 2026, in his words: "they
+-- need to see them while doing Waste or Stock Take, I don't see a way to hide
+-- this that doesn't harm us."
 
 
 -- -- The restaurants, and the people who work in them ------------------
@@ -3550,7 +3558,7 @@ CREATE POLICY "invoice_lines_write" ON "public"."invoice_lines" TO "authenticate
 
 -- Everything that hangs off an invoice follows the invoice's own rule:
 -- managers and above, their own restaurant. An employee has no business
--- reading what anything costs.
+-- reading an invoice.
 ALTER TABLE "public"."supplier_accounts" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "supplier_accounts_all" ON "public"."supplier_accounts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
