@@ -43,11 +43,22 @@ const { default: ReportPage } = await import('./ReportPage')
 // The report itself answers .single(); the year of reports behind it for the
 // charts is a list. The restaurant row fails when it is asked for a column
 // the live database has not got yet.
-function answer({ changedAt, head = HEAD }) {
+function answer({ changedAt, head = HEAD, failing = [], waiting = {} }) {
     db.from.mockImplementation(table => {
+        if (failing.includes(table)) {
+            return makeQuery({ data: null, error: { message: `Could not read ${table}` } })
+        }
+        // A read still on its way: it answers when the test lets it.
+        if (waiting[table]) {
+            const chain = makeQuery({ data: [], error: null })
+            chain.then = (resolve, reject) => waiting[table].then(() => ({ data: [], error: null })).then(resolve, reject)
+            return chain
+        }
         if (table === 'weekly_reports') {
             const chain = makeQuery({ data: [], error: null })
-            chain.single = vi.fn(() => Promise.resolve({ data: head, error: null }))
+            chain.single = vi.fn(() => Promise.resolve(failing.includes('the report')
+                ? { data: null, error: { message: 'Could not read the report' } }
+                : { data: head, error: null }))
             return chain
         }
         if (table === 'restaurants') {
@@ -89,6 +100,78 @@ describe('the report before migration 023 is run', () => {
         renderReport()
         await screen.findByText('accounts@example.ie')
         expect(screen.queryByText(/Allergen sheet/)).toBeNull()
+    })
+})
+
+// A read that fails used to come back as nothing. No platforms read meant no
+// delivery costs, and the week's earnings went up by all of them; no team read
+// meant the paperwork said there was nobody to check. Publish then froze that
+// and mailed it to the owners and the accountant.
+describe('a read that fails', () => {
+    const fine = { changedAt: { data: null, error: null } }
+
+    it('says so and will not publish what it has', async () => {
+        answer({ ...fine, failing: ['employees'] })
+        renderReport()
+        expect(await screen.findByText('Could not read employees')).toBeInTheDocument()
+        expect(screen.getByText(/could not be read, so it cannot go out/)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
+    })
+
+    it('says so on the first read of the platforms, rather than drawing a week without them', async () => {
+        answer({ ...fine, failing: ['sales_platforms'] })
+        renderReport()
+        expect(await screen.findByText('Could not read sales_platforms')).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Publish and send' })).toBeNull()
+    })
+
+    // A comment saved reloads the whole week. The hold used to lift the moment
+    // that reload started, so for the few seconds the year of history takes,
+    // Publish would freeze the paperwork with nobody in it.
+    it('keeps Publish held while the reload after a write is still reading', async () => {
+        answer({ ...fine, failing: ['employees'] })
+        renderReport()
+        await screen.findByText('Could not read employees')
+        const publish = screen.getByRole('button', { name: 'Publish and send' })
+        expect(publish).toBeDisabled()
+
+        let letItThrough
+        const team = new Promise(resolve => { letItThrough = resolve })
+        answer({ ...fine, waiting: { employees: team } })
+        const box = screen.getByPlaceholderText('Add a comment')
+        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        fireEvent.blur(box)
+
+        await waitFor(() => expect(db.from.mock.calls.filter(([t]) => t === 'employees')).toHaveLength(2))
+        expect(publish).toBeDisabled()
+
+        // And it lifts once a reload has read the whole week.
+        letItThrough()
+        await waitFor(() => expect(publish).toBeEnabled())
+    })
+
+    it('holds Publish when the report itself cannot be read again after a write', async () => {
+        answer(fine)
+        renderReport()
+        const publish = await screen.findByRole('button', { name: 'Publish and send' })
+        expect(publish).toBeEnabled()
+
+        answer({ ...fine, failing: ['the report'] })
+        const box = screen.getByPlaceholderText('Add a comment')
+        fireEvent.change(box, { target: { value: 'Two new starters on Monday' } })
+        fireEvent.blur(box)
+
+        expect(await screen.findByText('Could not read the report')).toBeInTheDocument()
+        expect(publish).toBeDisabled()
+    })
+
+    // The standing list read as empty, and adding one address saved a list of
+    // one over it, dropping the accountant from every week after.
+    it('will not change who gets it when that list could not be read', async () => {
+        answer({ ...fine, failing: ['restaurants'] })
+        renderReport()
+        expect(await screen.findByText('Could not read restaurants')).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Add somebody else/ })).toBeNull()
     })
 })
 

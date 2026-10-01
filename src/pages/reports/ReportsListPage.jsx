@@ -324,8 +324,13 @@ export default function ReportsListPage() {
     }
 
     // The week before this one, with its sections and everything on them.
+    //
+    // The error comes back with it. A failed read used to look the same as no
+    // week before at all, so the week started as the restaurant's first: no
+    // overheads, no open actions, and the week after carrying on from this
+    // one, so they were gone for good.
     async function previousReport(weekStart) {
-        const { data } = await supabase
+        const { data, error: readError } = await supabase
             .from('weekly_reports')
             .select('id, week_start, report_sections(id, key, title, sort_order, report_items(*))')
             .eq('restaurant_id', restaurantId)
@@ -334,10 +339,13 @@ export default function ReportsListPage() {
             .limit(1)
             .maybeSingle()
 
-        if (!data) return null
+        if (readError) return { error: readError }
+        if (!data) return { data: null }
         return {
-            ...data,
-            sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            data: {
+                ...data,
+                sections: (data.report_sections || []).slice().sort((a, b) => a.sort_order - b.sort_order),
+            },
         }
     }
 
@@ -348,7 +356,9 @@ export default function ReportsListPage() {
         setStarting(weekStart)
         setError('')
 
-        const previous = await previousReport(weekStart)
+        // Nothing has been written yet, so giving up here leaves nothing behind.
+        const { data: previous, error: pErr } = await previousReport(weekStart)
+        if (pErr) { setError(friendlyError(pErr)); setStarting(null); return }
 
         const { data: report, error: rErr } = await supabase
             .from('weekly_reports')

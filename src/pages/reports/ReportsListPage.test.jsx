@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
-import { mockSupabase, renderWithRouter } from '@/test/helpers'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { screen, within, fireEvent } from '@testing-library/react'
+import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays, weekDates, weekRange } from '@/lib/dates'
 
 // What a week that cannot be started says about itself.
@@ -120,6 +120,36 @@ describe('a week published whose mail never went', () => {
     it('still says Sent for one that went', async () => {
         const row = await rowFor(SENT)
         expect(within(row).getByText('Sent')).toBeInTheDocument()
+    })
+})
+
+// Starting a week carries the sections, the overheads and the open actions
+// over from the week before. When that read failed it came back as nothing,
+// and the week started as if it were the restaurant's first: no overheads, no
+// actions, and the next week carrying on from this one, so they were gone.
+describe('starting a week when the week before cannot be read', () => {
+    const usual = db.from.getMockImplementation()
+    afterEach(() => db.from.mockImplementation(usual))
+
+    it('says so and starts nothing', async () => {
+        const inserts = []
+        db.from.mockImplementation(table => {
+            // No shifts and no clock in still open, so last week is ready
+            // to start.
+            if (table === 'roster_shifts' || table === 'timesheet_entries') return makeQuery({ data: [], error: null })
+            if (table === 'weekly_reports') {
+                const chain = makeQuery({ data: [], error: null })
+                chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: { message: 'The week before could not be read' } }))
+                chain.insert = vi.fn(() => { inserts.push(table); return chain })
+                return chain
+            }
+            return usual(table)
+        })
+
+        const row = await rowFor(LAST_WEEK)
+        fireEvent.click(within(row).getByRole('button', { name: 'Start' }))
+        expect(await screen.findByText('The week before could not be read')).toBeInTheDocument()
+        expect(inserts).toEqual([])
     })
 })
 
