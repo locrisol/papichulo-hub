@@ -29,6 +29,11 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // zero, because zero means somebody looked and there was none, and those two
 // things lead to completely different decisions about ordering.
 
+// What a list of lines comes to. A line with no price adds nothing.
+function valueOf(lines) {
+  return (lines || []).reduce((sum, l) => sum + Number(l.line_total || 0), 0)
+}
+
 export default function StockTakeReviewPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -68,27 +73,37 @@ export default function StockTakeReviewPage() {
       setLoading(false)
       return
     }
-    setSession(sessionData)
 
-    const { data: productsData } = await supabase
+    // Any of these failing stops the page rather than carrying on with an
+    // empty list: no lines showed every product as uncounted, and no prices
+    // saved anything counted here with no value.
+    const { data: productsData, error: productsErr } = await supabase
       .from('products').select('*').eq('is_active', true).order('name')
-    setProducts(productsData || [])
 
-    const { data: linesData } = await supabase
+    const { data: linesData, error: linesErr } = await supabase
       .from('stock_take_lines').select('*').eq('stock_take_id', id)
-    setLines(linesData || [])
 
     // The stock take's own restaurant, for the same reason as on the count:
     // a super admin can read every restaurant's prices.
-    const { data: pricesData } = await supabase
+    const { data: pricesData, error: pricesErr } = await supabase
       .from('product_supplier_prices').select('*')
       .eq('restaurant_id', sessionData.restaurant_id).eq('is_preferred', true)
-    setPreferredPrices(pricesData || [])
 
-    const { data: recipesData } = await supabase
+    const { data: recipesData, error: recipesErr } = await supabase
       .from('mix_recipes').select('*')
-    setRecipeLines(recipesData || [])
 
+    const failed = productsErr || linesErr || pricesErr || recipesErr
+    if (failed) {
+      setError(friendlyError(failed))
+      setLoading(false)
+      return
+    }
+
+    setSession(sessionData)
+    setProducts(productsData || [])
+    setLines(linesData || [])
+    setPreferredPrices(pricesData || [])
+    setRecipeLines(recipesData || [])
     setLoading(false)
     }, [id])
 
@@ -135,9 +150,25 @@ export default function StockTakeReviewPage() {
       .sort((a, b) => a.product.name.localeCompare(b.product.name))
   }, [products, lines])
 
-  const totalValue = useMemo(() => {
-    return lines.reduce((sum, l) => sum + Number(l.line_total || 0), 0)
-  }, [lines])
+  const totalValue = useMemo(() => valueOf(lines), [lines])
+
+  // The lines as they are now. Staff can go on counting on their phones while
+  // a manager has this screen open, so what it read on the way in is not what
+  // there is at Close.
+  async function readLines() {
+    const { data, error: readErr } = await supabase
+      .from('stock_take_lines').select('*').eq('stock_take_id', id)
+    if (!readErr) setLines(data || [])
+    return { data, error: readErr }
+  }
+
+  // The figure in the dialog is the one that will be saved, so it is read
+  // again first. If that fails the dialog still opens, and Close reads again
+  // and says so.
+  async function openCloseConfirm() {
+    await readLines()
+    setShowCloseConfirm(true)
+  }
 
   function getProductLines(productId) {
     return lines
@@ -200,13 +231,22 @@ export default function StockTakeReviewPage() {
 
     // We do NOT create lines for uncounted products. They simply have no
     // observation this session, which keeps "not counted" distinct from a
-    // genuine zero. Total value is the sum of what was actually counted.
+    // genuine zero. Total value is the sum of what was actually counted, from
+    // the lines read again at this moment rather than the list on screen,
+    // which leaves out anything counted since the page opened.
+    const { data: fresh, error: readErr } = await readLines()
+    if (readErr) {
+      setClosing(false)
+      setError(friendlyError(readErr))
+      return
+    }
+
     const { error: updateErr } = await supabase
       .from('stock_takes')
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        total_value: totalValue,
+        total_value: valueOf(fresh),
       })
       .eq('id', id)
 
@@ -453,7 +493,7 @@ export default function StockTakeReviewPage() {
       {/* Close button */}
       <button
         type="button"
-        onClick={() => setShowCloseConfirm(true)}
+        onClick={openCloseConfirm}
         className="w-full sm:w-auto bg-green-brand hover:bg-green-brand/90 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
       >
         Close stock take

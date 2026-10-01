@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 
 // Counting a Point Campus stock take. Invented products and prices.
 
@@ -29,22 +29,33 @@ const CASES = [
 let db
 let saved
 let user
-function setUp({ products = [CHEDDAR], prices, recipes = [] }) {
+let tables
+let releases
+// failing: a table whose read comes back with an error, the way it does on a
+// weak signal. hold: lines being saved wait until the test lets them go.
+function setUp({ products = [CHEDDAR], prices, recipes = [], failing = null, hold = false }) {
     saved = []
-    const tables = {
+    releases = []
+    tables = {
         stock_takes: [STOCK_TAKE],
         products,
         stock_take_lines: [],
         product_supplier_prices: prices,
         price_count_units: CASES,
         mix_recipes: recipes,
+        users: [{ id: 'u9', full_name: 'Maria' }],
     }
     db = {
         from: vi.fn(table => {
+            if (table === failing) return makeQuery({ data: null, error: { message: 'Failed to fetch' } })
             const q = tableOf(tables[table] || [])
             q.insert = vi.fn(row => {
                 saved.push(row)
-                return makeQuery({ data: { id: `l${saved.length}`, ...row }, error: null })
+                const answer = { data: { id: `l${saved.length}`, ...row }, error: null }
+                if (!hold) return makeQuery(answer)
+                const write = heldQuery(answer)
+                releases.push(write.release)
+                return write.chain
             })
             return q
         }),
@@ -111,4 +122,94 @@ describe('an employee counting a MIX', () => {
         const line = await count(open(), 'House Salsa', 'Quantity', '3')
         expect(line).toMatchObject({ product_id: 'm1', unit_cost: 2.5, line_total: 7.5 })
     })
+})
+
+// Two people dividing the count between them. Each has to see what the other
+// has done, or Uncounted only sends both to the same shelves and a product is
+// counted twice.
+describe('somebody else counting at the same time', () => {
+    beforeEach(() => {
+        user = { id: 'u0', role: 'employee', full_name: 'Leandro' }
+    })
+
+    const theirs = {
+        id: 'l9', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity_counted: 3,
+        unit_cost: 7.5, line_total: 22.5, counted_by: 'u9', counted_at: '2026-09-30T09:00:00+00:00',
+    }
+
+    it('shows their count once the page comes back into view', async () => {
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        open()
+        expect(await screen.findByText('0/1 products counted')).toBeInTheDocument()
+
+        tables.stock_take_lines.push(theirs)
+        fireEvent(window, new Event('focus'))
+
+        expect(await screen.findByText('1/1 products counted')).toBeInTheDocument()
+    })
+
+    it('takes what they counted off Uncounted only', async () => {
+        setUp({
+            products: [CHEDDAR, { id: 'p2', name: 'Limes', unit: 'KG', section: 'Cold Room', is_active: true, is_mix: false }],
+            prices: [AT_POINT_CAMPUS],
+        })
+        const clicker = open()
+        await screen.findByText('Cheddar')
+        await clicker.click(screen.getByRole('button', { name: 'Show uncounted only' }))
+        expect(screen.getByText('2 to count')).toBeInTheDocument()
+
+        tables.stock_take_lines.push(theirs)
+        fireEvent(window, new Event('focus'))
+
+        expect(await screen.findByText('1 to count')).toBeInTheDocument()
+        expect(screen.queryByText('Cheddar')).not.toBeInTheDocument()
+        expect(screen.getByText('Limes')).toBeInTheDocument()
+    })
+})
+
+// A refresh can start and finish while this phone's own line is still on its
+// way, and already have that line in it. Adding it again on top counted it
+// twice, and deleting the copy took the real one with it.
+describe('a refresh that lands while a line is being saved', () => {
+    it('does not show the line twice', async () => {
+        user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
+        setUp({ prices: [AT_POINT_CAMPUS], hold: true })
+        const clicker = open()
+        await clicker.click(await screen.findByText('Cheddar'))
+        await clicker.type(screen.getByText('Loose').parentElement.querySelector('input'), '2')
+        await clicker.click(screen.getByRole('button', { name: 'Add' }))
+        await waitFor(() => expect(releases).toHaveLength(1))
+
+        // The line is in the database already, and the refresh reads it.
+        tables.stock_take_lines.push({
+            id: 'l1', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity_counted: 2,
+            unit_cost: 7.5, line_total: 15, counted_by: 'u0', counted_at: '2026-09-30T09:00:00+00:00',
+        })
+        fireEvent(window, new Event('focus'))
+        expect(await screen.findByText('· €15.00 counted', { exact: false })).toBeInTheDocument()
+
+        releases[0]()
+        await new Promise(resolve => setTimeout(resolve, 50))
+        expect(screen.getByText('· €15.00 counted', { exact: false })).toBeInTheDocument()
+        expect(screen.queryByText('· €30.00 counted', { exact: false })).not.toBeInTheDocument()
+    })
+})
+
+// A read that fails on a weak signal. Carrying on with an empty list showed
+// every product as uncounted, or saved every line with no value at all.
+describe('a read that fails', () => {
+    beforeEach(() => {
+        user = { id: 'u0', role: 'store_manager', full_name: 'Leandro' }
+    })
+
+    it.each(['stock_take_lines', 'product_supplier_prices', 'price_count_units', 'mix_recipes'])(
+        'says so when %s cannot be read, rather than counting on without it',
+        async table => {
+            setUp({ prices: [AT_POINT_CAMPUS], failing: table })
+            open()
+            expect(await screen.findByText('Could not reach the server. Check your connection and try again.'))
+                .toBeInTheDocument()
+            expect(screen.queryByText('Cheddar')).not.toBeInTheDocument()
+        },
+    )
 })
