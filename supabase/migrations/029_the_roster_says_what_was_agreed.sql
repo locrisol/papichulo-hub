@@ -21,6 +21,14 @@
 -- become a yes. Now the request is locked, it has to still be waiting, and
 -- the shifts and the answer go together or not at all.
 --
+-- A store manager does not answer their own time off. A manager's holiday is
+-- an owner's to say yes to, which is why the mail about it already goes to the
+-- owners, and the roster offered the manager Answer it anyway. Only the answer
+-- is guarded: a manager typing in their own sick day, or a holiday on the
+-- timesheet, writes a row approved from the start, the way it always has.
+-- And their own part of a day stays theirs to answer, the same as the mail,
+-- which tells nobody about it.
+--
 -- Safe to run twice.
 
 create or replace view public.roster_colleagues as
@@ -227,5 +235,36 @@ comment on function public.answer_time_off(uuid, text, uuid[]) is 'Approves or d
 
 revoke all on function public.answer_time_off(uuid, text, uuid[]) from public, anon, authenticated, service_role;
 grant execute on function public.answer_time_off(uuid, text, uuid[]) to authenticated;
+
+create or replace function public.absence_answer_guard() returns trigger
+    language plpgsql security definer
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    -- Same as the other guards: only what comes through the API is guarded.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    -- A part of a day is left to them, the same as the mail: nobody is told
+    -- when a manager asks to leave at three, so nobody else would answer it.
+    if old.status = 'requested'
+       and new.status is distinct from old.status
+       and public.get_my_role() = 'store_manager'
+       and old.employee_id = public.get_my_employee_id()
+       and old.can_work_from is null
+       and old.can_work_to is null then
+        raise exception 'You cannot answer your own request. An owner has to.';
+    end if;
+
+    return new;
+end $$;
+
+revoke all on function public.absence_answer_guard() from public, anon, authenticated, service_role;
+grant execute on function public.absence_answer_guard() to service_role;
+
+create or replace trigger absences_answer_guard
+    before update on public.absences
+    for each row execute function public.absence_answer_guard();
 
 notify pgrst, 'reload schema';

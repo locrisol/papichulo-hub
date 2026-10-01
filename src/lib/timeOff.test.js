@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     NOTICE_DEFAULT, noticeDays, noticeBlocks, daysBefore, noticeProblem,
     isPartDay, requestLabel, partWords, hitsShift, shiftsHit, partDaySpans,
-    isCovered, openGaps, waiting, askedOff,
+    isCovered, openGaps, waiting, askedOff, cannotAnswer,
 } from '@/lib/timeOff'
 
 const TODAY = '2026-09-04'
@@ -175,6 +175,30 @@ describe('what a freed day leaves behind', () => {
 
     it('says nothing about a request nobody has answered yet', () => {
         expect(openGaps([{ ...approved, status: 'requested' }], [], [])).toEqual([])
+    })
+})
+
+// A manager's own holiday is an owner's to say yes to. The mail already went
+// to the owners and the roster still offered the manager Answer it.
+describe('who cannot answer a request', () => {
+    const mine = ask({ employee_id: 'e7' })
+
+    it('is a store manager, about their own request', () => {
+        expect(cannotAnswer(mine, 'e7', 'store_manager')).toBe(true)
+    })
+
+    // Part of a day stays theirs, the same as the mail: nobody is told when a
+    // manager asks to leave at three, so nobody else would ever answer it.
+    it('is not a store manager about their own part of a day', () => {
+        expect(cannotAnswer(ask({ employee_id: 'e7', can_work_to: '15:00' }), 'e7', 'store_manager')).toBe(false)
+        expect(cannotAnswer(ask({ employee_id: 'e7', can_work_from: '12:00' }), 'e7', 'store_manager')).toBe(false)
+    })
+
+    it('is nobody else', () => {
+        expect(cannotAnswer(mine, 'e1', 'store_manager')).toBe(false)
+        expect(cannotAnswer(mine, 'e7', 'owner')).toBe(false)
+        expect(cannotAnswer(mine, 'e7', 'super_admin')).toBe(false)
+        expect(cannotAnswer(mine, null, 'store_manager')).toBe(false)
     })
 })
 

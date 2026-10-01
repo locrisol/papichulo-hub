@@ -115,7 +115,10 @@ inside that shift, because approving one that did not invented hours. A swap
 cannot be asked of somebody with no account, who could never answer it, and
 `roster_colleagues` says who has one. Time off is answered by
 `answer_time_off()`, which frees the shifts and writes the answer together,
-and only for a request still waiting. **Run it before the branch is merged**:
+and only for a request still waiting. A store manager can no longer answer
+their own holiday or day off; an owner or the super admin does. Their own part
+of a day stays theirs, the same as the mail, which tells nobody about it.
+**Run it before the branch is merged**:
 the roster calls that function to answer time off, and until it exists the
 answer buttons only show an error.
 `030` is **not run yet**. It works a timesheet row's hours out in real time

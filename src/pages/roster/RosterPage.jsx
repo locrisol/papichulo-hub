@@ -20,7 +20,7 @@ import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
-import { openGaps } from '@/lib/timeOff'
+import { openGaps, cannotAnswer } from '@/lib/timeOff'
 import { emailTheAnswer, emailTheShiftDecision } from '@/lib/rosterMail'
 import { absenceRange } from '@/lib/absences'
 import TimeOffDeskModal from '@/components/roster/TimeOffDeskModal'
@@ -326,6 +326,10 @@ export default function RosterPage() {
     const roster = onTheRoster(employees, dates, shifts)
 
     const employeesById = Object.fromEntries(employees.map(e => [e.id, e]))
+    // Whoever is signed in, as somebody on the team list, when they are on it.
+    // A store manager on the roster does not answer their own time off. See
+    // cannotAnswer.
+    const meEmployeeId = employees.find(e => e.user_id && e.user_id === user?.id)?.id || null
     const noteFor = d => dayNotes.find(n => n.note_date === d) || null
     const hoursOn = d => hoursForDate(activeRestaurant?.opening_hours, noteFor(d), d)
 
@@ -423,8 +427,14 @@ export default function RosterPage() {
     // at all. Approving with shifts to clear writes down what they were, so the
     // week can go on asking for cover until somebody is on them.
     async function answerTimeOff(request, answer, clearing = []) {
-        setSavingOff(true)
         setError('')
+        // The strip does not offer it, and the database refuses it too.
+        if (cannotAnswer(request, meEmployeeId, user?.role)) {
+            setError('You cannot answer your own request. An owner has to.')
+            return
+        }
+
+        setSavingOff(true)
 
         const { data, error: err } = await supabase.rpc('answer_time_off', {
             request_id: request.id,
@@ -835,13 +845,22 @@ export default function RosterPage() {
                                             Go to that week
                                         </button>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() => openTimeOff(a)}
-                                        className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
-                                    >
-                                        Answer it
-                                    </button>
+                                    {/* Their own, for a store manager on the
+                                        roster. The owners were mailed it,
+                                        because it is theirs to answer. */}
+                                    {cannotAnswer(a, meEmployeeId, user?.role) ? (
+                                        <span className="px-3 py-1.5 text-xs font-semibold text-amber-900">
+                                            Waiting for an owner to approve
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => openTimeOff(a)}
+                                            className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+                                        >
+                                            Answer it
+                                        </button>
+                                    )}
                                 </span>
                             </div>
                         ))}

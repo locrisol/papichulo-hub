@@ -175,6 +175,22 @@ export function openGaps(absences, shifts, dates) {
     return out.sort((a, b) => (a.date + a.starts_at).localeCompare(b.date + b.starts_at))
 }
 
+// Whether this person may not answer this request.
+//
+// A store manager's own holiday is an owner's to say yes to. The mail for one
+// already goes to the owners for that reason, and the roster still offered the
+// manager Answer it on their own. The database refuses it as well. An owner
+// and the super admin answer anything, and a fellow store manager is not
+// stopped: nothing decided says they should be.
+//
+// Their own part of a day is still theirs. The mail tells nobody when a
+// manager asks to leave at three, which is theirs to sort out, so nobody else
+// would ever answer it.
+export function cannotAnswer(absence, meEmployeeId, role) {
+    return role === 'store_manager' && !!meEmployeeId && absence?.employee_id === meEmployeeId
+        && !isPartDay(absence)
+}
+
 // The requests still waiting on somebody, oldest first, because the one that
 // has been sitting longest is the one somebody is waiting on hardest.
 export function waiting(absences) {

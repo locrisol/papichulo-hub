@@ -2453,6 +2453,37 @@ begin
     return asked;
 end $$;
 
+-- A store manager does not answer their own request for time off. Their
+-- holiday is an owner's to say yes to, which is why the mail about it goes to
+-- the owners, and the roster used to offer them Answer it anyway. Only the
+-- answer is guarded: a manager typing in their own sick day, or a holiday on
+-- the timesheet, writes a row that is approved from the start, which is how
+-- those have always worked. Their own part of a day stays theirs to answer,
+-- the same as the mail, which tells nobody about it.
+CREATE OR REPLACE FUNCTION "public"."absence_answer_guard"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    -- Same as the other guards: only what comes through the API is guarded.
+    if current_setting('request.jwt.claims', true) is null then
+        return new;
+    end if;
+
+    -- A part of a day is left to them, the same as the mail: nobody is told
+    -- when a manager asks to leave at three, so nobody else would answer it.
+    if old.status = 'requested'
+       and new.status is distinct from old.status
+       and public.get_my_role() = 'store_manager'
+       and old.employee_id = public.get_my_employee_id()
+       and old.can_work_from is null
+       and old.can_work_to is null then
+        raise exception 'You cannot answer your own request. An owner has to.';
+    end if;
+
+    return new;
+end $$;
+
 CREATE OR REPLACE FUNCTION "public"."record_logins"() RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'auth', 'pg_temp'
@@ -3231,6 +3262,8 @@ COMMENT ON FUNCTION "public"."sales_platform_key"() IS 'Gives a platform added w
 COMMENT ON FUNCTION "public"."unwatched_tables"() IS 'Public tables with no change_log trigger. The RLS suite fails when this is not empty.';
 COMMENT ON FUNCTION "public"."watch_changes"() IS 'Puts the change_log trigger on every public table that has not got it. Idempotent, and normally called by the event trigger rather than by hand.';
 
+revoke all on function "public"."absence_answer_guard"() from public, anon, authenticated, service_role;
+grant execute on function "public"."absence_answer_guard"() to service_role;
 revoke all on function "public"."allergen_sheet_printed"("restaurant" "uuid") from public, anon, authenticated, service_role;
 grant execute on function "public"."allergen_sheet_printed"("restaurant" "uuid") to authenticated;
 revoke all on function "public"."allergens_changed_at"() from public, anon, authenticated, service_role;
@@ -4240,6 +4273,7 @@ CREATE OR REPLACE TRIGGER "diary_entries_updated_at" BEFORE UPDATE ON "public"."
 CREATE OR REPLACE TRIGGER "diary_entries_calendar_ids_guard" BEFORE INSERT OR UPDATE ON "public"."diary_entries" FOR EACH ROW EXECUTE FUNCTION "public"."diary_calendar_ids_guard"();
 CREATE OR REPLACE TRIGGER "places_updated_at" BEFORE UPDATE ON "public"."places" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "shift_requests_transition_guard" BEFORE INSERT OR UPDATE ON "public"."shift_requests" FOR EACH ROW EXECUTE FUNCTION "public"."shift_request_transition_guard"();
+CREATE OR REPLACE TRIGGER "absences_answer_guard" BEFORE UPDATE ON "public"."absences" FOR EACH ROW EXECUTE FUNCTION "public"."absence_answer_guard"();
 CREATE OR REPLACE TRIGGER "weekly_reports_touch" BEFORE UPDATE ON "public"."weekly_reports" FOR EACH ROW EXECUTE FUNCTION "public"."touch_weekly_report"();
 CREATE OR REPLACE TRIGGER "checklists_updated_at" BEFORE UPDATE ON "public"."checklists" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "checklist_tasks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_task_guard"();

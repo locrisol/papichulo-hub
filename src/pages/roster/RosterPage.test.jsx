@@ -172,6 +172,28 @@ describe('answering time off', () => {
         expect(deletedFrom('roster_shifts')).toBe(false)
     })
 
+    // Leo is the store manager and on the roster himself. His own holiday is an
+    // owner's to say yes to, and the mail already went to the owners.
+    it('does not offer a store manager their own request to answer', async () => {
+        me = { id: 'u-leo', role: 'store_manager', full_name: 'Leo' }
+        const leosHoliday = { ...anasDayOff, id: 'a2', employee_id: 'e2', kind: 'holiday' }
+        waitingOn({ absences: { data: [anasDayOff, leosHoliday], error: null } })
+        renderWithRouter(<RosterPage />)
+
+        expect(await screen.findByText('Waiting for an owner to approve')).toBeInTheDocument()
+        expect(screen.getAllByRole('button', { name: 'Answer it' })).toHaveLength(1)
+    })
+
+    it('still offers an owner every request', async () => {
+        const leosHoliday = { ...anasDayOff, id: 'a2', employee_id: 'e2', kind: 'holiday' }
+        waitingOn({ absences: { data: [anasDayOff, leosHoliday], error: null } })
+        renderWithRouter(<RosterPage />)
+
+        await screen.findAllByRole('button', { name: 'Answer it' })
+        expect(screen.getAllByRole('button', { name: 'Answer it' })).toHaveLength(2)
+        expect(screen.queryByText('Waiting for an owner to approve')).toBeNull()
+    })
+
     it('declines through the same call, freeing nothing', async () => {
         db.rpc = vi.fn(() => Promise.resolve({ data: { ...anasDayOff, status: 'declined' }, error: null }))
         renderWithRouter(<RosterPage />)

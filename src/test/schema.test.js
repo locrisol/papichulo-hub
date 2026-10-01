@@ -34,6 +34,24 @@ describe('a database built from schema.sql', () => {
     })
 })
 
+// A store manager's own holiday or day off is an owner's to answer, and the
+// database refuses their own answer. Their own part of a day is not: the mail
+// tells nobody about it, so nobody else would ever answer it. Since 029.
+describe('who answers a store manager\'s own time off', () => {
+    const start = schema.indexOf('CREATE OR REPLACE FUNCTION "public"."absence_answer_guard"()')
+    const guard = schema.slice(start, schema.indexOf('end $$;', start))
+
+    it('is an owner, for a whole day', () => {
+        expect(start, 'absence_answer_guard is not in schema.sql').toBeGreaterThan(-1)
+        expect(guard).toContain("raise exception 'You cannot answer your own request. An owner has to.'")
+    })
+
+    it('is the manager, for their own part of a day', () => {
+        expect(guard).toContain('and old.can_work_from is null')
+        expect(guard).toContain('and old.can_work_to is null')
+    })
+})
+
 // The columns the allergen answer depends on. Each one had a default and no
 // NOT NULL, and the app reads an empty one as none or as false: an allergen
 // left empty by a script or a spreadsheet pasted into the table editor read as
