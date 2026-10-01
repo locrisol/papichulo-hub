@@ -4,7 +4,7 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    claimWeek, sentWeeks,
+    claimWeek, sentWeeks, fromEarlierWeeks,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -779,5 +779,38 @@ describe('sentWeeks', () => {
     it('hands the error back rather than a week with nothing sent', async () => {
         const failed = { message: 'Failed to fetch' }
         expect(await sentWeeks(client({ data: null, error: failed }), 'r1')).toEqual({ weeks: null, error: failed })
+    })
+})
+
+// A claim whose money comes off this week for a delivery in an earlier one,
+// because that week's report had already gone out. Wherever the week is
+// shown, it says which delivery the money is from.
+describe('fromEarlierWeeks', () => {
+    const invoices = [{ id: 'i1', invoice_date: '2026-09-26' }, { id: 'i2', invoice_date: '2026-10-01' }]
+    const moved = claim({ id: 'm', invoice_id: 'i1', counted_week: '2026-09-27', amount: 22.34 })
+
+    it('lists a claim taken off this week for a delivery in an earlier one', () => {
+        expect(fromEarlierWeeks([moved], invoices, '2026-09-27')).toEqual([expect.objectContaining({
+            id: 'm', what: 'two trays of chicken', label: 'Short', money: 22.34, delivered: '2026-09-20',
+        })])
+    })
+
+    it('is what came back once it is settled, the same as the week takes off', () => {
+        const settled = { ...moved, status: 'settled', credited_amount: 20 }
+        expect(fromEarlierWeeks([settled], invoices, '2026-09-27')[0].money).toBe(20)
+    })
+
+    it('leaves out this week\'s own deliveries, other weeks, and anything taking nothing off', () => {
+        const own = claim({ id: 'o', invoice_id: 'i2', counted_week: '2026-09-27' })
+        const elsewhere = { ...moved, id: 'e', counted_week: '2026-10-04' }
+        const unpriced = { ...moved, id: 'u', amount: null }
+        const takenBack = { ...moved, id: 'v', status: 'void' }
+        expect(fromEarlierWeeks([own, elsewhere, unpriced, takenBack], invoices, '2026-09-27')).toEqual([])
+    })
+
+    // Money a credit brought that nobody logged, with no invoice named.
+    it('goes by the day it was raised when there is no invoice behind it', () => {
+        const noInvoice = claim({ id: 'n', invoice_id: null, raised_on: '2026-09-19', counted_week: '2026-09-27' })
+        expect(fromEarlierWeeks([noInvoice], [], '2026-09-27')[0].delivered).toBe('2026-09-13')
     })
 })

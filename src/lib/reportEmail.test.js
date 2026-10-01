@@ -1456,6 +1456,28 @@ describe('prices and suppliers', () => {
         expect(mail.text.split('\n').every(l => l === l.replace(/\s+$/, ''))).toBe(true)
     })
 
+    // His decision of 1 October: a claim on a delivery whose report had gone
+    // out comes off the first week still open, and says which delivery it is
+    // from. Absent on anything frozen before it existed.
+    it('says when a claim taken off this week is from an earlier delivery', () => {
+        const later = priceWeek({
+            weekStart: '2026-09-13', weekEnd: '2026-09-19',
+            claims: [{
+                id: 'k2', what: 'COKE ZERO 24X330ML', kind: 'short', amount: 22.34, credited_amount: 0,
+                status: 'open', raised_on: '2026-09-11', counted_week: '2026-09-13', invoice_id: 'i0',
+            }],
+            invoices: [{ id: 'i0', invoice_date: '2026-09-11' }],
+        })
+        const moved = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: later } })
+        expect(moved.html).toContain('From an earlier week')
+        expect(moved.html).toContain('from the delivery in the week of 6 Sept')
+        expect(moved.text).toContain('  From an earlier week')
+        expect(moved.text).toContain('    COKE ZERO 24X330ML: €22.34, Short, from the delivery in the week of 6 Sept')
+
+        const old = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: { ...prices, earlier: undefined } } })
+        expect(old.html).not.toContain('From an earlier week')
+    })
+
     it('says so when a report went out without the prices read', () => {
         const none = reportEmail({ ...base, sections: withPrices, figures: { ...figures, prices: null } })
         expect(none.html).toContain('Prices were not read for this week.')

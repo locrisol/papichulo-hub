@@ -117,6 +117,7 @@ export default function ReportPrices({
                 back={section.back}
                 reasons={section.reasons}
                 owed={section.owed}
+                earlier={section.earlier || []}
                 total={t.back}
                 canEdit={canEdit}
                 jobs={jobs}
@@ -323,6 +324,8 @@ function WeekInShort({ section }) {
     const recipes = section.recipes || []
     const reasons = section.reasons || []
     const owed = section.owed || []
+    // Absent on a report frozen before 1 October.
+    const earlier = section.earlier || []
 
     const movesKind = !moves.length ? 'grey' : t.movesUp && t.movesDown ? 'grey' : t.movesUp ? 'up' : 'down'
     const movesLabel = !moves.length ? 'Same code'
@@ -376,7 +379,7 @@ function WeekInShort({ section }) {
             <ShortRow
                 kind={section.back.length ? 'back' : 'grey'}
                 label="Came back"
-                quiet={reasons.length || owed.length ? null : 'Nothing came back this week'}
+                quiet={reasons.length || owed.length || earlier.length ? null : 'Nothing came back this week'}
                 money={fmtMoney(t.back)}
                 under={`${section.back.length} credit ${section.back.length === 1 ? 'note' : 'notes'}`}
             >
@@ -389,6 +392,14 @@ function WeekInShort({ section }) {
                 {owed.length > 0 && (
                     <span className={`${badge} border ${KIND.warn}`}>
                         {t.owed ? `${fmtMoney(t.owed)} still owed` : `${owed.length} still owed`}
+                    </span>
+                )}
+                {/* Off, as the card says, not back: an open claim comes off
+                    before anything is credited, and in this row beside the
+                    credit notes it read as money received. */}
+                {earlier.length > 0 && (
+                    <span className={`${badge} border ${KIND.grey}`}>
+                        {fmtMoney(t.earlier)} off for an earlier week
                     </span>
                 )}
             </ShortRow>
@@ -611,8 +622,8 @@ function Recipes({ recipes, checkedOn, threshold }) {
     )
 }
 
-function Back({ back, reasons, owed, total, canEdit, jobs, busy, onPutOnList }) {
-    const listed = back.length + owed.length
+function Back({ back, reasons, owed, earlier = [], total, canEdit, jobs, busy, onPutOnList }) {
+    const listed = back.length + owed.length + earlier.length
     return (
         <Card
             title="Came back, and why"
@@ -703,6 +714,32 @@ function Back({ back, reasons, owed, total, canEdit, jobs, busy, onPutOnList }) 
                     )}
                 </>
             )}
+
+            {/* Taken off this week for a delivery in an earlier one, because
+                that week's report had already gone out. Each says which
+                delivery it is from, or the food cost here is lower with
+                nothing saying why. */}
+            {earlier.length > 0 && (
+                <>
+                    <p className="px-3 py-2 bg-app-bg border-y border-border text-xs font-bold text-muted uppercase tracking-wider">
+                        From an earlier week
+                    </p>
+                    {earlier.map(e => (
+                        <Row key={e.id}>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900">{e.what}</p>
+                                <p className="text-xs text-muted">From the delivery in the week of {shortDate(e.delivered)}</p>
+                            </div>
+                            <div>
+                                <span className={`${badge} border bg-white text-gray-800`} style={{ borderColor: e.colour }}>
+                                    {e.label}
+                                </span>
+                            </div>
+                            <p className="text-sm font-bold tabular-nums text-gray-900 sm:text-right">{fmtMoney(e.money)} off</p>
+                        </Row>
+                    ))}
+                </>
+            )}
         </Card>
     )
 }
@@ -755,6 +792,10 @@ function Ledger({ section }) {
         ['Still waiting on a credit', section.owed.map(o => ({
             key: o.id, name: o.what, what: `since ${shortDate(o.since)}`,
             before: '', now: '', change: o.label, money: o.money == null ? '' : fmtMoney(o.money),
+        }))],
+        ['From an earlier week', (section.earlier || []).map(e => ({
+            key: e.id, name: e.what, what: `delivery in the week of ${shortDate(e.delivered)}`,
+            before: '', now: '', change: e.label, money: fmtMoney(e.money),
         }))],
     ].filter(([, rows]) => rows.length)
 

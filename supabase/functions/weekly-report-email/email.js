@@ -1075,6 +1075,14 @@ export function pricesSection(section, f) {
             label: escapeHtml(o.what) + small(`${escapeHtml(o.label)}, since ${dayMonth(o.since)}`),
             value: o.money == null ? 'not priced' : money(o.money),
         })),
+        // Taken off this week for a delivery whose report had already gone
+        // out, with the week it is from. Absent on a report frozen before.
+        ...(p.earlier?.length ? [subHeading('From an earlier week')] : []),
+        ...(p.earlier || []).map(e => line({
+            inset: 14,
+            label: escapeHtml(e.what) + small(`${escapeHtml(e.label)}, from the delivery in the week of ${dayMonth(e.delivered)}`),
+            value: money(e.money),
+        })),
     ]
     const back = priceCard('Came back, and why', p.back.length ? money(t.back) : '', GREEN, backRows,
         'Nothing came back this week and nothing is owed.')
@@ -1138,6 +1146,10 @@ function pricesText(p) {
     if (p.owed.length) {
         out.push('  Still waiting on a credit')
         for (const o of p.owed) out.push(`    ${o.what}: ${o.money == null ? 'not priced' : money(o.money)}, since ${dayMonth(o.since)}`)
+    }
+    if (p.earlier?.length) {
+        out.push('  From an earlier week')
+        for (const e of p.earlier) out.push(`    ${e.what}: ${money(e.money)}, ${e.label}, from the delivery in the week of ${dayMonth(e.delivered)}`)
     }
     return out
 }

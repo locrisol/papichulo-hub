@@ -346,6 +346,34 @@ export function claimWeek(deliveredOn, sent = []) {
     return { week, delivered, moved: week !== delivered }
 }
 
+// The claims coming off a week for a delivery in an earlier one, because that
+// delivery's report had already gone out (claimWeek). Whatever shows the week
+// says which delivery each is from, or its food cost is lower with nothing
+// saying why. The money is what the week takes off, by claimTakesOff.
+//
+// `invoices` are the documents the claims were put against, for the day each
+// delivery landed. A claim with none, money a credit brought that nobody
+// logged, is from the day it was raised.
+export function fromEarlierWeeks(claims, invoices, weekStart) {
+    const landed = new Map((invoices || []).map(i => [i.id, i.invoice_date]))
+    return (claims || [])
+        .filter(c => c.counted_week === weekStart && claimTakesOff(c) > 0)
+        .map(c => ({ claim: c, on: landed.get(c.invoice_id) || c.raised_on }))
+        .filter(({ on }) => !!on)
+        .map(({ claim, on }) => ({ claim, delivered: weekStartOf(on) }))
+        .filter(({ delivered }) => delivered < weekStart)
+        .map(({ claim, delivered }) => ({
+            id: claim.id,
+            what: claim.what || 'A delivery problem',
+            kind: claim.kind,
+            label: claimKind(claim.kind).label,
+            colour: claimKind(claim.kind).colour,
+            money: claimTakesOff(claim),
+            delivered,
+        }))
+        .sort((a, b) => a.delivered.localeCompare(b.delivered) || b.money - a.money)
+}
+
 // The weeks whose report has gone out, for claimWeek. Published is what
 // closes a week; a draft can still take the money. One row a week, so it is
 // a few dozen a year and never needs paging.

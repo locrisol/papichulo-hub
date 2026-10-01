@@ -761,6 +761,47 @@ describe('the words', () => {
     })
 })
 
+// His decision of 1 October: a claim on a delivery whose report had already
+// gone out comes off the first week still open, and that week's report says
+// which delivery it is from, or its food cost is lower with nothing saying why.
+describe('from an earlier week', () => {
+    const claims = [
+        {
+            id: 'm', what: 'COKE ZERO 24X330ML', kind: 'short', amount: 22.34, credited_amount: 0, status: 'open',
+            raised_on: '2026-09-11', counted_week: '2026-09-13', invoice_id: 'i0',
+        },
+        {
+            id: 'h', what: 'chicken', kind: 'short', amount: 20, credited_amount: 0, status: 'open',
+            raised_on: '2026-09-14', counted_week: '2026-09-13', invoice_id: 'i1',
+        },
+    ]
+    const invoices = [{ id: 'i0', invoice_date: '2026-09-11' }, { id: 'i1', invoice_date: '2026-09-14' }]
+    const section = priceWeek({ ...WEEK, claims, invoices, today: '2026-09-25' })
+
+    it('lists the claim taken off this week for an earlier delivery, and only that one', () => {
+        expect(section.earlier).toEqual([expect.objectContaining({ id: 'm', delivered: '2026-09-06', money: 22.34 })])
+        expect(section.totals).toMatchObject({ earlier: 22.34, earlierCount: 1 })
+    })
+
+    it('says so in the words, with the week it is from', () => {
+        expect(section.words).toContain(
+            'From an earlier week: €22.34 on COKE ZERO 24X330ML, from the delivery in the week of 6 September, '
+            + 'whose report had already gone out.',
+        )
+    })
+
+    it('counts several, and names their weeks', () => {
+        const more = [
+            { money: 22.34, what: 'a', delivered: '2026-09-06' },
+            { money: 10, what: 'b', delivered: '2026-08-30' },
+        ]
+        expect(priceWords({ earlier: more, totals: { earlier: 32.34 } })).toEqual([
+            'From earlier weeks: €32.34 on 2 claims, from the deliveries in the weeks of 30 August and 6 September, '
+            + 'whose reports had already gone out.',
+        ])
+    })
+})
+
 describe('what somebody has to decide', () => {
     it('is recipes that are off, three in a row, and a credit nobody explained', () => {
         const section = {
