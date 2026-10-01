@@ -38,7 +38,7 @@ function setUp({ products = [CHEDDAR], prices, recipes = [], failing = null, hol
     releases = []
     tables = {
         stock_takes: [STOCK_TAKE],
-        products,
+        staff_products: products,
         stock_take_lines: [],
         product_supplier_prices: prices,
         price_count_units: CASES,
@@ -164,6 +164,19 @@ describe('somebody else counting at the same time', () => {
         expect(await screen.findByText('1 to count')).toBeInTheDocument()
         expect(screen.queryByText('Cheddar')).not.toBeInTheDocument()
         expect(screen.getByText('Limes')).toBeInTheDocument()
+    })
+})
+
+// Staff read products through staff_products, which leaves out the notes,
+// the weight loss and the rest of what only the Products page uses. A count
+// needs none of it.
+describe('the products on a count', () => {
+    it('come from the staff view, not the products table', async () => {
+        user = { id: 'u2', role: 'employee', full_name: 'Maria' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        open()
+        expect(await screen.findByText('Cheddar')).toBeInTheDocument()
+        expect(db.from.mock.calls.map(([table]) => table)).not.toContain('products')
     })
 })
 

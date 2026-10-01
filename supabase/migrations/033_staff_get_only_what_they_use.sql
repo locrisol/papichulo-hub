@@ -102,4 +102,29 @@ comment on view public.roster_asks is 'Which shifts at your restaurant somebody 
 revoke all on public.roster_asks from anon, authenticated, public;
 grant select on public.roster_asks to authenticated;
 
+-- Staff read products through staff_products: what a count and the Waste
+-- page use, and not the notes, the weight loss, what one piece weighs or how
+-- often it is counted, which are for the Products page. Every product,
+-- switched off ones included, because today's waste and a count's lines can
+-- name one switched off since. Their read of the table goes in 034.
+
+create or replace view public.staff_products as
+ select p.id,
+    p.name,
+    p.section,
+    p.also_in,
+    p.unit,
+    p.category,
+    p.is_mix,
+    p.batch_yield,
+    p.held_for,
+    p.is_active
+   from public.products p
+  where (select public.get_my_role()) is not null;
+
+comment on view public.staff_products is 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
+
+revoke all on public.staff_products from anon, authenticated, public;
+grant select on public.staff_products to authenticated;
+
 notify pgrst, 'reload schema';

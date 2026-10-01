@@ -159,9 +159,24 @@ maybe('what each role can see and do', () => {
             expect(me.restaurant_id).toBe(ownRestaurantId)
         })
 
-        it('can read the product catalogue', async () => {
+        // Since 033 through staff_products, and since 034 never the table.
+        // The notes, the weight loss, what one piece weighs and how often it
+        // is counted are for the Products page. Every product, switched off
+        // ones included, so today's waste still has a name on it.
+        it('can read the product catalogue, through the staff view', async () => {
+            const { data, error } = await employee.from('staff_products').select('*')
+            expect(error?.message || '', 'staff_products is missing, so 033 has not been run').toBe('')
+            expect(data.length).toBeGreaterThan(0)
+            expect(Object.keys(data[0]).sort()).toEqual([
+                'also_in', 'batch_yield', 'category', 'held_for', 'id', 'is_active', 'is_mix', 'name', 'section', 'unit',
+            ])
+            const { count: all } = await manager.from('products').select('id', { count: 'exact', head: true })
+            expect(data.length).toBe(all)
+        })
+
+        it('cannot read the products table itself', async () => {
             const { count } = await countVisible(employee, 'products')
-            expect(count).toBeGreaterThan(0)
+            expect(count, 'an employee can read products').toBe(0)
         })
 
         it('can read suppliers', async () => {
@@ -572,6 +587,14 @@ maybe('what each role can see and do', () => {
             expect(data.length).toBeGreaterThan(0)
         })
 
+        // The Products page, the invoices and the report read every column.
+        it('still reads the whole product row', async () => {
+            const { data, error } = await manager.from('products')
+                .select('notes, weight_loss_pct, piece_weight, count_frequency').limit(1)
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
+        })
+
         // The roster itself, drafts and every note included.
         it('still reads the roster table, drafts and notes included', async () => {
             const { error } = await manager.from('roster_shifts').select('id, note, published_at').limit(1)
@@ -827,7 +850,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -852,6 +875,8 @@ maybe('what each role can see and do', () => {
                 'my_claims can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'roster_asks', 'give_shift_id', { status: 'approved' }),
                 'roster_asks can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_products', 'id', { name: 'x' }),
+                'staff_products can be changed by an employee').toBe(true)
         })
     })
 

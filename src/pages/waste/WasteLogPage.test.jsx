@@ -31,7 +31,7 @@ function setUp({
     saved = []
     deleted = []
     const tables = {
-        products,
+        staff_products: products,
         mix_recipes: recipes,
         product_supplier_prices: prices,
         waste_logs: logs,
@@ -164,7 +164,7 @@ describe('an employee logging something bought', () => {
 describe('a manager deleting an entry', () => {
     const DROPPED = {
         id: 'w1', restaurant_id: 'r1', log_date: todayISO(), product_id: 'p2', quantity_wasted: 1,
-        reason: 'dropped', waste_value: null, products: { name: 'Limes', unit: 'KG' },
+        reason: 'dropped', waste_value: null,
     }
 
     // A delete the rules turn away comes back with no error, so it used to
@@ -187,5 +187,34 @@ describe('a manager deleting an entry', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Delete entry' }))
         await waitFor(() => expect(deleted).toHaveLength(1))
         expect(screen.queryByText(/could not be deleted/)).not.toBeInTheDocument()
+    })
+})
+
+// Staff read products through staff_products, which leaves out the notes,
+// the weight loss and the rest of what only the Products page uses. The day's
+// list used to take each name from the products table alongside the entry,
+// so the names come from the list the page has already loaded instead.
+describe('the list for the day', () => {
+    const LOGGED = {
+        id: 'w2', restaurant_id: 'r1', log_date: todayISO(), product_id: 'p2', quantity_wasted: 1,
+        reason: 'dropped', waste_value: 3,
+    }
+
+    it('names what was logged without reading the products table', async () => {
+        setUp({ logs: [LOGGED] })
+        renderWithRouter(<WasteLogPage />)
+        expect(await screen.findByText('Limes')).toBeInTheDocument()
+        expect(db.from.mock.calls.map(([table]) => table)).not.toContain('products')
+    })
+
+    // Logged in the morning, switched off in the afternoon. It is still on
+    // today's list by name, and no longer offered to log again.
+    it('still names something switched off since it was logged', async () => {
+        setUp({ products: [SALSA, TOMATOES, LIMES, OLD_CHILLI], logs: [{ ...LOGGED, product_id: 'p3' }] })
+        renderWithRouter(<WasteLogPage />)
+        expect(await screen.findByText('Old Chilli')).toBeInTheDocument()
+
+        await userEvent.type(screen.getByPlaceholderText('Product name'), 'Old')
+        expect(screen.queryByRole('button', { name: /Old Chilli/ })).not.toBeInTheDocument()
     })
 })

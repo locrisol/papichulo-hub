@@ -269,6 +269,28 @@ describe('what staff are given of the roster', () => {
     })
 })
 
+describe('what staff are given of the products', () => {
+    // The columns a count and the Waste page use, through staff_products. The
+    // notes, the weight loss, what one piece weighs and how often it is counted
+    // are for the Products page, and a row policy cannot hide a column.
+    it('gives the columns staff screens use and no others', () => {
+        const view = viewNamed('staff_products')
+        expect(view, 'staff_products is not in schema.sql').toContain('"public"."products"')
+        const columns = [...view.slice(0, view.indexOf('FROM')).matchAll(/"p"\."(\w+)"/g)].map(m => m[1])
+        expect(columns.sort()).toEqual([
+            'also_in', 'batch_yield', 'category', 'held_for', 'id', 'is_active', 'is_mix', 'name', 'section', 'unit',
+        ])
+        expect(view).toContain('( SELECT "public"."get_my_role"() ) IS NOT NULL')
+        readOnlyForStaff('staff_products')
+    })
+
+    it('gives an employee no read of the table itself', () => {
+        const policies = policiesOn('products')
+        expect(policies.length, 'found no policies on products to check').toBeGreaterThan(0)
+        expect(policies.filter(p => p.includes("'employee'"))).toEqual([])
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

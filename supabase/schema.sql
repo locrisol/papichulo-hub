@@ -3451,7 +3451,10 @@ CREATE POLICY "suppliers_write" ON "public"."suppliers" TO "authenticated" USING
 
 ALTER TABLE "public"."products" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "products_select" ON "public"."products" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Managers and above. Staff read staff_products (with the views, below),
+-- which has what a count and the Waste page use and not the notes, the
+-- weight loss, what one piece weighs or how often it is counted.
+CREATE POLICY "products_select" ON "public"."products" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "products_write" ON "public"."products" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3917,9 +3920,10 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- restaurant without its cost targets, its default cost per hour or the
 -- addresses its mail goes to. my_claims gives them the delivery problems they
 -- logged without what each was worth, and roster_asks which shifts somebody
--- has asked about, without the request. They read past row level security on
--- purpose and their own where clause is the wall between the two restaurants,
--- which is covered by the database tests.
+-- has asked about, without the request. staff_products gives them the
+-- products without the notes or the weight loss. They read past row level
+-- security on purpose and their own where clause is the wall between the two
+-- restaurants, which is covered by the database tests.
 --
 -- The public_ views are what a customer scanning the QR code is given. The
 -- tables behind them answer to nobody who is not signed in. No quantity
@@ -4018,6 +4022,23 @@ CREATE OR REPLACE VIEW "public"."roster_asks" AS
     "r"."status"
    FROM "public"."shift_requests" "r"
   WHERE (("r"."status" = ANY (ARRAY['asked'::"text", 'accepted'::"text"])) AND ("r"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )));
+
+-- Every product, switched off ones included, because today's waste and the
+-- lines of a count can name one switched off since. Anybody signed in and
+-- switched on, the same as the table's own rule for managers.
+CREATE OR REPLACE VIEW "public"."staff_products" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."section",
+    "p"."also_in",
+    "p"."unit",
+    "p"."category",
+    "p"."is_mix",
+    "p"."batch_yield",
+    "p"."held_for",
+    "p"."is_active"
+   FROM "public"."products" "p"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
 
 -- Yours and at your restaurant, so an account switched off reads nothing,
 -- the same as every rule that asks get_my_role.
@@ -4207,6 +4228,7 @@ COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant someb
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
 COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_products" IS 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
 -- The day each thing on a checklist was last done. The third kind, and the
@@ -4236,6 +4258,7 @@ revoke all on public.roster_published         from anon, authenticated, public;
 revoke all on public.staff_restaurants        from anon, authenticated, public;
 revoke all on public.my_claims                from anon, authenticated, public;
 revoke all on public.roster_asks              from anon, authenticated, public;
+revoke all on public.staff_products           from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
@@ -4245,6 +4268,7 @@ grant select on public.roster_published         to authenticated;
 grant select on public.staff_restaurants        to authenticated;
 grant select on public.my_claims                to authenticated;
 grant select on public.roster_asks              to authenticated;
+grant select on public.staff_products           to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;

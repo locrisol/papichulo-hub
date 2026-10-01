@@ -127,8 +127,11 @@ export default function StockTakeCountPage() {
         }
         setSession(sessionData)
 
+        // Through staff_products, for a manager too, since a count needs
+        // nothing the view leaves out: the notes, the weight loss and the rest
+        // of what only the Products page uses. Staff cannot read the table.
         const { data: productsData, error: productsErr } = await supabase
-            .from('products')
+            .from('staff_products')
             .select('*')
             .eq('is_active', true)
             .order('name')

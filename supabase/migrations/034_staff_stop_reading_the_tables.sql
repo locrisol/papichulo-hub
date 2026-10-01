@@ -163,4 +163,16 @@ create policy "shift_requests_read" on public.shift_requests
 
 drop policy if exists "roster_shifts_read_published" on public.roster_shifts;
 
+-- Staff stop reading the products table. Since 033 a count and the Waste
+-- page read staff_products, which leaves out the notes, the weight loss,
+-- what one piece weighs and how often it is counted. Logging waste and
+-- counting still save, because a foreign key is checked past row level
+-- security.
+
+drop policy if exists "products_select" on public.products;
+create policy "products_select" on public.products
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
 notify pgrst, 'reload schema';

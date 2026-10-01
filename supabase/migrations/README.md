@@ -165,7 +165,9 @@ the tables 034 closes to staff. Nothing in it breaks the site as it is, so
   and roster rules and nothing else;
 - `my_claims`, the delivery problems they logged, without what each was worth;
 - `roster_asks`, which shifts somebody has asked about, for the mark on My
-  shifts, without who asked whom or the message.
+  shifts, without who asked whom or the message;
+- `staff_products`, the products as a count and the Waste page use them,
+  without the notes, the weight loss, the piece weight or the count frequency.
 
 It also stops a switched off account reading its own private diary entries;
 nobody still working loses anything.
@@ -190,11 +192,13 @@ uses, now that the new site reads only what it needs:
   `roster_asks` for the rest;
 - `roster_shifts`, which carries every colleague's shift note and every
   draft. My shifts reads `roster_published` (029), which gives each person
-  the note on their own shifts and nobody else's.
+  the note on their own shifts and nobody else's;
+- the products table. A count and the Waste page read `staff_products`.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts
-would say they are not on the team list and Delivery problems would be empty.
+would say they are not on the team list, Delivery problems would be empty,
+and Waste and Stock Takes would have no products.
 
 ## What was here before
 
