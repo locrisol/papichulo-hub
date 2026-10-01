@@ -937,10 +937,17 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
     -- report block means by "times or a reason".
     "starts_at" time without time zone,
     "ends_at" time without time zone,
+    -- Real hours, not the clock face: worked out from the date in Irish time,
+    -- so eight to two on the night the clocks go back is seven hours and on
+    -- the night they go forward is five. src/lib/clock.js does the same sum
+    -- for the screen, and the two have to agree.
     "hours" numeric(6,2) GENERATED ALWAYS AS (
-        CASE WHEN "ends_at" IS NULL THEN NULL ELSE
-            EXTRACT(epoch FROM ("ends_at" - "starts_at"
-                + CASE WHEN "ends_at" <= "starts_at" THEN interval '24 hours' ELSE interval '0 hours' END
+        CASE WHEN "ends_at" IS NULL OR "starts_at" IS NULL THEN NULL ELSE
+            EXTRACT(epoch FROM (
+                (("work_date" + "ends_at"
+                    + CASE WHEN "ends_at" <= "starts_at" THEN interval '1 day' ELSE interval '0 hours' END
+                ) AT TIME ZONE 'Europe/Dublin')
+                - (("work_date" + "starts_at") AT TIME ZONE 'Europe/Dublin')
             )) / 3600
         END
     ) STORED,
@@ -974,6 +981,7 @@ CREATE INDEX "idx_timesheet_entries_employee" ON "public"."timesheet_entries" US
 
 COMMENT ON TABLE "public"."timesheet_entries" IS 'One person, one span of a day, to the second. A split shift is two rows. Holiday and off sick are not here: they live in absences, which already has them with an approval and a colour.';
 COMMENT ON COLUMN "public"."timesheet_entries"."source" IS 'typed by somebody, taken from the roster with one key, read from the till, or corrected: a till time changed by hand afterwards. It decides what an import may quietly replace, and a corrected row is never replaced quietly because it was changed away from that file on purpose. A corrected row with no note is what the week is blocked on.';
+COMMENT ON COLUMN "public"."timesheet_entries"."hours" IS 'What the span came to, in real hours. Worked out from the date and the two times in Irish time, so a shift on the night the clocks go back or forward is the hours really worked, not what the clock face says. An end at or before the start is the next morning.';
 COMMENT ON COLUMN "public"."timesheet_entries"."person_name" IS 'Only for somebody with no employees row here, which today means borrowed from the other restaurant. The rules see one restaurant at a time, so their real record cannot be read from this one.';
 COMMENT ON COLUMN "public"."timesheet_entries"."note" IS 'Why a figure is what it is, in the manager''s own words, and it goes out with the week. On a row with no times it is the reason nothing was worked, which is what the report block means by "times or a reason". Nothing about the roster ever goes in one: the accountant does not see the roster and has no use for a plan she cannot check.';
 

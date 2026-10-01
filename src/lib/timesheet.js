@@ -88,10 +88,12 @@ export function rateFor(person, restaurantRate) {
     return Number.isFinite(fallback) ? fallback : 0
 }
 
+// With the day it was worked, so the two nights the clocks change come to the
+// hours really worked, the same as the database's own figure.
 function hoursOf(entry) {
     if (!entry) return 0
     if (!kindOf(entry.kind).paid) return 0
-    return spanHours(entry.starts_at, entry.ends_at)
+    return spanHours(entry.starts_at, entry.ends_at, entry.work_date)
 }
 
 // One day for one person: everything a cell needs to draw itself, worked out

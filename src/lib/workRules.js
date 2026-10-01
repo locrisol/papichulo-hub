@@ -20,6 +20,7 @@ import { outsideAvailability, windowsLabel, dayNameOf, availabilityOn, availabil
 import { absencesOn, kindPhrase, isPartDay } from '@/lib/absences'
 import { hitsShift, partWords } from '@/lib/timeOff'
 import { shortDate, fullDate, addDays } from '@/lib/dates'
+import { irishOffset } from '@/lib/clock'
 
 // What each immigration stamp allows, in hours a week.
 //
@@ -220,8 +221,27 @@ export function ageOn(dateOfBirth, date) {
 // falls in the week, which is the whole point: a shift last Saturday and a
 // shift next Monday both have a place on this line, and the week's own edges
 // stop being walls.
+//
+// **In real time, not on the clock face.** The night the clocks go forward,
+// eleven on Saturday to ten on Sunday is ten hours of rest, not eleven, and
+// the eleven hour rule is about the rest somebody actually gets. So each time
+// of day is taken back by the hour Irish summer time is ahead, the same
+// reading the timesheet's hours use.
+function momentOf(anchor, date, minutes) {
+    return daysBetween(anchor, date) * 1440 + minutes - irishOffset(date, minutes * 60) / 60
+}
+
 function placeOf(anchor, shift) {
-    return daysBetween(anchor, shift.shift_date) * 1440 + toMinutes(shift.starts_at)
+    return momentOf(anchor, shift.shift_date, toMinutes(shift.starts_at))
+}
+
+// Where a shift ends on the same line. An end at or before the start is the
+// next morning, the same allowance shiftMinutes makes.
+function endOf(anchor, shift) {
+    const from = toMinutes(shift.starts_at)
+    const to = toMinutes(shift.ends_at)
+    const date = to > from ? shift.shift_date : addDays(shift.shift_date, 1)
+    return momentOf(anchor, date, to)
 }
 
 function inOrder(shifts) {
@@ -262,13 +282,10 @@ export function longestRest(shifts, weekDates) {
 
     const previous = sorted.filter(s => s.shift_date < first).pop()
 
-    const startOf = s => placeOf(first, s)
-    const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
-
     const run = [...(previous ? [previous] : []), ...inWeek, next]
     let best = previous ? 0 : Infinity
     for (let i = 1; i < run.length; i++) {
-        best = Math.max(best, startOf(run[i]) - endOf(run[i - 1]))
+        best = Math.max(best, placeOf(first, run[i]) - endOf(first, run[i - 1]))
     }
     return best / 60
 }
@@ -288,8 +305,6 @@ export function shortestGap(shifts, weekDates) {
     if (!first || !last) return { hours: Infinity, after: null }
 
     const sorted = inOrder(shifts)
-    const startOf = s => placeOf(first, s)
-    const endOf = s => startOf(s) + shiftMinutes(s.starts_at, s.ends_at)
     const thisWeek = s => s.shift_date >= first && s.shift_date <= last
 
     let best = Infinity
@@ -313,7 +328,7 @@ export function shortestGap(shifts, weekDates) {
         // against.
         if (before.shift_date === then.shift_date) continue
 
-        const gap = startOf(then) - endOf(before)
+        const gap = placeOf(first, then) - endOf(first, before)
         if (gap < best) { best = gap; after = before }
     }
     return { hours: best / 60, after }

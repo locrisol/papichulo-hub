@@ -103,6 +103,11 @@ back to the name without it, but a rename only keeps its figures once it is run.
 `027` is **not run yet**. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
+`030` is **not run yet**. It works a timesheet row's hours out in real time
+from the date, so a shift on the night the clocks go back or forward comes to
+the hours really worked rather than what the clock face says. Every other
+night is exactly as before and no saved figure moves. It needs Postgres 17,
+which is what `set expression` arrived in.
 `032` is **not run yet**. It gives `public_products` the section, so the
 customer allergen page can tell a food product nobody entered allergens for
 (it asks the customer to see staff) from a dip pot, which has nothing to

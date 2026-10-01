@@ -11,6 +11,8 @@
 // quietly rounded every clock-in in the app down to the minute and the totals
 // would still have looked plausible.
 
+import { addDays } from '@/lib/dates'
+
 // "HH:MM" or "HH:MM:SS" to seconds past midnight. Nothing sensible comes back
 // as -1 rather than NaN, the same way roster.js does it, so a bad value cannot
 // poison a total without being noticed.
@@ -29,17 +31,56 @@ export function toSeconds(time) {
 // An end at or before the start is the next day, so 22:00:00 to 02:00:00 is
 // four hours rather than minus twenty. The roster makes the same allowance for
 // the same reason.
-export function spanSeconds(from, to) {
+//
+// **Given the day, it is real time and not the clock face.** Twice a year the
+// clocks change in the night: eight to two on the last Saturday of October is
+// seven hours worked, because the clocks go back at two, and on the last
+// Saturday of March it is five. The database works its hours column out the
+// same way, from the date, and the two have to agree or the screen and the
+// payroll mail say different things about the same shift. Without a day it is
+// the clock face, which is right on every other night of the year.
+export function spanSeconds(from, to, date) {
     const start = toSeconds(from)
     const end = toSeconds(to)
     if (start < 0 || end < 0) return 0
-    return end > start ? end - start : end + 86400 - start
+    const face = end > start ? end - start : end + 86400 - start
+    if (!date) return face
+    const endDay = end > start ? date : addDays(date, 1)
+    return face - irishOffset(endDay, end) + irishOffset(date, start)
 }
 
 // What a span is worth in hours, to two places, which is what the database
 // column holds and what every total is added up from.
-export function spanHours(from, to) {
-    return Math.round((spanSeconds(from, to) / 3600) * 100) / 100
+export function spanHours(from, to, date) {
+    return Math.round((spanSeconds(from, to, date) / 3600) * 100) / 100
+}
+
+// How far Irish time is ahead of UTC at a time of day on a date, in seconds:
+// an hour in summer, nothing in winter.
+//
+// Summer time starts and ends at one in the morning UTC on the last Sunday of
+// March and of October, which is the rule Ireland keeps with the rest of the
+// EU. Written out rather than asked of the browser, so it is the same answer on
+// any computer whatever its own clock is set to.
+//
+// The hour either side of the change is the awkward part. In March, one to two
+// never happens; in October it happens twice. Both are read the way the
+// database reads them, as winter time, so a shift there comes to the same
+// hours on the screen as in the column.
+export function irishOffset(date, seconds) {
+    const year = Number(String(date).slice(0, 4))
+    const spring = lastSunday(year, 3)
+    const autumn = lastSunday(year, 10)
+    const started = date > spring || (date === spring && seconds >= 2 * 3600)
+    const ended = date > autumn || (date === autumn && seconds >= 3600)
+    return started && !ended ? 3600 : 0
+}
+
+// The last Sunday of a month, March being 3, as a stored date.
+function lastSunday(year, month) {
+    const last = new Date(Date.UTC(year, month, 0))
+    last.setUTCDate(last.getUTCDate() - last.getUTCDay())
+    return last.toISOString().slice(0, 10)
 }
 
 // HH:MM, for the places that are showing a time rather than recording one: the

@@ -101,6 +101,17 @@ describe('one day', () => {
         expect(cell.entries).toHaveLength(2)
     })
 
+    // The clocks go back at two on Sunday 25 October 2026, so eight to two on
+    // the Saturday night is seven hours, the same figure the database stores.
+    it('counts the real hours on the night the clocks go back', () => {
+        const cell = dayCell({
+            person: aoife,
+            date: '2026-10-24',
+            entries: [shift({ work_date: '2026-10-24', starts_at: '20:00:00', ends_at: '02:00:00' })],
+        })
+        expect(cell.hours).toBe(7)
+    })
+
     it('knows the Monday is a bank holiday', () => {
         expect(dayCell(args).bankHoliday).toMatchObject({ name: 'October Bank Holiday' })
         expect(dayCell({ ...args, date: TUE }).bankHoliday).toBeNull()

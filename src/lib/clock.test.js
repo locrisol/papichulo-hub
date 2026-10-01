@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    toSeconds, spanSeconds, spanHours, shortClock, maskTime, settleTime,
+    toSeconds, spanSeconds, spanHours, shortClock, maskTime, settleTime, irishOffset,
 } from '@/lib/clock'
 
 // What the box shows after each key press, which is the thing being designed.
@@ -64,6 +64,58 @@ describe('how long a span ran', () => {
     it('rounds to the two places the column holds', () => {
         expect(spanHours('09:00:00', '17:00:01')).toBe(8)
         expect(spanHours('09:00:00', '09:00:36')).toBe(0.01)
+    })
+})
+
+// The two nights a year the clocks change, worked out in real time rather than
+// on the clock face, and the same way the database works out its hours column.
+describe('the nights the clocks change', () => {
+    // Back an hour at two in the morning on Sunday 25 October 2026, so eight
+    // to two that Saturday night is seven hours really worked.
+    it('counts the hour the clocks go back', () => {
+        expect(spanHours('20:00:00', '02:00:00', '2026-10-24')).toBe(7)
+    })
+
+    // Forward an hour at one on Sunday 29 March 2026, so the same shift is five.
+    it('leaves out the hour the clocks go forward', () => {
+        expect(spanHours('20:00:00', '02:00:00', '2026-03-28')).toBe(5)
+    })
+
+    it('is the clock face on every other night', () => {
+        expect(spanHours('20:00:00', '02:00:00', '2026-09-12')).toBe(6)
+        expect(spanHours('09:00:00', '17:00:00', '2026-10-25')).toBe(8)
+        expect(spanHours('09:00:00', '17:00:00', '2026-03-29')).toBe(8)
+    })
+
+    // One to two happens twice that night. The database takes it as the
+    // second time, after the change, so this does too or the two disagree.
+    it('reads the hour that happens twice as the second one', () => {
+        expect(spanHours('23:00:00', '01:30:00', '2026-10-24')).toBe(3.5)
+        expect(spanHours('23:00:00', '00:30:00', '2026-10-24')).toBe(1.5)
+    })
+
+    // And a time that never happened, one to two in March, the way the
+    // database reads it: as if the clocks had not gone forward yet.
+    it('reads the hour that never happened the way the database does', () => {
+        expect(spanHours('23:00:00', '01:30:00', '2026-03-28')).toBe(2.5)
+    })
+
+    // A shift that starts after midnight on the Sunday itself.
+    it('counts a shift that starts on the Sunday morning', () => {
+        expect(spanHours('00:30:00', '03:00:00', '2026-10-25')).toBe(3.5)
+        expect(spanHours('00:30:00', '03:00:00', '2026-03-29')).toBe(1.5)
+    })
+
+    // March 2030 ends on a Sunday, so that Sunday is the one the clocks change.
+    // The same dates the database test uses.
+    it('finds the change when the month ends on the Sunday itself', () => {
+        expect(spanHours('20:00:00', '02:00:00', '2030-03-30')).toBe(5)
+        expect(spanHours('20:00:00', '02:00:00', '2030-10-26')).toBe(7)
+    })
+
+    it('says which offset Irish time is on at a time of day', () => {
+        expect(irishOffset('2026-07-01', 12 * 3600)).toBe(3600)
+        expect(irishOffset('2026-12-01', 12 * 3600)).toBe(0)
     })
 })
 

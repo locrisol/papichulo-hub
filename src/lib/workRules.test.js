@@ -128,6 +128,21 @@ describe('shortestGap', () => {
         expect(shortestGap(shifts, WEEK).hours).toBe(9)
     })
 
+    // The clocks go forward an hour at one on Sunday 29 March 2026, so eleven
+    // at night to ten the next morning is ten hours of rest, not eleven.
+    it('measures real hours across the night the clocks go forward', () => {
+        const shifts = [shift('2026-03-28', '15:00', '23:00'), shift('2026-03-29', '10:00', '18:00')]
+        const week = ['2026-03-29', '2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04']
+        expect(shortestGap(shifts, week).hours).toBe(10)
+    })
+
+    // And back an hour at two on Sunday 25 October 2026: twelve hours.
+    it('measures real hours across the night the clocks go back', () => {
+        const shifts = [shift('2026-10-24', '15:00', '23:00'), shift('2026-10-25', '10:00', '18:00')]
+        const week = ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']
+        expect(shortestGap(shifts, week).hours).toBe(12)
+    })
+
     it("leaves last week's own turnarounds to last week", () => {
         const shifts = [
             shift('2026-08-21', '15:00', '23:00'),
@@ -175,6 +190,19 @@ describe('longestRest', () => {
         // Friday 15:00 to the Monday after at 09:00. Clipped at the week it
         // came to 33, which is the warning he was shown.
         expect(longestRest(shifts, WEEK)).toBe(66)
+    })
+
+    // Saturday 24 October 2026 at 17:00 to Sunday at 10:00, with the clocks
+    // going back an hour in between, is eighteen hours rather than seventeen.
+    // Every other night of the week is sixteen.
+    it('measures a break the clocks change in, in real hours', () => {
+        const week = ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']
+        const shifts = [
+            shift('2026-10-24', '09:00', '17:00'),
+            ...week.map(d => shift(d, '10:00', '18:00')),
+            shift('2026-11-01', '10:00', '18:00'),
+        ]
+        expect(longestRest(shifts, week)).toBe(18)
     })
 
     it('says nothing when the week after has not been built', () => {
