@@ -386,6 +386,36 @@ maybe('what each role can see and do', () => {
                 .toEqual((all || []).map(e => e.id).sort())
         })
 
+        // Since 034. What is on near us: a place's name and size through
+        // staff_places, not its page address, Ticketmaster id or reading
+        // settings; their own restaurant's pairings; and only the listings
+        // at places it watches that nobody dismissed.
+        it('reads what is on near us without how each place is set up', async () => {
+            const { count } = await countVisible(employee, 'places')
+            expect(count, 'an employee can read the places table').toBe(0)
+
+            const { data: places, error } = await employee.from('staff_places').select('*')
+            expect(error?.message || '', 'staff_places is missing, so 033 has not been run').toBe('')
+            if (places?.length) expect(Object.keys(places[0]).sort()).toEqual(['capacity', 'id', 'name', 'short_name'])
+
+            const { data: pairings } = await employee.from('restaurant_places')
+                .select('restaurant_id, place_id, is_active, place:staff_places(id, name)')
+            expect((pairings || []).filter(p => p.restaurant_id !== ownRestaurantId), 'an employee read the other restaurant pairings')
+                .toEqual([])
+            expect((pairings || []).filter(p => !p.place), 'a pairing came back with no place').toEqual([])
+
+            const watched = (pairings || []).filter(p => p.is_active).map(p => p.place_id)
+            const { data: events } = await employee.from('events').select('place_id, review')
+            expect((events || []).filter(e => e.review === 'dismissed'), 'an employee read a dismissed listing').toEqual([])
+            expect((events || []).filter(e => !watched.includes(e.place_id)), 'an employee read a listing from a place they do not watch')
+                .toEqual([])
+
+            // Every other listing at a place they watch, as before.
+            const { count: theirs } = await manager.from('events').select('id', { count: 'exact', head: true })
+                .neq('review', 'dismissed').in('place_id', watched.length ? watched : [NOBODY])
+            expect((events || []).length).toBe(theirs)
+        })
+
         // Since 034. A swap between two other people is theirs: who asked
         // whom, the hours and the message. My shifts reads their own whole,
         // and of everybody else's only which shifts were asked about, from
@@ -623,6 +653,19 @@ maybe('what each role can see and do', () => {
         it('still reads the diary table, the Google ids included', async () => {
             const { error } = await manager.from('diary_entries').select('id, google_event_ids, created_by').limit(1)
             expect(error).toBeNull()
+        })
+
+        // Settings, the feed notice and the delete rule read every place,
+        // every pairing and every listing, dismissed ones included.
+        it('still reads every place, every pairing and every listing', async () => {
+            const { error } = await manager.from('places').select('page_url, ticketmaster_venue_id, feed_problem').limit(1)
+            expect(error).toBeNull()
+            const { count: pairings } = await manager.from('restaurant_places').select('id', { count: 'exact', head: true })
+            const { count: all } = await superadmin.from('restaurant_places').select('id', { count: 'exact', head: true })
+            expect(pairings).toBe(all)
+            const { count: events } = await manager.from('events').select('id', { count: 'exact', head: true })
+            const { count: every } = await superadmin.from('events').select('id', { count: 'exact', head: true })
+            expect(events).toBe(every)
         })
 
         // The roster itself, drafts and every note included.
@@ -948,7 +991,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary', 'staff_places']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -977,6 +1020,8 @@ maybe('what each role can see and do', () => {
                 'staff_products can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'staff_diary', 'id', { title: 'x' }),
                 'staff_diary can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_places', 'id', { name: 'x' }),
+                'staff_places can be changed by an employee').toBe(true)
         })
     })
 

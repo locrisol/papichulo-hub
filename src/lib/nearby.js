@@ -165,6 +165,13 @@ export function cityProblem(pairing) {
 export const PAIRING_COLUMNS =
     'id, relation, walk_minutes, distance_km, is_active, own_row, sort_order, place:places(*)'
 
+// The same for staff, with the place from staff_places: its name, the short
+// one and how many it holds, which is all the roster and the calendar draw.
+// The page address, the Ticketmaster id and how the last read went are for
+// Settings and the feed notice, and staff cannot read the places table.
+export const STAFF_PAIRING_COLUMNS =
+    'id, relation, walk_minutes, distance_km, is_active, own_row, sort_order, place:staff_places(*)'
+
 // Switched off is switched off, and the city ones answer to three things rather
 // than one: the restaurant's switch, their own, and the rule itself.
 //

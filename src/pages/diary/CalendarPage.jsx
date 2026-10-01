@@ -7,7 +7,7 @@ import { todayISO, weekStartOf, addDays, monthStart, addMonths, monthLabel, week
 import { friendlyError } from '@/lib/errors'
 import { syncEvents, syncIsDue, markSynced } from '@/lib/nearbySync'
 import {
-    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS,
+    nearbyRows, waiting, eventName, headlinePlaces, placeName, PAIRING_COLUMNS, STAFF_PAIRING_COLUMNS,
 } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import FeedTrouble from '@/components/nearby/FeedTrouble'
@@ -235,16 +235,21 @@ export default function CalendarPage() {
                     ? supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
                         .eq('is_active', true).order('sort_order')
                     : supabase.from('staff_restaurants').select('id, name, sort_order').order('sort_order'),
+                // Staff get the place without how it is set up. A manager
+                // needs the feed and the page as well, for the feed notice.
                 supabase.from('restaurant_places')
-                    .select(PAIRING_COLUMNS)
+                    .select(canWrite ? PAIRING_COLUMNS : STAFF_PAIRING_COLUMNS)
                     .eq('restaurant_id', activeRestaurant.id)
                     .order('sort_order'),
                 // Not bounded by the view. Anything unchecked that has not
-                // happened yet, however far out it is.
-                supabase.from('events').select('*')
-                    .eq('review', 'found')
-                    .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
-                    .order('event_date'),
+                // happened yet, however far out it is. Only a manager decides
+                // these, so only a manager is asked for them.
+                canWrite
+                    ? supabase.from('events').select('*')
+                        .eq('review', 'found')
+                        .or(`ends_on.gte.${today},and(ends_on.is.null,event_date.gte.${today})`)
+                        .order('event_date')
+                    : Promise.resolve({ data: [], error: null }),
             ])
 
             if (!alive) return

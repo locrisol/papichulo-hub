@@ -197,6 +197,18 @@ describe('my own week', () => {
         expect(asked()).not.toContain('restaurants')
     })
 
+    // The places nearby come through staff_places, without the page
+    // address, the Ticketmaster id or the reading settings.
+    it('reads the places nearby from the staff view', async () => {
+        renderWithRouter(<MyShiftsPage />)
+        await screen.findByText('Ana Test')
+        const pairings = db.from.mock.results
+            .filter((_, i) => db.from.mock.calls[i][0] === 'restaurant_places')
+            .map(r => r.value.select.mock.calls[0][0])
+        expect(pairings.length).toBeGreaterThan(0)
+        for (const columns of pairings) expect(columns).toContain('place:staff_places(')
+    })
+
     // What is on comes from staff_diary, without where each entry is on
     // Google or who wrote it.
     it('reads what is on from the staff view', async () => {

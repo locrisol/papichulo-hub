@@ -1539,12 +1539,12 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
 
 COMMENT ON TABLE "public"."places" IS 'Somewhere near a restaurant that holds things: an arena, a theatre, a cinema, a harbour, a council that runs festivals. The place itself and nothing about who is near it, because the same place can be near more than one restaurant and would otherwise be typed twice.';
 COMMENT ON COLUMN "public"."places"."capacity" IS 'How many people it holds, typed by hand because no API publishes it. Only used by the city rule: something over about twenty thousand people a few kilometres away fills the hotels beside us even though nobody walks from it. Null means nobody has said, and the rule then leaves it out rather than guessing.';
-COMMENT ON COLUMN "public"."places"."feed_problem" IS 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every signed in person can read this row.';
+COMMENT ON COLUMN "public"."places"."feed_problem" IS 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every manager can read this row.';
 COMMENT ON COLUMN "public"."places"."feed_synced_at" IS 'When the Ticketmaster feed last answered for this place, with feed_count saying how many it listed. Shown in settings, and on the roster and the calendar when it is more than two days old, because a feed that stops answering looks exactly like a quiet fortnight.';
 COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
 COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
 COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
-COMMENT ON COLUMN "public"."places"."read_problem" IS 'What went wrong the last time a page here was read, in a sentence read-listings wrote, or null when the last read worked. Shown in settings beside last_read_at, because a page that keeps failing otherwise only shows an old date. Never the error itself, which can name an address and every signed in person can read this row.';
+COMMENT ON COLUMN "public"."places"."read_problem" IS 'What went wrong the last time a page here was read, in a sentence read-listings wrote, or null when the last read worked. Shown in settings beside last_read_at, because a page that keeps failing otherwise only shows an old date. Never the error itself, which can name an address and every manager can read this row.';
 COMMENT ON COLUMN "public"."places"."reading_key" IS 'What makes a reading off this page the same reading twice. date is the ordinary case, where a thing is itself on a given day. title is for a page that lists the same thing over and over, a cinema being the one that forced it: the same film showing for a month is one thing that happened once, so the first sighting is kept and every later one is ignored.';
 COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
 COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';
@@ -3833,9 +3833,11 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 
 -- -- What is on near us ------------------------------------------------
 --
--- Everybody working a concert night needs to know it is happening, so all
--- three read to any signed in account. Only a manager decides which places
--- we watch, and only for their own restaurant.
+-- Everybody working a concert night needs to know it is happening. Staff
+-- read the listings at places their restaurant watches, their own
+-- restaurant's pairings, and the places through staff_places. Managers read
+-- all three in full. Only a manager decides which places we watch, and only
+-- for their own restaurant.
 --
 -- A place is shared, so any manager may add one or correct one: it is the
 -- venue itself, and both restaurants see the same page and the same feed. What
@@ -3848,7 +3850,10 @@ CREATE POLICY "report_items_write" ON "public"."report_items" TO "authenticated"
 
 ALTER TABLE "public"."places" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Managers and above. Staff read staff_places (with the views, below): a
+-- place's name and size, not its page address, Ticketmaster id or how it is
+-- read, which are for Settings.
+CREATE POLICY "places_select" ON "public"."places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
 CREATE POLICY "places_write" ON "public"."places" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3860,7 +3865,11 @@ CREATE POLICY "places_delete_only_when_unused" ON "public"."places" AS RESTRICTI
 
 ALTER TABLE "public"."restaurant_places" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Every pairing for a manager, and that is not to be narrowed: the delete
+-- rule above reads this table as the manager deleting, and one who could not
+-- see the other restaurant's pairing could delete a place it watches. Staff
+-- read their own restaurant's.
+CREATE POLICY "restaurant_places_select" ON "public"."restaurant_places" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
 CREATE POLICY "restaurant_places_write" ON "public"."restaurant_places" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
@@ -3868,7 +3877,13 @@ ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "events_select" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
-CREATE POLICY "events_select_all_staff" ON "public"."events" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) IS NOT NULL));
+-- Staff read the listings at places their restaurant watches, and not the
+-- ones somebody dismissed, which stay in the table only so the next read of
+-- the page does not offer them again. Managers read every listing, for the
+-- same delete rule.
+CREATE POLICY "events_select_staff" ON "public"."events" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("review" <> 'dismissed'::"text") AND (EXISTS ( SELECT 1
+   FROM "public"."restaurant_places" "rp"
+  WHERE (("rp"."place_id" = "events"."place_id") AND ("rp"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND "rp"."is_active")))));
 
 CREATE POLICY "events_write" ON "public"."events" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 
@@ -3924,8 +3939,9 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- addresses its mail goes to. my_claims gives them the delivery problems they
 -- logged without what each was worth, and roster_asks which shifts somebody
 -- has asked about, without the request. staff_products gives them the
--- products without the notes or the weight loss, and staff_diary what is on
--- without where each entry is on Google. They read past row level
+-- products without the notes or the weight loss, staff_diary what is on
+-- without where each entry is on Google, and staff_places a place nearby
+-- without how it is set up. They read past row level
 -- security on purpose and their own where clause is the wall between the two
 -- restaurants, which is covered by the database tests.
 --
@@ -4081,6 +4097,16 @@ CREATE OR REPLACE VIEW "public"."staff_diary" AS
     "d"."google_synced_at"
    FROM "public"."diary_entries" "d"
   WHERE ((("d"."scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("d"."scope" = 'sites'::"text") AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("d"."restaurant_ids"))) OR (("d"."scope" = 'private'::"text") AND ("d"."created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)));
+
+-- Every place, since which of them a restaurant watches is restaurant_places'
+-- to say, and anybody signed in and switched on.
+CREATE OR REPLACE VIEW "public"."staff_places" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."short_name",
+    "p"."capacity"
+   FROM "public"."places" "p"
+  WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
 
 -- Yours and at your restaurant, so an account switched off reads nothing,
 -- the same as every rule that asks get_my_role.
@@ -4271,6 +4297,7 @@ COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with 
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. Only people on the team at some point from nine weeks before today to nine weeks after, the weeks My shifts opens and one more, and a start or leaving date only when it falls inside them. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
 COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_diary" IS 'What is on, as the calendar and My shifts show it to staff: the group''s entries, your restaurant''s and your own private ones, with who to contact and whether it is on Google. Not where each one is on Google or who wrote it, which stay on diary_entries for the managers and the calendar function. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_places" IS 'A place near us, as the roster and the calendar draw it for staff: the name, the short name and how many it holds. Not the page address, the Ticketmaster id, how the page is read or how the last read and sync went, which stay on places for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_products" IS 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
@@ -4303,6 +4330,7 @@ revoke all on public.my_claims                from anon, authenticated, public;
 revoke all on public.roster_asks              from anon, authenticated, public;
 revoke all on public.staff_products           from anon, authenticated, public;
 revoke all on public.staff_diary              from anon, authenticated, public;
+revoke all on public.staff_places             from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
@@ -4314,6 +4342,7 @@ grant select on public.my_claims                to authenticated;
 grant select on public.roster_asks              to authenticated;
 grant select on public.staff_products           to authenticated;
 grant select on public.staff_diary              to authenticated;
+grant select on public.staff_places             to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;

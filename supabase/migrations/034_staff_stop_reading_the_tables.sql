@@ -254,4 +254,54 @@ create or replace view public.roster_away as
 
 comment on view public.roster_away is 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 
+-- What is on near us, on the employee side only. Staff stop reading the
+-- places table, which holds each page address, Ticketmaster id, how a page
+-- is read and what went wrong last time; since 033 they read staff_places.
+-- They read only their own restaurant's pairings, and only the listings at
+-- places it watches that nobody dismissed.
+--
+-- Managers are not narrowed, on purpose. places_delete_only_when_unused reads
+-- restaurant_places and events as the manager deleting, so a manager who could
+-- not see the other restaurant's pairing could delete a place it watches.
+
+drop policy if exists "places_select" on public.places;
+create policy "places_select" on public.places
+    for select
+    to authenticated
+    using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
+
+-- 028 gave every signed in person reading this row as the reason no raw error
+-- is kept in these two. Only managers read it now, and a manager must not see
+-- the key either, so the rule stands and only the reason changes.
+comment on column public.places.feed_problem is 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every manager can read this row.';
+comment on column public.places.read_problem is 'What went wrong the last time a page here was read, in a sentence read-listings wrote, or null when the last read worked. Shown in settings beside last_read_at, because a page that keeps failing otherwise only shows an old date. Never the error itself, which can name an address and every manager can read this row.';
+
+drop policy if exists "restaurant_places_select" on public.restaurant_places;
+create policy "restaurant_places_select" on public.restaurant_places
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager'])
+        or ((select public.get_my_role()) = 'employee'
+            and restaurant_id = (select public.get_my_restaurant_id()))
+    );
+
+-- events_select already gives managers every listing. This was the rule for
+-- everybody else, and it gave them every listing too.
+drop policy if exists "events_select_all_staff" on public.events;
+drop policy if exists "events_select_staff" on public.events;
+create policy "events_select_staff" on public.events
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = 'employee'
+        and review <> 'dismissed'
+        and exists (
+            select 1 from public.restaurant_places rp
+             where rp.place_id = events.place_id
+               and rp.restaurant_id = (select public.get_my_restaurant_id())
+               and rp.is_active
+        )
+    );
+
 notify pgrst, 'reload schema';

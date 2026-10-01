@@ -169,7 +169,9 @@ the tables 034 closes to staff. Nothing in it breaks the site as it is, so
 - `staff_products`, the products as a count and the Waste page use them,
   without the notes, the weight loss, the piece weight or the count frequency;
 - `staff_diary`, what is on, without where each entry is on Google or who
-  wrote it.
+  wrote it;
+- `staff_places`, a place nearby with its name and size, without its page
+  address, Ticketmaster id or reading settings.
 
 `034` is **not run yet**. It takes away from staff what no staff screen
 uses, now that the new site reads only what it needs:
@@ -200,7 +202,11 @@ uses, now that the new site reads only what it needs:
 - the team and its time off outside the weeks My shifts opens.
   `roster_colleagues` and `roster_away` give nine weeks either side of today,
   so nobody who left long ago, no old holidays, and no leaving date months
-  before it matters. My shifts steps eight weeks either way.
+  before it matters. My shifts steps eight weeks either way;
+- the places table, the other restaurant's pairings, and listings that were
+  dismissed or are at a place their restaurant does not watch. Only the
+  employee side narrows: the rule on deleting a place reads the pairings and
+  the listings as the manager, so managers keep all of them.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts

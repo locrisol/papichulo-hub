@@ -204,3 +204,30 @@ describe('the diary on the calendar', () => {
         expect(db.calls).not.toContain('staff_diary')
     })
 })
+
+// What is on near us, for staff. The place comes through staff_places, which
+// leaves out the page address, the Ticketmaster id, the reading settings and
+// what went wrong last time: all of that is for Settings and the feed notice,
+// which only a manager sees. And the readings still waiting on a manager are
+// not asked for at all, since only a manager decides them.
+describe('what is on near us, for an employee', () => {
+    it('takes the place from the staff view and skips the waiting list', async () => {
+        await openAs('employee')
+        const pairings = db.from.mock.results
+            .filter((_, i) => db.from.mock.calls[i][0] === 'restaurant_places')
+            .map(r => r.value.select.mock.calls[0][0])
+        expect(pairings.length).toBeGreaterThan(0)
+        for (const columns of pairings) expect(columns).toContain('place:staff_places(')
+        expect(db.calls).not.toContain('places')
+        expect(db.calls.filter(t => t === 'events')).toHaveLength(1)
+    })
+
+    it('still gives a manager the whole place and the waiting list', async () => {
+        await openAs('store_manager')
+        const pairings = db.from.mock.results
+            .filter((_, i) => db.from.mock.calls[i][0] === 'restaurant_places')
+            .map(r => r.value.select.mock.calls[0][0])
+        for (const columns of pairings) expect(columns).toContain('place:places(*)')
+        expect(db.calls.filter(t => t === 'events')).toHaveLength(2)
+    })
+})

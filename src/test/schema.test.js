@@ -363,6 +363,43 @@ describe('how far back and ahead staff see the team', () => {
     })
 })
 
+describe('what staff are given of what is on near us', () => {
+    // A place as the roster and the calendar draw it: its name, the short one
+    // and how many it holds. Not the page address, the Ticketmaster id, how it
+    // is read or what went wrong, which are for Settings and the feed notice.
+    it('gives the place without how it is set up', () => {
+        const view = viewNamed('staff_places')
+        expect(view, 'staff_places is not in schema.sql').toContain('"public"."places"')
+        const columns = [...view.slice(0, view.indexOf('FROM')).matchAll(/"p"\."(\w+)"/g)].map(m => m[1])
+        expect(columns.sort()).toEqual(['capacity', 'id', 'name', 'short_name'])
+        readOnlyForStaff('staff_places')
+    })
+
+    // Only the employee side narrows. places_delete_only_when_unused reads
+    // restaurant_places and events as the manager deleting, so a manager who
+    // could not see the other restaurant's pairings could delete its place.
+    it('gives an employee no read of the places table, and a manager all of it', () => {
+        const select = policiesOn('places').find(p => p.startsWith('CREATE POLICY "places_select"')) || ''
+        expect(select, 'found no places_select').not.toContain('IS NOT NULL')
+        expect(select).toContain(`ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]`)
+    })
+
+    it('gives an employee only their own restaurant\'s pairings, and a manager every one', () => {
+        const select = policiesOn('restaurant_places').find(p => p.startsWith('CREATE POLICY "restaurant_places_select"')) || ''
+        expect(select, 'found no restaurant_places_select').not.toContain('IS NOT NULL')
+        expect(select).toMatch(/^CREATE POLICY "restaurant_places_select" [^;]*\(\( SELECT "public"\."get_my_role"\(\) \) = ANY \(ARRAY\['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"\]\)\) OR/)
+        expect(select).toContain(`= 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))`)
+    })
+
+    it('gives an employee no dismissed listing and none from a place they do not watch', () => {
+        const policies = policiesOn('events').filter(p => p.includes('FOR SELECT'))
+        expect(policies.filter(p => p.includes('IS NOT NULL')), 'a read of every listing for anybody signed in').toEqual([])
+        const staff = policies.find(p => p.includes("'employee'")) || ''
+        expect(staff, 'found no read of events for staff').toContain(`"review" <> 'dismissed'::"text"`)
+        expect(staff).toMatch(/FROM "public"\."restaurant_places" "rp"\s+WHERE \(\("rp"\."place_id" = "events"\."place_id"\) AND \("rp"\."restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)\) AND "rp"\."is_active"\)/)
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

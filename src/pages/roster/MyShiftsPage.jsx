@@ -26,7 +26,7 @@ import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { rosterNearby, NEARBY_FAILED, PAIRING_COLUMNS } from '@/lib/nearby'
+import { rosterNearby, NEARBY_FAILED, STAFF_PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -295,8 +295,10 @@ export default function MyShiftsPage() {
                     .lte('event_date', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,event_date.gte.${from})`)
                     .order('event_time'),
+                // The place without how it is set up, for a manager too,
+                // since nothing here shows the feed or the page.
                 supabase.from('restaurant_places')
-                    .select(PAIRING_COLUMNS)
+                    .select(STAFF_PAIRING_COLUMNS)
                     .eq('restaurant_id', mine.restaurant_id)
                     .order('sort_order'),
                 // My own requests, not week bound. What I asked for in March is

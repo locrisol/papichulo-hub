@@ -143,4 +143,23 @@ comment on view public.staff_diary is 'What is on, as the calendar and My shifts
 revoke all on public.staff_diary from anon, authenticated, public;
 grant select on public.staff_diary to authenticated;
 
+-- Staff read a place nearby through staff_places: its name, the short one
+-- and how many it holds, which is all the roster and the calendar draw. Not
+-- the page address, the Ticketmaster id, how the page is read or what went
+-- wrong last time, which are for Settings and the feed notice, both
+-- managers only. Their read of the table goes in 034.
+
+create or replace view public.staff_places as
+ select p.id,
+    p.name,
+    p.short_name,
+    p.capacity
+   from public.places p
+  where (select public.get_my_role()) is not null;
+
+comment on view public.staff_places is 'A place near us, as the roster and the calendar draw it for staff: the name, the short name and how many it holds. Not the page address, the Ticketmaster id, how the page is read or how the last read and sync went, which stay on places for the managers. A switched off account reads nothing.';
+
+revoke all on public.staff_places from anon, authenticated, public;
+grant select on public.staff_places to authenticated;
+
 notify pgrst, 'reload schema';
