@@ -88,6 +88,18 @@ describe('the nightly photo job', () => {
     })
 })
 
+describe('places say how their last read went', () => {
+    // read-listings writes it when a page cannot be read, and the settings row
+    // shows it. Without the column a page failing every Monday only kept an
+    // old date with nothing saying why.
+    it('has a column for what went wrong reading a page', () => {
+        const migration = readFileSync('supabase/migrations/028_the_feed_says_how_it_went.sql', 'utf8')
+        expect(migration).toContain('alter table public.places add column if not exists read_problem text;')
+        const table = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS "public"."places"'))
+        expect(table.slice(0, table.indexOf(');'))).toContain('"read_problem" "text"')
+    })
+})
+
 describe('the change log', () => {
     // Every Ticketmaster sync stamps the place it checked, twice a day and on
     // every manager's visit, and the weekly page read does the same. Logged,
@@ -106,6 +118,7 @@ describe('the change log', () => {
                 expect(ignored).toContain(column)
             }
             expect(ignored).not.toContain('feed_problem')
+            expect(ignored).not.toContain('read_problem')
         }
     })
 })

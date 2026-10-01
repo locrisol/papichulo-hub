@@ -1516,6 +1516,7 @@ CREATE TABLE IF NOT EXISTS "public"."places" (
     "feed_synced_at" timestamp with time zone,
     "feed_count" integer,
     "feed_problem" "text",
+    "read_problem" "text",
     CONSTRAINT "places_has_a_name" CHECK (("btrim"("name") <> ''::"text")),
     CONSTRAINT "places_page_url_is_a_url" CHECK ((("page_url" IS NULL) OR ("page_url" ~ '^https?://[^ ]+$'::"text"))),
     CONSTRAINT "places_capacity_is_a_number_of_people" CHECK ((("capacity" IS NULL) OR ("capacity" > 0))),
@@ -1530,6 +1531,7 @@ COMMENT ON COLUMN "public"."places"."feed_synced_at" IS 'When the Ticketmaster f
 COMMENT ON COLUMN "public"."places"."last_read_at" IS 'When a page here was last read, with last_read_count saying what that found. Both are shown in settings, because a page that changes its layout goes quiet rather than going wrong, and a run of zeroes is the only way anybody would notice.';
 COMMENT ON COLUMN "public"."places"."page_depth" IS 'How many pages deep to read, when the address carries {page}. One is the ordinary case and means the address is the whole of it. Only worth raising for a site that hands over a few events at a time, and worth keeping small: every page is a fetch and a slice of what gets sent to be read.';
 COMMENT ON COLUMN "public"."places"."page_url" IS 'A public listings page. Read on a schedule and turned into events, which then wait for somebody to keep them. Null means this place has no page worth reading and whatever it has comes from a feed instead. It may carry {month} or {page}, which are replaced before it is fetched: some sites hand over one calendar month or six events at a time, and reading only the first response is reading a fraction and calling it a week.';
+COMMENT ON COLUMN "public"."places"."read_problem" IS 'What went wrong the last time a page here was read, in a sentence read-listings wrote, or null when the last read worked. Shown in settings beside last_read_at, because a page that keeps failing otherwise only shows an old date. Never the error itself, which can name an address and every signed in person can read this row.';
 COMMENT ON COLUMN "public"."places"."reading_key" IS 'What makes a reading off this page the same reading twice. date is the ordinary case, where a thing is itself on a given day. title is for a page that lists the same thing over and over, a cinema being the one that forced it: the same film showing for a month is one thing that happened once, so the first sighting is kept and every later one is ignored.';
 COMMENT ON COLUMN "public"."places"."short_name" IS 'What the place is called on a roster cell about fifty pixels wide, where the full name would cost a line of height on every chip. Null falls back to the name, which is what a place with a short name already has.';
 COMMENT ON COLUMN "public"."places"."ticketmaster_venue_id" IS 'The Discovery API venue id, when it sells through Ticketmaster. Null is the ordinary case: a harbour, a college and a shopping centre all hold things and none of them sells a ticket.';

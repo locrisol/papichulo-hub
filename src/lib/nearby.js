@@ -684,10 +684,19 @@ export function foundWords(row, today) {
 //
 // The count is the point. A page that changes its layout goes quiet rather than
 // going wrong, and a run of zeroes is the only way anybody would ever notice.
+//
+// **And what went wrong, when the last read failed.** A page that failed every
+// Monday only kept an old date here, with nothing saying why. read-listings
+// writes a sentence of its own on the place, never the error itself, and it
+// comes first, then when a read last worked.
 export function readWords(place, today) {
     if (!place?.page_url) return ''
-    if (!place.last_read_at) return 'never read'
     const when = agoWords(place.last_read_at, today)
+    if (place.read_problem) {
+        const why = String(place.read_problem).trim().replace(/\.+$/, '')
+        return place.last_read_at ? `${why}, last read ${when}` : `${why}, never read`
+    }
+    if (!place.last_read_at) return 'never read'
     const found = Number(place.last_read_count)
     if (!Number.isFinite(found)) return `read ${when}`
     return `read ${when}, ${found === 0 ? 'nothing found' : `${found} found`}`

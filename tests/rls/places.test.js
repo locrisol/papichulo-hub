@@ -105,10 +105,11 @@ maybe('places shared between restaurants', () => {
 
     // Migration 028. Every Ticketmaster sync writes how it went on the place,
     // and the settings row, the roster and the calendar read it from there.
-    // Until 028 is run on this project the columns are not there to read.
-    it('lets a manager read how the last Ticketmaster sync went', async () => {
+    // A page read that fails says why in read_problem. Until 028 is run on
+    // this project the columns are not there to read.
+    it('lets a manager read how the last Ticketmaster sync and page read went', async () => {
         const { error } = await manager.from('places')
-            .select('feed_synced_at, feed_count, feed_problem').limit(1)
+            .select('feed_synced_at, feed_count, feed_problem, read_problem').limit(1)
         expect(error).toBeNull()
     })
 
@@ -128,8 +129,8 @@ maybe('places shared between restaurants', () => {
         expect((await updates()).data).toEqual([])
 
         await superadmin.from('places').update({ feed_problem: 'Ticketmaster said no (401).' }).eq('id', place.id)
+        await superadmin.from('places').update({ read_problem: 'Gemini said no (429).' }).eq('id', place.id)
         const { data: logged } = await updates()
-        expect(logged).toHaveLength(1)
-        expect(Object.keys(logged[0].changes)).toEqual(['feed_problem'])
+        expect(logged.map(l => Object.keys(l.changes)).sort()).toEqual([['feed_problem'], ['read_problem']])
     })
 })

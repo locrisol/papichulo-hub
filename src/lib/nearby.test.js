@@ -657,6 +657,15 @@ describe('when a page was last read', () => {
     it('says nothing about a place with no page', () => {
         expect(readWords(arena, '2026-11-19')).toBe('')
     })
+
+    // A page that failed every Monday only left an old date, with nothing
+    // saying why. What went wrong comes first, then the last read that worked.
+    it('says what went wrong the last time, and when it last worked', () => {
+        const failing = { ...odeon, last_read_at: '2026-11-10T06:00:00', last_read_count: 4, read_problem: 'Gemini said no (429).' }
+        expect(readWords(failing, '2026-11-19')).toBe(`Gemini said no (429), last read on ${shortDate('2026-11-10')}`)
+        expect(readWords({ ...odeon, read_problem: 'The page could not be reached.' }, '2026-11-19'))
+            .toBe('The page could not be reached, never read')
+    })
 })
 
 describe('finding the next restaurant its places', () => {

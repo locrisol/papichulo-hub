@@ -105,9 +105,10 @@ round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
 `028` is **not run yet**. It gives each place three columns saying how its
 last Ticketmaster sync went: when the feed last answered, how many it listed,
-and what went wrong if anything did. The roster and the calendar tell a
-manager when a feed has stopped answering, instead of it looking like a quiet
-fortnight. Redeploy `nearby-events` after it.
+and what went wrong if anything did, and a fourth saying what went wrong the
+last time a page was read. The roster and the calendar tell a manager when a
+feed has stopped answering, instead of it looking like a quiet fortnight.
+Redeploy `nearby-events` and `read-listings` after it.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other
