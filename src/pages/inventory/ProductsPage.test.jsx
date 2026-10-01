@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { screen, within, waitFor } from '@testing-library/react'
+import { act, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
+import { onAllergensChanged } from '@/lib/allergensChanged'
 
 // The product catalogue at Point Campus. Invented products and prices.
 
@@ -53,9 +54,19 @@ const db = {
     }),
 }
 
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager' } }) }))
-vi.mock('@/context/restaurant', () => ({ useRestaurant: () => ({ activeRestaurant: { id: 'r1', name: 'Point Campus' } }) }))
+// One restaurant object for the whole test, the way the real context keeps
+// one. A new one on every render made the prices fetch run again on every
+// render, so the page never stopped reading and a test could not wait for it.
+vi.mock('@/context/restaurant', () => {
+    const point = { id: 'r1', name: 'Point Campus' }
+    return { useRestaurant: () => ({ activeRestaurant: point }) }
+})
 vi.mock('@/context/confirm', () => ({ useConfirm: () => options => ask(options) }))
 vi.mock('@/context/scroll', () => ({ useKeepScroll: () => {} }))
 
@@ -345,5 +356,326 @@ describe('saving a new bought product with no allergens answered', () => {
         expect(asked).toHaveLength(1)
         expect(asked[0].message).not.toMatch(/reads as having none/)
         expect(asked[0].message).toMatch(/speak to a member of staff/)
+    })
+})
+
+// The products with no allergens set, which the red count on Products in the
+// sidebar counts. Each is marked on its row and takes you to where it is
+// answered, and the line above the list can show only those, so they can be
+// worked through one after another.
+//
+// The words are "not set", never "No allergens": a red pill saying No allergens
+// reads as allergen free, which is the very mix-up that let these build up.
+describe('products with no allergens set', () => {
+    const product = (id, name, extra = {}) => ({
+        id, name, unit: 'KG', section: 'Dry', category: 'ingredient',
+        is_active: true, is_mix: false, weight_loss_pct: 0, also_in: [], ...extra,
+    })
+    const RICE = product('rice', 'Rice')
+    const BEANS = product('beans', 'Black Beans')
+    const CHICKEN = product('chicken', 'Chicken Thighs', { section: 'Freezer' })
+    const POT = product('pot', 'Dip Pot', { section: 'Packaging' })
+    const SALSA = product('salsa', 'House Salsa', { section: 'Cold Room', is_mix: true })
+
+    beforeEach(() => {
+        sessionStorage.clear()
+        localStorage.clear()
+        tables.products = [RICE, BEANS, CHICKEN, POT, SALSA]
+        tables.product_supplier_prices = []
+        // Beans answered. The salsa is worked out from the beans in it, and a
+        // dip pot has nothing to declare.
+        tables.product_allergens = [{ product_id: 'beans' }]
+        tables.mix_recipes = [{ id: 'm1', mix_product_id: 'salsa', ingredient_product_id: 'beans', quantity: 1 }]
+    })
+
+    const table = () => within(screen.getByRole('table'))
+    // Every read asked for and everything it set off let finish, so a test
+    // that finds nothing has not simply looked too early.
+    async function settled() {
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('menu_item_components'))
+        await waitFor(() => expect(db.from).toHaveBeenCalledWith('mix_recipes'))
+        await act(async () => {})
+    }
+    const marks = name => screen.queryAllByRole('link', { name: `Allergens not set for ${name}` })
+
+    it('marks each one, on the table and on the phone cards, with a link to its Allergens page', async () => {
+        renderWithRouter(<ProductsPage />)
+
+        const rice = await screen.findAllByRole('link', { name: 'Allergens not set for Rice' })
+        expect(rice).toHaveLength(2)
+        for (const link of rice) {
+            expect(link).toHaveTextContent('Allergens not set')
+            expect(link).toHaveAttribute('href', '/catalogue/products/rice/allergens')
+        }
+        expect(marks('Chicken Thighs')).toHaveLength(2)
+        expect(marks('Black Beans')).toHaveLength(0)
+        expect(marks('House Salsa')).toHaveLength(0)
+        expect(marks('Dip Pot')).toHaveLength(0)
+    })
+
+    // Nothing to work its allergens out from, and adding the recipe is what
+    // answers it, so that is where its mark goes.
+    it('sends a MIX with no recipe to its Recipe page', async () => {
+        tables.products = [RICE, product('crema', 'House Crema', { section: 'Cold Room', is_mix: true })]
+        renderWithRouter(<ProductsPage />)
+
+        const crema = await screen.findAllByRole('link', { name: 'Allergens not set for House Crema' })
+        expect(crema).toHaveLength(2)
+        for (const link of crema) expect(link).toHaveAttribute('href', '/catalogue/products/crema/recipe')
+        expect(marks('Rice')[0]).toHaveAttribute('href', '/catalogue/products/rice/allergens')
+    })
+
+    // On our shelf and never in anything we make or sell, so the sheet never
+    // reads it.
+    it('does not mark food held for somebody else', async () => {
+        tables.products = [RICE, product('theirs', 'Their Bread', { held_for: 'Pita Pit' })]
+        renderWithRouter(<ProductsPage />)
+
+        expect(await screen.findAllByRole('link', { name: 'Allergens not set for Rice' })).toHaveLength(2)
+        expect(marks('Their Bread')).toHaveLength(0)
+        expect(screen.getByText('Allergens are not set for 1 product.')).toBeInTheDocument()
+    })
+
+    it('says how many, and shows only those without losing the other filters', async () => {
+        const me = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+
+        expect(await screen.findByText('Allergens are not set for 2 products.')).toBeInTheDocument()
+
+        // Dry on its own first: the rice, the beans and nothing from the freezer.
+        await me.click(screen.getByRole('button', { name: 'Dry' }))
+        expect(table().getByText('Black Beans')).toBeInTheDocument()
+
+        await me.click(screen.getByRole('button', { name: 'Show only these' }))
+        expect(table().getByText('Rice')).toBeInTheDocument()
+        expect(table().queryByText('Black Beans')).not.toBeInTheDocument()
+        // Still only Dry, so the chicken in the freezer stays out.
+        expect(table().queryByText('Chicken Thighs')).not.toBeInTheDocument()
+
+        await me.click(screen.getByRole('button', { name: 'Show all products' }))
+        expect(table().getByText('Black Beans')).toBeInTheDocument()
+        expect(table().queryByText('Chicken Thighs')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Dry' })).toBeInTheDocument()
+    })
+
+    // Switched off, but a dish on sale still has it, so the sheet still reads
+    // it. Hidden with the rest of the inactive ones until you ask for these.
+    it('counts and shows a switched off product a dish on sale still uses', async () => {
+        const me = userEvent.setup()
+        tables.products = [RICE, BEANS, product('cheese', 'Grated Cheese', { is_active: false })]
+        tables.menu_items = [{ id: 'nachos', is_active: true }]
+        tables.menu_item_components = [{ id: 'c1', menu_item_id: 'nachos', product_id: 'cheese' }]
+        renderWithRouter(<ProductsPage />)
+
+        expect(await screen.findByText('Allergens are not set for 2 products.')).toBeInTheDocument()
+        expect(table().queryByText('Grated Cheese')).not.toBeInTheDocument()
+
+        await me.click(screen.getByRole('button', { name: 'Show only these' }))
+        expect(table().getByText('Grated Cheese')).toBeInTheDocument()
+        expect(table().getByText('Rice')).toBeInTheDocument()
+    })
+
+    // Back from a product's Allergens page is a new visit to this one, and
+    // working through them means landing back on the same short list.
+    it('is still showing only those when you come back', async () => {
+        const me = userEvent.setup()
+        const first = renderWithRouter(<ProductsPage />)
+        await me.click(await screen.findByRole('button', { name: 'Show only these' }))
+        first.unmount()
+
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByRole('button', { name: 'Show all products' })).toBeInTheDocument()
+        expect(table().queryByText('Black Beans')).not.toBeInTheDocument()
+    })
+
+    // Kept, the choice would wait in the browser for the next product saved
+    // without allergens, and shrink the whole list to that one product
+    // without anybody asking.
+    it('forgets showing only those once every product has an answer', async () => {
+        sessionStorage.setItem('productsOnlyNoAllergens', 'true')
+        tables.product_allergens = [{ product_id: 'beans' }, { product_id: 'rice' }, { product_id: 'chicken' }]
+        const first = renderWithRouter(<ProductsPage />)
+        await settled()
+        first.unmount()
+
+        tables.product_allergens = [{ product_id: 'beans' }, { product_id: 'chicken' }]
+        renderWithRouter(<ProductsPage />)
+        expect(await screen.findByRole('button', { name: 'Show only these' })).toBeInTheDocument()
+        expect(table().getByText('Black Beans')).toBeInTheDocument()
+    })
+
+    it('says nothing once every product has an answer', async () => {
+        tables.product_allergens = [{ product_id: 'beans' }, { product_id: 'rice' }, { product_id: 'chicken' }]
+        renderWithRouter(<ProductsPage />)
+
+        expect(await screen.findAllByText('Black Beans')).not.toHaveLength(0)
+        await settled()
+        expect(screen.queryByText(/Allergens are not set/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('link', { name: /Allergens not set/ })).not.toBeInTheDocument()
+    })
+
+    // The database hands back a thousand rows at most. Read short, every
+    // answered product past the first thousand would be marked.
+    it('reads past the first thousand allergen rows', async () => {
+        const others = Array.from({ length: 1000 }, (_, i) => ({ product_id: `other${i}` }))
+        const rows = [...others, { product_id: 'beans' }, { product_id: 'rice' }, { product_id: 'chicken' }]
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'product_allergens'
+            ? makeQuery({ data: rows, error: null })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            expect(await screen.findAllByText('Black Beans')).not.toHaveLength(0)
+            await settled()
+            expect(screen.queryByRole('link', { name: /Allergens not set/ })).not.toBeInTheDocument()
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+
+    // The same for the recipes. Read short, a MIX whose lines fall past the
+    // first thousand would be marked here and sent to a Recipe page showing a
+    // full recipe, while the sidebar, which reads every row, did not count it.
+    it('reads past the first thousand recipe lines', async () => {
+        const others = Array.from({ length: 1000 }, (_, i) => ({
+            id: `o${i}`, mix_product_id: `othermix${i}`, ingredient_product_id: 'rice', quantity: 1,
+        }))
+        const rows = [...others, ...tables.mix_recipes]
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'mix_recipes'
+            ? makeQuery({ data: rows, error: null })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            expect(await screen.findAllByText('House Salsa')).not.toHaveLength(0)
+            await settled()
+            expect(marks('House Salsa')).toHaveLength(0)
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+
+    // A product list that did not arrive is not a list with nothing missing,
+    // so one failed read on a weak signal must not forget the choice.
+    it('still remembers showing only those when the products could not be read', async () => {
+        sessionStorage.setItem('productsOnlyNoAllergens', 'true')
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'products'
+            ? makeQuery({ data: null, error: WEAK_SIGNAL })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            await settled()
+            expect(sessionStorage.getItem('productsOnlyNoAllergens')).toBe('true')
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+
+    // Before the allergens have arrived every food product would look
+    // unanswered, and a failed read looks the same for good.
+    it('marks nothing when the allergens could not be read', async () => {
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'product_allergens'
+            ? makeQuery({ data: null, error: WEAK_SIGNAL })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            expect(await screen.findAllByText('Black Beans')).not.toHaveLength(0)
+            await settled()
+            expect(screen.queryByRole('link', { name: /Allergens not set/ })).not.toBeInTheDocument()
+            expect(screen.queryByText(/Allergens are not set/)).not.toBeInTheDocument()
+            // And says so. The line going quietly read as every product done.
+            expect(screen.getByText(/Could not check which products have allergens set/)).toBeInTheDocument()
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+
+    it('stops saying it could not check once a later read works', async () => {
+        const me = userEvent.setup()
+        const answer = db.from.getMockImplementation()
+        let failing = true
+        db.from.mockImplementation(table => (table === 'product_allergens' && failing
+            ? makeQuery({ data: null, error: WEAK_SIGNAL })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            expect(await screen.findByText(/Could not check which products have allergens set/)).toBeInTheDocument()
+
+            failing = false
+            await me.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+            await me.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save changes' }))
+            expect(await screen.findByText('Allergens are not set for 2 products.')).toBeInTheDocument()
+            expect(screen.queryByText(/Could not check which products have allergens set/)).not.toBeInTheDocument()
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+
+    // The recipes are half of the same answer: until they arrive a MIX would
+    // look like it has none.
+    it('says it could not check when the recipes could not be read', async () => {
+        const answer = db.from.getMockImplementation()
+        db.from.mockImplementation(table => (table === 'mix_recipes'
+            ? makeQuery({ data: null, error: WEAK_SIGNAL })
+            : answer(table)))
+        try {
+            renderWithRouter(<ProductsPage />)
+            expect(await screen.findByText(/Could not check which products have allergens set/)).toBeInTheDocument()
+        } finally {
+            db.from.mockImplementation(answer)
+        }
+    })
+})
+
+// The red count on Products in the sidebar is worked out in the layout, which
+// has no other way of knowing a save on this page changed it.
+describe('telling the sidebar', () => {
+    let heard
+    let stop
+    beforeEach(() => {
+        heard = vi.fn()
+        stop = onAllergensChanged(heard)
+        return () => stop()
+    })
+
+    it('after a product is saved in the Edit dialog', async () => {
+        const me = userEvent.setup()
+        const dialog = await editPeppers(me)
+        await me.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    })
+
+    it('after a new product is added', async () => {
+        const me = userEvent.setup()
+        await startAdding(me, 'Rice')
+        await me.click(screen.getByRole('button', { name: 'Declare the product has no allergens' }))
+        await me.click(screen.getByRole('button', { name: 'Add Product' }))
+
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    })
+
+    // The product row is saved before the price and the packs, so a section,
+    // a MIX tick or a switch already changed even when a later part did not.
+    it('after an edit whose pack sizes did not save', async () => {
+        tables.price_count_units = [{ id: 'cu1', price_id: 'pr1', label: 'Box', factor: 5, sort_order: 0, is_active: true }]
+        refused = 'price_count_units'
+        const me = userEvent.setup()
+        const dialog = await editPeppers(me)
+        await me.click(dialog.getByRole('button', { name: 'Save changes' }))
+
+        await dialog.findByText(/Green Peppers was saved, but its pack sizes were not/)
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    })
+
+    // Switched off and in no dish, it stops counting.
+    it('after a product is switched off', async () => {
+        const me = userEvent.setup()
+        renderWithRouter(<ProductsPage />)
+        await me.click((await screen.findAllByRole('button', { name: 'Deactivate' }))[0])
+
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
     })
 })

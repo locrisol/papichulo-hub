@@ -131,6 +131,15 @@ export const errorBanner = 'text-sm text-red-700 bg-red-50 rounded-lg p-3'
 // at once. No margin, for the same reason as errorBanner.
 export const warningNote = 'text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3'
 
+// The same note in red, for something already wrong that a customer could be
+// told, like products with allergens not set. Not an error: nothing failed,
+// so it is not errorBanner and carries no alert. Red 800 on the pale red is
+// about 7.7 to 1.
+//
+// The roster and the invoice documents each have one of these written out by
+// hand. They can move over when those screens are next worked on.
+export const urgentNote = 'text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3'
+
 export const labelClass = 'text-xs text-gray-500 mb-1 block'
 
 // The small caps line over a figure: "Waste this week", "Margin", "Net sales".

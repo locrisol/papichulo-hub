@@ -1,14 +1,16 @@
 import { fmtUnitCost } from '@/lib/format'
 import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { calculateMixCost } from '@/lib/mixCost'
 import { EMPTY_PRICE, hasPrice, priceProblem, pricePayload } from '@/lib/productPrice'
 import { typedPriceEvent } from '@/lib/priceEvents'
-import { emptyAllergens } from '@/lib/allergens'
+import { emptyAllergens, noAllergensDeclared } from '@/lib/allergens'
+import { everyReadArrived } from '@/lib/allergenSheet'
+import { allergensChanged } from '@/lib/allergensChanged'
 import {
   sameName, sameSupplierCode, nameClashMessage, canBeIngredient, declaresAllergens,
   heldFor, partiesIn, prefillFrom,
@@ -23,7 +25,10 @@ import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
 import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
-import { tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton } from '@/lib/controlStyles'
+import {
+  tableHeadRow, tableHeadCell, badge, card, cardEdge, rowButton, pageTitle, primaryButton, secondaryButton, urgentNote,
+  warningNote,
+} from '@/lib/controlStyles'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 import ShowInactiveButton from '@/components/ui/ShowInactiveButton'
 
@@ -253,6 +258,38 @@ export default function ProductsPage() {
   const [showInactive, setShowInactive] = useState(() => {
     return localStorage.getItem('productsShowInactive') === 'true'
   })
+
+  // What the count of products with no allergens set is worked out from,
+  // beyond the products and recipes this page already holds: which products
+  // have an allergen row, and what is in each dish. Null until all of it has
+  // arrived, and for good if any of it failed. Read before then, every food
+  // product would look unanswered.
+  const [answers, setAnswers] = useState(null)
+  // Whether the recipes came back. A MIX with a recipe is answered by what is
+  // in it, so until they arrive every MIX would look like it has none.
+  const [recipesRead, setRecipesRead] = useState(false)
+  // Whether the last read of either failed. Nothing is marked then, which is
+  // right, but the red line going quietly read as every product done, so the
+  // page says it could not check. Its own flag rather than the page's error,
+  // which a save clears and fills with its own message.
+  const [answersFailed, setAnswersFailed] = useState(false)
+  const [recipesFailed, setRecipesFailed] = useState(false)
+  // Whether the product list has arrived. Until it has, an empty list is not a
+  // list with nothing missing, so the choice to show only those is kept.
+  const [productsRead, setProductsRead] = useState(false)
+
+  // Showing only the products with no allergens set, so they can be worked
+  // through. Kept for the session: each one is answered on its own Allergens
+  // or Recipe page, and coming back from it is a fresh visit to this one that
+  // should land on the same short list rather than all of them.
+  const [onlyNoAllergens, setOnlyNoAllergens] = useState(() => {
+    try { return sessionStorage.getItem('productsOnlyNoAllergens') === 'true' } catch { return false }
+  })
+
+  function showOnlyNoAllergens(on) {
+    setOnlyNoAllergens(on)
+    try { sessionStorage.setItem('productsOnlyNoAllergens', String(on)) } catch { /* only a convenience */ }
+  }
   const [formData, setFormData] = useState(() => ({
     name: '',
     section: 'Freezer',
@@ -286,7 +323,28 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts()
     fetchSuppliers()
+    fetchAnswers()
   }, [])
+
+  // Whether each product has an allergen row, and what is in each dish on
+  // sale. Only the columns the rule reads: what the allergens actually are is
+  // the Allergens page's business. All three or nothing, see answers above.
+  //
+  // Every row, a page at a time, each in an order that cannot tie. Read
+  // short, every answered product past the first thousand rows would be
+  // marked as not set.
+  async function fetchAnswers() {
+    const reads = await Promise.all([
+      everyRow(() => supabase.from('product_allergens').select('product_id').order('product_id')),
+      everyRow(() => supabase.from('menu_items').select('id, is_active').order('id')),
+      everyRow(() => supabase.from('menu_item_components')
+        .select('id, menu_item_id, product_id').order('id')),
+    ])
+    if (!everyReadArrived(reads)) { setAnswers(null); setAnswersFailed(true); return }
+    const [allergens, menuItems, components] = reads.map(r => r.data)
+    setAnswersFailed(false)
+    setAnswers({ allergens, menuItems, components })
+  }
 
   
 
@@ -300,7 +358,7 @@ export default function ProductsPage() {
       .order('name')
 
     if (error) setError(friendlyError(error))
-    else setProducts(data)
+    else { setProducts(data); setProductsRead(true) }
     setLoading(false)
   }
 
@@ -370,12 +428,20 @@ export default function ProductsPage() {
     fetchRecipeLines()
   }, [fetchPrices, activeRestaurant])
 
+  // Every line, a page at a time. Read short, a MIX whose lines fell past the
+  // first thousand would be marked as having no recipe here while the sidebar,
+  // which reads every row, did not count it.
   async function fetchRecipeLines() {
-    const { data } = await supabase
+    const { data } = await everyRow(() => supabase
       .from('mix_recipes')
       .select('*')
+      .order('id'))
 
-    if (data) setRecipeLines(data)
+    if (data) {
+      setRecipeLines(data)
+      setRecipesRead(true)
+    }
+    setRecipesFailed(!data)
   }
 
   function getPreferredPrice(productId) {
@@ -689,6 +755,8 @@ export default function ProductsPage() {
           setFormProblem(savedButNot(formData.name,
             [{ what: 'price', error: priceErr, next: 'Press Save changes to try again.' }]))
           fetchProducts()
+          // The product row itself was saved, so the count may have moved.
+          allergensChanged()
           return
         }
 
@@ -701,6 +769,8 @@ export default function ProductsPage() {
               [{ what: 'pack sizes', plural: true, error: packsErr, next: 'Press Save changes to try again.' }]))
             await fetchPrices()
             fetchProducts()
+            // The product row itself was saved, so the count may have moved.
+            allergensChanged()
             return
           }
         }
@@ -721,12 +791,18 @@ export default function ProductsPage() {
             [{ what: 'allergens', plural: true, error: allergenErr, next: 'Press Save changes to try again.' }]))
           await fetchPrices()
           fetchProducts()
+          // The product row itself was saved, so the count may have moved.
+          allergensChanged()
           return
         }
       }
 
       fetchProducts()
       fetchPrices()
+      // The allergens may have been answered in this same dialog, and the
+      // count in the sidebar goes with them.
+      fetchAnswers()
+      allergensChanged()
       resetForm()
     } else {
       const { data, error } = await supabase
@@ -756,6 +832,8 @@ export default function ProductsPage() {
         fetchProducts()
         fetchPrices()
         fetchRecipeLines()
+        fetchAnswers()
+        allergensChanged()
       }
 
       // Once the product is in, anything after it that fails closes the form
@@ -960,8 +1038,9 @@ export default function ProductsPage() {
       .update({ is_active: !product.is_active })
       .eq('id', product.id)
 
+    // Switching one off or on changes what the sidebar's count asks about.
     if (error) setError(friendlyError(error))
-    else fetchProducts()
+    else { fetchProducts(); allergensChanged() }
   }
 
   // What you can do to a product, written once as a list rather than as
@@ -1081,8 +1160,73 @@ export default function ProductsPage() {
   // using, so offering it on a new product is offering a mistake.
   const activeSuppliers = suppliers.filter(sup => sup.is_active)
 
+  // The products with no allergens set: the same ones the red count on
+  // Products in the sidebar counts, by the same rule, which is the one the
+  // customer sheet uses to send people to staff. Nothing until everything it
+  // is worked out from has arrived.
+  const allergensKnown = Boolean(answers && recipesRead && productsRead && !loading)
+  const noAllergens = allergensKnown
+    ? new Set(noAllergensDeclared({ products, recipeLines, ...answers }).map(p => p.id))
+    : new Set()
+  // Only while there are any. With none left the list would be empty, and the
+  // line with the way back to everything would be gone with them.
+  const onlyThose = onlyNoAllergens && noAllergens.size > 0
+
+  // And forgotten once there are none. Kept, the choice waited in the browser
+  // for the next product saved without allergens, and shrank the whole list to
+  // that one product without anybody asking. Only once everything has
+  // arrived, so a page still loading does not lose it.
+  const noneLeft = allergensKnown && noAllergens.size === 0
+  useEffect(() => {
+    if (!noneLeft || !onlyNoAllergens) return
+    // The rule would rather this were worked out while drawing, but the
+    // choice is also kept in the browser, and forgetting it there is a side
+    // effect. One extra render, once, when the last one is answered.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOnlyNoAllergens(false)
+    try { sessionStorage.setItem('productsOnlyNoAllergens', 'false') } catch { /* only a convenience */ }
+  }, [noneLeft, onlyNoAllergens])
+
+  // Where a product with no allergens set is answered. A MIX with no recipe
+  // has nothing to work its allergens out from, and adding the recipe is what
+  // answers it, so its Recipe page. Anything else, its Allergens page.
+  function whereToAnswer(p) {
+    const noRecipe = p.is_mix && !recipeLines.some(l => l.mix_product_id === p.id)
+    return `/catalogue/products/${p.id}/${noRecipe ? 'recipe' : 'allergens'}`
+  }
+
+  // The mark on a product with no allergens set, written once for the table
+  // and the cards. A link straight to where it is answered, because that is
+  // the one thing to do about it. Named with the product for a screen reader,
+  // where a column of links all saying the same thing is no help.
+  //
+  // Allergens not set, never No allergens: a red pill saying No allergens
+  // reads as allergen free, which is the very mix-up that let these build up.
+  //
+  // Solid red-700 so it still stands out on a deactivated product's pale red
+  // row. White on it is 6.4 to 1.
+  function noAllergensMark(p) {
+    if (!noAllergens.has(p.id)) return null
+    return (
+      <Link
+        to={whereToAnswer(p)}
+        aria-label={`Allergens not set for ${p.name}`}
+        className={`${badge} bg-red-700 text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-accent`}
+      >
+        Allergens not set
+      </Link>
+    )
+  }
+
   const filteredProducts = products
-    .filter(p => showInactive || p.is_active)
+    // A switched off product still in a dish on sale is one of the ones to
+    // answer, because the sheet still reads it. So showing only those shows
+    // it, whether the inactive ones are showing or not.
+    .filter(p => showInactive || p.is_active || (onlyThose && noAllergens.has(p.id)))
+    // On top of every other filter rather than instead of them, so the dry
+    // store's can be done on their own and turning this off leaves the rest
+    // as they were.
+    .filter(p => !onlyThose || noAllergens.has(p.id))
     // Somewhere it is also kept counts. Picking Freezer is asking what is in
     // the freezer, and the two boxes of tacos defrosting in the cold room are
     // still freezer stock as far as anybody walking up to it is concerned.
@@ -1242,6 +1386,25 @@ export default function ProductsPage() {
         ))}
       </div>
 
+      {/* How many have no allergens set, while there are any, and a way to
+          show only those. Its own line rather than a third row of chips: it
+          is not a way of sorting the catalogue, it is a job to get done. */}
+      {(answersFailed || recipesFailed) && (
+        <p className={`${warningNote} mb-4`}>
+          Could not check which products have allergens set. Check your connection and reload the page.
+        </p>
+      )}
+      {noAllergens.size > 0 && (
+        <div className={`${urgentNote} flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4`}>
+          <p className="font-semibold">
+            Allergens are not set for {noAllergens.size === 1 ? '1 product' : `${noAllergens.size} products`}.
+          </p>
+          <button type="button" onClick={() => showOnlyNoAllergens(!onlyThose)} className={secondaryButton}>
+            {onlyThose ? 'Show all products' : 'Show only these'}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-sm text-gray-500">Loading products...</div>
       ) : (
@@ -1317,6 +1480,7 @@ export default function ProductsPage() {
                   {!p.is_active && (
                     <span className={`${badge} bg-red-200 text-red-800`}>Inactive</span>
                   )}
+                  {noAllergensMark(p)}
                 </div>
 
                 <dl className="mt-3 space-y-1.5 text-sm">
@@ -1479,6 +1643,9 @@ export default function ProductsPage() {
                           style={{ backgroundColor: productInk(p) }}
                         />
                         {p.name}
+                        {/* Beside the name, because the name is what the eye
+                            runs down. */}
+                        {noAllergens.has(p.id) && <span className="ml-2">{noAllergensMark(p)}</span>}
                         {/* How it is counted, under the name rather than in a
                             column of its own. The table is wide enough, and
                             this is a thing you check rather than scan down. */}
