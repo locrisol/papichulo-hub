@@ -47,14 +47,18 @@ maybe('what the people in a swap can do to it', () => {
         me = id || NOBODY
 
         // A published shift of somebody else's, the only kind an employee
-        // can see that is not their own.
+        // can see that is not their own. Through roster_published, the week
+        // as it went out, because since 034 staff cannot read the table. A
+        // shift changed since it went out comes back as it was, while the
+        // guard checks the table as it is now. Only a shift moved to another
+        // person or other hours since would make the two disagree.
         const { data: shifts } = await employee
-            .from('roster_shifts').select('id').neq('employee_id', me).limit(1)
+            .from('roster_published').select('id').neq('employee_id', me).limit(1)
         colleagueShift = shifts?.[0]?.id || null
 
         // One of their own, for the check on the hours of part of a shift.
         const { data: own } = await employee
-            .from('roster_shifts').select('id, starts_at, ends_at').eq('employee_id', me).limit(1)
+            .from('roster_published').select('id, starts_at, ends_at').eq('employee_id', me).limit(1)
         ownShift = own?.[0] || null
 
         // A request they are part of, for the checks on changing one.

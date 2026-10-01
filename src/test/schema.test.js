@@ -257,6 +257,18 @@ describe('what staff are given of the swap requests', () => {
     })
 })
 
+describe('what staff are given of the roster', () => {
+    // The week as it went out, through roster_published, which gives the note
+    // a manager writes on a shift only to the person on it. The table itself
+    // carries every colleague's note and every draft, so every rule on it asks
+    // for a manager.
+    it('gives nobody below a manager a read of roster_shifts', () => {
+        const policies = policiesOn('roster_shifts')
+        expect(policies.length, 'found no policies on roster_shifts to check').toBeGreaterThan(0)
+        expect(policies.filter(p => !p.includes('"public"."get_my_role"()') || p.includes("'employee'"))).toEqual([])
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

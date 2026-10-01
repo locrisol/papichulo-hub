@@ -3758,9 +3758,11 @@ CREATE POLICY "checklist_ticks_insert" ON "public"."checklist_ticks" FOR INSERT 
 
 ALTER TABLE "public"."roster_shifts" ENABLE ROW LEVEL SECURITY;
 
+-- Managers and above only. Staff read the week as it went out through
+-- roster_published (with the views, below), which gives the note a manager
+-- writes on a shift only to the person it is on. The table has every note
+-- and every draft.
 CREATE POLICY "roster_shifts_all" ON "public"."roster_shifts" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
-
-CREATE POLICY "roster_shifts_read_published" ON "public"."roster_shifts" FOR SELECT TO "authenticated" USING ((("published_at" IS NOT NULL) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 ALTER TABLE "public"."day_notes" ENABLE ROW LEVEL SECURITY;
 

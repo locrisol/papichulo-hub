@@ -241,3 +241,32 @@ describe('asks about other people\'s shifts', () => {
         }
     })
 })
+
+// The note a manager writes on a shift is for the person on it. Their phone
+// calendar has always carried it, and My shifts meant to show it too but
+// read a column that does not exist, so it never did. roster_published gives
+// each person the note on their own shifts and nobody else's.
+describe('the note on a shift', () => {
+    const monday = addDays(weekStartOf(todayISO()), 1)
+    const shifts = [
+        { id: 's1', restaurant_id: 'r1', employee_id: 'e1', shift_date: monday, starts_at: '09:00:00', ends_at: '17:00:00', break_minutes: 30, note: 'Bring the float up from the office', published_at: '2026-09-01T10:00:00Z' },
+        { id: 's2', restaurant_id: 'r1', employee_id: 'e2', shift_date: monday, starts_at: '12:00:00', ends_at: '20:00:00', break_minutes: 30, note: null, published_at: '2026-09-01T10:00:00Z' },
+    ]
+
+    it('shows on their own shift', async () => {
+        const selects = []
+        const plain = db.from
+        db.from = vi.fn(table => {
+            if (table !== 'roster_published') return plain(table)
+            const query = filtered(shifts)
+            const select = query.select
+            query.select = vi.fn(columns => { selects.push(columns); return select(columns) })
+            return query
+        })
+
+        renderWithRouter(<MyShiftsPage />)
+
+        expect(await screen.findByText('Bring the float up from the office')).toBeInTheDocument()
+        expect(selects[0]).toMatch(/\bnote\b/)
+    })
+})

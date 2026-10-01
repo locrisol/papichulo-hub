@@ -327,6 +327,26 @@ maybe('what each role can see and do', () => {
             expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
         })
 
+        // Since 034. The table carries every colleague's shift note and every
+        // draft. My shifts reads roster_published, which gives each person the
+        // note on their own shifts and the week as it went out.
+        it('cannot read the roster table, only the week as it went out', async () => {
+            const { count } = await countVisible(employee, 'roster_shifts')
+            expect(count, 'an employee can read roster_shifts').toBe(0)
+        })
+
+        // What My shifts shows under their own shift. Shown as skipped when
+        // nothing of theirs has a note.
+        it('still reads the note on their own shifts', async ({ skip }) => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            skip(!me, 'the test employee is not joined to anybody on the team')
+            const { data: noted } = await manager.from('roster_shifts').select('id, note')
+                .eq('employee_id', me).not('published_at', 'is', null).not('note', 'is', null).limit(1)
+            skip(!noted?.length, 'none of their shifts has a note')
+            const { data } = await employee.from('roster_published').select('id, note').eq('id', noted[0].id).maybeSingle()
+            expect(data?.note).toBe(noted[0].note)
+        })
+
         // Since 034. A swap between two other people is theirs: who asked
         // whom, the hours and the message. My shifts reads their own whole,
         // and of everybody else's only which shifts were asked about, from
@@ -550,6 +570,12 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
             skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
             expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The roster itself, drafts and every note included.
+        it('still reads the roster table, drafts and notes included', async () => {
+            const { error } = await manager.from('roster_shifts').select('id, note, published_at').limit(1)
+            expect(error).toBeNull()
         })
 
         // The request desk on the roster answers every swap at the restaurant.

@@ -237,9 +237,11 @@ export default function MyShiftsPage() {
                 // restaurant's.
                 //
                 // The columns the week shows and nothing else, the same as
-                // every other read staff make.
+                // every other read staff make. The note is a manager's word
+                // to the person on the shift, and the view gives it to them
+                // on their own shifts and to nobody else.
                 supabase.from('roster_published')
-                    .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
+                    .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes, note')
                     .eq('restaurant_id', mine.restaurant_id)
                     .not('published_at', 'is', null)
                     .gte('shift_date', from).lte('shift_date', to)
@@ -846,7 +848,10 @@ function MyWeek({
                                     <p className="text-xs text-muted">
                                         {fmtHours(shiftHours(s))} hours · {breakLabel(s.break_minutes)}
                                     </p>
-                                    {s.notes && <p className="text-xs text-gray-600 mt-1">{s.notes}</p>}
+                                    {/* The same note their phone calendar
+                                        carries. Only ever their own: the
+                                        view gives nobody a colleague's. */}
+                                    {s.note && <p className="text-xs text-gray-600 mt-1">{s.note}</p>}
                                     {/* On the shift rather than on a page of
                                         its own, because this is where somebody
                                         is standing when they realise they

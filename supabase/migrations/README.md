@@ -187,7 +187,10 @@ uses, now that the new site reads only what it needs:
   matched to a line, and what came back. They read `my_claims` instead, and
   still log one the same way;
 - swap requests between two other people. They read their own, whole, and
-  `roster_asks` for the rest.
+  `roster_asks` for the rest;
+- `roster_shifts`, which carries every colleague's shift note and every
+  draft. My shifts reads `roster_published` (029), which gives each person
+  the note on their own shifts and nobody else's.
 
 **Run it after merging, once the new site is live**: the site before that
 reads these tables, so staff would be told the Hub cannot open, My shifts

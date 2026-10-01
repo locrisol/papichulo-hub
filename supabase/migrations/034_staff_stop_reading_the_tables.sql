@@ -154,4 +154,13 @@ create policy "shift_requests_read" on public.shift_requests
                 or to_employee_id = (select public.get_my_employee_id())))
     );
 
+-- Staff stop reading roster_shifts. The table carries the note a manager
+-- writes on every colleague's shift, and every draft. My shifts reads
+-- roster_published (029), which gives the week as it went out and the note
+-- only to the person the shift is on. The swap guard reads the table as its
+-- owner, so asking for a shift still checks it. Managers keep
+-- roster_shifts_all.
+
+drop policy if exists "roster_shifts_read_published" on public.roster_shifts;
+
 notify pgrst, 'reload schema';
