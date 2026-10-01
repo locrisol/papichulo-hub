@@ -180,7 +180,7 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     // cancelled once Ticketmaster stops listing it.
     const gone = goneBetween(payload, new Date(now))
     if (gone) {
-        const { data: taken } = await admin
+        const { data: taken, error: marking } = await admin
             .from('events')
             .update({ status: 'withdrawn' })
             .eq('place_id', place.id)
@@ -190,7 +190,10 @@ async function syncOne(admin: Admin, place: Place, key: string) {
             .or('status.is.null,status.not.in.(canceled,cancelled,withdrawn)')
             .not('ticketmaster_id', 'in', `(${fetched.map(e => `"${e.ticketmaster_id}"`).join(',')})`)
             .select('id')
-        if (taken?.length) console.log('nearby-events', place.name, `${taken.length} no longer listed`)
+        // Said, the same as a run of days that could not move. Otherwise a
+        // night taken down keeps its on sale status and nothing says why.
+        if (marking) console.error('nearby-events', place.name, 'could not mark nights no longer listed:', marking.message)
+        else if (taken?.length) console.log('nearby-events', place.name, `${taken.length} no longer listed`)
     }
 
     // **A reading of a night this feed now covers is superseded by it.**
@@ -222,16 +225,22 @@ async function syncOne(admin: Admin, place: Place, key: string) {
 
     const stale = superseded(readings, fetched)
 
+    let dismissed = 0
     if (stale.length) {
-        await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
-        console.log('nearby-events', place.name, `${stale.length} readings superseded by the feed`)
+        const { error: dismissing } = await admin.from('events').update({ review: 'dismissed' }).in('id', stale)
+        if (dismissing) {
+            console.error('nearby-events', place.name, 'could not dismiss readings the feed covers:', dismissing.message)
+        } else {
+            dismissed = stale.length
+            console.log('nearby-events', place.name, `${dismissed} readings superseded by the feed`)
+        }
     }
 
     return {
         added: fetched.length - (existing || []).length,
         total: fetched.length,
         problem: null,
-        ...(stale.length ? { superseded: stale.length } : {}),
+        ...(dismissed ? { superseded: dismissed } : {}),
     }
 }
 

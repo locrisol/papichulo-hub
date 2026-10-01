@@ -67,3 +67,23 @@ describe('nearby-events keeps the key out of what it says', () => {
         expect(source).not.toMatch(/error:\s*(?:err|e)\.message/)
     })
 })
+
+// A write the sync makes and never looks at fails without a word. Marking a
+// night no longer listed, and dismissing a reading the feed covers, did just
+// that, while the move of a run of days beside them was logged.
+describe('nearby-events says when a write fails', () => {
+    const code = source.replace(/^\s*\/\/.*$/gm, '')
+    const writes = [...code.matchAll(
+        /(\bconst\s*\{[^}]*\}\s*=\s*)?await admin\s*\.from\('(events|places)'\)\s*\.(update|upsert|insert)\(/g,
+    )]
+
+    it('has writes to look at', () => {
+        expect(writes.length).toBeGreaterThan(0)
+    })
+
+    writes.forEach((write, i) => {
+        it(`write ${i + 1} (${write[3]} on ${write[2]}) looks at its error`, () => {
+            expect(write[1] || '').toMatch(/\berror\b/)
+        })
+    })
+})
