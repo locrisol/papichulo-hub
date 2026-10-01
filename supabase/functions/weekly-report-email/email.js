@@ -1438,6 +1438,20 @@ export function switchedOff(account) {
     return account?.is_active !== true
 }
 
+// What a report mail is built from, or why it may not go.
+//
+// A published report is read off what was frozen onto it, whatever the browser
+// sent. The browser's figures are for a test of a draft and only for that,
+// because a draft has nothing frozen to read. A real send of a draft is
+// refused: the app never asks for one, since publishing freezes first, and one
+// that got through would mail the owners figures kept nowhere, which nobody
+// could ever look up again. Found by the audit of 28 September.
+export function whatToSend(report, { test = false, figures, charts } = {}) {
+    if (report?.status === 'published') return { figures: report.figures || {}, charts: report.charts || {} }
+    if (!test) return { refused: 'This report has not been published, so it cannot be sent.' }
+    return { figures: figures || {}, charts: charts || {} }
+}
+
 // An address nobody can ever receive mail at.
 //
 // RFC 2606 and RFC 6761 set aside .test, .example, .invalid and .localhost, and

@@ -3,7 +3,7 @@ import {
     reportEmail, money, negative, pct, withShare, weekWords, weekNumber, slashDate,
     escapeHtml, tidy, stars, starColour, costTone, senderFor, heldNotice, WIDTH, SIDE,
     renewalWords,
-    deliverable, isJustTheGoodbye, replyToFor, switchedOff,
+    deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend,
 } from '../../supabase/functions/weekly-report-email/email'
 import { readFileSync } from 'node:fs'
 import { MAIL_WIDTH } from '@/lib/reportChartImage'
@@ -1047,6 +1047,37 @@ describe('a login that is switched off', () => {
         const asked = source.indexOf('switchedOff(account)')
         expect(asked).toBeGreaterThan(-1)
         expect(asked).toBeLessThan(source.indexOf("if (kind === 'timesheet')"))
+    })
+})
+
+// The browser's figures are for a test and only for a test. A real send of a
+// draft would have mailed the owners figures that were frozen nowhere, so
+// nobody could ever look up what they were sent.
+describe('what a send is built from', () => {
+    const posted = { figures: { net: 1 }, charts: { sales: 'https://x/s.png' } }
+    const frozen = { status: 'published', figures: { net: 14750 }, charts: { sales: 'https://x/frozen.png' } }
+    const draft = { status: 'draft', figures: null, charts: null }
+
+    it('reads a published report off what was frozen, whatever the browser sent', () => {
+        expect(whatToSend(frozen, { ...posted })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+        expect(whatToSend(frozen, { ...posted, test: true })).toEqual({ figures: frozen.figures, charts: frozen.charts })
+    })
+
+    it('takes the browser\'s figures for a test of a draft', () => {
+        expect(whatToSend(draft, { ...posted, test: true })).toEqual({ figures: posted.figures, charts: posted.charts })
+    })
+
+    it('refuses a real send of a report that has not been published', () => {
+        expect(whatToSend(draft, { ...posted })).toEqual({ refused: expect.stringMatching(/not been published/) })
+        expect(whatToSend(draft, {})).toHaveProperty('refused')
+    })
+
+    it('is asked before anything is worked out for the mail', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const asked = source.indexOf('whatToSend(report')
+        expect(asked).toBeGreaterThan(-1)
+        expect(asked).toBeLessThan(source.indexOf('changesSince('))
+        expect(source).not.toMatch(/\(posted \|\| \{\}\)/)
     })
 })
 

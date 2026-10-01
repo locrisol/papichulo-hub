@@ -7,7 +7,8 @@
 //
 // The one thing it does take from the browser is the figures and chart links
 // for a **test** send, and only for a test, because a draft has no frozen
-// figures to read. A test only ever goes to the person who asked for it.
+// figures to read. A send that is not a test, of a report that is not
+// published, is refused. A test never goes to the owners.
 //
 // Deploy it the ordinary way:
 //
@@ -42,7 +43,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { reportEmail } from './email.js'
 import { changesSince } from './changes.js'
-import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff } from './email.js'
+import { senderFor, heldNotice, deliverable, isJustTheGoodbye, replyToFor, switchedOff, whatToSend } from './email.js'
 import { timesheetEmail, personPeriod, addDays, hoursPdfPath } from './timesheet.js'
 import { base64, mimeParts, headersFor } from './mime.js'
 
@@ -357,9 +358,11 @@ Deno.serve(async (req) => {
         //
         // A published report reads what was frozen onto it. A draft has nothing
         // frozen, so a test reads what the browser was showing, which is the
-        // point of a test: it is the report as it stands right now.
-        const figures = report.status === 'published' ? (report.figures || {}) : (posted || {})
-        const charts = report.status === 'published' ? (report.charts || {}) : (postedCharts || {})
+        // point of a test: it is the report as it stands right now. A real send
+        // of a draft is refused. See whatToSend in email.js.
+        const chosen = whatToSend(report, { test, figures: posted, charts: postedCharts })
+        if (chosen.refused) return json({ error: chosen.refused }, 409)
+        const { figures, charts } = chosen
 
         if (!figures.net && figures.net !== 0) {
             return json({ error: 'This report has no figures on it yet.' }, 400)
