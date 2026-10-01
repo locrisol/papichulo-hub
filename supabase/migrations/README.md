@@ -1,12 +1,12 @@
 # Migrations
 
-**`001` to `034` are in here. `001` to `027` are run on live, `028` to `034` are not yet, and the next one is `035`.**
+**`001` to `034` are in here, all run on live, and the next one is `035`.**
 
-The order for `028` to `034`, which come in together: `028` to `033` before the
-branch is merged into development, in number order. `034` waits until
-development has been merged into main and papichulo-hub.vercel.app shows the
-new site. Merging into development only updates the development address,
-which staff cannot open. Each one's note below says why.
+`028` to `034` were run on 1 October, `034` before development reached main.
+papichulo-hub.vercel.app still runs main, which reads the tables `034` closed
+to staff, so staff accounts cannot use it until development is released to
+main. His call: nobody but him uses it yet, and main waits until the audit
+plan is finished. `034`'s note below says what to check after the release.
 
 The numbers started again at `001` on 20 September, because the folder was
 empty then. They were only ever there to put the files in order. Everything
@@ -106,13 +106,13 @@ one stored figure moves.
 `027` is run on live. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
-`028` is **not run yet**. It gives each place three columns saying how its
+`028` is run on live. It gives each place three columns saying how its
 last Ticketmaster sync went: when the feed last answered, how many it listed,
 and what went wrong if anything did, and a fourth saying what went wrong the
 last time a page was read. The roster and the calendar tell a manager when a
 feed has stopped answering, instead of it looking like a quiet fortnight.
 Redeploy `nearby-events` and `read-listings` after it.
-`029` is **not run yet**. It is the roster, swaps and time off after the
+`029` is run on live. It is the roster, swaps and time off after the
 second round of the audit. A swap for part of a shift has to name hours
 inside that shift, because approving one that did not invented hours. A swap
 cannot be asked of somebody with no account, who could never answer it, and
@@ -128,10 +128,9 @@ only for that person and the managers. A shift or a timesheet row can no
 longer start and finish at the same time, which came to 24 hours. If one is
 already saved, 029 stops and says so; `select * from timesheet_entries where
 starts_at = ends_at`, and the same on `roster_shifts`, finds it to put right
-first. **Run it before the branch is merged**: the roster calls that function
-to answer time off, and until it exists the answer buttons only show an error. My shifts reads `roster_published`, so
-without 029 every employee's home page fails to load as well. Redeploy
-`roster-calendar` and `roster-email` only after 029 is run, never before:
+first. The roster calls that function to answer time off, and My shifts
+reads `roster_published`. Redeploy `roster-calendar` and `roster-email` only
+after 029 is run, never before:
 both read `published_as`, and without it the phone calendars come back empty
 and the time off mail stops saying when somebody is rostered. Deploy the
 calendar as `npx supabase functions deploy roster-calendar --no-verify-jwt`,
@@ -141,31 +140,29 @@ plain address) in a browser: it should download a file starting
 run, publish again any week that says "Changed since it went out". A shift
 changed before 029 has no copy kept, so it stays off My shifts and the phone
 until its week goes out again.
-`030` is **not run yet**. It works a timesheet row's hours out in real time
+`030` is run on live. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other
 night is exactly as before and no saved figure moves. It needs Postgres 17,
 which is what `set expression` arrived in.
-`031` is **not run yet**. A super admin can log and delete waste at any
+`031` is run on live. A super admin can log and delete waste at any
 restaurant, the same as on every other table, rather than only at their own.
 And the waste an employee sees is today's in Ireland rather than the server's
 UTC date, so what they log after midnight in summer stays on their list. And
 only a super admin can change an account: an owner or a store manager could
 change the accounts below them through the API, role included, which nothing
 in the app offers.
-`032` is **not run yet**. It gives `public_products` the section, so the
+`032` is run on live. It gives `public_products` the section, so the
 customer allergen page can tell a food product nobody entered allergens for
 (it asks the customer to see staff) from a dip pot, which has nothing to
 declare, and the sheet's date counts a product moving section. And it makes
 the columns the allergen answer is worked out from not null: the fourteen on
 `product_allergens`, `is_mix` and `is_active` on `products`, and `is_active`
 on `menu_items` and `menu_categories`. It checks first, and if any of them is
-empty it stops, names the table and changes nothing. **Run it before the
-branch is merged**, or the new page asks customers to see staff about every
-dish that comes in a pot.
-`033` is **not run yet**. It adds the views the new site reads instead of
-the tables 034 closes to staff. Nothing in it breaks the site as it is, so
-**run it any time before merging**:
+empty it stops, names the table and changes nothing. Without it, the new
+page asks customers to see staff about every dish that comes in a pot.
+`033` is run on live. It adds the views the new site reads instead of
+the tables 034 closes to staff. Nothing in it broke the site as it was:
 
 - `staff_restaurants`, their restaurant with the name, opening hours, break
   and roster rules and nothing else;
@@ -181,7 +178,7 @@ the tables 034 closes to staff. Nothing in it breaks the site as it is, so
 - `staff_mix_recipes`, what goes into each MIX and how much, without the
   notes.
 
-`034` is **not run yet**. It takes away from staff what no staff screen
+`034` is run on live. It takes away from staff what no staff screen
 uses, now that the new site reads only what it needs:
 
 - the restaurants table, which carries the cost targets, the default hourly
@@ -219,15 +216,13 @@ uses, now that the new site reads only what it needs:
 - `mix_recipes`, with its notes. A count and the Waste page read
   `staff_mix_recipes`, so a MIX is valued the same as before.
 
-**Run it only after development has been merged into main** and Vercel shows
-the deployment of that merge to papichulo-hub.vercel.app as Ready. Merging the
-branch into development is not enough: that only updates the development
-address, which staff cannot open, and papichulo-hub.vercel.app goes on running
-main, which reads these tables. Run before then, staff would be told the Hub
-cannot open, My shifts would say they are not on the team list, Delivery
-problems would be empty, Waste and Stock Takes would have no products and the
-calendar would have no diary. Afterwards, sign in there as a staff account and
-open My shifts to check.
+It was meant to wait until development was merged into main, and went in
+before (see the top of this file). Until that release, papichulo-hub.vercel.app
+runs main, which reads these tables: staff are told the Hub cannot open, My
+shifts says they are not on the team list, Delivery problems is empty, Waste
+and Stock Takes have no products and the calendar has no diary. Once Vercel
+shows the release as Ready, sign in there as a staff account and open My
+shifts to check.
 
 Anybody who had the Hub open from before the release has to reload it once
 after 034 runs. Until they do, staff see "We cannot open the Hub for you", and
