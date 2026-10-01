@@ -155,6 +155,18 @@ describe('what staff are given of the menu', () => {
     )
 })
 
+describe('what staff are given of the suppliers', () => {
+    // The ones still in use, so they can ring the rep about a delivery. A
+    // switched off supplier's contacts and notes are no use on the floor, and
+    // is_active can be empty, which the app reads as switched off too.
+    it('gives an employee only the suppliers still in use', () => {
+        const select = policiesOn('suppliers')
+            .find(p => p.startsWith('CREATE POLICY "suppliers_select"')) || ''
+        expect(select, 'found no suppliers_select').toContain("'employee'")
+        expect(select).toMatch(/= 'employee'::"text"\) AND \("is_active" IS TRUE\)/)
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

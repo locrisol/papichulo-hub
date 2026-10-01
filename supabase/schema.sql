@@ -3429,7 +3429,10 @@ CREATE POLICY "employees_all" ON "public"."employees" TO "authenticated" USING (
 
 ALTER TABLE "public"."suppliers" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text", 'employee'::"text"])));
+-- Staff see only the suppliers still in use, to ring the rep about a
+-- delivery. A switched off one's old contacts and notes are no use on the
+-- floor, and an empty is_active reads as switched off, the same as in the app.
+CREATE POLICY "suppliers_select" ON "public"."suppliers" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("is_active" IS TRUE))));
 
 CREATE POLICY "suppliers_write" ON "public"."suppliers" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) WITH CHECK ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])));
 

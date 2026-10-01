@@ -169,6 +169,16 @@ maybe('what each role can see and do', () => {
             expect(count).toBeGreaterThan(0)
         })
 
+        // Since 034. The Suppliers page and Delivery problems only ever
+        // offered staff the ones still in use. Passes trivially on a database
+        // with nothing switched off, so the manager test below says whether
+        // there was anything to hide.
+        it('cannot read suppliers that were switched off', async () => {
+            const { data, error } = await employee.from('suppliers').select('id, is_active')
+            expect(error).toBeNull()
+            expect((data || []).filter(s => s.is_active !== true), 'an employee read a switched off supplier').toEqual([])
+        })
+
         it('can read stock takes', async () => {
             const { error } = await countVisible(employee, 'stock_takes')
             expect(error).toBeNull()
@@ -441,6 +451,14 @@ maybe('what each role can see and do', () => {
                     .insert({ name: taken[0].name, is_active: null })
                 expect(category?.code, 'whether a category is on can be left empty').toBe(EMPTY)
             }
+        })
+
+        // Show inactive on the Suppliers page, and the names on old invoices.
+        it('still reads switched off suppliers', async ({ skip }) => {
+            const { data, error } = await manager.from('suppliers').select('id').not('is_active', 'is', true)
+            expect(error).toBeNull()
+            skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
+            expect(data.length).toBeGreaterThan(0)
         })
 
         // The menu pages, the allergen pages and the preview of the customer

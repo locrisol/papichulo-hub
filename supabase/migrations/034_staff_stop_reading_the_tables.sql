@@ -59,4 +59,20 @@ create policy "menu_categories_select" on public.menu_categories
     to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
 
+-- Staff see only the suppliers still in use. They read the list to ring the
+-- rep about a delivery, and the Suppliers page and Delivery problems never
+-- showed them a switched off one, whose old contacts and notes are no use on
+-- the floor. is_active can be empty, and the app reads that as switched off,
+-- so this does too. Managers keep every supplier, for Show inactive and for
+-- the names on old invoices.
+
+drop policy if exists "suppliers_select" on public.suppliers;
+create policy "suppliers_select" on public.suppliers
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager'])
+        or ((select public.get_my_role()) = 'employee' and is_active is true)
+    );
+
 notify pgrst, 'reload schema';

@@ -167,7 +167,8 @@ which carries the cost targets, the default hourly rate and the report and
 payroll addresses, and of their own row on the team list, which carries their
 hourly rate and the managers' notes. They lose the menu as well: every dish's
 selling price, VAT and what goes into it, and the allergen rows, which no
-staff screen reads (the customer page uses the `public_` views). **Run it
+staff screen reads (the customer page uses the `public_` views), and the
+suppliers that were switched off, which no staff screen ever listed. **Run it
 after merging, once the new site is live**: the site before that asks the
 first two tables, so staff would be told the Hub cannot open and My shifts
 would say they are not on the team list.
