@@ -37,6 +37,7 @@ import ReportCleaning from '@/components/reports/ReportCleaning'
 import { claimActions } from '@/lib/invoiceReport'
 import { costFromPaid, movePreferred, renumberPlan, alternatePlan, newGroupId } from '@/lib/priceEvents'
 import { claimKind } from '@/lib/invoiceClaims'
+import { readToDecide } from '@/lib/invoiceReview'
 import ReportSectionHead from '@/components/reports/ReportSectionHead'
 import Recipients from '@/components/reports/Recipients'
 import PublishBar from '@/components/reports/PublishBar'
@@ -213,6 +214,21 @@ export default function ReportPage() {
     const deliveryHeld = report?.status === 'draft'
         ? deliveryBlockers({ weekStart: report.week_start, rows: delivery, days: around })
         : []
+
+    // Invoice lines from this week or before that nobody has decided on
+    // Review. His answer of 30 September: the report cannot go out while any
+    // are waiting. Only up to its own week, so a delivery on the Monday after
+    // does not hold last week's report.
+    const [toDecide, setToDecide] = useState(0)
+    const reviewHeld = report?.status === 'draft' && toDecide > 0
+        ? [{
+            text: `${toDecide} invoice ${toDecide === 1 ? 'line' : 'lines'} from this week or earlier `
+                + `${toDecide === 1 ? 'is' : 'are'} still waiting on Review.`,
+            to: '/invoices/review',
+            link: 'Open Review',
+        }]
+        : []
+    const held = [...deliveryHeld, ...reviewHeld]
     const specs = chartSpecs({ onlinePlatforms, corporatePlatforms })
 
     // How the last send went, so somebody who presses publish is told whether
@@ -366,6 +382,13 @@ export default function ReportPage() {
                     overheads: all.filter(i => i.kind === 'overhead'),
                     delivery: rows.map(r => ({ amount: r.cost })),
                 }))
+
+                // After the figures, so a read that fails still draws the
+                // week, says so and holds Publish like any other: a count of
+                // nothing would let it out with lines undecided.
+                const waiting = await readToDecide(head.restaurant_id, { upTo: end })
+                if (waiting.error) return stop(waiting.error)
+                setToDecide(waiting.lines.length)
             }
 
             const [ownerRows, place, changedRes] = await Promise.all([
@@ -785,7 +808,7 @@ export default function ReportPage() {
     }
 
     async function publish() {
-        const check = publishCheck(sections, figures, deliveryHeld)
+        const check = publishCheck(sections, figures, held)
         if (readFailed || check.blockers.length > 0) return
         if (stillReading()) return
 
@@ -1237,7 +1260,7 @@ export default function ReportPage() {
 
     const week = report.week_start
     const salesCosts = sections.find(s => s.key === 'sales_costs')
-    const check = publishCheck(sections, figures, deliveryHeld)
+    const check = publishCheck(sections, figures, held)
     const blockers = readFailed ? [UNREAD, ...check.blockers] : check.blockers
 
     return (

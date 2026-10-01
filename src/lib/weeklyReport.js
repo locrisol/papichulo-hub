@@ -606,10 +606,15 @@ export function blockers(items = []) {
 // entered, no invoices. Those are said and not enforced, the same rule the list
 // page uses for a day out against the till. Somebody who knows the week was
 // genuinely like that should not be argued with.
-export function publishCheck(sections = [], figures = null, delivery = []) {
+//
+// `held` is what the page knows stands in the way besides the report itself:
+// the delivery statements not in yet, and invoice lines still on Review. A
+// sentence, or { text, to, link } when the place to sort it out is another
+// screen.
+export function publishCheck(sections = [], figures = null, held = []) {
     const items = sections.flatMap(s => s.items || [])
     return {
-        blockers: [...blockers(items), ...delivery],
+        blockers: [...blockers(items), ...held],
         warnings: figures ? figureGaps(figures) : [],
     }
 }

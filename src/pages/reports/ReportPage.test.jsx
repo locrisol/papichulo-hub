@@ -43,10 +43,21 @@ const { default: ReportPage } = await import('./ReportPage')
 // The report itself answers .single(); the year of reports behind it for the
 // charts is a list. The restaurant row fails when it is asked for a column
 // the live database has not got yet.
-function answer({ changedAt, head = HEAD, failing = [], waiting = {} }) {
+function answer({ changedAt, head = HEAD, failing = [], waiting = {}, lines = [] }) {
     db.from.mockImplementation(table => {
         if (failing.includes(table)) {
             return makeQuery({ data: null, error: { message: `Could not read ${table}` } })
+        }
+        // Invoice lines nobody has decided on Review, honouring the date they
+        // are asked up to, the way the database would.
+        if (table === 'invoice_lines') {
+            const chain = makeQuery({ data: lines, error: null })
+            let upTo = null
+            chain.lte = vi.fn((column, value) => { upTo = value; return chain })
+            chain.then = (resolve, reject) => Promise.resolve({
+                data: lines.filter(l => !upTo || l.invoices.invoice_date <= upTo), error: null,
+            }).then(resolve, reject)
+            return chain
         }
         // A read still on its way: it answers when the test lets it.
         if (waiting[table]) {
@@ -226,6 +237,50 @@ describe('a report published but not sent', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Re-open to correct it' }))
         await waitFor(() => expect(confirmed).toHaveBeenCalled())
         expect(confirmed.mock.calls[0][0].message).toMatch(/mails a correction to everyone who got the first/)
+    })
+})
+
+// His answer of 30 September: the report cannot be sent while anything on
+// Review is not actioned, counting only lines on invoices dated up to the
+// report's week.
+describe('lines still waiting on Review', () => {
+    const fine = { changedAt: { data: null, error: null } }
+    const waitingOn = date => ({
+        id: `l-${date}`, invoice_id: `i-${date}`, supplier_code: '777001', line_total: 14.5, decision: null,
+        invoices: {
+            id: `i-${date}`, invoice_number: '45448455', invoice_date: date, supplier_id: 's1',
+            document_type: 'invoice', restaurant_id: 'r1', total_amount: 120,
+        },
+    })
+
+    it('holds Publish while a line from its week is waiting, and says where to decide it', async () => {
+        answer({ ...fine, lines: [waitingOn(addDays(WEEK, 2))] })
+        renderReport()
+        expect(await screen.findByText('1 invoice line from this week or earlier is still waiting on Review.'))
+            .toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
+        expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
+    })
+
+    it('counts a line from a week before as well', async () => {
+        answer({ ...fine, lines: [waitingOn(addDays(WEEK, -40)), waitingOn(addDays(WEEK, 6))] })
+        renderReport()
+        expect(await screen.findByText('2 invoice lines from this week or earlier are still waiting on Review.'))
+            .toBeInTheDocument()
+    })
+
+    it('is not held by a line bought after its week', async () => {
+        answer({ ...fine, lines: [waitingOn(addDays(WEEK, 7))] })
+        renderReport()
+        expect(await screen.findByRole('button', { name: 'Publish and send' })).toBeEnabled()
+        expect(screen.queryByText(/still waiting on Review/)).toBeNull()
+    })
+
+    it('holds Publish when what is waiting could not be read', async () => {
+        answer({ ...fine, failing: ['invoice_lines'] })
+        renderReport()
+        expect(await screen.findByText('Could not read invoice_lines')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Publish and send' })).toBeDisabled()
     })
 })
 
