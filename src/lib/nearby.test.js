@@ -46,6 +46,7 @@ import {
     feedWords,
     feedTrouble,
     placeToFill,
+    rosterNearby,
 } from '@/lib/nearby'
 
 const arena = { id: 'p1', name: '3Arena', short_name: '3Arena', ticketmaster_venue_id: 'KovZ9177WYV' }
@@ -956,5 +957,33 @@ describe('which place a venue from the search fills in', () => {
         const auditorium = { id: 'p9', name: 'The Auditorium', ticketmaster_venue_id: 'B' }
         expect(placeToFill([ccd, auditorium], { ticketmaster_venue_id: 'B', name: 'Convention Centre Dublin' }))
             .toBe(auditorium)
+    })
+})
+
+// The roster and My shifts read the listings and the pairings beside the
+// shifts, and looked at neither answer. A failed read of the listings with the
+// pairings fine drew the Arena row with a dash on every day: a quiet week that
+// nobody had checked, looking exactly like one somebody had.
+describe('what the roster gets from the two reads', () => {
+    const ok = data => ({ data, error: null })
+    const failed = { data: null, error: { message: 'Failed to fetch' } }
+
+    it('hands over the rows going ahead and the headline places', () => {
+        const out = rosterNearby(ok([gig, { ...gig, id: 'e9', status: 'canceled' }]), ok(pairs), {})
+        expect(out.rows.map(r => r.event.id)).toEqual(['e1'])
+        expect(out.places).toEqual([arena])
+        expect(out.pairings).toBe(pairs)
+        expect(out.failed).toBe(null)
+    })
+
+    // No headline row at all, and the failure to say why, rather than a row
+    // of dashes that reads as checked.
+    it('draws no headline row when the listings could not be read', () => {
+        const out = rosterNearby(failed, ok(pairs), {})
+        expect(out).toMatchObject({ rows: [], places: [], failed: failed.error })
+    })
+
+    it('draws nothing when the places could not be read either', () => {
+        expect(rosterNearby(ok([gig]), failed, {})).toMatchObject({ rows: [], places: [], failed: failed.error })
     })
 })

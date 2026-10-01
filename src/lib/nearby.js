@@ -347,6 +347,29 @@ export function headlinePlaces(pairings, restaurant) {
         .map(p => p.place)
 }
 
+// What the roster and My shifts get from their two reads: the listings going
+// ahead, the places with a row of their own, and the pairings themselves.
+//
+// **Or nothing, and the reason, when either read failed.** Both pages read
+// these beside the shifts and looked at neither answer, so listings that
+// failed to load with the pairings fine drew the Arena row with a dash on
+// every day. That is a quiet week nobody checked, looking exactly like one
+// somebody had, which is the one thing the always drawn row is there to
+// prevent. No row and a line saying why is honest; a row of dashes is not.
+export function rosterNearby(eventRes, nearRes, restaurant) {
+    const failed = eventRes?.error || nearRes?.error || null
+    if (failed) return { rows: [], places: [], pairings: [], failed }
+    return {
+        rows: forRoster(nearbyRows(eventRes?.data, nearRes?.data, restaurant)),
+        places: headlinePlaces(nearRes?.data, restaurant),
+        pairings: nearRes?.data || [],
+        failed: null,
+    }
+}
+
+// Said where the week is, when the reads above failed.
+export const NEARBY_FAILED = 'Events nearby could not be loaded, so they are not shown this week.'
+
 export function rowsOn(rows, date) {
     return (rows || []).filter(r => coversDate(r?.event, date))
 }

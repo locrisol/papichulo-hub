@@ -24,8 +24,9 @@ import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
-import { nearbyRows, forRoster, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { rosterNearby, NEARBY_FAILED, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
 import ShiftRequestDialog from '@/components/roster/ShiftRequestDialog'
 import TimeOffRequestDialog from '@/components/roster/TimeOffRequestDialog'
@@ -92,6 +93,9 @@ export default function MyShiftsPage() {
     const [diary, setDiary] = useState([])
     const [nearbyOn, setNearbyOn] = useState([])
     const [nearbyPlaces, setNearbyPlaces] = useState([])
+    // Whether the events nearby could not be read. Its own line rather than
+    // the page's error, which the next thing to go wrong writes over.
+    const [nearbyFailed, setNearbyFailed] = useState(false)
     // Read only. Nobody here can change one, and until now nobody here
     // could read one either: the band was a bar with nothing listening to
     // it, which is the same dead control in a different place.
@@ -259,9 +263,13 @@ export default function MyShiftsPage() {
             setOpeningHours(restRes.data?.opening_hours || null)
             setBreakRules(restRes.data?.break_rules || null)
             setRosterRules(restRes.data?.roster_rules || null)
-            // Only what is going ahead, the same as the roster. See forRoster.
-            setNearbyOn(forRoster(nearbyRows(eventRes.data, nearRes.data, restRes.data)))
-            setNearbyPlaces(headlinePlaces(nearRes.data, restRes.data))
+            // Everything but a cancelled night, the same as the roster, and
+            // nothing rather than a quiet week when the read failed. See
+            // rosterNearby.
+            const near = rosterNearby(eventRes, nearRes, restRes.data)
+            setNearbyOn(near.rows)
+            setNearbyPlaces(near.places)
+            setNearbyFailed(Boolean(near.failed))
             setMyTimeOff(offRes.data || [])
             setReady(true)
 
@@ -470,6 +478,7 @@ export default function MyShiftsPage() {
             </div>
 
             {error && <div className="bg-amber-50 text-amber-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+            <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-col sm:flex-row sm:items-center gap-3`}>
                 <DateStepper

@@ -7,7 +7,7 @@ import { friendlyError } from '@/lib/errors'
 import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, weekMonthLabel } from '@/lib/dates'
 import { DAY_NAMES, dayName } from '@/lib/events'
-import { nearbyRows, forRoster, rowsOn, headlinePlaces, PAIRING_COLUMNS } from '@/lib/nearby'
+import { rosterNearby, NEARBY_FAILED, rowsOn, PAIRING_COLUMNS } from '@/lib/nearby'
 import { fmtMoney } from '@/lib/format'
 import { secondaryButton, cardEdge, cardHeader, badge, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
@@ -92,6 +92,10 @@ export default function RosterPage() {
     const [nearbyPlaces, setNearbyPlaces] = useState([])
     // The pairings themselves, for saying when a feed has stopped answering.
     const [nearbyPairings, setNearbyPairings] = useState([])
+    // Whether the events nearby could not be read. Its own line rather than
+    // the page's error, which every save clears and the next failure writes
+    // over, and then the week has no Arena row and nothing saying why.
+    const [nearbyFailed, setNearbyFailed] = useState(false)
     const [diary, setDiary] = useState([])
     const [restaurants, setRestaurants] = useState([])
     const [editingDiary, setEditingDiary] = useState(null)
@@ -276,11 +280,14 @@ export default function RosterPage() {
         loadRequests(fetched.filter(s => s.shift_date >= weekStart && s.shift_date <= weekLast))
         setDayNotes(noteRes.data || [])
         // One pass, so the roster and the calendar cannot disagree about which
-        // listing belongs to which shop. See lib/nearby. A night that is not
-        // going ahead comes off here, the way a cancelled diary job does.
-        setNearbyOn(forRoster(nearbyRows(eventRes.data, nearRes.data, activeRestaurant)))
-        setNearbyPlaces(headlinePlaces(nearRes.data, activeRestaurant))
-        setNearbyPairings(nearRes.data || [])
+        // listing belongs to which shop. See lib/nearby. A cancelled night
+        // comes off here, the way a cancelled diary job does, and a read that
+        // failed draws no Arena row rather than a quiet one.
+        const near = rosterNearby(eventRes, nearRes, activeRestaurant)
+        setNearbyOn(near.rows)
+        setNearbyPlaces(near.places)
+        setNearbyPairings(near.pairings)
+        setNearbyFailed(Boolean(near.failed))
         setDiary((diaryRes.data || []).filter(e => atRestaurant(e, restaurantId)))
         setRestaurants(placeRes.data || [])
         setAbsences(offRes.data || [])
@@ -758,6 +765,7 @@ export default function RosterPage() {
             {/* A feed that has stopped answering, said here because this is
                 where its silence would pass for a quiet week. */}
             <FeedTrouble pairings={nearbyPairings} restaurant={activeRestaurant} className="mb-4" />
+            <ErrorBanner className="mb-4">{nearbyFailed ? NEARBY_FAILED : null}</ErrorBanner>
 
             {/* Week picker and what the week comes to. */}
             <div className={`${cardEdge} bg-white p-3 mb-4 flex flex-wrap items-center gap-3`}>
