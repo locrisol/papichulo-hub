@@ -467,10 +467,12 @@ export default function TimesheetPage() {
         if (typed) stopTyping(id, typed)
     }
 
+    // Says whether it went, so something doing more than one thing can stop
+    // half way rather than carry on as though it had.
     async function remove(entry) {
         setSaving(true)
         const { error: failed } = await supabase.from('timesheet_entries').delete().eq('id', entry.id)
-        if (finish(failed)) { setRefresh(n => n + 1); return }
+        if (finish(failed)) { setRefresh(n => n + 1); return false }
         setEntries(was => was.filter(e => e.id !== entry.id))
         setTyping(was => {
             if (!was[entry.id]) return was
@@ -478,6 +480,7 @@ export default function TimesheetPage() {
             delete next[entry.id]
             return next
         })
+        return true
     }
 
     // A letter sets the state of the whole day. Holiday and off sick are
@@ -490,7 +493,46 @@ export default function TimesheetPage() {
         setError('')
 
         if (state.absence) {
-            for (const entry of cell.entries) await remove(entry)
+            // **A day with times on it asks first.** Marking it deletes them,
+            // and one letter is a small thing to delete a shift with: a stray
+            // s in a box, or a tap on the touch bar, which acts on the last box
+            // that had the cursor even after you have moved on. The x on a cell
+            // already asks before it deletes times, and settle() never deletes
+            // a till shift at all, so this was the one way round both.
+            //
+            // A day with only a comment, or a training mark and no times yet,
+            // has nothing on it the question would be about.
+            //
+            // A time still being typed goes first, and is never asked about.
+            // It is not saved, so there is nothing to delete, and the question
+            // takes the focus off its box, which would save it as a real clock
+            // in a moment before the day is marked.
+            forget(person, cell)
+            const saved = cell.entries.filter(e => e.id)
+            const timed = saved.filter(e => e.starts_at || e.ends_at)
+            if (timed.length) {
+                const label = state.label.toLowerCase()
+                const ok = await confirm({
+                    title: `Mark this day as ${label}?`,
+                    message: `${person.full_name}, ${fullDate(cell.date)}. `
+                        + (timed.some(cameFromTill)
+                            ? "The times from the till's report will be deleted, so this day will "
+                                + 'no longer match the report.'
+                            : timed.length === 1
+                                ? 'The clock in and out times will be deleted.'
+                                : 'All the times on this day will be deleted.'),
+                    confirmLabel: `Mark as ${label}`,
+                    tone: 'danger',
+                })
+                if (!ok) return
+            }
+
+            // Stops at the first one that will not go. Carrying on would leave
+            // the day half changed: the absence in and a shift still counted
+            // underneath it.
+            for (const entry of saved) {
+                if (!(await remove(entry))) return
+            }
             setSaving(true)
             const { data, error: failed } = await supabase.from('absences').insert({
                 restaurant_id: restaurantId,

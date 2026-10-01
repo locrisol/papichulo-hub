@@ -23,9 +23,12 @@ const rows = {
 const inserted = []
 const updated = []
 const deleted = []
-// Set by one test, which is about what the screen does when the database
-// refuses a write.
-const broken = { update: false }
+// Set by the tests about what the screen does when the database refuses a
+// write.
+const broken = { update: false, delete: false }
+// What the confirm dialog was asked, and what it answers.
+const asked = []
+const answer = { yes: true }
 
 function chain(table) {
     const result = Promise.resolve({ data: rows[table] || [], error: null })
@@ -59,6 +62,7 @@ function chain(table) {
         }),
         delete: () => ({
             eq: (_, id) => {
+                if (broken.delete) return Promise.resolve({ error: { message: 'refused' } })
                 deleted.push({ table, id })
                 rows[table] = (rows[table] || []).filter(r => r.id !== id)
                 return Promise.resolve({ error: null })
@@ -71,7 +75,12 @@ function chain(table) {
 
 vi.mock('@/lib/supabase', () => ({ supabase: { from: table => chain(table) } }))
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
-vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
+vi.mock('@/context/confirm', () => ({
+    useConfirm: () => question => {
+        asked.push(question)
+        return Promise.resolve(answer.yes)
+    },
+}))
 vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({
         activeRestaurant: { id: 'r1', hourly_rate: 15 },
@@ -91,8 +100,12 @@ beforeEach(() => {
     inserted.length = 0
     updated.length = 0
     deleted.length = 0
+    asked.length = 0
+    answer.yes = true
     broken.update = false
+    broken.delete = false
     rows.timesheet_entries = []
+    rows.absences = []
     rows.roster_shifts = []
     rows.sales_records = []
     rows.timesheet_weeks = []
@@ -408,6 +421,89 @@ describe('changing a time the till gave', () => {
 
         await waitFor(() => expect(updated).toHaveLength(1))
         expect(updated[0].patch).toEqual({ starts_at: '09:20:00' })
+    })
+})
+
+describe('marking a day with times on it as holiday or off sick', () => {
+    // A stray s, or a tap on the touch bar landing on the wrong cell, used to
+    // delete the till's times and mark the day off sick without a word. The
+    // week then went to the accountant with a sick day and no hours, against
+    // the till's report she holds herself.
+    it('asks first, and says the times from the till go', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(asked[0].message).toContain("till's report")
+    })
+
+    it('leaves the times alone when the answer is no', async () => {
+        rows.timesheet_entries = [off_the_till]
+        answer.yes = false
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(asked).toHaveLength(1))
+        expect(deleted).toHaveLength(0)
+        expect(inserted).toHaveLength(0)
+    })
+
+    it('replaces them when the answer is yes', async () => {
+        rows.timesheet_entries = [off_the_till]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(deleted.map(d => d.id)).toEqual(['t1'])
+        expect(inserted[0]).toMatchObject({ table: 'absences', values: { kind: 'sick' } })
+    })
+
+    // Half done is worse than not done: the times gone and no absence, or the
+    // absence in and the times still counted under it.
+    it('stops when the times could not be deleted', async () => {
+        rows.timesheet_entries = [off_the_till]
+        broken.delete = true
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 's')
+
+        await waitFor(() => expect(screen.getByText('Not saved')).toBeInTheDocument())
+        expect(inserted).toHaveLength(0)
+    })
+
+    // A time half typed into an empty day is not saved yet, so there is
+    // nothing to ask about. Asking took the focus off the box, which saved
+    // the half time as a real clock in, and then the delete of the unsaved
+    // one failed and the day was never marked.
+    it('does not ask about a time still being typed', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], '09s')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(inserted[0]).toMatchObject({ table: 'absences', values: { kind: 'sick' } })
+        expect(asked).toHaveLength(0)
+        expect(deleted).toHaveLength(0)
+    })
+
+    // Nothing to lose, so nothing to ask.
+    it('does not ask on an empty day', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[0], 'h')
+
+        await waitFor(() => expect(inserted).toHaveLength(1))
+        expect(asked).toHaveLength(0)
     })
 })
 
