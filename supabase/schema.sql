@@ -2193,6 +2193,17 @@ begin
 end;
 $$;
 
+-- A count reopened is one staff can read again, so what it was worth when it
+-- closed goes as it opens, however it is reopened. Closing works it out again.
+CREATE OR REPLACE FUNCTION "public"."stock_take_reopened_clears_value"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    new.total_value := null;
+    return new;
+end $$;
+
 CREATE OR REPLACE FUNCTION "public"."restaurant_settings_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -3355,6 +3366,8 @@ revoke all on function "public"."sales_platform_key"() from public, anon, authen
 grant execute on function "public"."sales_platform_key"() to service_role;
 revoke all on function "public"."shift_request_transition_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."shift_request_transition_guard"() to service_role;
+revoke all on function "public"."stock_take_reopened_clears_value"() from public, anon, authenticated, service_role;
+grant execute on function "public"."stock_take_reopened_clears_value"() to service_role;
 revoke all on function "public"."switch_off_leavers"() from public, anon, authenticated, service_role;
 grant execute on function "public"."switch_off_leavers"() to service_role;
 revoke all on function "public"."unwatched_tables"() from public, anon, authenticated, service_role;
@@ -3653,7 +3666,11 @@ CREATE POLICY "waste_logs_update_delete" ON "public"."waste_logs" TO "authentica
 
 ALTER TABLE "public"."stock_takes" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text", 'employee'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
+-- An employee reads only the count in progress, the one they can open. A
+-- closed count carries what the stock was worth and the history is managers
+-- only. The lines of an old count close with it, because the rules on
+-- stock_take_lines below ask this table as the person asking.
+CREATE POLICY "stock_takes_select" ON "public"."stock_takes" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))) OR ((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) AND (("status")::"text" = 'in_progress'::"text"))));
 
 CREATE POLICY "stock_takes_write" ON "public"."stock_takes" TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() ))))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )))));
 
@@ -4419,6 +4436,7 @@ CREATE OR REPLACE TRIGGER "checklist_tasks_moved" AFTER UPDATE OF "category_id" 
 CREATE OR REPLACE TRIGGER "checklist_rounds_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_rounds" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_round_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_guard" BEFORE INSERT OR UPDATE ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_guard"();
 CREATE OR REPLACE TRIGGER "checklist_ticks_finish" AFTER INSERT ON "public"."checklist_ticks" FOR EACH ROW EXECUTE FUNCTION "public"."checklist_tick_finishes"();
+CREATE OR REPLACE TRIGGER "stock_takes_reopened_clears_value" BEFORE UPDATE OF "status" ON "public"."stock_takes" FOR EACH ROW WHEN (((("new"."status")::"text" = 'in_progress'::"text") AND (("old"."status")::"text" IS DISTINCT FROM 'in_progress'::"text"))) EXECUTE FUNCTION "public"."stock_take_reopened_clears_value"();
 
 -- These two are on auth.users, not in public, so a dump of public never shows
 -- them and the comparison with live cannot see them. They went missing from

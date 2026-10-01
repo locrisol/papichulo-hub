@@ -184,6 +184,37 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
         })
 
+        // Since 034. A closed count carries what the stock was worth, and no
+        // staff screen opens one: the history is managers only. The lines of
+        // an old count go with it. Passes on a day nothing is closed, so the
+        // manager test below says whether there was anything to hide.
+        it('reads only the count in progress, never a closed one or its lines', async () => {
+            const { data: takes, error } = await employee.from('stock_takes').select('id, status, total_value')
+            expect(error).toBeNull()
+            expect((takes || []).filter(t => t.status !== 'in_progress'), 'an employee read a closed stock take').toEqual([])
+
+            const open = (takes || []).map(t => t.id)
+            const { data: lines } = await employee.from('stock_take_lines').select('stock_take_id')
+            expect((lines || []).filter(l => !open.includes(l.stock_take_id)), 'an employee read the lines of a closed stock take')
+                .toEqual([])
+        })
+
+        // What Stock Takes and the count itself read. Shown as skipped when
+        // nothing is being counted.
+        it('still reads the count in progress and every line on it', async ({ skip }) => {
+            const { data: open } = await manager.from('stock_takes').select('id')
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'in_progress').maybeSingle()
+            skip(!open, 'no stock take is open')
+            const { data: take } = await employee.from('stock_takes').select('id').eq('id', open.id).maybeSingle()
+            expect(take?.id, 'an employee cannot read the count in progress').toBe(open.id)
+
+            const [{ count: theirs }, { count: all }] = await Promise.all([
+                employee.from('stock_take_lines').select('id', { count: 'exact', head: true }).eq('stock_take_id', open.id),
+                manager.from('stock_take_lines').select('id', { count: 'exact', head: true }).eq('stock_take_id', open.id),
+            ])
+            expect(theirs).toBe(all)
+        })
+
         // Staff read prices and stock take values on purpose since 1 October,
         // but only their own restaurant's.
         it('reads prices and stock takes from their own restaurant only', async () => {
@@ -459,6 +490,17 @@ maybe('what each role can see and do', () => {
             expect(error).toBeNull()
             skip(!data?.length, 'nothing is switched off, so there is nothing to look for')
             expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The history on Stock Takes, and the summary of each closed count.
+        it('still reads every closed stock take, what it was worth and its lines', async ({ skip }) => {
+            const { data, error } = await manager.from('stock_takes').select('id, total_value')
+                .eq('restaurant_id', ownRestaurantId).eq('status', 'completed').limit(1)
+            expect(error).toBeNull()
+            skip(!data?.length, 'nothing has been closed, so there is nothing to look for')
+            const { error: linesError } = await manager.from('stock_take_lines').select('id').eq('stock_take_id', data[0].id)
+            expect(linesError).toBeNull()
+            expect(data[0].total_value).not.toBeUndefined()
         })
 
         // The menu pages, the allergen pages and the preview of the customer

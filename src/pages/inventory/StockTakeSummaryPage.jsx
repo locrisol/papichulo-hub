@@ -202,10 +202,14 @@ export default function StockTakeSummaryPage() {
     setReopening(true)
     setError('')
 
+    // The value goes with it. Once counts can change again the old total no
+    // longer stands, and closing it works the value out afresh. It also keeps
+    // a closed count's worth away from staff, who can read the open one.
     const { error: updateErr } = await supabase
       .from('stock_takes')
       .update({
         status: 'in_progress',
+        total_value: null,
         reopened_at: new Date().toISOString(),
         reopened_by: user.id,
         reopen_reason: reopenReason.trim() || null,

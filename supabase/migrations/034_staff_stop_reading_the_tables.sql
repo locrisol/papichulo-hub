@@ -75,4 +75,53 @@ create policy "suppliers_select" on public.suppliers
         or ((select public.get_my_role()) = 'employee' and is_active is true)
     );
 
+-- Staff read only the stock take in progress. A closed one carries what the
+-- stock was worth, and the history on Stock Takes was always managers only,
+-- so no staff screen opens one. The lines of an old count close with it,
+-- because the rules on stock_take_lines ask this table as the employee.
+-- Managers and above are unchanged.
+
+drop policy if exists "stock_takes_select" on public.stock_takes;
+create policy "stock_takes_select" on public.stock_takes
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = 'super_admin'
+        or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+            and restaurant_id = (select public.get_my_restaurant_id()))
+        or ((select public.get_my_role()) = 'employee'
+            and restaurant_id = (select public.get_my_restaurant_id())
+            and status = 'in_progress')
+    );
+
+-- A stock take reopened before the new site went live still holds what it
+-- was worth when it closed, which no longer stands once counts can change.
+-- Since the new site, reopening clears it, and closing works it out again.
+update public.stock_takes
+   set total_value = null
+ where status = 'in_progress'
+   and total_value is not null;
+
+-- And from now on the database clears it too, however a count is reopened.
+-- The Summary page already does, and this covers the SQL editor and a tab
+-- left open on the old site, either of which would hand staff the old value
+-- again.
+create or replace function public.stock_take_reopened_clears_value() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    new.total_value := null;
+    return new;
+end $$;
+
+revoke all on function public.stock_take_reopened_clears_value() from public, anon, authenticated, service_role;
+grant execute on function public.stock_take_reopened_clears_value() to service_role;
+
+create or replace trigger stock_takes_reopened_clears_value
+    before update of status on public.stock_takes
+    for each row
+    when (new.status = 'in_progress' and old.status is distinct from 'in_progress')
+    execute function public.stock_take_reopened_clears_value();
+
 notify pgrst, 'reload schema';

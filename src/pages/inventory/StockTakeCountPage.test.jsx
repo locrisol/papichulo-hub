@@ -167,6 +167,30 @@ describe('somebody else counting at the same time', () => {
     })
 })
 
+// Closed by a manager while somebody is still counting. An employee cannot
+// read a closed count or its lines, so the next refresh came back with
+// nothing and every product went back to uncounted.
+describe('a count closed while somebody is counting', () => {
+    it('keeps what was counted and says it is closed', async () => {
+        user = { id: 'u0', role: 'employee', full_name: 'Leandro' }
+        setUp({ prices: [AT_POINT_CAMPUS] })
+        tables.stock_take_lines.push({
+            id: 'l1', stock_take_id: 'st1', product_id: 'p1', section: 'Cold Room', quantity_counted: 2,
+            unit_cost: 7.5, line_total: 15, counted_by: 'u0', counted_at: '2026-09-30T09:00:00+00:00',
+        })
+        open()
+        expect(await screen.findByText('1/1 products counted')).toBeInTheDocument()
+
+        // What the database gives an employee once it is closed.
+        tables.stock_takes = []
+        tables.stock_take_lines = []
+        fireEvent(window, new Event('focus'))
+
+        expect(await screen.findByText('This stock take is closed. Counts are read-only.')).toBeInTheDocument()
+        expect(screen.getByText('1/1 products counted')).toBeInTheDocument()
+    })
+})
+
 // A refresh can start and finish while this phone's own line is still on its
 // way, and already have that line in it. Adding it again on top counted it
 // twice, and deleting the copy took the real one with it.

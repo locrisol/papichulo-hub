@@ -167,6 +167,30 @@ describe('what staff are given of the suppliers', () => {
     })
 })
 
+describe('what staff are given of the stock takes', () => {
+    // The count in progress, which is the only one they can open. Every closed
+    // one carries what the stock was worth, and the lines of an old count
+    // follow from this, because their rule asks this table as the employee.
+    it('gives an employee only the count in progress', () => {
+        const select = policiesOn('stock_takes')
+            .find(p => p.startsWith('CREATE POLICY "stock_takes_select"')) || ''
+        expect(select, 'found no stock_takes_select').toContain("'employee'")
+        expect(select).not.toMatch(/ARRAY\[[^\]]*'employee'/)
+        expect(select).toMatch(/= 'employee'::"text"\) AND \("restaurant_id" = \( SELECT "public"\."get_my_restaurant_id"\(\) \)\) AND \(\("status"\)::"text" = 'in_progress'::"text"\)/)
+    })
+
+    // A reopened count is one staff can read again, so what it was worth has
+    // to go when it opens, however it is reopened. The Summary page clears it
+    // itself; this is for the SQL editor and a tab left open on the old site.
+    it('clears what a count was worth when it is reopened', () => {
+        const trigger = schema.match(/CREATE OR REPLACE TRIGGER "stock_takes_reopened_clears_value" [^;]*;/)?.[0] || ''
+        expect(trigger, 'found no trigger clearing the value on reopen').toContain('BEFORE UPDATE OF "status" ON "public"."stock_takes"')
+        expect(trigger).toContain(`WHEN (((("new"."status")::"text" = 'in_progress'::"text") AND (("old"."status")::"text" IS DISTINCT FROM 'in_progress'::"text")))`)
+        const start = schema.indexOf('CREATE OR REPLACE FUNCTION "public"."stock_take_reopened_clears_value"()')
+        expect(schema.slice(start, schema.indexOf('$$;', start))).toContain('new.total_value := null;')
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A

@@ -230,13 +230,22 @@ export default function StockTakeCountPage() {
         try { return await work() } finally { writes.current += 1 }
     }
 
+    // A refresh asks whether the count is still open as well. A manager can
+    // close it while somebody is still counting, and an employee cannot read a
+    // closed count or its lines, so without that the refresh came back empty
+    // and every product went back to uncounted. It keeps what is on screen
+    // and says the count is closed instead.
     const refreshLines = useCallback(async () => {
         const before = writes.current
-        const { data, error: readErr } = await supabase
-            .from('stock_take_lines')
-            .select('*')
-            .eq('stock_take_id', id)
-        if (readErr || writes.current !== before) return
+        const [{ data, error: readErr }, { data: now, error: nowErr }] = await Promise.all([
+            supabase.from('stock_take_lines').select('*').eq('stock_take_id', id),
+            supabase.from('stock_takes').select('status').eq('id', id).maybeSingle(),
+        ])
+        if (readErr || nowErr || writes.current !== before) return
+        if (now?.status !== 'in_progress') {
+            setSession(s => ({ ...s, status: now?.status || 'completed' }))
+            return
+        }
         setLines(data || [])
     }, [id])
 

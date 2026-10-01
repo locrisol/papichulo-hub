@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 
@@ -115,5 +116,29 @@ describe('a read that fails', () => {
             .toBeInTheDocument()
         expect(screen.queryByRole('button', { name: /Download PDF/ })).not.toBeInTheDocument()
         expect(screen.queryByText('Counted')).not.toBeInTheDocument()
+    })
+})
+
+// Reopened, it is being counted again, so what it was worth when it closed no
+// longer stands. Closing it again works the value out afresh.
+describe('reopening a closed count', () => {
+    it('clears what it was worth until it is closed again', async () => {
+        const changes = []
+        const plain = db.from.getMockImplementation()
+        db.from.mockImplementation(table => {
+            const q = plain(table)
+            if (table === 'stock_takes') q.update = vi.fn(change => { changes.push(change); return q })
+            return q
+        })
+        try {
+            open()
+            const clicker = userEvent.setup()
+            await clicker.click(await screen.findByRole('button', { name: 'Reopen stock take' }))
+            await clicker.click(screen.getByRole('button', { name: 'Reopen' }))
+            await waitFor(() => expect(changes).toHaveLength(1))
+            expect(changes[0]).toMatchObject({ status: 'in_progress', total_value: null })
+        } finally {
+            db.from.mockImplementation(plain)
+        }
     })
 })
