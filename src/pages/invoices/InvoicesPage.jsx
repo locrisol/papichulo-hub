@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num } from '@/lib/format'
+import { fmtMoney, num, namesList } from '@/lib/format'
 import { todayISO, weekStartOf, shortDate, addDays, fullDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
 import { secondaryButton, card, cardEdge, cardHeader, rowButton, pageTitle } from '@/lib/controlStyles'
@@ -54,7 +54,12 @@ function validate(f, { fixed = false } = {}) {
 // problems, because they are not deleted with the document. A credit note that
 // settled some leaves them waiting again and still coming off the delivery's
 // week, since its own money was only ever counted through them.
-function deleteWords(waiting, kept) {
+//
+// `weeks` are the weeks the kept ones come off, when any is not the
+// invoice's own: a delivery whose report had already gone out has its claims
+// come off the first week still open (claimWeek), and "that week" would be
+// the wrong one.
+function deleteWords(waiting, kept, weeks = []) {
     if (waiting === 1) {
         return 'It settled one delivery problem. It goes back to Still waiting on Delivery problems '
             + 'until this credit note is imported again.'
@@ -65,8 +70,11 @@ function deleteWords(waiting, kept) {
     }
     const gone = 'It will be taken off the week straight away and off the cost dashboard with it.'
     if (!kept) return gone
+    const where = weeks.length
+        ? `the week${weeks.length === 1 ? '' : 's'} of ${namesList(weeks.map(shortDate))}`
+        : 'that week'
     return `${gone} ${kept === 1 ? 'The delivery problem logged against it is' : `The ${kept} delivery problems logged against it are`} `
-        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off that week.`
+        + `kept, and still ${kept === 1 ? 'comes' : 'come'} off ${where}.`
 }
 
 // Is this the same invoice somebody already entered?
@@ -367,7 +375,7 @@ export default function InvoicesPage() {
 
     async function handleDelete(inv) {
         // The delivery problems that point at it. Deleting leaves them in
-        // place, still coming off the week of the delivery, so the dialog says
+        // place, still coming off the week they come off, so the dialog says
         // so. A credit note that settled some opens them again first, or
         // importing it again would take the same money off twice. See
         // creditTakenBack.
@@ -376,7 +384,11 @@ export default function InvoicesPage() {
             .or(`invoice_id.eq.${inv.id},credit_invoice_id.eq.${inv.id}`)
         if (e0) { setError(friendlyError(e0)); return }
         const back = creditTakenBack(inv, claims)
-        const kept = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0).length
+        const keeping = (claims || []).filter(c => c.invoice_id === inv.id && claimTakesOff(c) > 0)
+        const kept = keeping.length
+        // Named only when one comes off a week other than the invoice's own.
+        const weeks = [...new Set(keeping.map(c => c.counted_week))].sort()
+        const elsewhere = weeks.some(w => w !== weekStartOf(inv.invoice_date)) ? weeks : []
 
         // Read back what is about to go, laid out rather than squeezed into one
         // sentence. Several invoices from the same supplier on the same day are
@@ -385,7 +397,7 @@ export default function InvoicesPage() {
         const cat = invoiceCategory(mainCategory(invoiceSplit(inv), inv.category))
         const ok = await confirm({
             title: 'Delete this invoice?',
-            message: deleteWords(back.waiting, kept),
+            message: deleteWords(back.waiting, kept, elsewhere),
             details: [
                 { label: 'Supplier', value: inv.suppliers?.name || 'Unknown supplier' },
                 { label: 'Category', value: cat.label },

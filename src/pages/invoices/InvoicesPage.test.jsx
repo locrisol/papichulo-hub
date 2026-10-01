@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
-import { todayISO, weekStartOf } from '@/lib/dates'
+import { todayISO, weekStartOf, addDays, shortDate } from '@/lib/dates'
 import { lockedField } from '@/lib/controlStyles'
 
 // The week's list, and what it says about a document that was read in.
@@ -181,6 +181,23 @@ describe('deleting a document with delivery problems on it', () => {
 
         expect(asked.mock.calls[0][0].message)
             .toBe('It will be taken off the week straight away and off the cost dashboard with it. The delivery problem logged against it is kept, and still comes off that week.')
+    })
+
+    // A claim on a delivery whose report had already gone out comes off the
+    // first week still open, so "that week" would be the wrong one.
+    it('says which week a delivery problem comes off when it is a later one', async () => {
+        const later = addDays(DAY, 7)
+        tables.invoice_line_claims = {
+            data: [
+                { id: 'c1', kind: 'short', status: 'open', amount: 20, credited_amount: 0, counted_week: later, invoice_id: 'i1', credit_invoice_id: null },
+            ],
+            error: null,
+        }
+        await pressDelete('Invoice 45448455')
+
+        expect(asked.mock.calls[0][0].message)
+            .toBe('It will be taken off the week straight away and off the cost dashboard with it. The delivery problem '
+                + `logged against it is kept, and still comes off the week of ${shortDate(later)}.`)
     })
 
     it('says nothing about delivery problems when there are none', async () => {

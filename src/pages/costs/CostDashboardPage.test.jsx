@@ -91,3 +91,27 @@ describe('the temporary target label', () => {
         expect(screen.queryByText(/temporary, ends after/)).not.toBeInTheDocument()
     })
 })
+
+// A delivery problem on a delivery whose report had already gone out comes off
+// the first week still open (his decision of 1 October). The food here is then
+// lower than this week's invoices, so the page says where that money is from.
+describe('a delivery problem from an earlier week', () => {
+    it('says the week it is from under the costs', async () => {
+        tables.invoice_line_claims = ours([{
+            id: 'k2', what: 'COKE ZERO 24X330ML', kind: 'short', status: 'open', amount: 22.34, credited_amount: 0,
+            counted_week: '2026-09-13', raised_on: '2026-09-12', invoice_id: 'i0',
+            delivery: { invoice_date: '2026-09-12' },
+        }])
+        renderWithRouter(<CostDashboardPage />)
+        expect(await screen.findByText(
+            '€22.34 comes off the costs above for a delivery problem from the week of 6 Sept, whose report had already gone out.',
+        )).toBeInTheDocument()
+        delete tables.invoice_line_claims
+    })
+
+    it('says nothing in a week with none', async () => {
+        renderWithRouter(<CostDashboardPage />)
+        await screen.findByText('Gross profit')
+        expect(screen.queryByText(/comes off the costs above for/)).toBeNull()
+    })
+})

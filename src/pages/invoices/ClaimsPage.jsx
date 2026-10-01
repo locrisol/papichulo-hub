@@ -10,7 +10,7 @@ import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks,
+    claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks, fromEarlierWeeks,
     claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -366,6 +366,10 @@ function ClaimRow({
         setPricing({ line, invoice, agreed: costingFrom == null ? '' : String(costingFrom) })
     }
 
+    // A claim whose delivery's report had already gone out comes off a later
+    // week (claimWeek). Said here so nobody looks for it in the wrong report.
+    const from = manager ? fromEarlierWeeks([claim], invoices, claim.counted_week)[0] : null
+
     // Offered rather than done, unless the docket number makes it exact.
     const suggestion = manager && !claim.invoice_line_id ? claimMatch(claim, invoices) : null
     const options = manager && !claim.invoice_line_id ? claimCandidates(claim, invoices).slice(0, 6) : []
@@ -388,6 +392,12 @@ function ClaimRow({
                         ].filter(Boolean).join(' and ')}
                     </p>
                     {claim.note && <p className="text-xs text-muted mt-1 italic">{claim.note}</p>}
+                    {from && (
+                        <p className="text-xs text-muted mt-1">
+                            Comes off the week of {shortDate(claim.counted_week)}, from the delivery in the week
+                            of {shortDate(from.delivered)}.
+                        </p>
+                    )}
                 </div>
 
                 <div className="text-right">

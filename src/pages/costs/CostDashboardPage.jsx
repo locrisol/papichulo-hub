@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
-import { fmtMoney, num, fmtPct } from '@/lib/format'
+import { fmtMoney, num, fmtPct, namesList } from '@/lib/format'
 import { todayISO, weekStartOf, weekDates, shortDate, addDays } from '@/lib/dates'
 import { resolveTarget, statusFor, targetInForce } from '@/lib/costTargets'
 import { reportFigures } from '@/lib/weeklyReport'
+import { fromEarlierWeeks } from '@/lib/invoiceClaims'
 import CostTargetModal from '@/components/costs/CostTargetModal'
 import { dateField, card, rowButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
@@ -45,6 +46,21 @@ const LINE_TONE = {
     amber: 'text-amber-700',
     red: 'text-red-600',
     none: 'text-muted',
+}
+
+// What the week takes off for delivery problems from earlier weeks, with the
+// weeks they are from. One line, under the costs it is part of.
+//
+// Comes off, the word every other screen uses for a claim, and not back: an
+// open claim comes off in full before the supplier has credited anything, so
+// back read as money already received.
+function earlierWords(earlier) {
+    const money = earlier.reduce((t, e) => t + num(e.money), 0)
+    const weeks = [...new Set(earlier.map(e => e.delivered))].sort()
+    const one = weeks.length === 1
+    const what = earlier.length === 1 ? 'a delivery problem' : `${earlier.length} delivery problems`
+    return `${fmtMoney(money)} comes off the costs above for ${what} from the week${one ? '' : 's'} of `
+        + `${namesList(weeks.map(shortDate))}, whose report${one ? '' : 's'} had already gone out.`
 }
 
 // One cost, as a percentage of net sales, against its target.
@@ -137,6 +153,9 @@ export default function CostDashboardPage() {
     // The till rows, so the split below can name them. Retired ones included, so
     // a week from before the till changed still splits the way it was taken.
     const [tenders, setTenders] = useState([])
+    // Delivery problems this week takes off for a delivery in an earlier one,
+    // because that week's report had already gone out. See fromEarlierWeeks.
+    const [earlier, setEarlier] = useState([])
 
     // Whether this page has ever finished loading.
     //
@@ -171,9 +190,9 @@ export default function CostDashboardPage() {
 
             const end = addDays(weekStart, 6)
 
-            // All six at once. Not one of them needs anything from another,
+            // All seven at once. Not one of them needs anything from another,
             // and this is the page everybody but an employee lands on, so
-            // waiting for each in turn was six round trips of pure latency
+            // waiting for each in turn was seven round trips of pure latency
             // before a single figure appeared. The roster does it this way
             // already.
             const [
@@ -183,6 +202,7 @@ export default function CostDashboardPage() {
                 { data: labour, error: lErr },
                 { data: waste, error: wErr },
                 { data: overrideRows, error: oErr },
+                { data: claimRows, error: cErr },
             ] = await Promise.all([
                 supabase.from('sales_records')
                     .select('sale_date, net_sales, gross_sales, tender_sales, is_closed')
@@ -221,12 +241,21 @@ export default function CostDashboardPage() {
                 supabase.from('cost_target_overrides')
                     .select('*')
                     .eq('restaurant_id', restaurantId),
+                // The claims coming off this week, with the day each delivery
+                // landed, so a claim from an earlier week's delivery can say
+                // so under the food. By the key's name, because a claim
+                // points at invoices twice: the delivery and the credit note.
+                supabase.from('invoice_line_claims')
+                    .select('id, what, kind, status, amount, credited_amount, counted_week, raised_on, invoice_id, '
+                        + 'delivery:invoices!invoice_line_claims_invoice_id_fkey(invoice_date)')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('counted_week', weekStart),
             ])
 
             // One message, whichever of them failed. Reporting the first is
             // the same behaviour as before, where the first failure stopped
             // the rest from being asked at all.
-            const failed = [sErr, tErr, iErr, lErr, wErr, oErr].find(Boolean)
+            const failed = [sErr, tErr, iErr, lErr, wErr, oErr, cErr].find(Boolean)
             if (failed) { setError(friendlyError(failed)); setReady(true); return }
 
             setSalesRows(sales || [])
@@ -235,6 +264,10 @@ export default function CostDashboardPage() {
             setLabourRows(labour || [])
             setWasteCost((waste || []).reduce((t, w) => t + num(w.waste_value), 0))
             setOverrides(overrideRows || [])
+            const claims = claimRows || []
+            setEarlier(fromEarlierWeeks(claims, claims
+                .filter(c => c.invoice_id && c.delivery)
+                .map(c => ({ id: c.invoice_id, invoice_date: c.delivery.invoice_date })), weekStart))
 
             setReady(true)
         }
@@ -497,6 +530,15 @@ export default function CostDashboardPage() {
                                 </div>
                             )
                         })}
+                        {/* A delivery problem on a delivery whose report had
+                            already gone out comes off the first week still
+                            open, so the food above is lower than this week's
+                            invoices. Said here with the week it is from. */}
+                        {earlier.length > 0 && (
+                            <p className="text-xs text-muted py-2 border-b border-border">
+                                {earlierWords(earlier)}
+                            </p>
+                        )}
                         <div className="flex justify-between gap-3 text-base py-3 font-bold">
                             <span className="text-gray-900">Gross profit</span>
                             <span className={`whitespace-nowrap ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>

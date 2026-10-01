@@ -108,6 +108,30 @@ describe('putting a note from the door against its line', () => {
     })
 })
 
+// Once put against its line, a claim whose delivery's report had already gone
+// out comes off a later week. The row says which, and which delivery it is
+// from, so nobody looks for it in the wrong report.
+describe('a claim coming off a later week', () => {
+    it('says which week, and which delivery it is from', async () => {
+        tables.invoice_line_claims = [{
+            ...CLAIM, invoice_id: 'i1', invoice_line_id: 'line1', amount: 22.34, counted_week: NOTED_WEEK,
+        }]
+        renderWithRouter(<ClaimsPage />)
+        expect(await screen.findByText(
+            `Comes off the week of ${shortDate(NOTED_WEEK)}, from the delivery in the week of ${shortDate(DELIVERY_WEEK)}.`,
+        )).toBeInTheDocument()
+    })
+
+    it('says nothing when it comes off the delivery\'s own week', async () => {
+        tables.invoice_line_claims = [{
+            ...CLAIM, invoice_id: 'i1', invoice_line_id: 'line1', amount: 22.34, counted_week: DELIVERY_WEEK,
+        }]
+        renderWithRouter(<ClaimsPage />)
+        await screen.findByText('COKE ZERO 24X330ML')
+        expect(screen.queryByText(/^Comes off the week of/)).toBeNull()
+    })
+})
+
 // An employee sees the notes they took at the door and nothing about money.
 // Once a manager matches one to a line it carries what it was worth and what
 // came back, so they read it through my_claims, which leaves the euros out.
