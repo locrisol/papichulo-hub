@@ -189,11 +189,18 @@ export default function MyShiftsPage() {
 
             // Which of the names on the roster is me. Everything else follows
             // from this, so nothing is fetched until it is answered.
-            const { data: mine, error: meErr } = await supabase
-                .from('employees')
-                .select('id, restaurant_id, full_name, position_id')
-                .eq('user_id', user.id)
-                .maybeSingle()
+            //
+            // Through the colleagues view, not the employees table. That row
+            // carries what they cost per hour and whatever a manager wrote in
+            // Notes, and since 034 staff cannot read it at all.
+            const { data: myId, error: idErr } = await supabase.rpc('get_my_employee_id')
+            const { data: mine, error: meErr } = myId
+                ? await supabase
+                    .from('roster_colleagues')
+                    .select('id, restaurant_id, full_name, position_id')
+                    .eq('id', myId)
+                    .maybeSingle()
+                : { data: null, error: idErr }
 
             if (!live) return
             if (meErr) { setError(friendlyError(meErr)); setReady(true); return }

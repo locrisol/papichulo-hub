@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
-import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
+import { mockSupabase, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 
-// My shifts, the page every employee lands on. Invented people.
+// My shifts, the page every employee lands on. Staff are refused the
+// restaurants table and the employees table, because both rows carry things
+// that are not theirs to see. So the hours and rules come from
+// staff_restaurants, and who they are on the roster from roster_colleagues.
+// Invented people.
 
-const ME = { id: 'e1', restaurant_id: 'r1', full_name: 'Ana Test', position_id: null }
+const ME = { id: 'e1', restaurant_id: 'r1', full_name: 'Ana Test', position_id: null, sort_order: 0 }
+const COLLEAGUES = [ME, { id: 'e2', restaurant_id: 'r1', full_name: 'Ben Test', position_id: null, sort_order: 1 }]
 
 const EVERY_DAY = Object.fromEntries(
     ['0', '1', '2', '3', '4', '5', '6'].map(d => [d, { open: '09:00', close: '21:00' }]),
@@ -18,17 +23,20 @@ const MY_DAY_OFF = {
 
 let db
 let answer
+// Who get_my_employee_id says they are: Ana unless a test says otherwise.
+let myId
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'employee' } }) }))
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'employee', restaurant_id: 'r1' } }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
 
 const { default: MyShiftsPage } = await import('./MyShiftsPage')
 
 function tables(extra = {}) {
+    myId = 'e1'
     answer = {
-        employees: { data: ME, error: null },
-        // What the database gives an employee: nothing from the table, their
-        // own restaurant from the view.
+        // What the database gives an employee: nothing from either table,
+        // and their own restaurant from the view.
+        employees: { data: null, error: null },
         restaurants: { data: null, error: null },
         staff_restaurants: {
             data: { opening_hours: EVERY_DAY, break_rules: [], roster_rules: {}, watch_city_events: true },
@@ -38,8 +46,15 @@ function tables(extra = {}) {
         ...extra,
     }
     db = mockSupabase(answer)
-    db.from = vi.fn(table => makeQuery(answer[table] || { data: [], error: null }))
+    db.from = vi.fn(table => (table === 'roster_colleagues' && !answer.roster_colleagues
+        ? tableOf(COLLEAGUES)
+        : makeQuery(answer[table] || { data: [], error: null })))
+    db.rpc = vi.fn(name => Promise.resolve(
+        name === 'get_my_employee_id' ? { data: myId, error: null } : { data: null, error: null },
+    ))
 }
+
+const asked = () => db.from.mock.calls.map(([table]) => table)
 
 beforeEach(() => tables())
 
@@ -135,7 +150,7 @@ describe('a shift changed after the week went out', () => {
 // problem that was not there.
 describe('when the page cannot load', () => {
     it('says it could not load, not that the account is not linked', async () => {
-        tables({ employees: { data: null, error: { message: 'Failed to fetch' } } })
+        db.rpc = vi.fn(() => Promise.resolve({ data: null, error: { message: 'Failed to fetch' } }))
 
         renderWithRouter(<MyShiftsPage />)
 
@@ -145,7 +160,7 @@ describe('when the page cannot load', () => {
     })
 
     it('still says so when the account really is not linked', async () => {
-        tables({ employees: { data: null, error: null } })
+        myId = null
 
         renderWithRouter(<MyShiftsPage />)
 
@@ -173,14 +188,21 @@ describe('cancelling a request for time off', () => {
     })
 })
 
-// What somebody's own week reads to draw itself. Staff are refused the
-// restaurants table, so the hours and rules come from staff_restaurants, the
-// part of the row their screens use.
+// What somebody's own week reads to draw itself.
 describe('my own week', () => {
     it('reads the opening hours from the staff view', async () => {
         renderWithRouter(<MyShiftsPage />)
         await screen.findByText('Ana Test')
         expect(screen.getAllByText('Open 09:00 to 21:00')).toHaveLength(7)
-        expect(db.from.mock.calls.map(([table]) => table)).not.toContain('restaurants')
+        expect(asked()).not.toContain('restaurants')
+    })
+
+    // The employees row carries their hourly rate and whatever a manager
+    // wrote about them in Notes, so it is not read at all.
+    it('finds me on the roster without reading the employees table', async () => {
+        renderWithRouter(<MyShiftsPage />)
+        expect(await screen.findByText('Ana Test')).toBeInTheDocument()
+        expect(db.rpc).toHaveBeenCalledWith('get_my_employee_id')
+        expect(asked()).not.toContain('employees')
     })
 })

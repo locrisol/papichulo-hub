@@ -134,6 +134,31 @@ maybe('what each role can see and do', () => {
             expect(data?.name).toBeTruthy()
         })
 
+        // Since 034. The row carries what they cost per hour and whatever a
+        // manager wrote about them in Notes, so not even their own comes back.
+        // Asked for by id, so a pass means their row is there and was refused,
+        // not that the test account has no row on the team at all. Shown as
+        // skipped, not passed, when it has none.
+        it('cannot read their own pay rate or the notes about them', async ({ skip }) => {
+            const { data: id, error } = await employee.rpc('get_my_employee_id')
+            expect(error).toBeNull()
+            skip(!id, 'the test employee is not joined to anybody on the team')
+            const { data } = await employee.from('employees').select('id, hourly_rate, notes').eq('id', id)
+            expect(data || [], 'an employee read their own row of the employees table').toHaveLength(0)
+        })
+
+        // What My shifts reads instead to find their own name on the roster.
+        it('still finds themselves on the roster', async ({ skip }) => {
+            const { data: id, error } = await employee.rpc('get_my_employee_id')
+            expect(error).toBeNull()
+            skip(!id, 'the test employee is not joined to anybody on the team')
+            const { data: me } = await employee.from('roster_colleagues')
+                .select('id, restaurant_id, full_name, position_id')
+                .eq('id', id).maybeSingle()
+            expect(me?.full_name, 'My shifts would say Not on the team list').toBeTruthy()
+            expect(me.restaurant_id).toBe(ownRestaurantId)
+        })
+
         it('can read the product catalogue', async () => {
             const { count } = await countVisible(employee, 'products')
             expect(count).toBeGreaterThan(0)
@@ -329,6 +354,13 @@ maybe('what each role can see and do', () => {
                 label: 'Should not exist',
             })
             expect(refused).toBe(true)
+        })
+
+        // The Team page and the roster cost a week from these.
+        it('still reads the team list in full, rates and notes included', async () => {
+            const { data, error } = await manager.from('employees').select('id, hourly_rate, notes')
+            expect(error).toBeNull()
+            expect(data.length).toBeGreaterThan(0)
         })
 
         // Theirs in full, unlike staff. The cost dashboard, the timesheet and

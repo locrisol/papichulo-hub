@@ -128,6 +128,18 @@ describe('what staff are given of their restaurant', () => {
     })
 })
 
+describe('what staff are given of their own record on the team', () => {
+    // The row carries what they cost per hour and whatever a manager wrote
+    // about them in Notes. My shifts finds them through roster_colleagues, so
+    // no policy on the table answers to the person it is about.
+    it('gives nobody below a manager a read of the employees table', () => {
+        const policies = policiesOn('employees')
+        expect(policies.length, 'found no policies on employees to check').toBeGreaterThan(0)
+        const forStaff = policies.filter(p => p.includes('"auth"."uid"') || p.includes("'employee'"))
+        expect(forStaff).toEqual([])
+    })
+})
+
 describe('the nightly photo job', () => {
     // It keeps a photo while its round is open, and finds the round from the
     // third folder of the path. Pinned against where the app puts the photo,
