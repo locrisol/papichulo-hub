@@ -28,8 +28,18 @@ export function RestaurantProvider({ children }) {
     // Same reasoning as AuthContext: the console knew why and the screen did
     // not, so the screen said Loading until somebody gave up.
     const [error, setError] = useState(null)
+    // Whether the last read failed, rather than finding nothing, so it can be
+    // tried again. See the effect below.
+    const [failed, setFailed] = useState(false)
 
-    
+    // Read again only when something it depends on changes, not every time the
+    // account's row is. That row is read again each time the tab comes back
+    // into view and arrives as a new object even when nothing on it moved, and
+    // every read here was one more thing that could fail and stop somebody in
+    // the middle of their work.
+    const signedIn = Boolean(user)
+    const role = user?.role
+    const ownRestaurant = user?.restaurant_id
 
     const fetchRestaurants = useCallback(async () => {
         // Ordered by name so the list in the switcher is always in the same
@@ -37,8 +47,8 @@ export function RestaurantProvider({ children }) {
         let query = supabase.from('restaurants').select('*').eq('is_active', true).order('name')
 
         // owners and below only see their own restaurant
-        if (user.role !== 'super_admin') {
-            query = query.eq('id', user.restaurant_id)
+        if (role !== 'super_admin') {
+            query = query.eq('id', ownRestaurant)
         }
 
         const { data, error } = await query
@@ -49,11 +59,14 @@ export function RestaurantProvider({ children }) {
         if (error) {
             console.error('Could not load restaurants:', error.message)
             setError(error.message)
+            setFailed(true)
         } else if (data.length === 0) {
             console.error('No restaurant found for this user. Check they have a restaurant_id and can read it.')
             setError('This account is not attached to a restaurant that it can open.')
+            setFailed(false)
         } else {
             setError(null)
+            setFailed(false)
             setRestaurants(data)
 
             // Which restaurant to open on, in this order:
@@ -68,31 +81,63 @@ export function RestaurantProvider({ children }) {
             const saved = localStorage.getItem('activeRestaurantId')
             setActiveRestaurant(
                 data.find(r => r.id === saved)
-                || data.find(r => r.id === user.restaurant_id)
+                || data.find(r => r.id === ownRestaurant)
                 || data[0]
             )
         }
 
         setLoading(false)
-        }, [user])
+        }, [role, ownRestaurant])
 
     useEffect(() => {
-        if (!user) return
+        if (!signedIn) return
         // The fetch sets a loading state before it starts, which is one render
         // this rule would rather avoid. The alternative is to leave it,
         // and then a change of account keeps the previous one's figures
         // on screen under the new one's heading until the answer arrives.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchRestaurants()
-    }, [fetchRestaurants, user])
+    }, [fetchRestaurants, signedIn])
+
+    // A read that failed is tried again when the connection comes back, when
+    // the tab comes back into view, and every half minute, the same as the
+    // account's row in AuthContext. Before, the new account row on every
+    // return to the tab did this by accident, and reading only when the role
+    // or the restaurant changes took that away: a phone that lost its signal
+    // just as the Hub opened stayed on "We cannot open the Hub" until a reload.
+    useEffect(() => {
+        if (!failed || !signedIn) return undefined
+        const again = () => fetchRestaurants()
+        const onShow = () => { if (document.visibilityState === 'visible') again() }
+        window.addEventListener('online', again)
+        document.addEventListener('visibilitychange', onShow)
+        const timer = setInterval(again, 30000)
+        return () => {
+            window.removeEventListener('online', again)
+            document.removeEventListener('visibilitychange', onShow)
+            clearInterval(timer)
+        }
+    }, [failed, signedIn, fetchRestaurants])
 
     function switchRestaurant(restaurant) {
         setActiveRestaurant(restaurant)
         localStorage.setItem('activeRestaurantId', restaurant.id)
     }
 
+    // A settings window saves the restaurant and hands the saved row back
+    // here. The switcher's list gets the same row, or a super admin who
+    // changes one restaurant, switches to another and back opens it as it was
+    // before the change. The list used to be read again every time the tab
+    // came back into view, which hid this; it is read once now.
+    const saveActiveRestaurant = useCallback(row => {
+        setActiveRestaurant(row)
+        if (row?.id) setRestaurants(list => list.map(r => (r.id === row.id ? row : r)))
+    }, [])
+
     return (
-        <RestaurantContext.Provider value={{ restaurants, activeRestaurant, setActiveRestaurant, switchRestaurant, loading, error }}>
+        <RestaurantContext.Provider value={{
+            restaurants, activeRestaurant, setActiveRestaurant: saveActiveRestaurant, switchRestaurant, loading, error,
+        }}>
             {children}
         </RestaurantContext.Provider>
     )

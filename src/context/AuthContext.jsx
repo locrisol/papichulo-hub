@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AuthContext, NO_ACCESS } from '@/context/auth'
 
@@ -26,6 +26,16 @@ export function AuthProvider({ children }) {
   // stale session and took twenty minutes to place.
   const [error, setError] = useState(null)
 
+  // The row is read again on every sign in event, and Supabase sends one each
+  // time the tab comes back into view. So a read can fail for somebody already
+  // in the middle of something: back from the camera with no signal for a few
+  // seconds. Stopping them there threw away the page they were on and told
+  // them to sign out, which for staff who rarely type a password is the worst
+  // answer. Whose row is already held, and whether the last read again failed,
+  // so that case keeps what it had and tries again instead.
+  const held = useRef(null)
+  const [stale, setStale] = useState(false)
+
   // Above the effect that calls it, not below. It works either way,
   // because a function declaration is hoisted, but the React Compiler
   // reads the file in order and will not optimise a component that uses
@@ -42,13 +52,19 @@ export function AuthProvider({ children }) {
         // so. That is how an employee could sign in and quietly have no role.
         //
         // No row at all (PGRST116) is the one answer that is not a fault: see
-        // NO_ACCESS.
+        // NO_ACCESS. It stops somebody even when a row is held, because this
+        // read is the only way an open session hears its login was switched
+        // off.
         if (readError) {
             console.error('Could not load the signed-in user:', readError.message)
-            setError(readError.code === 'PGRST116' ? NO_ACCESS : readError.message)
+            if (readError.code === 'PGRST116') setError(NO_ACCESS)
+            else if (held.current === userId) setStale(true)
+            else setError(readError.message)
         } else {
+            held.current = data.id
             setUser(data)
             setError(null)
+            setStale(false)
         }
         setLoading(false)
     }
@@ -76,14 +92,31 @@ export function AuthProvider({ children }) {
       setSession(session)
       if (session) fetchUser(session.user.id)
       else {
+        held.current = null
         setUser(null)
         setError(null)
+        setStale(false)
         setLoading(false)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // A read again that failed is tried again when the connection comes back,
+  // and every half minute in case it never went (the database itself had a
+  // bad moment). Nothing is waiting on it: the row already held stays in use.
+  const signedInAs = session?.user?.id
+  useEffect(() => {
+    if (!stale || !signedInAs) return undefined
+    const again = () => fetchUser(signedInAs)
+    window.addEventListener('online', again)
+    const timer = setInterval(again, 30000)
+    return () => {
+      window.removeEventListener('online', again)
+      clearInterval(timer)
+    }
+  }, [stale, signedInAs])
 
   return (
     <AuthContext.Provider value={{ session, user, loading, error, refreshUser }}>
