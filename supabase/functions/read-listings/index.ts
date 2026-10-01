@@ -57,7 +57,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     readable, promptFor, geminiRequest, failedWords, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
-    urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
+    urlsFor, joinPages, isServiceRole, roleOf, refusalFor, readError, readProblem,
 } from './reading.js'
 import { readPage, readPages } from './fetching.js'
 
@@ -151,20 +151,20 @@ async function ask(key: string, prompt: string) {
     try {
         res = await fetch(url, { ...init, signal: AbortSignal.timeout(ASK_WAIT_MS) })
     } catch (err) {
-        throw new Error(failedWords('Asking Gemini', err, url))
+        throw readError(failedWords('Asking Gemini', err, url))
     }
 
     if (!res.ok) {
         res.body?.cancel().catch(() => {})
         // Deliberately not the body. An API error can carry the key back.
-        throw new Error(`Gemini said no (${res.status}).`)
+        throw readError(`Gemini said no (${res.status}).`)
     }
 
     let answer: unknown
     try {
         answer = await res.json()
     } catch (err) {
-        throw new Error(failedWords("Reading Gemini's answer", err, url))
+        throw readError(failedWords("Reading Gemini's answer", err, url))
     }
 
     return answerFrom(answer)
@@ -181,7 +181,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
     // One address can be several pages: a month each, a pageful each, or both.
     // See urlsFor, and the reasons it exists, in reading.js.
     const addresses = urlsFor(place.page_url, { depth: place.page_depth, from, to })
-    if (addresses.length === 0) throw new Error('no address to read')
+    if (addresses.length === 0) throw readError('There is no address to read.')
 
     // Through readPage and never a plain fetch. The address was typed by a
     // person, so it is checked before it goes out and at every redirect, and
@@ -194,13 +194,18 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
 
     // One page of four refusing is not a failure. All of them refusing is, and
     // it has to be, or a site that has gone away would look like a quiet week.
+    // Which pages and what they answered goes to the log; the place only says
+    // that they could not be read. See readProblem in reading.js.
     if (parts.length === 0) {
-        throw new Error(missed.join('; ') || `${place.page_url} had no words on it`)
+        throw readError(
+            addresses.length > 1 ? 'None of the pages could be read.' : 'The page could not be read.',
+            missed.join('; ') || `${place.page_url} had no words on it`,
+        )
     }
     if (missed.length) console.warn('read-listings', place.name, missed.join('; '))
 
     const text = joinPages(parts)
-    if (!text) throw new Error(`${place.page_url} had no words on it`)
+    if (!text) throw readError('The page had no words on it.', `${place.page_url} had no words on it`)
 
     // How this place's readings are keyed decides both what to ask for and
     // what makes an answer the same answer twice. A cinema is asked for films
@@ -217,7 +222,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
         key: reading,
     })
 
-    if (refused) throw new Error(refused)
+    if (refused) throw readError(refused)
     if (wrongDay) console.log('read-listings', place.name, `${wrongDay} left out, the day of the week did not match the date`)
 
     // **What the feed already knows, the reading does not repeat.**
@@ -268,12 +273,13 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
             .upsert(fresh, { onConflict: 'place_id,source_key', ignoreDuplicates: true })
             .select('id')
 
-        if (error) throw new Error(error.message)
+        if (error) throw readError('The events could not be saved.', error.message)
         added = (data || []).length
     }
 
+    // A read that worked clears whatever the last one said went wrong.
     await admin.from('places')
-        .update({ last_read_at: now.toISOString(), last_read_count: rows.length })
+        .update({ last_read_at: now.toISOString(), last_read_count: rows.length, read_problem: null })
         .eq('id', place.id)
 
     return {
@@ -335,7 +341,7 @@ Deno.serve(async (request) => {
                 done.push(await readOne(admin, place, key!, now, pairings))
             } catch (err) {
                 // One page refusing must not stop the others, and the log is
-                // the only place anybody sees this, so it says which.
+                // the only place anybody sees the detail, so it says which.
                 //
                 // The detail stays in the log. It used to go back to the
                 // browser as well, and a status code or a connection error for
@@ -343,6 +349,12 @@ Deno.serve(async (request) => {
                 // inside a network. The settings screen only ever showed the
                 // place's name, so it loses nothing.
                 console.error('read-listings', place.name, err)
+
+                // Kept on the place as well, so a page that keeps failing says
+                // so on the settings row instead of only showing the last good
+                // read getting older. Only ever a sentence this function wrote,
+                // never the error itself. See readProblem in reading.js.
+                await admin.from('places').update({ read_problem: readProblem(err) }).eq('id', place.id)
                 done.push({ place: place.name, error: 'could not be read' })
             }
         }

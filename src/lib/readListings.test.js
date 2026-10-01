@@ -4,6 +4,7 @@ import {
     endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
     isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown, geminiRequest, failedWords,
+    readError, readProblem,
 } from '../../supabase/functions/read-listings/reading'
 import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
@@ -686,6 +687,41 @@ describe('asking Gemini', () => {
 
     it('copes with something thrown that is not an error, and an address that is not one', () => {
         expect(failedWords('Asking Gemini', 'nope', 'not an address')).toBe('Asking Gemini failed (Error)')
+    })
+})
+
+// A page that kept failing only ever said so in the log, and the settings row
+// went on showing the last good read. What went wrong is kept on the place
+// now, and every signed in person can read a place, so what is kept is only
+// ever a sentence the function wrote.
+describe('what went wrong, kept on the place', () => {
+    it('keeps the sentence the function wrote, and leaves the detail for the log', () => {
+        const err = readError('The page could not be read.', 'https://www.dlrcoco.ie/dlr-events?page=2: answered 404')
+        expect(readProblem(err)).toBe('The page could not be read.')
+        expect(err.message).toContain('answered 404')
+    })
+
+    it('keeps the Gemini sentence exactly as the log has it', () => {
+        const said = failedWords('Asking Gemini', new TypeError('x?key=sekret-key'), endpoint())
+        expect(readProblem(readError(said))).toBe(said)
+    })
+
+    // A failed fetch names its address, and a status or a connection error for
+    // an address somebody typed is how you find out what answers inside a
+    // network. None of it is kept.
+    it('never keeps the error itself', () => {
+        const raw = new TypeError('error sending request for url (http://10.0.0.1/admin?key=sekret-key): connection refused')
+        for (const err of [raw, 'a string', null, undefined, {}]) {
+            const words = readProblem(err)
+            expect(words).toBeTruthy()
+            expect(words).not.toMatch(/sekret|10\.0\.0\.1|http|refused/)
+        }
+    })
+
+    it('says a refusal as a sentence that can be kept', () => {
+        const many = Array.from({ length: MOST_ROWS + 1 }, (_, i) => ({ name: `Gig ${i}`, date: '2026-11-19' }))
+        expect(eventsFrom(answer(many), WHEN).refused).toMatch(/^[A-Z].*\.$/)
+        expect(eventsFrom('not json', WHEN).refused).toMatch(/^[A-Z].*\.$/)
     })
 })
 

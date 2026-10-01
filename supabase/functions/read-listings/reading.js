@@ -342,6 +342,26 @@ export function failedWords(what, err, address) {
     return `${what} failed (${host ? `${kind} at ${host}` : kind})`
 }
 
+// A failure carrying a sentence that is safe to keep on the place, beside the
+// detail, which only ever goes to the log.
+export function readError(sentence, detail = sentence) {
+    return Object.assign(new Error(detail), { readProblem: sentence })
+}
+
+// What went wrong, in words that can be kept on the place as read_problem.
+//
+// **Never the error itself.** Every signed in person can read a place. A failed
+// fetch names the address it was sending to, and a status or a connection
+// error for an address somebody typed is how you find out what answers inside
+// a network (see fetching.js). So only a sentence this function wrote is ever
+// kept, and the most it names is Google's host. Anything else gets a sentence
+// that says nothing about it.
+export function readProblem(err) {
+    const said = err?.readProblem
+    if (typeof said === 'string' && said) return said
+    return 'Something went wrong reading the page.'
+}
+
 // The text Gemini put in its answer, wherever it decided to put it.
 export function answerFrom(payload) {
     const parts = payload?.candidates?.[0]?.content?.parts || []
@@ -469,9 +489,9 @@ export const LONGEST_RUN_DAYS = 60
 // It used to keep the first forty and carry on, which wrote whatever happened
 // to come first on a page that had stopped making sense and showed "40 found"
 // on the settings screen, the same as a busy week. Refused now, so the read
-// fails like any other: the log says how many it offered, the place keeps its
-// last good read, and Read the pages now names it as one that could not be
-// read.
+// fails like any other: the log and the place say how many it offered, the
+// place keeps its last good read, and Read the pages now names it as one that
+// could not be read.
 //
 // Counted after the checks, so rows that were never going to be written do not
 // get a page refused. All the pages of a place count together, since they are
@@ -489,7 +509,7 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
     try {
         parsed = typeof answer === 'string' ? JSON.parse(answer) : answer
     } catch {
-        return { rows: [], refused: 'the answer was not readable' }
+        return { rows: [], refused: "Gemini's answer could not be read." }
     }
 
     const list = Array.isArray(parsed?.events) ? parsed.events : []
@@ -564,7 +584,7 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
     if (rows.length > MOST_ROWS) {
         return {
             rows: [],
-            refused: `it offered ${rows.length} events, more than the ${MOST_ROWS} one place may add, so nothing was written`,
+            refused: `The page offered ${rows.length} events, more than the ${MOST_ROWS} one place may add, so nothing was saved.`,
         }
     }
 
