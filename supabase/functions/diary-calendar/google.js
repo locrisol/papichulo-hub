@@ -327,16 +327,3 @@ export async function carryOut(jobs, { call, body, ids, reach = null }) {
 
     return { ids: kept, failed, written }
 }
-
-// Where the event's link back to the Hub points.
-//
-// The real site, unless the app says it is being used from one of the
-// addresses on the APP_URL_ALSO list, which is the rule roster-email follows.
-// It used to take whatever the app sent, and the link says Open in Papi Chulo
-// Hub on an event everybody who can see the calendar can see.
-export function hubAddress(asked, { appUrl = '', also = '' } = {}) {
-    const tidy = value => String(value ?? '').trim().replace(/\/$/, '')
-    const allowed = String(also ?? '').split(',').map(tidy).filter(Boolean)
-    const came = tidy(asked)
-    return came && allowed.includes(came) ? came : tidy(appUrl)
-}

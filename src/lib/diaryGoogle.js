@@ -16,14 +16,13 @@ export async function writeToGoogle(entryId, { clear = false } = {}) {
     if (!entryId) return { ok: true, reason: '' }
 
     try {
+        // Only which entry. Where the event's link back to the Hub points is
+        // the function's own APP_URL, never this page's address: the event
+        // sits on a calendar everybody shares long after a save from the dev
+        // server or a preview build, and it said Open in Papi Chulo Hub over
+        // an address that went nowhere.
         const { data, error } = await supabase.functions.invoke('diary-calendar', {
-            body: {
-                entryId,
-                clear,
-                // Where this Hub lives, so the event carries a link back to the
-                // entry rather than to a guess about the address.
-                origin: typeof window !== 'undefined' ? window.location.origin : '',
-            },
+            body: { entryId, clear },
         })
 
         if (error) return { ok: false, ...(await refusalOf(error)) }
