@@ -13,7 +13,8 @@ const SAVED = { id: 'd1', kind: 'catering', title: 'Lunch for twelve', scope: 's
 
 const db = mockSupabase({})
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', role: 'store_manager', restaurant_id: 'r1' } }) }))
+let signedIn = { id: 'u1', role: 'store_manager', restaurant_id: 'r1' }
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: signedIn }) }))
 vi.mock('@/context/confirm', () => ({ useConfirm: () => () => Promise.resolve(true) }))
 
 const writeToGoogle = vi.fn()
@@ -41,6 +42,7 @@ async function saveOnce() {
 }
 
 beforeEach(() => {
+    signedIn = { id: 'u1', role: 'store_manager', restaurant_id: 'r1' }
     asked = []
     db.from.mockImplementation(() => {
         const chain = makeQuery({ data: [], error: null })
@@ -78,5 +80,36 @@ describe('saving again after it did not reach Google', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
         expect(onSaved).toHaveBeenCalledWith(SAVED)
         expect(onClose).not.toHaveBeenCalled()
+    })
+})
+
+// Only an owner or a super admin speaks for the whole group, which is the
+// database's rule. A store manager was offered it anyway and refused on Save.
+describe('who is offered All sites', () => {
+    it('is not offered to a store manager', () => {
+        draw()
+        expect(screen.queryByLabelText(/All sites/)).not.toBeInTheDocument()
+        expect(screen.getByLabelText(/Just me/)).toBeInTheDocument()
+    })
+
+    it('is offered to an owner', () => {
+        signedIn = { id: 'u5', role: 'owner', restaurant_id: 'r1' }
+        draw()
+        expect(screen.getByLabelText(/All sites/)).toBeInTheDocument()
+    })
+})
+
+// Taking out one the function refuses said the calendar function was not
+// deployed, which was not true and sent somebody looking for the wrong thing.
+describe('taking out one that is not theirs to change', () => {
+    it('gives the real reason', async () => {
+        writeToGoogle.mockResolvedValue({ ok: false, refused: true, reason: 'You do not have permission to change this one.' })
+        render(
+            <DiaryDialog entry={SAVED} date={SAVED.starts_on} restaurants={RESTAURANTS} onClose={() => {}} onSaved={() => {}} />,
+        )
+        fireEvent.click(screen.getByRole('button', { name: 'Take it out' }))
+        expect(await screen.findByText('You do not have permission to change this one.')).toBeInTheDocument()
+        expect(screen.queryByText(/still in Google/)).not.toBeInTheDocument()
+        expect(asked.filter(c => c.delete.mock.calls.length)).toHaveLength(0)
     })
 })

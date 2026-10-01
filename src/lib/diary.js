@@ -494,6 +494,37 @@ export function atRestaurant(entry, restaurantId) {
     return true
 }
 
+// -- Who may change it -------------------------------------------------
+//
+// The same lines diary_entries_write draws in schema.sql, so the screen offers
+// only what the database will let through. It is not what protects the rows,
+// the policy does that; it is the screen being honest. Found by the audit of 28
+// September: a store manager was offered All sites, and Edit on an owner's
+// group entry, and both were refused on Save.
+
+const GROUP_ROLES = ['owner', 'super_admin']
+const DIARY_WRITERS = ['store_manager', 'owner', 'super_admin']
+
+// Only an owner or a super admin speaks for the whole group, because a
+// discount week is not one restaurant's decision.
+export function canWriteAllSites(user) {
+    return GROUP_ROLES.includes(user?.role)
+}
+
+// A private entry is its author's alone, from a super admin too. A group entry
+// is an owner's or a super admin's. An entry for restaurants is a super
+// admin's, or an owner's or store manager's when every restaurant on it is
+// their own, so one a super admin put on both restaurants is changed by
+// neither restaurant.
+export function canChangeEntry(user, entry) {
+    if (!entry || !DIARY_WRITERS.includes(user?.role)) return false
+    if (entry.scope === 'private') return entry.created_by === user.id
+    if (entry.scope === 'all_sites') return canWriteAllSites(user)
+    if (user.role === 'super_admin') return true
+    const ids = entry.restaurant_ids || []
+    return ids.length > 0 && ids.every(id => id === user.restaurant_id)
+}
+
 // -- What is wrong with it before it is saved --------------------------
 
 export function entryProblem(form) {

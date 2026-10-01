@@ -12,7 +12,7 @@ import {
     labelClass, fieldClass, dateField, hintClass,
 } from '@/lib/controlStyles'
 import {
-    KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed,
+    KINDS, kindLabel, kindTag, scopeFrom, entryProblem, cleanLabels, labelsUsed, canWriteAllSites,
 } from '@/lib/diary'
 import { writeToGoogle } from '@/lib/diaryGoogle'
 
@@ -38,7 +38,10 @@ import { writeToGoogle } from '@/lib/diaryGoogle'
 // All sites and Just me are not shortcuts for ticking everything. All sites
 // goes to the group's own calendar and Just me goes nowhere at all, so choosing
 // either one clears the ticks rather than standing in for them.
-function GoesOn({ mode, restaurantIds, restaurants, onChange }) {
+//
+// All sites is only offered to an owner or a super admin, the database's rule:
+// a store manager was offered it and refused on Save.
+function GoesOn({ mode, restaurantIds, restaurants, allSites, onChange }) {
     const ticked = new Set(restaurantIds)
 
     function toggle(id) {
@@ -65,7 +68,7 @@ function GoesOn({ mode, restaurantIds, restaurants, onChange }) {
             <div className="border-t border-dashed border-border my-2" />
 
             {[
-                { value: 'all_sites', label: 'All sites, the whole group' },
+                ...(allSites ? [{ value: 'all_sites', label: 'All sites, the whole group' }] : []),
                 { value: 'private', label: 'Just me. Nobody else sees it' },
             ].map(one => (
                 <label key={one.value} className="flex items-start gap-2.5 py-1.5 cursor-pointer">
@@ -270,9 +273,13 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
         // Off the calendars first, while the row is still here to say which ones
         // it is on. Once it is deleted nothing knows, and the events would sit
         // there forever saying something that is no longer true.
+        // A refusal is said as itself. It is not Google failing, and the entry
+        // may never have been on Google at all.
         const cleared = await writeToGoogle(current.id, { clear: true })
         if (!cleared.ok && cleared.reason) {
-            setError(`It is still in Google and could not be taken off. ${cleared.reason}`)
+            setError(cleared.refused
+                ? cleared.reason
+                : `It is still in Google and could not be taken off. ${cleared.reason}`)
             setSaving(false)
             return
         }
@@ -370,6 +377,7 @@ export default function DiaryDialog({ entry, date, restaurants, onClose, onSaved
                         mode={form.mode}
                         restaurantIds={form.restaurantIds}
                         restaurants={restaurants}
+                        allSites={canWriteAllSites(user)}
                         onChange={next => setForm(f => ({ ...f, ...next }))}
                     />
                     <p className={hintClass}>

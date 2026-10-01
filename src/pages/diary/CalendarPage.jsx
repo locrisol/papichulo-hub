@@ -11,7 +11,7 @@ import {
 } from '@/lib/nearby'
 import FoundNearby from '@/components/nearby/FoundNearby'
 import {
-    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant,
+    LAYERS, layerOf, calendarItems, itemsByDate, kindLabel, kindDot, atRestaurant, canChangeEntry,
 } from '@/lib/diary'
 import {
     card, pageTitle, secondaryButton, segmentTrack, segmentButton,
@@ -656,7 +656,11 @@ export default function CalendarPage() {
                 <DiaryEntryModal
                     entry={viewing}
                     restaurants={restaurants}
-                    canEdit={canWrite}
+                    /* Per entry, not per page. Anybody here can open an entry
+                       to read it, but an owner's group entry, or one a super
+                       admin put on both restaurants, is not a store manager's
+                       to change, and the database refuses the save. */
+                    canEdit={canWrite && canChangeEntry(user, viewing)}
                     onEdit={() => { setEditing({ entry: viewing, date: viewing.starts_on }); setViewing(null) }}
                     onClose={() => setViewing(null)}
                 />

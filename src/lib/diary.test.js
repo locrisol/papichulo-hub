@@ -6,7 +6,7 @@ import {
     sortEntries, onDate, datesBetween, entriesByDate, bandsForWeek,
     showsOnRoster, entryProblem,
     LAYERS, layerOf, calendarItems, itemsByDate,
-    cleanLabels, labelsUsed, labelsOf, atRestaurant,
+    cleanLabels, labelsUsed, labelsOf, atRestaurant, canChangeEntry, canWriteAllSites,
 } from './diary'
 
 const RESTAURANTS = [
@@ -635,5 +635,57 @@ describe('whether an entry belongs to the restaurant you are looking at', () => 
         expect(atRestaurant({ ...catering, restaurant_ids: [] }, 'pc')).toBe(false)
         expect(atRestaurant({ ...catering, restaurant_ids: null }, 'pc')).toBe(false)
         expect(atRestaurant(null, 'pc')).toBe(false)
+    })
+})
+
+// The same lines diary_entries_write draws in the database, so the screen only
+// offers what will be let through. Found by the audit: a store manager was
+// offered All sites and Edit on an owner's group entry, and both were refused.
+describe('who may change an entry', () => {
+    const SUPER = { id: 'u0', role: 'super_admin', restaurant_id: null }
+    const OWNER = { id: 'u1', role: 'owner', restaurant_id: 'pc' }
+    const MANAGER = { id: 'u2', role: 'store_manager', restaurant_id: 'pc' }
+    const EMPLOYEE = { id: 'u3', role: 'employee', restaurant_id: 'pc' }
+
+    const group = { scope: 'all_sites', restaurant_ids: [], created_by: 'u0' }
+    const here = { scope: 'sites', restaurant_ids: ['pc'], created_by: 'u0' }
+    const both = { scope: 'sites', restaurant_ids: ['pc', 'dl'], created_by: 'u0' }
+    const mine = { scope: 'private', restaurant_ids: [], created_by: 'u2' }
+
+    it('lets only an owner or a super admin speak for the whole group', () => {
+        expect(canWriteAllSites(OWNER)).toBe(true)
+        expect(canWriteAllSites(SUPER)).toBe(true)
+        expect(canWriteAllSites(MANAGER)).toBe(false)
+        expect(canWriteAllSites(null)).toBe(false)
+        expect(canChangeEntry(MANAGER, group)).toBe(false)
+        expect(canChangeEntry(OWNER, group)).toBe(true)
+    })
+
+    it('lets a manager change what is only at their own restaurant', () => {
+        expect(canChangeEntry(MANAGER, here)).toBe(true)
+        expect(canChangeEntry(OWNER, here)).toBe(true)
+        expect(canChangeEntry({ ...MANAGER, restaurant_id: 'dl' }, here)).toBe(false)
+    })
+
+    // A super admin's entry for both restaurants shows at each, and neither
+    // restaurant's own people can change it.
+    it('keeps an entry for two restaurants to a super admin', () => {
+        expect(canChangeEntry(MANAGER, both)).toBe(false)
+        expect(canChangeEntry(OWNER, both)).toBe(false)
+        expect(canChangeEntry(SUPER, both)).toBe(true)
+    })
+
+    // Private means private, from a super admin too.
+    it('keeps a private one to whoever wrote it', () => {
+        expect(canChangeEntry(MANAGER, mine)).toBe(true)
+        expect(canChangeEntry(OWNER, mine)).toBe(false)
+        expect(canChangeEntry(SUPER, mine)).toBe(false)
+    })
+
+    it('gives an employee nothing, and copes with nothing at all', () => {
+        expect(canChangeEntry(EMPLOYEE, here)).toBe(false)
+        expect(canChangeEntry(EMPLOYEE, { ...mine, created_by: 'u3' })).toBe(false)
+        expect(canChangeEntry(null, here)).toBe(false)
+        expect(canChangeEntry(MANAGER, null)).toBe(false)
     })
 })

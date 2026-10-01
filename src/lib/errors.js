@@ -54,14 +54,22 @@ const BY_TEXT = [
 // The sentence is in the body. This reads it, and falls back to the ordinary
 // wording when there is nothing there to read.
 export async function functionError(failed, fallback = '') {
+    return (await functionSaid(failed)) || friendlyError(failed) || fallback
+}
+
+// Only the sentence in the body, or nothing, for a caller that has to tell the
+// function's own answer apart from one it never gave. The diary asks this of a
+// 404: with a sentence it is the entry that is gone, without one it is the
+// function itself.
+export async function functionSaid(failed) {
     try {
         const body = await failed?.context?.json?.()
         if (body?.error) return String(body.error)
     } catch {
         // Not JSON, or the body has been read already. Either way there is
-        // nothing better than what friendlyError makes of it.
+        // nothing to read.
     }
-    return friendlyError(failed) || fallback
+    return ''
 }
 
 export function friendlyError(error) {

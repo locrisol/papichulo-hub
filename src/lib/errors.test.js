@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { friendlyError, isPermissionError, functionError } from '@/lib/errors'
+import { friendlyError, isPermissionError, functionError, functionSaid } from '@/lib/errors'
 
 describe('friendlyError', () => {
     it('gives nothing when there is no error', () => {
@@ -90,5 +90,15 @@ describe('what a function actually said', () => {
         const broken = { message: 'boom', context: { json: async () => { throw new Error('read') } } }
         await expect(functionError(broken)).resolves.toBe('boom')
         await expect(functionError(null, 'fallback')).resolves.toBe('fallback')
+    })
+
+    // Only what the function itself said, with no fallback, for a caller that
+    // has to tell the function's own answer apart from one it never gave.
+    it('gives only what the function itself said, or nothing', async () => {
+        await expect(functionSaid(refusal({ error: 'That entry is gone' }))).resolves.toBe('That entry is gone')
+        await expect(functionSaid(refusal({}))).resolves.toBe('')
+        await expect(functionSaid({ message: 'boom', context: { json: async () => { throw new Error('read') } } }))
+            .resolves.toBe('')
+        await expect(functionSaid(null)).resolves.toBe('')
     })
 })

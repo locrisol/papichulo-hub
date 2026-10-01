@@ -40,7 +40,7 @@ import DayNoteDialog from '@/components/roster/DayNoteDialog'
 import Modal from '@/components/ui/Modal'
 import EmployeeForm from '@/components/team/EmployeeForm'
 import ErrorBanner from '@/components/ui/ErrorBanner'
-import { atRestaurant } from '@/lib/diary'
+import { atRestaurant, canChangeEntry } from '@/lib/diary'
 import DiaryDialog from '@/components/diary/DiaryDialog'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
 
@@ -1227,9 +1227,11 @@ export default function RosterPage() {
                 <DiaryEntryModal
                     entry={viewingDiary}
                     restaurants={restaurants}
-                    canEdit
-                    /* The route is managers and above, so anybody who can
-                       reach this page can change it. */
+                    /* The route is managers and above, but that is not the
+                       same as being able to change every entry drawn here. An
+                       owner's group promotion is on every roster and is not a
+                       store manager's to change; the database refuses it. */
+                    canEdit={canChangeEntry(user, viewingDiary)}
                     onEdit={() => { setEditingDiary(viewingDiary); setViewingDiary(null) }}
                     onClose={() => setViewingDiary(null)}
                 />

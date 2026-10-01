@@ -275,6 +275,34 @@ describe('asking the function to write it', () => {
         expect((await writeToGoogle('e1')).reason).toContain('not deployed')
     })
 
+    // The function refusing a person said the function was not deployed, which
+    // sent whoever read it looking for a problem that was not there.
+    const refusal = (status, body) => Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+        context: { status, json: () => (body ? Promise.resolve(body) : Promise.reject(new Error('not json'))) },
+    })
+
+    it('says plainly when the person may not change it', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(403, { error: 'Not allowed' }) })
+        const out = await writeToGoogle('e1', { clear: true })
+        expect(out).toMatchObject({ ok: false, refused: true })
+        expect(out.reason).toBe('You do not have permission to change this one.')
+    })
+
+    it('says when they have been signed out', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(401, { error: 'Not signed in' }) })
+        expect((await writeToGoogle('e1')).reason).toMatch(/signed out/)
+    })
+
+    it('passes on what the function itself said about a missing entry', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(404, { error: 'That entry is gone' }) })
+        expect((await writeToGoogle('e1')).reason).toBe('That entry is gone')
+    })
+
+    it('still says not deployed for a 404 the function never answered', async () => {
+        invoke.mockResolvedValue({ data: null, error: refusal(404) })
+        expect((await writeToGoogle('e1')).reason).toContain('not deployed')
+    })
+
     it('does not throw when the call itself falls over', async () => {
         invoke.mockImplementation(() => { throw new Error('offline') })
         expect(await writeToGoogle('e1')).toEqual({ ok: false, reason: 'offline' })
