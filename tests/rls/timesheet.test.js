@@ -8,9 +8,17 @@ import { signInAs, credentialsPresent } from './helpers'
 // September, closed by migration 030. Until 030 is run on this project these
 // fail, which is them saying so.
 //
-// The rows are for a typed name rather than anybody on the team, dated in 2030
-// so no week anybody reads holds them, and each one is deleted again at the
-// end, so nothing survives.
+// This one writes to live, and it may never touch real data. His words, 1
+// October 2026: "Ok if it's never going to touch real data. It can be done
+// for example on weeks where there is nothing yet." So the rows are for a
+// typed name rather than anybody on the team, in three weeks of 2030, and
+// before anything is written it reads whether the restaurant has anything at
+// all in those weeks: a timesheet row or a timesheet week. If it has, it
+// writes nothing and fails saying so. Each row it makes is deleted again by
+// its id at the end, and nothing else is ever deleted.
+//
+// Changes still records the test rows going in and coming out, the same as
+// the diary and place tests do.
 
 const run = credentialsPresent()
 const maybe = run ? describe : describe.skip
@@ -21,8 +29,23 @@ if (!run) {
 
 const NAME = 'A database test, deleted when it ends'
 
+// Each night the test works on, and the Sunday its week starts.
+const NIGHTS = [
+    { day: '2030-10-26', week: '2030-10-20' },
+    { day: '2030-03-30', week: '2030-03-24' },
+    { day: '2030-09-14', week: '2030-09-08' },
+]
+
+const sixDaysOn = day => {
+    const d = new Date(`${day}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 6)
+    return d.toISOString().slice(0, 10)
+}
+
 maybe('the hours on the nights the clocks change', () => {
     let manager, restaurantId
+    // Only true once the weeks have been read and found empty.
+    let clear = false
     const made = []
 
     beforeAll(async () => {
@@ -31,6 +54,25 @@ maybe('the hours on the nights the clocks change', () => {
         const { data: me } = await manager
             .from('users').select('restaurant_id').eq('id', auth.user.id).single()
         restaurantId = me.restaurant_id
+        expect(restaurantId, 'the test manager has no restaurant set').toBeTruthy()
+
+        const found = []
+        for (const { week } of NIGHTS) {
+            const { data: rows, error: e1 } = await manager.from('timesheet_entries').select('work_date')
+                .eq('restaurant_id', restaurantId).gte('work_date', week).lte('work_date', sixDaysOn(week))
+            const { data: weeks, error: e2 } = await manager.from('timesheet_weeks').select('week_start')
+                .eq('restaurant_id', restaurantId).eq('week_start', week)
+            if (e1 || e2) {
+                throw new Error(`Could not check the week of ${week} for timesheet rows, so this test wrote nothing. `
+                    + `${(e1 || e2).message}`)
+            }
+            if (rows?.length || weeks?.length) found.push(week)
+        }
+        if (found.length) {
+            throw new Error(`The test restaurant already has timesheet rows or a timesheet week in the week of `
+                + `${found.join(', ')}, so this test wrote nothing. Move it to weeks nobody has used.`)
+        }
+        clear = true
     })
 
     afterAll(async () => {
@@ -39,6 +81,9 @@ maybe('the hours on the nights the clocks change', () => {
     })
 
     async function hoursFor(workDate, startsAt, endsAt) {
+        // Never written unless the check above found the weeks empty.
+        expect(clear, 'the weeks were not checked, so nothing is written').toBe(true)
+        expect(NIGHTS.map(n => n.day), 'a day the check did not cover').toContain(workDate)
         const { data, error } = await manager.from('timesheet_entries').insert({
             restaurant_id: restaurantId,
             person_name: NAME,
