@@ -12,7 +12,7 @@ let signedIn = null
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: signedIn }) }))
 
 const { RestaurantProvider } = await import('./RestaurantContext')
-const { useRestaurant } = await import('./restaurant')
+const { useRestaurant, NO_RESTAURANT } = await import('./restaurant')
 
 function Shows() {
     const { activeRestaurant, error } = useRestaurant()
@@ -105,5 +105,23 @@ describe('a restaurant saved from a settings window', () => {
         await screen.findByText('Point Campus')
         act(() => ctx.switchRestaurant(ctx.restaurants.find(r => r.id === 'r2')))
         expect(await screen.findByText('Dun Laoghaire Pier')).toBeInTheDocument()
+    })
+})
+
+// Every new account starts as an employee with no restaurant, until somebody
+// sets one. Asking the database for the restaurant called null came back as
+// a raw error about uuids.
+describe('an account with no restaurant yet', () => {
+    it('says so without asking the database', async () => {
+        signedIn = { id: 'u9', role: 'employee', restaurant_id: null }
+        render(tree())
+        expect(await screen.findByText(`error: ${NO_RESTAURANT}`)).toBeInTheDocument()
+        expect(reads()).toBe(0)
+    })
+
+    it('still reads every restaurant for a super admin, who has none of their own', async () => {
+        signedIn = { id: 'u0', role: 'super_admin', restaurant_id: null }
+        render(tree())
+        expect(await screen.findByText('Point Campus')).toBeInTheDocument()
     })
 })

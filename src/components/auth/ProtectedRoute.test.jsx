@@ -7,7 +7,7 @@ const auth = { session: null, user: null, loading: true, error: null }
 const restaurant = { error: null }
 
 vi.mock('@/context/auth', () => ({ useAuth: () => auth, NO_ACCESS: 'no access' }))
-vi.mock('@/context/restaurant', () => ({ useRestaurant: () => restaurant }))
+vi.mock('@/context/restaurant', () => ({ useRestaurant: () => restaurant, NO_RESTAURANT: 'no restaurant' }))
 vi.mock('@/lib/supabase', () => ({
     supabase: { auth: { signOut: vi.fn(() => Promise.resolve({ error: null })) } },
 }))
@@ -84,6 +84,20 @@ describe('ProtectedRoute', () => {
         expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
         expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()
         expect(screen.queryByText('no access')).not.toBeInTheDocument()
+    })
+
+    // A new account has no restaurant until somebody sets one. Signing in
+    // again does nothing for that either, and the reason from the database
+    // means nothing to the person reading it.
+    it('tells somebody whose account has no restaurant yet, and who to ask', () => {
+        Object.assign(auth, { loading: false, session: { user: { id: 'u1' } } })
+        restaurant.error = 'no restaurant'
+        show()
+        expect(screen.getByText('Your account is not linked to a restaurant')).toBeInTheDocument()
+        expect(screen.getByText(/Ask your manager/)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+        expect(screen.queryByText(/usually fixes it/)).not.toBeInTheDocument()
+        expect(screen.queryByText('no restaurant')).not.toBeInTheDocument()
     })
 
     // A good sign-in has a session before it has a user, and the error is only

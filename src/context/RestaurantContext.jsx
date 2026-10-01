@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
-import { RestaurantContext } from '@/context/restaurant'
+import { RestaurantContext, NO_RESTAURANT } from '@/context/restaurant'
 
 // Which restaurant you are working in.
 //
@@ -42,6 +42,14 @@ export function RestaurantProvider({ children }) {
     const ownRestaurant = user?.restaurant_id
 
     const fetchRestaurants = useCallback(async () => {
+        // Nothing to ask for. A super admin has no restaurant of their own and
+        // reads every one; anybody else without one has not been set up yet.
+        if (role !== 'super_admin' && !ownRestaurant) {
+            setError(NO_RESTAURANT)
+            setLoading(false)
+            return
+        }
+
         // Ordered by name so the list in the switcher is always in the same
         // order, and so the last fallback below is always the same restaurant.
         let query = supabase.from('restaurants').select('*').eq('is_active', true).order('name')
