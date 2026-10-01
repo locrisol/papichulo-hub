@@ -162,8 +162,11 @@ export function privateAddress(address) {
 // A promise that gives up when the time is up, whether or not the thing it is
 // waiting on listens. A real fetch does listen to its signal, but this is the
 // one place that makes the limit a promise rather than a hope.
+//
+// Named TimeoutError, the name a fetch's own signal uses, so readPages can tell
+// a site that has stopped answering from one that answered no.
 function inTime(promise, signal, wait) {
-    const late = () => new Error(`took longer than ${wait / 1000} seconds`)
+    const late = () => Object.assign(new Error(`took longer than ${wait / 1000} seconds`), { name: 'TimeoutError' })
     return new Promise((resolve, reject) => {
         if (signal.aborted) { reject(late()); return }
         const stop = () => reject(late())
@@ -247,4 +250,34 @@ export async function readPage(address, {
     }
 
     throw new Error(`${address} redirected more than ${MOST_REDIRECTS} times`)
+}
+
+// Every page of one place, one after another.
+//
+// read is readPage with the place's headers, passed in so the tests can hand
+// it a pretend one. A page that answers no is passed over and the next one
+// tried, because one page of four refusing is not a failure.
+//
+// **A page that ran out of time ends the place.** The council is read five
+// pages deep, and a site that has stopped answering costs the whole wait on
+// every one of them: over a minute, in a run the platform stops at two and a
+// half, so the places read after it were the ones that paid. What was read
+// before it is kept, and the pages not tried are named so the log says so.
+export async function readPages(addresses, read) {
+    const texts = []
+    const missed = []
+
+    for (const [i, address] of addresses.entries()) {
+        try {
+            texts.push(await read(address))
+        } catch (err) {
+            missed.push(`${address}: ${err?.message}`)
+            if (err?.name === 'TimeoutError') {
+                for (const rest of addresses.slice(i + 1)) missed.push(`${rest}: not tried, the site had stopped answering`)
+                break
+            }
+        }
+    }
+
+    return { texts, missed }
 }

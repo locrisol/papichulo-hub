@@ -7,7 +7,7 @@ import {
 } from '../../supabase/functions/read-listings/reading'
 import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
-    addressProblem, privateAddress, readPage, MOST_REDIRECTS,
+    addressProblem, privateAddress, readPage, readPages, MOST_REDIRECTS,
 } from '../../supabase/functions/read-listings/fetching'
 import { sourceKeyFor as browserSourceKeyFor } from '@/lib/nearby'
 
@@ -887,6 +887,11 @@ describe('reading a page', () => {
         await expect(readPage('https://x.ie/events', { get, wait: 50 })).rejects.toThrow(/longer than/)
     })
 
+    it('says a page that ran out of time ran out of time', async () => {
+        const get = () => new Promise(() => {})
+        await expect(readPage('https://x.ie/events', { get, wait: 20 })).rejects.toMatchObject({ name: 'TimeoutError' })
+    })
+
     // A page with no end would otherwise be read into memory until the
     // function fell over.
     it('stops reading at the cap and keeps what came before it', async () => {
@@ -898,5 +903,42 @@ describe('reading a page', () => {
         const text = await readPage('https://x.ie/events', { get, most: 5500 })
         expect(text).toBe('x'.repeat(5500))
         expect(pulls).toBeLessThan(10)
+    })
+})
+
+// The council is read five pages deep. A site that has stopped answering costs
+// the whole wait on every page, which was over a minute of a run the platform
+// stops at two and a half.
+describe('every page of one place', () => {
+    const PAGES = ['https://x.ie/e?page=1', 'https://x.ie/e?page=2', 'https://x.ie/e?page=3']
+
+    it('reads each page in turn, past one that refuses', async () => {
+        const read = async address => {
+            if (address.endsWith('2')) throw new Error(`${address} answered 404`)
+            return `text of ${address}`
+        }
+        const { texts, missed } = await readPages(PAGES, read)
+        expect(texts).toEqual(['text of https://x.ie/e?page=1', 'text of https://x.ie/e?page=3'])
+        expect(missed).toEqual(['https://x.ie/e?page=2: https://x.ie/e?page=2 answered 404'])
+    })
+
+    it('stops at the first page that runs out of time, and says which were not tried', async () => {
+        const asked = []
+        const get = url => { asked.push(url); return new Promise(() => {}) }
+        const { texts, missed } = await readPages(PAGES, address => readPage(address, { get, wait: 20 }))
+        expect(asked).toEqual([PAGES[0]])
+        expect(texts).toEqual([])
+        expect(missed).toHaveLength(3)
+        expect(missed[2]).toContain('not tried')
+    })
+
+    it('keeps what it read before the site stopped answering', async () => {
+        const read = async address => {
+            if (address.endsWith('2')) throw Object.assign(new Error('took too long'), { name: 'TimeoutError' })
+            return 'page one'
+        }
+        const { texts, missed } = await readPages(PAGES, read)
+        expect(texts).toEqual(['page one'])
+        expect(missed).toHaveLength(2)
     })
 })

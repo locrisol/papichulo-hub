@@ -59,7 +59,7 @@ import {
     readable, promptFor, geminiRequest, failedWords, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
     urlsFor, joinPages, isServiceRole, roleOf, refusalFor,
 } from './reading.js'
-import { readPage } from './fetching.js'
+import { readPage, readPages } from './fetching.js'
 
 // How far ahead to ask about. One month at his word, against the Arena's six.
 //
@@ -183,20 +183,14 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date, pairi
     const addresses = urlsFor(place.page_url, { depth: place.page_depth, from, to })
     if (addresses.length === 0) throw new Error('no address to read')
 
-    const parts: string[] = []
-    const missed: string[] = []
-
     // Through readPage and never a plain fetch. The address was typed by a
     // person, so it is checked before it goes out and at every redirect, and
-    // the read has a time limit and a size limit. See fetching.js.
-    for (const address of addresses) {
-        try {
-            const page = await readPage(address, { headers: { 'User-Agent': AGENT }, resolve: addressesOf })
-            parts.push(readable(page))
-        } catch (err) {
-            missed.push(`${address}: ${(err as Error).message}`)
-        }
-    }
+    // the read has a time limit and a size limit. A page that runs out of time
+    // ends the place there, rather than costing the same wait on every page
+    // after it. See fetching.js.
+    const { texts, missed } = await readPages(addresses, (address: string) =>
+        readPage(address, { headers: { 'User-Agent': AGENT }, resolve: addressesOf }))
+    const parts = texts.map(readable)
 
     // One page of four refusing is not a failure. All of them refusing is, and
     // it has to be, or a site that has gone away would look like a quiet week.
