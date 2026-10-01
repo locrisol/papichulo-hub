@@ -37,6 +37,30 @@ describe('foldLine', () => {
         const unfolded = foldLine(original).split('\r\n').map((l, i) => (i ? l.slice(1) : l)).join('')
         expect(unfolded).toBe(original)
     })
+
+    // The limit is 75 octets, not 75 letters, and a manager's note can carry
+    // accents and emoji. Cut by letters, an emoji on the fold was split in
+    // two halves that each turned into a box in everybody's calendar.
+    const octets = text => new TextEncoder().encode(text).length
+    const unfold = folded => folded.split('\r\n').map((l, i) => (i ? l.slice(1) : l)).join('')
+
+    it('keeps every line to 75 octets when the note has accents', () => {
+        const original = 'DESCRIPTION:' + 'Dún Laoghaire café, '.repeat(10)
+        const lines = foldLine(original).split('\r\n')
+        expect(lines.length).toBeGreaterThan(1)
+        for (const line of lines) expect(octets(line)).toBeLessThanOrEqual(75)
+        expect(unfold(foldLine(original))).toBe(original)
+    })
+
+    it('never cuts an emoji in half', () => {
+        const original = 'DESCRIPTION:' + 'a'.repeat(62) + '\u{1F600} and the rest of the note'
+        const lines = foldLine(original).split('\r\n')
+        for (const line of lines) {
+            expect(line.isWellFormed()).toBe(true)
+            expect(octets(line)).toBeLessThanOrEqual(75)
+        }
+        expect(unfold(foldLine(original))).toBe(original)
+    })
 })
 
 describe('escapeIcs', () => {

@@ -56,17 +56,34 @@ const VTIMEZONE = [
 // A calendar file is line based and a line may not run past 75 octets. Anything
 // longer is continued on the next line beginning with a space. Get this wrong
 // and a long event name silently truncates in some clients and not others.
-export function foldLine(line) {
-    if (line.length <= 75) return line
+//
+// Octets, not letters. It used to count letters, so a note with accents ran
+// past the limit, and an emoji that landed on the fold was cut into two halves
+// that each turned into a box in everybody's calendar. So it walks the line a
+// whole character at a time and breaks before one that would not fit.
+const encoder = new TextEncoder()
 
-    const parts = [line.slice(0, 75)]
-    let rest = line.slice(75)
-    while (rest.length > 74) {
-        parts.push(' ' + rest.slice(0, 74))
-        rest = rest.slice(74)
+export function foldLine(line) {
+    if (encoder.encode(line).length <= 75) return line
+
+    const parts = []
+    let current = ''
+    let size = 0
+    // The first line has all 75. Every line after it gives one to the space.
+    let room = 75
+    for (const character of line) {
+        const octets = encoder.encode(character).length
+        if (size + octets > room) {
+            parts.push(current)
+            current = ''
+            size = 0
+            room = 74
+        }
+        current += character
+        size += octets
     }
-    if (rest) parts.push(' ' + rest)
-    return parts.join('\r\n')
+    if (current) parts.push(current)
+    return parts.map((part, i) => (i === 0 ? part : ' ' + part)).join('\r\n')
 }
 
 // Commas and semicolons separate values in this format, so any that belong to
