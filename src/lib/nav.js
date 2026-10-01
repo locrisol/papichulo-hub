@@ -68,8 +68,9 @@ export const navItems = [
 
     // Accounts and the sign in record. Everything a manager needs to do with a
     // person lives under Team; this page is only about who can get in, so it is
-    // Super Admin's. Team keeps working either way, it reads the users table
-    // itself and the policy decides what comes back.
+    // Super Admin's. Team keeps working either way: it reads the users table
+    // itself, only the accounts at the restaurant being worked on, and the
+    // policy decides which of those come back.
     { path: '/settings/users', label: 'Users', icon: 'users', section: 'Settings', roles: ADMIN_ONLY },
 
     // What the database recorded, which is a different question from who got
