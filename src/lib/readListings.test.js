@@ -1,10 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
     endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
     isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown, geminiRequest, failedWords,
-    readError, readProblem,
+    readError, readProblem, geminiWords,
 } from '../../supabase/functions/read-listings/reading'
 import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
@@ -692,7 +693,7 @@ describe('asking Gemini', () => {
 
 // A page that kept failing only ever said so in the log, and the settings row
 // went on showing the last good read. What went wrong is kept on the place
-// now, and every signed in person can read a place, so what is kept is only
+// now, and every manager can read a place, so what is kept is only
 // ever a sentence the function wrote.
 describe('what went wrong, kept on the place', () => {
     it('keeps the sentence the function wrote, and leaves the detail for the log', () => {
@@ -701,9 +702,30 @@ describe('what went wrong, kept on the place', () => {
         expect(err.message).toContain('answered 404')
     })
 
-    it('keeps the Gemini sentence exactly as the log has it', () => {
-        const said = failedWords('Asking Gemini', new TypeError('x?key=sekret-key'), endpoint())
-        expect(readProblem(readError(said))).toBe(said)
+    // On the settings row for a manager, who cannot act on an error kind, a
+    // host or a status. Those go to the log, and the place says whether
+    // anybody has to do anything.
+    it('keeps a plain sentence on the place and the detail for the log', () => {
+        const detail = failedWords('Asking Gemini', new TypeError('x?key=sekret-key'), endpoint())
+        const err = readError('Could not reach Gemini. It will try again at the next read.', detail)
+        expect(readProblem(err)).toBe('Could not reach Gemini. It will try again at the next read.')
+        expect(err.message).toBe(detail)
+    })
+
+    it('says a refused key needs somebody, and a busy Gemini will be tried again', () => {
+        for (const status of [401, 403]) {
+            expect(geminiWords(status)).toBe("Gemini did not accept the Hub's key. Whoever set up the Hub needs to check it.")
+        }
+        for (const status of [429, 503]) {
+            expect(geminiWords(status)).toBe('Gemini was busy. It will try again at the next read.')
+        }
+        expect(geminiWords(500)).toBe('Gemini had a problem. It will try again at the next read.')
+    })
+
+    it('keeps no error kind, host or status on the place', () => {
+        const source = readFileSync('supabase/functions/read-listings/index.ts', 'utf8')
+        expect(source).not.toMatch(/readError\(failedWords\(/)
+        expect(source).not.toMatch(/readError\(`Gemini said no/)
     })
 
     // A failed fetch names its address, and a status or a connection error for

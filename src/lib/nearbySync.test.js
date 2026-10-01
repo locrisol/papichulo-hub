@@ -4,13 +4,14 @@
  * Only this file needs a browser, for localStorage. Everything else in src/lib
  * is plain functions and runs faster without one.
  */
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
     irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
-    endsMoved, superseded, notOverBy,
+    endsMoved, superseded, notOverBy, refusedWords,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -512,11 +513,28 @@ describe('how a feed went', () => {
     })
 
     it('keeps the sentence a failure was made with', () => {
-        expect(feedProblem(feedError('Ticketmaster said no (401).'))).toBe('Ticketmaster said no (401).')
+        expect(feedProblem(feedError(refusedWords(401)))).toBe(refusedWords(401))
+    })
+
+    // Kept on the place and shown on the roster and the calendar, to owners
+    // too, who cannot open the settings. A bare status said nothing about
+    // whether anybody had to do anything, so it goes to the log instead.
+    it('says a refused key needs somebody, and anything else will be tried again', () => {
+        for (const status of [401, 403]) {
+            expect(refusedWords(status)).toBe("Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it.")
+        }
+        expect(refusedWords(429)).toBe('Ticketmaster is busy. It will try again at the next check.')
+        expect(refusedWords(500)).toBe('Ticketmaster had a problem. It will try again at the next check.')
+    })
+
+    it('keeps no status on the place, only the sentence', () => {
+        const source = readFileSync('supabase/functions/nearby-events/index.ts', 'utf8')
+        expect(source).not.toMatch(/feedError\(`Ticketmaster said no/)
+        expect(source).toContain('throw feedError(refusedWords(res.status))')
     })
 
     // A fetch that fails names the address it was fetching, and the address
-    // carries the key. Places can be read by every signed in person, so what
+    // carries the key. Places can be read by every manager, so what
     // is kept on one is never the error itself.
     it('never keeps the error itself', () => {
         const leak = new TypeError('error sending request for url (https://app.ticketmaster.com/x?apikey=SECRET)')

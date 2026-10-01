@@ -348,9 +348,20 @@ export function readError(sentence, detail = sentence) {
     return Object.assign(new Error(detail), { readProblem: sentence })
 }
 
+// What Gemini refusing comes to, said for a manager on the settings row. The
+// status goes to the log. A refused key never mends itself; anything else
+// usually does by the next read.
+export function geminiWords(status) {
+    if (status === 401 || status === 403) {
+        return "Gemini did not accept the Hub's key. Whoever set up the Hub needs to check it."
+    }
+    if (status === 429 || status === 503) return 'Gemini was busy. It will try again at the next read.'
+    return 'Gemini had a problem. It will try again at the next read.'
+}
+
 // What went wrong, in words that can be kept on the place as read_problem.
 //
-// **Never the error itself.** Every signed in person can read a place. A failed
+// **Never the error itself.** Every manager can read a place. A failed
 // fetch names the address it was sending to, and a status or a connection
 // error for an address somebody typed is how you find out what answers inside
 // a network (see fetching.js). So only a sentence this function wrote is ever

@@ -54,7 +54,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
-    irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween, endsMoved,
+    irishDate, stillToCome, emptyProblem, feedError, feedProblem, refusedWords, goneBetween, endsMoved,
     superseded, notOverBy,
 } from './discovery.js'
 
@@ -106,11 +106,13 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     const res = await fetch(discoveryUrl(place.ticketmaster_venue_id as string, key), {
         signal: AbortSignal.timeout(WAIT_MS),
     }).catch(() => null)
-    if (!res) throw feedError('Ticketmaster did not answer.')
+    if (!res) throw feedError('Ticketmaster did not answer. It will try again at the next check.')
     if (!res.ok) {
         // Deliberately not the body. Ticketmaster puts the key back in its own
-        // error text, and this sentence is kept on the place for anybody to read.
-        throw feedError(`Ticketmaster said no (${res.status}).`)
+        // error text. The status goes to the log, and the place gets a sentence
+        // saying whether anybody has to act. See refusedWords.
+        console.error('nearby-events', place.name, `Ticketmaster answered ${res.status}`)
+        throw feedError(refusedWords(res.status))
     }
 
     const payload = await res.json()

@@ -661,10 +661,21 @@ describe('when a page was last read', () => {
     // A page that failed every Monday only left an old date, with nothing
     // saying why. What went wrong comes first, then the last read that worked.
     it('says what went wrong the last time, and when it last worked', () => {
-        const failing = { ...odeon, last_read_at: '2026-11-10T06:00:00', last_read_count: 4, read_problem: 'Gemini said no (429).' }
-        expect(readWords(failing, '2026-11-19')).toBe(`Gemini said no (429), last read on ${shortDate('2026-11-10')}`)
+        const failing = {
+            ...odeon, last_read_at: '2026-11-10T06:00:00', last_read_count: 4,
+            read_problem: 'Gemini was busy. It will try again at the next read.',
+        }
+        expect(readWords(failing, '2026-11-19'))
+            .toBe(`Gemini was busy. It will try again at the next read. Last read on ${shortDate('2026-11-10')}.`)
         expect(readWords({ ...odeon, read_problem: 'The page could not be reached.' }, '2026-11-19'))
-            .toBe('The page could not be reached, never read')
+            .toBe('The page could not be reached. Never read.')
+    })
+
+    // What went wrong is a sentence, and one saved before it was always one
+    // still reads as one.
+    it('ends what went wrong with a full stop, whether it was saved with one or not', () => {
+        expect(readWords({ ...odeon, read_problem: 'The page could not be read' }, '2026-11-19'))
+            .toBe('The page could not be read. Never read.')
     })
 })
 
@@ -899,6 +910,8 @@ describe('a night that is not going ahead', () => {
 describe('how the feed last went', () => {
     const NOW = new Date('2026-10-01T12:00:00')
     const fine = { ...arena, feed_synced_at: '2026-10-01T05:15:00', feed_count: 75, feed_problem: null }
+    // What nearby-events keeps on the place when Ticketmaster refuses the key.
+    const REFUSED = "Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it."
 
     it('says when and how many on the settings row', () => {
         expect(feedWords(fine, '2026-10-01')).toBe('checked today, 75 listed')
@@ -908,15 +921,15 @@ describe('how the feed last went', () => {
     })
 
     it('says what went wrong instead, when it did', () => {
-        expect(feedWords({ ...fine, feed_problem: 'Ticketmaster said no (401).' }, '2026-10-01'))
-            .toBe('Ticketmaster said no (401).')
+        expect(feedWords({ ...fine, feed_problem: REFUSED }, '2026-10-01'))
+            .toBe(REFUSED)
     })
 
     it('tells the week planners about a refusal', () => {
-        const broke = { ...fine, feed_synced_at: '2026-09-14T05:15:00', feed_problem: 'Ticketmaster said no (401).' }
+        const broke = { ...fine, feed_synced_at: '2026-09-14T05:15:00', feed_problem: REFUSED }
         const out = feedTrouble([{ ...pairs[0], place: broke }], {}, NOW)
         expect(out).toHaveLength(1)
-        expect(out[0].words).toBe(`3Arena: Ticketmaster said no (401). Last updated ${shortDate('2026-09-14')}.`)
+        expect(out[0].words).toBe(`3Arena: ${REFUSED} Last updated ${shortDate('2026-09-14')}.`)
     })
 
     // The schedule stopping, or the function failing before it reached any
@@ -933,7 +946,7 @@ describe('how the feed last went', () => {
     })
 
     it('leaves out a place nobody is watching', () => {
-        const broke = { ...arena, feed_problem: 'Ticketmaster said no (401).' }
+        const broke = { ...arena, feed_problem: REFUSED }
         expect(feedTrouble([{ ...pairs[0], place: broke, is_active: false }], {}, NOW)).toEqual([])
     })
 })

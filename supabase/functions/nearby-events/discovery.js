@@ -267,11 +267,25 @@ export function feedError(sentence) {
     return err
 }
 
+// What Ticketmaster refusing comes to, said for whoever reads it on the
+// roster or the calendar, owners included, who cannot open the settings.
+//
+// A bare status said nothing about whether anybody had to do anything, so the
+// status goes to the log and the place says that instead. A refused key never
+// mends itself; anything else usually does by the next check.
+export function refusedWords(status) {
+    if (status === 401 || status === 403) {
+        return "Ticketmaster did not accept the Hub's key. Whoever set up the Hub needs to check it."
+    }
+    if (status === 429) return 'Ticketmaster is busy. It will try again at the next check.'
+    return 'Ticketmaster had a problem. It will try again at the next check.'
+}
+
 // What went wrong, in words that can be kept on the place.
 //
 // **Never the error itself.** A fetch that fails names the address it was
-// fetching, the address carries the key, and a place can be read by every
-// signed in person. So only a sentence this file wrote is ever kept.
+// fetching, the address carries the key, and every manager can read a place.
+// So only a sentence this file wrote is ever kept.
 export function feedProblem(err) {
     const said = err?.feedProblem
     if (typeof said === 'string' && said) return said

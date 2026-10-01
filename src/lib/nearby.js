@@ -695,13 +695,15 @@ export function foundWords(row, today) {
 // **And what went wrong, when the last read failed.** A page that failed every
 // Monday only kept an old date here, with nothing saying why. read-listings
 // writes a sentence of its own on the place, never the error itself, and it
-// comes first, then when a read last worked.
+// comes first, then when a read last worked. As sentences, since what went
+// wrong can be two: what happened, and whether anybody has to do anything.
 export function readWords(place, today) {
     if (!place?.page_url) return ''
     const when = agoWords(place.last_read_at, today)
     if (place.read_problem) {
-        const why = String(place.read_problem).trim().replace(/\.+$/, '')
-        return place.last_read_at ? `${why}, last read ${when}` : `${why}, never read`
+        const said = String(place.read_problem).trim()
+        const why = /[.!?]$/.test(said) ? said : `${said}.`
+        return place.last_read_at ? `${why} Last read ${when}.` : `${why} Never read.`
     }
     if (!place.last_read_at) return 'never read'
     const found = Number(place.last_read_count)

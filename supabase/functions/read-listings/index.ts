@@ -57,7 +57,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     readable, promptFor, geminiRequest, failedWords, answerFrom, eventsFrom, notYetKnown, watchedAlongside,
-    urlsFor, joinPages, isServiceRole, roleOf, refusalFor, readError, readProblem,
+    urlsFor, joinPages, isServiceRole, roleOf, refusalFor, readError, readProblem, geminiWords,
 } from './reading.js'
 import { readPage, readPages } from './fetching.js'
 
@@ -144,6 +144,10 @@ function windowOf(now: Date) {
 // The key travels in a header, and anything that goes wrong is said as what
 // failed and where rather than as the error's own message, which names the
 // address it was sending to. See geminiRequest and failedWords in reading.js.
+//
+// That is only the detail, for the log. The place gets a plain sentence that
+// says whether anybody has to act, because a manager reading an error kind, a
+// host or a status on the settings row cannot tell. See geminiWords.
 async function ask(key: string, prompt: string) {
     const { url, init } = geminiRequest(key, prompt)
 
@@ -151,20 +155,21 @@ async function ask(key: string, prompt: string) {
     try {
         res = await fetch(url, { ...init, signal: AbortSignal.timeout(ASK_WAIT_MS) })
     } catch (err) {
-        throw readError(failedWords('Asking Gemini', err, url))
+        throw readError('Could not reach Gemini. It will try again at the next read.', failedWords('Asking Gemini', err, url))
     }
 
     if (!res.ok) {
         res.body?.cancel().catch(() => {})
         // Deliberately not the body. An API error can carry the key back.
-        throw readError(`Gemini said no (${res.status}).`)
+        throw readError(geminiWords(res.status), `Gemini said no (${res.status}).`)
     }
 
     let answer: unknown
     try {
         answer = await res.json()
     } catch (err) {
-        throw readError(failedWords("Reading Gemini's answer", err, url))
+        throw readError("Gemini's answer could not be read. It will try again at the next read.",
+            failedWords("Reading Gemini's answer", err, url))
     }
 
     return answerFrom(answer)
