@@ -16,7 +16,7 @@ import { openGaps } from '@/lib/timeOff'
 import { AWAY } from '@/lib/rosterShare'
 import { isWorkingOn, sortEmployees, NO_COLOUR } from '@/lib/team'
 import {
-    LIVE_STATES, stateOf, waitingOn, requestsOnShift, windowOf, isWholeShift, shiftIdsOf,
+    LIVE_STATES, stateOf, waitingOn, requestsOnShift, hoursWords, isWholeShift, shiftIdsOf,
     requestDate, canTakeBack,
 } from '@/lib/shiftRequests'
 import { emailTheShiftAsk, emailTheShiftAnswer } from '@/lib/rosterMail'
@@ -969,15 +969,12 @@ function RequestCard({ request, meId, nameOf, shiftById, hoursOn, dates, saving,
     const half = (shiftId, from, to, takerId) => {
         const shift = shiftById(shiftId)
         if (!shift) return null
-        const window = windowOf(shift, from, to)
         const whole = isWholeShift(shift, from, to)
         return {
             taker: who(takerId),
             date: shift.shift_date,
             owner: who(shift.employee_id),
-            when: whole
-                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
-                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+            when: hoursWords(shift, from, to, hoursOn(shift.shift_date)),
             whole,
         }
     }

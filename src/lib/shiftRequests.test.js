@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
     windowOf, isWholeShift, weekAfter, hoursFor, hoursChange, shortlist, gapTo,
     waitingOn, requestsOnShift, writesFor, newFindings, shiftIdsOf, requestDate,
-    canTakeBack, shiftsMoved, windowProblem, windowFits, windowsFit,
+    canTakeBack, shiftsMoved, windowProblem, windowFits, windowsFit, hoursWords,
 } from '@/lib/shiftRequests'
 
 const WED = '2026-08-26'
@@ -691,5 +691,30 @@ describe('the day a request is about', () => {
         expect(requestDate({ give_shift_id: 'gone' }, find)).toBe(null)
         expect(requestDate({}, find)).toBe(null)
         expect(requestDate(null, find)).toBe(null)
+    })
+})
+
+// The hours a request is about, the way the roster prints them. The swap mails
+// say Closing for a finish after closing, and the cards on My shifts and the
+// desk printed the time for part of a shift, the number the roster never
+// shows.
+describe('hoursWords', () => {
+    const late = shift('s9', 'ana', WED, '17:00:00', '23:40:00')
+    const hours = { open: '09:00', close: '23:00' }
+
+    it('says Closing for a whole closing shift', () => {
+        expect(hoursWords(late, null, null, hours)).toBe('17:00 to Closing')
+    })
+
+    it('says Closing for the last part of one', () => {
+        expect(hoursWords(late, '20:00', '23:40', hours)).toBe('20:00 to Closing')
+    })
+
+    it('prints the time for a part that stops before closing', () => {
+        expect(hoursWords(late, '17:00', '20:00', hours)).toBe('17:00 to 20:00')
+    })
+
+    it('prints the time with no hours to go on', () => {
+        expect(hoursWords(late, '20:00', '23:40', null)).toBe('20:00 to 23:40')
     })
 })

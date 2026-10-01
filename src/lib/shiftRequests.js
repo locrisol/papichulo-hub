@@ -8,7 +8,9 @@
 // Nothing here writes anything. It works out what the week would look like, and
 // the manager's screen is the only thing allowed to make it true.
 
-import { toMinutes, endMinutes, shiftHours, shiftMinutes, breakFor } from '@/lib/roster'
+import {
+    toMinutes, endMinutes, shiftHours, shiftMinutes, breakFor, shortTime, endLabel,
+} from '@/lib/roster'
 import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
@@ -43,6 +45,16 @@ export function isWholeShift(shift, from, to) {
     // moment however differently they read.
     return toMinutes(window.from) === toMinutes(shift.starts_at)
         && toMinutes(window.to) === toMinutes(shift.ends_at)
+}
+
+// The hours a request is about, the way the roster prints them: a finish after
+// closing says Closing, for part of a shift as much as for the whole of one.
+// The cards on My shifts and the desk printed the time for part of a shift,
+// the number the roster never shows and the swap mails no longer do.
+export function hoursWords(shift, from, to, dayHours) {
+    const window = windowOf(shift, from, to)
+    const piece = { starts_at: window.from, ends_at: window.to }
+    return `${shortTime(piece.starts_at)} to ${endLabel(piece, dayHours)}`
 }
 
 // What is wrong with the hours a request names, or nothing.

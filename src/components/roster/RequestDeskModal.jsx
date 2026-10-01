@@ -1,10 +1,10 @@
 import Modal from '@/components/ui/Modal'
 import { shortDate } from '@/lib/dates'
 import { dayName } from '@/lib/events'
-import { shortTime, endLabel, fmtHours, hoursForDate } from '@/lib/roster'
+import { fmtHours, hoursForDate } from '@/lib/roster'
 import { modalFooter, secondaryButton, rowButton, badge } from '@/lib/controlStyles'
 import {
-    windowOf, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved, windowsFit,
+    hoursWords, isWholeShift, hoursChange, weekAfter, newFindings, requestDate, shiftsMoved, windowsFit,
 } from '@/lib/shiftRequests'
 
 // What two people have agreed between them, waiting on somebody to say yes.
@@ -83,16 +83,13 @@ export default function RequestDeskModal({
                     const half = (shiftId, from, to, takerId) => {
                         const shift = findShift(shiftId)
                         if (!shift) return null
-                        const window = windowOf(shift, from, to)
                         const whole = isWholeShift(shift, from, to)
                         return {
                             key: shiftId,
                             taker: nameOf(takerId),
                             owner: nameOf(shift.employee_id),
                             date: shift.shift_date,
-                            when: whole
-                                ? `${shortTime(shift.starts_at)} to ${endLabel(shift, hoursOn(shift.shift_date))}`
-                                : `${shortTime(window.from)} to ${shortTime(window.to)}`,
+                            when: hoursWords(shift, from, to, hoursOn(shift.shift_date)),
                             whole,
                         }
                     }

@@ -57,7 +57,8 @@
 //                    laptop running the dev server
 //
 // email.js sits in this folder because only what is inside a function's own
-// folder gets deployed with it, the same as ics.js next door.
+// folder gets deployed with it, the same as ics.js next door. hours.js is this
+// folder's copy of the store's hours and the closing rule, for the same reason.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
@@ -67,6 +68,7 @@ import {
     tooLate,
 } from './email.js'
 import { mimeParts, headersFor, base64Pdf } from './mime.js'
+import { hoursForDate } from './hours.js'
 
 const MANAGERS = ['owner', 'store_manager']
 
@@ -523,7 +525,23 @@ Deno.serve(async (request) => {
                 .from('roster_shifts').select('id, employee_id, shift_date, starts_at, ends_at')
                 .in('id', [ask.give_shift_id, ask.take_shift_id].filter(Boolean))
 
-            const halves = swapHalves(ask, rows || [])
+            // The store's hours on those days, so a closing shift says Closing
+            // in the mail the same as it does on the roster. Without them the
+            // mail prints the time, which is the fallback rather than a fault.
+            const days = [...new Set((rows || []).map(r => r.shift_date))]
+            const [houseHours, dayNotes] = await Promise.all([
+                admin.from('restaurants').select('opening_hours').eq('id', ask.restaurant_id).maybeSingle(),
+                days.length > 0
+                    ? admin.from('day_notes')
+                        .select('note_date, opens_at, closes_at, is_closed, is_bank_holiday')
+                        .eq('restaurant_id', ask.restaurant_id)
+                        .in('note_date', days)
+                    : Promise.resolve({ data: [] }),
+            ])
+            const noteOn = (date: string) => (dayNotes.data || []).find(n => n.note_date === date) || null
+            const hoursOn = (date: string) => hoursForDate(houseHours.data?.opening_hours, noteOn(date), date)
+
+            const halves = swapHalves(ask, rows || [], hoursOn)
             if (halves.length === 0) return json({ sent: 0, why: 'the shifts are gone' })
 
             const names: Record<string, string> = {}

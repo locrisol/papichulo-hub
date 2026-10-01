@@ -158,8 +158,9 @@ export function hoursForDay(openingHours, date) {
 // whole reason the end time is not printed.
 //
 // The finish and the close are both read as the night they belong to, so a
-// shift to midnight closes a store that shuts at eleven. The calendar feed has
-// its own copy of this in roster-calendar/ics.js, and a test runs both.
+// shift to midnight closes a store that shuts at eleven. The calendar feed and
+// the swap mails each have their own copy of this, in roster-calendar/ics.js
+// and roster-email/hours.js, and a test in ics.test.js runs all three.
 export function shiftEdges(shift, dayHours) {
     if (!dayHours) return { opening: false, closing: false }
     return {

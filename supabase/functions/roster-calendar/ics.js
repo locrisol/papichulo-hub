@@ -193,9 +193,10 @@ export function buildIcs({ calendarName, calendarDescription, shifts, now }) {
 // The store's hours for a day, taking a one off day over the bank holiday hours
 // and those over the usual week.
 //
-// The app has its own copy of this rule in lib/roster.js. They are apart because
-// they run in different places and neither can import the other, and there is a
-// test that runs both over the same cases so they cannot quietly drift.
+// The app has its own copy of this rule in lib/roster.js, and the swap mails a
+// third in roster-email/hours.js. They are apart because they run in different
+// places and none can import another, and there is a test that runs every copy
+// over the same cases so they cannot quietly drift.
 //
 // A bank holiday is one of the ten public holidays worked out from the date, or
 // a day somebody ticked as one, the same as the app. This copy only read the

@@ -5,6 +5,10 @@ import {
     bankHolidays as feedBankHolidays, bankHolidayOn as feedBankHolidayOn,
 } from '../../supabase/functions/roster-calendar/ics'
 import { hoursForDate as appHours, shiftEdges } from '@/lib/roster'
+import {
+    hoursForDate as mailHours, closesStore as mailClosesStore,
+    bankHolidays as mailBankHolidays, bankHolidayOn as mailBankHolidayOn,
+} from '../../supabase/functions/roster-email/hours'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
 
 const shift = (extra = {}) => ({
@@ -234,11 +238,17 @@ describe('closesStore', () => {
     })
 })
 
-// Whether a shift closes the store is decided twice: in the app, which prints
-// Closing, and in the feed, which runs the event to midnight. Two answers for
-// the same shift would put a finishing time in somebody's diary that the
-// roster deliberately hides.
-describe('the two copies of the closing rule agree', () => {
+// Whether a shift closes the store is decided three times: in the app, which
+// prints Closing, in the feed, which runs the event to midnight, and in the
+// swap mails, which print Closing too. Two answers for the same shift would put
+// a finishing time in somebody's diary or inbox that the roster deliberately
+// hides. Each function deploys only its own folder, so each carries a copy.
+const COPIES = [
+    ['the calendar feed', { closes: closesStore, hours: feedHours, holidays: feedBankHolidays, on: feedBankHolidayOn }],
+    ['the swap mails', { closes: mailClosesStore, hours: mailHours, holidays: mailBankHolidays, on: mailBankHolidayOn }],
+]
+
+describe('every copy of the closing rule agrees with the app', () => {
     const saturday = { open: '12:00', close: '23:00' }
     const late = { open: '12:00', close: '01:00' }
     const cases = [
@@ -253,18 +263,20 @@ describe('the two copies of the closing rule agree', () => {
         ['no hours at all', '17:00:00', '00:00:00', null],
     ]
 
-    for (const [name, starts_at, ends_at, hours] of cases) {
-        it(name, () => {
-            expect(closesStore({ starts_at, ends_at }, hours))
-                .toBe(shiftEdges({ starts_at, ends_at }, hours).closing)
-        })
+    for (const [copy, { closes }] of COPIES) {
+        for (const [name, starts_at, ends_at, hours] of cases) {
+            it(`${copy}, ${name}`, () => {
+                expect(closes({ starts_at, ends_at }, hours))
+                    .toBe(shiftEdges({ starts_at, ends_at }, hours).closing)
+            })
+        }
     }
 })
 
-// The rule for a day's hours exists twice: once in the app and once in the file
-// the calendar feed shares, because they run in different places and neither can
-// import the other. This is what stops the two drifting apart quietly.
-describe('the two copies of the opening hours rule agree', () => {
+// The rule for a day's hours exists three times: once in the app and once in
+// each function that needs it, because they run in different places and none
+// can import another. This is what stops them drifting apart quietly.
+describe('every copy of the opening hours rule agrees with the app', () => {
     const week = {
         0: { open: '10:00', close: '21:00' },
         1: { open: '09:00', close: '21:00' },
@@ -293,26 +305,30 @@ describe('the two copies of the opening hours rule agree', () => {
         ['a public holiday with no bank holiday hours', { 1: { open: '09:00', close: '17:00' } }, null, '2026-10-26'],
     ]
 
-    for (const [name, hours, note, date] of cases) {
-        it(name, () => {
-            expect(feedHours(hours, note, date)).toEqual(appHours(hours, note, date))
-        })
+    for (const [copy, { hours: copyHours }] of COPIES) {
+        for (const [name, hours, note, date] of cases) {
+            it(`${copy}, ${name}`, () => {
+                expect(copyHours(hours, note, date)).toEqual(appHours(hours, note, date))
+            })
+        }
     }
 })
 
-// The feed carries its own copy of the ten Irish public holidays, because a
-// function deploys only its own folder. Checked against the app's over enough
-// years to cover every way Easter and St Brigid's Day fall.
-describe('the feed knows the same public holidays as the app', () => {
-    for (let year = 2024; year <= 2040; year += 1) {
-        it(String(year), () => {
-            expect(feedBankHolidays(year)).toEqual(appBankHolidays(year).map(h => h.date))
+// Each copy carries the ten Irish public holidays too, because a function
+// deploys only its own folder. Checked against the app's over enough years to
+// cover every way Easter and St Brigid's Day fall.
+describe('every copy knows the same public holidays as the app', () => {
+    for (const [copy, { holidays, on }] of COPIES) {
+        for (let year = 2024; year <= 2040; year += 1) {
+            it(`${copy}, ${year}`, () => {
+                expect(holidays(year)).toEqual(appBankHolidays(year).map(h => h.date))
+            })
+        }
+
+        it(`${copy} answers for a date, and for nothing that is not one`, () => {
+            expect(on('2026-10-26')).toBe(true)
+            expect(on('2026-10-27')).toBe(false)
+            expect(on('')).toBe(false)
         })
     }
-
-    it('answers for a date, and for nothing that is not one', () => {
-        expect(feedBankHolidayOn('2026-10-26')).toBe(true)
-        expect(feedBankHolidayOn('2026-10-27')).toBe(false)
-        expect(feedBankHolidayOn('')).toBe(false)
-    })
 })
