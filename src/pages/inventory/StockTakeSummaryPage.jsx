@@ -8,7 +8,7 @@ import { fmtMoney, fmtQty } from '@/lib/format'
 import { monthYearOf, stampDateTime } from '@/lib/dates'
 import { sectionColour } from '@/lib/sections'
 import { countName } from '@/lib/products'
-import { bySection, summarise } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount } from '@/lib/stockTakeSummary'
 import StockTakeValue from '@/components/inventory/StockTakeValue'
 import { friendlyError } from '@/lib/errors'
 import { card } from '@/lib/controlStyles'
@@ -91,7 +91,6 @@ export default function StockTakeSummaryPage() {
       setLoading(false)
       return
     }
-    setSession(sessionData)
 
     // Look up display names for started_by / reopened_by
     const userIds = [sessionData.started_by, sessionData.reopened_by].filter(Boolean)
@@ -102,12 +101,24 @@ export default function StockTakeSummaryPage() {
       setReopener((usersData || []).find(u => u.id === sessionData.reopened_by) || null)
     }
 
-    const { data: productsData } = await supabase
-      .from('products').select('*').eq('is_active', true).order('name')
-    setProducts(productsData || [])
-
-    const { data: linesData } = await supabase
+    // Every product, not only the active ones, narrowed to the ones this count
+    // is about. A product switched off since it was counted is still on the
+    // count, and leaving it out took its lines off the summary and the PDF
+    // while the headline kept them. See onThisCount.
+    const { data: productsData, error: productsErr } = await supabase
+      .from('products').select('*').order('name')
+    const { data: linesData, error: linesErr } = await supabase
       .from('stock_take_lines').select('*').eq('stock_take_id', id)
+    if (productsErr || linesErr) {
+      setError(friendlyError(productsErr || linesErr))
+      setLoading(false)
+      return
+    }
+    // The session last, once everything under it has been read. Set first, it
+    // showed the page over a read that had failed: Counted 0/0, no sections,
+    // and a Download PDF that printed an empty sheet.
+    setSession(sessionData)
+    setProducts(onThisCount(productsData, linesData))
     setLines(linesData || [])
 
     setLoading(false)

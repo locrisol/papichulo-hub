@@ -28,6 +28,19 @@ export const FOOD_SECTIONS = ['Freezer', 'Cold Room', 'Dry']
 
 const byCountedAt = (a, b) => new Date(a.counted_at) - new Date(b.counted_at)
 
+// The products a count is read against: everything still stocked, and
+// anything counted on it, whatever has happened to it since.
+//
+// A product switched off after the count is still on the count. Left out, its
+// lines dropped out of every section, the food subtotal and the grand total, on
+// the screen and on the PDF, while the total saved at close still had them in.
+// One switched off and never counted is not part of it, or the Counted figure
+// would be out of every product ever retired.
+export function onThisCount(products, lines) {
+    const counted = new Set((lines || []).map(l => l.product_id))
+    return (products || []).filter(p => p && (p.is_active !== false || counted.has(p.id)))
+}
+
 // Every place that was counted, with the products counted there.
 //
 // [{ section, ink, items: [{ product, lines, qty, value, unitCost }] }]

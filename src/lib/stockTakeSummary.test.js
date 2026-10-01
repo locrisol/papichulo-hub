@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bySection, summarise, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
+import { bySection, summarise, onThisCount, FOOD_SECTIONS } from '@/lib/stockTakeSummary'
 
 const product = (id, name, section, extra = {}) =>
     ({ id, name, section, unit: 'KG', ...extra })
@@ -88,8 +88,9 @@ describe('bySection', () => {
     })
 
     it('leaves out a line whose product it does not know', () => {
-        // A product deactivated after it was counted is no longer in the list
-        // the page fetches, and a row with no name on it is worse than no row.
+        // Only a product nobody can read any more, since a deactivated one is
+        // handed in (see onThisCount). A row with no name on it is worse than
+        // no row.
         expect(bySection([], [line('gone', 'Dry', 1, 1)])).toEqual([])
     })
 
@@ -231,5 +232,33 @@ describe('what was not there and what was not looked at', () => {
         const { noneInStock, notCounted } = summarise(products, all)
         expect(noneInStock).toEqual([])
         expect(notCounted).toEqual([])
+    })
+})
+
+describe('onThisCount', () => {
+    const products = [
+        product('p1', 'Cheddar', 'Cold Room', { is_active: true }),
+        product('p2', 'Old Pineapple', 'Cold Room', { is_active: false }),
+        product('p3', 'Retired Sauce', 'Dry', { is_active: false }),
+    ]
+
+    it('keeps a product switched off after it was counted', () => {
+        const kept = onThisCount(products, [line('p2', 'Cold Room', 10, 40)])
+        expect(kept.map(p => p.name)).toEqual(['Cheddar', 'Old Pineapple'])
+    })
+
+    it('leaves out one switched off and never counted', () => {
+        expect(onThisCount(products, []).map(p => p.name)).toEqual(['Cheddar'])
+    })
+
+    it('adds a switched off product into the total, and not into Not counted', () => {
+        const kept = onThisCount(products, [line('p1', 'Cold Room', 2, 12), line('p2', 'Cold Room', 10, 40)])
+        const { total, notCounted } = summarise(kept, [line('p1', 'Cold Room', 2, 12), line('p2', 'Cold Room', 10, 40)])
+        expect(total).toBe(52)
+        expect(notCounted).toEqual([])
+    })
+
+    it('has nothing to say about nothing', () => {
+        expect(onThisCount(null, null)).toEqual([])
     })
 })
