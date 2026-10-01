@@ -3,10 +3,10 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
-import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
+import { deriveMenuItemAllergens, neverEnteredInDish, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
-import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { tableHeadRow, badge, card, rowButton, secondaryButton, cardEdge, cardHeader, checkbox, labelClass, pageTitle, primaryButton, warningNote } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import AddOptions from '@/components/inventory/AddOptions'
@@ -447,6 +447,10 @@ export default function MenuItemPage() {
   }
 
   const derivedAllergens = deriveMenuItemAllergens(components, products, recipeLines, allergens)
+  // What nobody ever entered allergens for, which the derivation can only
+  // read as none. Named here, and none is then not known rather than Not
+  // Present, the same way the customer sheet asks people to see staff.
+  const notEntered = neverEnteredInDish(components, products, recipeLines, allergens)
 
   function getProduct(productId) {
     return products.find(p => p.id === productId)
@@ -884,6 +888,13 @@ export default function MenuItemPage() {
         <p className="text-xs text-gray-500 mb-4">
           Calculated automatically from the allergens set on each component (and recursively from the ingredients of any MIX component). To change, edit the allergens on the underlying products.
         </p>
+        {notEntered.length > 0 && (
+          <p className={`${warningNote} mb-4`}>
+            Allergens have not been entered for {namesList(notEntered.map(p => p.name))}, so the full
+            list for this dish is not known. Until they are, the allergen sheet asks customers to
+            speak to a member of staff.
+          </p>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {ALLERGEN_KEYS.map(key => {
             const state = derivedAllergens[key]
@@ -892,7 +903,10 @@ export default function MenuItemPage() {
               : state === 'may_contain'
                 ? 'bg-amber-100 text-amber-800 border-amber-300'
                 : 'bg-gray-100 text-gray-500 border-gray-300'
-            const label = state === 'contains' ? 'Contains' : state === 'may_contain' ? 'May Contain' : 'Not Present'
+            // What is known is still said. What is not is not called absent.
+            const label = state === 'contains' ? 'Contains'
+              : state === 'may_contain' ? 'May Contain'
+                : notEntered.length > 0 ? 'Not known' : 'Not Present'
             return (
               // The name over the state on a phone, side by side from small up.
               // Two of these fit across a phone, and at that width Crustaceans

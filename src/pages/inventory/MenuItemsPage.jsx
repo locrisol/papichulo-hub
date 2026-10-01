@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
 import { useConfirm } from '@/context/confirm'
 import { menuItemCost } from '@/lib/mixCost'
-import { deriveMenuItemAllergens, summariseAllergens } from '@/lib/allergens'
+import { deriveMenuItemAllergens, neverEnteredInDish, summariseAllergens } from '@/lib/allergens'
 import CategoryManagerModal from '@/components/inventory/CategoryManagerModal'
 import { useKeepScroll } from '@/context/scroll'
 import ArrangeList from '@/components/ui/ArrangeList'
@@ -252,6 +252,9 @@ export default function MenuItemsPage() {
           marginPct: net > 0 ? ((net - cost) / net) * 100 : null,
         },
         allergens: deriveMenuItemAllergens(mine, products, recipeLines, allergens),
+        // Something in it nobody ever entered allergens for, which the line
+        // above can only read as none.
+        notEntered: neverEnteredInDish(mine, products, recipeLines, allergens).length > 0,
         // The options are not ingredients. A burrito with eleven ingredients
         // and a choice of five salsas is not a sixteen ingredient burrito:
         // only one of the five is ever in it. Counting them together made it
@@ -265,13 +268,12 @@ export default function MenuItemsPage() {
     return out
   }, [menuItems, components, products, recipeLines, allergens, prices])
 
-  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, counts: { components: 0, choices: 0 } }
+  const EMPTY = { components: [], cost: null, net: NaN, margin: null, allergens: null, notEntered: false, counts: { components: 0, choices: 0 } }
   const forItem = id => byItem.get(id) || EMPTY
 
 
   const countsFor = itemId => forItem(itemId).counts
   const getItemCost = item => forItem(item.id).cost
-  const getItemAllergens = item => forItem(item.id).allergens
   const getNet = item => forItem(item.id).net
   const getMargin = item => forItem(item.id).margin
 
@@ -336,12 +338,22 @@ export default function MenuItemsPage() {
     )
   }
 
-  // How the allergen count reads. Both layouts show the same thing, so it is
-  // worked out here rather than written twice.
-  function allergenText(item) {
-    const s = summariseAllergens(getItemAllergens(item))
-    if (s.contains === 0 && s.mayContain === 0) return null
-    return s
+  // What the Allergens column says. Both layouts show the same thing, so it is
+  // written once here rather than once in each.
+  //
+  // None only when everything in the dish was answered. A dish with something
+  // in it nobody entered allergens for has a list that only looks whole.
+  function allergenSummary(item) {
+    const entry = forItem(item.id)
+    if (entry.notEntered) return <span className="text-amber-700">Not all entered</span>
+    const s = summariseAllergens(entry.allergens || {})
+    if (s.contains === 0 && s.mayContain === 0) return 'None'
+    return (
+      <>
+        {s.contains > 0 && <span className="text-red-600 mr-2">{s.contains} contains</span>}
+        {s.mayContain > 0 && <span className="text-amber-700">{s.mayContain} may</span>}
+      </>
+    )
   }
 
   // Every category is its own table, so without this each one sizes its columns
@@ -553,7 +565,6 @@ export default function MenuItemsPage() {
                   {items.map(item => {
                     const cost = getItemCost(item)
                     const m = getMargin(item)
-                    const allergens = allergenText(item)
                     const counts = countsFor(item.id)
 
                     return (
@@ -621,16 +632,7 @@ export default function MenuItemsPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-gray-500">Allergens</dt>
                             <dd className={`text-right text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
-                              {!allergens ? 'None' : (
-                                <>
-                                  {allergens.contains > 0 && (
-                                    <span className="text-red-600 mr-2">{allergens.contains} contains</span>
-                                  )}
-                                  {allergens.mayContain > 0 && (
-                                    <span className="text-amber-700">{allergens.mayContain} may</span>
-                                  )}
-                                </>
-                              )}
+                              {allergenSummary(item)}
                             </dd>
                           </div>
                         </dl>
@@ -664,7 +666,6 @@ export default function MenuItemsPage() {
                       {items.map((item, i) => {
                         const cost = getItemCost(item)
                         const m = getMargin(item)
-                        const allergenSummary = summariseAllergens(getItemAllergens(item))
                         const counts = countsFor(item.id)
 
                         return (
@@ -710,18 +711,7 @@ export default function MenuItemsPage() {
                               )}
                             </td>
                             <td className={`px-4 py-3 text-xs ${item.is_active ? 'text-gray-600' : 'text-muted'}`}>
-                              {allergenSummary.contains === 0 && allergenSummary.mayContain === 0 ? (
-                                'None'
-                              ) : (
-                                <>
-                                  {allergenSummary.contains > 0 && (
-                                    <span className="text-red-600 mr-2">{allergenSummary.contains} contains</span>
-                                  )}
-                                  {allergenSummary.mayContain > 0 && (
-                                    <span className="text-amber-700">{allergenSummary.mayContain} may</span>
-                                  )}
-                                </>
-                              )}
+                              {allergenSummary(item)}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-wrap gap-2">{rowActions(item)}</div>

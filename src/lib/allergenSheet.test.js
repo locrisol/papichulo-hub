@@ -223,6 +223,57 @@ describe('sheetRows', () => {
         expect(rowsOf().every(r => r.complete)).toBe(true)
     })
 
+    // Nothing ever entered for something in it. That is not the same as none
+    // of the fourteen, and the row used to say No declared allergens.
+    describe('a dish with something in it nobody answered for', () => {
+        const kitchen = [
+            ...products,
+            { id: 'rice', name: 'Rice', section: 'Dry' },
+            { id: 'pot', name: 'Dip Pot', section: 'Packaging' },
+            { id: 'new-sauce', name: 'New Sauce', section: 'Cold Room', is_mix: true },
+        ]
+        const bowl = [{ id: 'b', name: 'Rice Bowl', category_id: 'mains' }]
+
+        it('does not vouch for it', () => {
+            const comps = [
+                { menu_item_id: 'b', product_id: 'churro', quantity: 1 },
+                { menu_item_id: 'b', product_id: 'rice', quantity: 1 },
+            ]
+            expect(sheetRows(bowl, comps, kitchen, [], allergens)[0].complete).toBe(false)
+        })
+
+        it('does not vouch for a house sauce saved before its recipe', () => {
+            const comps = [{ menu_item_id: 'b', product_id: 'new-sauce', quantity: 1 }]
+            expect(sheetRows(bowl, comps, kitchen, [], allergens)[0].complete).toBe(false)
+        })
+
+        it('still vouches for it once the answer is in, even if the answer is none', () => {
+            const comps = [{ menu_item_id: 'b', product_id: 'rice', quantity: 1 }]
+            const rows = [...allergens, { product_id: 'rice' }]
+            expect(sheetRows(bowl, comps, kitchen, [], rows)[0].complete).toBe(true)
+        })
+
+        // A pot has nothing to declare, so nothing is missing from it.
+        it('still vouches for a dish in a pot nobody declared anything for', () => {
+            const comps = [
+                { menu_item_id: 'b', product_id: 'churro', quantity: 1 },
+                { menu_item_id: 'b', product_id: 'pot', quantity: 1 },
+            ]
+            expect(sheetRows(bowl, comps, kitchen, [], allergens)[0].complete).toBe(true)
+        })
+
+        it('does not vouch for a sauce listed on its own that nobody answered for', () => {
+            const churros = [{ id: 'c', name: 'Churros', category_id: 'des' }]
+            const comps = [
+                { menu_item_id: 'c', product_id: 'churro', quantity: 4 },
+                { menu_item_id: 'c', product_id: 'new-sauce', quantity: 1, choice_group: 'Sauce', list_separately: true },
+            ]
+            const rows = sheetRows(churros, comps, kitchen, [], allergens)
+            expect(rows.find(r => r.name === 'New Sauce').complete).toBe(false)
+            expect(rows.find(r => r.name === 'Churros').complete).toBe(true)
+        })
+    })
+
     it('answers for all fourteen even where nothing is set', () => {
         const plain = sheetRows(
             [{ id: 'p', name: 'Plain' }],

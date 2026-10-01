@@ -104,8 +104,9 @@ const NOT_FOOD = ['Cleaning', 'Packaging']
 // the save nagging about it forever.
 //
 // Nothing has to be written for these. A product with no allergen record
-// already derives as Not Present for all fourteen, everywhere it is read, so
-// not asking and answering none come to exactly the same thing.
+// already derives as Not Present for all fourteen, and for these alone that is
+// not a gap: neverEntered in lib/allergens passes them, where a food product
+// with no record sends the customer to ask staff.
 export function declaresAllergens(product) {
     if (!product) return false
     return !NOT_FOOD.includes(product.section)

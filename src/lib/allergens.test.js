@@ -9,6 +9,8 @@ import {
   declaredCount,
   SHEET_ORDER,
   ALLERGEN_SHORT,
+  neverEntered,
+  neverEnteredInDish,
 } from '@/lib/allergens'
 
 // --- Fixtures ------------------------------------------------------------
@@ -143,6 +145,80 @@ describe('deriveMenuItemAllergens', () => {
     for (const key of ALLERGEN_KEYS) {
       expect(r[key]).toBe('none')
     }
+  })
+})
+
+// Allergens nobody ever entered. A product with no allergen row used to read
+// as none of the fourteen, everywhere, which is the one answer nobody gave.
+describe('neverEntered', () => {
+  const rice = { id: 'rice', section: 'Dry', is_mix: false }
+  const pot = { id: 'pot', section: 'Packaging', is_mix: false }
+  const newSauce = { id: 'new-sauce', section: 'Cold Room', is_mix: true, batch_yield: 1 }
+  const ownRow = { id: 'own-row', section: 'Cold Room', is_mix: true, batch_yield: 1 }
+  const salsa = { id: 'salsa', section: 'Cold Room', is_mix: true, batch_yield: 1 }
+  const wrap = { id: 'wrap', section: 'Cold Room', is_mix: true, batch_yield: 1 }
+  const products = [flour, milkProd, rice, pot, newSauce, ownRow, salsa, wrap]
+  const lines = [
+    { mix_product_id: 'salsa', ingredient_product_id: 'p-flour', quantity: 1 },
+    { mix_product_id: 'salsa', ingredient_product_id: 'rice', quantity: 1 },
+    { mix_product_id: 'salsa', ingredient_product_id: 'pot', quantity: 1 },
+    { mix_product_id: 'wrap', ingredient_product_id: 'salsa', quantity: 1 },
+  ]
+  const rows = [...allAllergens, { product_id: 'own-row', milk: 'contains' }]
+  const ids = list => list.map(p => p.id)
+
+  it('is nothing for a product somebody answered, even with all fourteen at none', () => {
+    expect(neverEntered(milkProd, products, lines, [{ product_id: 'p-milk' }])).toEqual([])
+  })
+
+  it('is the product itself when nothing was ever entered for it', () => {
+    expect(ids(neverEntered(rice, products, lines, rows))).toEqual(['rice'])
+  })
+
+  // A pot or a bin liner has nothing to declare, so nothing is missing.
+  it('is nothing for packaging, which has nothing to declare', () => {
+    expect(neverEntered(pot, products, lines, rows)).toEqual([])
+  })
+
+  it('is a MIX with no recipe and no allergens of its own', () => {
+    expect(ids(neverEntered(newSauce, products, lines, rows))).toEqual(['new-sauce'])
+  })
+
+  it('is nothing for a MIX with no recipe that was given allergens of its own', () => {
+    expect(neverEntered(ownRow, products, lines, rows)).toEqual([])
+  })
+
+  it('is the ingredient nobody answered, however deep it sits', () => {
+    expect(ids(neverEntered(salsa, products, lines, rows))).toEqual(['rice'])
+    expect(ids(neverEntered(wrap, products, lines, rows))).toEqual(['rice'])
+  })
+
+  it('does not go round a recipe that points back at itself', () => {
+    const a = { id: 'a', section: 'Dry', is_mix: true }
+    const b = { id: 'b', section: 'Dry', is_mix: true }
+    const loop = [
+      { mix_product_id: 'a', ingredient_product_id: 'b', quantity: 1 },
+      { mix_product_id: 'b', ingredient_product_id: 'a', quantity: 1 },
+    ]
+    expect(neverEntered(a, [a, b], loop, [])).toEqual([])
+  })
+
+  describe('on a dish', () => {
+    it('names each one once, and only what is always in it', () => {
+      const components = [
+        { product_id: 'salsa' },
+        { product_id: 'rice' },
+        { product_id: 'pot' },
+        // The choices are answered for elsewhere, the same as their allergens.
+        { product_id: 'new-sauce', choice_group: 'Sauce' },
+      ]
+      expect(ids(neverEnteredInDish(components, products, lines, rows))).toEqual(['rice'])
+    })
+
+    it('is nothing when every part of it was answered', () => {
+      expect(neverEnteredInDish([{ product_id: 'p-flour' }, { product_id: 'pot' }], products, lines, rows))
+        .toEqual([])
+    })
   })
 })
 

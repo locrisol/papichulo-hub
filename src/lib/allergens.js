@@ -19,6 +19,8 @@
 // the allergens of each component product separately and merge. See
 // deriveMenuItemAllergens below.
 
+import { declaresAllergens } from '@/lib/products'
+
 // The fourteen, fixed by EU 1169. They cannot be added to or renamed, which is
 // why the list is here rather than in a settings screen.
 //
@@ -155,8 +157,9 @@ export function allergenLook(state) {
 
 const SEVERITY = { contains: 2, may_contain: 1, none: 0 }
 
-// A product with no record yet is Not Present for all fourteen, which is why
-// the form opens filled in rather than empty.
+// All fourteen at Not Present, which is where the form starts so only the ones
+// that apply need changing. It is a starting point and not an answer: a product
+// nobody ever saved allergens for is a gap, see neverEntered below.
 export function emptyAllergens() {
   const obj = {}
   for (const key of ALLERGEN_KEYS) obj[key] = 'none'
@@ -252,6 +255,60 @@ export function deriveMenuItemAllergens(menuItemComponents, allProducts, allReci
     mergeAllergens(result, componentAllergens)
   }
   return result
+}
+
+// What a product's answer rests on that nobody ever entered.
+//
+// The derivations above read a product with no allergen row as none of the
+// fourteen, because they have to say something. But nobody gave that answer,
+// and the sheet used to show it as No declared allergens. This is how every
+// screen tells the two apart, the customer's included.
+//
+// Not entered means:
+//   food with no allergen row        rice saved in a hurry mid stock take
+//   a MIX with no recipe and no row  a house sauce saved before what is in it
+//   anything either of those is in   however deep in the recipes
+//
+// Packaging and cleaning have nothing to declare, so nothing is missing from
+// them. A MIX given allergens of its own and no recipe has been answered.
+//
+// The products themselves, each once, so a screen can name them.
+export function neverEntered(product, allProducts, allRecipeLines, allAllergens, visited = new Set()) {
+  if (!product || !declaresAllergens(product) || visited.has(product.id)) return []
+
+  const hasRow = allAllergens.some(a => a.product_id === product.id)
+  const lines = product.is_mix
+    ? allRecipeLines.filter(l => l.mix_product_id === product.id)
+    : []
+
+  if (lines.length === 0) return hasRow ? [] : [product]
+
+  // A copy per branch, the same as the derivation, so a MIX used twice is not
+  // mistaken for a loop.
+  const nextVisited = new Set(visited).add(product.id)
+  const found = new Map()
+  for (const line of lines) {
+    const ingredient = allProducts.find(p => p.id === line.ingredient_product_id)
+    for (const p of neverEntered(ingredient, allProducts, allRecipeLines, allAllergens, nextVisited)) {
+      found.set(p.id, p)
+    }
+  }
+  return [...found.values()]
+}
+
+// The same for a dish, for its own line. The choices are left out for the
+// same reason they are left out of its allergens: they are answered for on
+// rows of their own.
+export function neverEnteredInDish(menuItemComponents, allProducts, allRecipeLines, allAllergens) {
+  const found = new Map()
+  for (const component of menuItemComponents) {
+    if (component.choice_group) continue
+    const product = allProducts.find(p => p.id === component.product_id)
+    for (const p of neverEntered(product, allProducts, allRecipeLines, allAllergens)) {
+      found.set(p.id, p)
+    }
+  }
+  return [...found.values()]
 }
 
 // Convenience: count how many allergens are 'contains' vs 'may_contain' in

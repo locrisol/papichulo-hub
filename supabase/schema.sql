@@ -3025,8 +3025,10 @@ $$;
 
 -- The newest change that alters what the allergen sheet says: allergens,
 -- dishes, what is in them and their categories, recipes, and a product
--- renamed, switched on or off, or made a MIX. A price, the VAT, a quantity or
--- a note does not count. The customer page is not signed in and cannot read
+-- renamed, switched on or off, made a MIX, or moved section. The section
+-- counts since 032, because a food product with no allergens entered sends
+-- the customer to staff and packaging does not. A price, the VAT, a quantity
+-- or a note does not count. The customer page is not signed in and cannot read
 -- the change log, so this reads it for them and hands back one date.
 --
 -- Listed by what does not count rather than by what does, on every table but
@@ -3053,7 +3055,7 @@ create or replace function public.allergens_changed_at() returns timestamp with 
             -- with still counts, as an insert on product_allergens.
             when l.table_name = 'products' and l.action = 'insert' then false
             when l.action <> 'update' then true
-            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix']
+            when l.table_name = 'products' then l.changes ?| array['name', 'is_active', 'is_mix', 'section']
             when l.table_name = 'menu_items' then exists (
                 select 1 from jsonb_object_keys(l.changes) k
                  where k <> all (array['selling_price', 'vat_rate', 'notes']))
@@ -3103,7 +3105,7 @@ begin
 end $$;
 
 COMMENT ON FUNCTION "public"."allergen_sheet_printed"("restaurant" "uuid") IS 'Stamps now() as when the allergen sheet was last printed for a restaurant. Managers and owners for their own restaurant, the super admin for any. Returns the stamp.';
-COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, or made a MIX. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
+COMMENT ON FUNCTION "public"."allergens_changed_at"() IS 'When anything on the allergen sheet last changed, from the change log: allergens, dishes, what is in them, their categories, recipes, and a product renamed, switched on or off, made a MIX or moved section. Not prices, VAT, quantities or notes. Null when the log holds no such change.';
 COMMENT ON FUNCTION "public"."audit_ignored_columns"() IS 'Columns the change log does not treat as a change. Housekeeping stamps only: if one of these is all that moved, nothing is written.';
 COMMENT ON FUNCTION "public"."checklist_left"("round" "uuid") IS 'How many things at the bottom of the list a round has not ticked yet, counting what is on the list now.';
 COMMENT ON FUNCTION "public"."checklist_photos_due"() IS 'The photos the nightly job deletes: rounds older than a list''s last finished one, a once off list two weeks after it finished, a guide picture no task in use points at, and a photo never submitted once its round has ended. Nothing younger than a day.';
@@ -3838,10 +3840,14 @@ CREATE OR REPLACE VIEW "public"."public_product_allergens" AS
     "molluscs"
    FROM "public"."product_allergens" "a";
 
+-- The section is here so the page can tell food from packaging. A food product
+-- nobody entered allergens for is not known, and the page asks the customer to
+-- see staff; a dip pot has nothing to declare and is not a gap. Since 032.
 CREATE OR REPLACE VIEW "public"."public_products" AS
  SELECT "id",
     "name",
-    "is_mix"
+    "is_mix",
+    "section"
    FROM "public"."products" "p";
 
 CREATE OR REPLACE VIEW "public"."public_restaurants" AS

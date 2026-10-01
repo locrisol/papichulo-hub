@@ -103,6 +103,12 @@ back to the name without it, but a rename only keeps its figures once it is run.
 `027` is **not run yet**. The nightly job keeps the photos of a checklist
 round still going, so a tick submitted days after its photo was taken still
 has it, and a tick is refused if its photo is no longer in storage.
+`032` is **not run yet**. It gives `public_products` the section, so the
+customer allergen page can tell a food product nobody entered allergens for
+(it asks the customer to see staff) from a dip pot, which has nothing to
+declare, and the sheet's date counts a product moving section. **Run it
+before the branch is merged**, or the new page asks customers to see staff
+about every dish that comes in a pot.
 
 ## What was here before
 

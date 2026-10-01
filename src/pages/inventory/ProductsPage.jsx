@@ -505,14 +505,17 @@ export default function ProductsPage() {
       // Nothing to ask about a bottle of bleach or a paper container.
       if (!allergensTouched && declaresAllergens(formData)) missing.push('allergens')
 
+      // Allergens nobody entered are not none. Until they are set, the
+      // allergen sheet asks customers about any dish the product goes into
+      // to see staff, so that is what the question says.
       if (missing.length > 0) {
         const ok = await confirm({
           title: 'Save without ' + missing.join(' or ') + '?',
           message: missing.length === 2
-            ? 'Nothing is set for either. You can add both later from the product\'s own screens, but the allergens are what customers are shown, so a product with none declared reads as having none.'
+            ? 'Nothing is set for either. You can add both later from the product\'s own screens. Until the allergens are set, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.'
             : missing[0] === 'a supplier price'
               ? 'It will have no cost until a price is set, so it counts as nothing on a stock take and adds nothing to a dish.'
-              : 'Allergens are what customers are shown, so a product with none declared reads as having none of the fourteen.',
+              : 'Until the allergens are set, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.',
           confirmLabel: 'Save anyway',
           cancelLabel: 'Go back',
         })
@@ -522,6 +525,25 @@ export default function ProductsPage() {
           setOpenExtra(!wantsPrice ? 'supplier' : 'allergens')
           return
         }
+      }
+    }
+
+    // The same question for something made here, and it is about the recipe
+    // instead. A MIX has no supplier, and its allergens come from what goes
+    // into it, so with nothing in it there is no cost and no allergens either.
+    // Its own branch rather than the one above: that one would ask about a
+    // supplier price and open a section a MIX never shows.
+    if (!editingProduct && formData.is_mix && recipe.lines.length === 0) {
+      const ok = await confirm({
+        title: 'Save without a recipe?',
+        message: 'Nothing goes into it yet, so it has no cost and its allergens are not known. '
+          + 'Until a recipe is added, the allergen sheet asks customers to speak to a member of staff about any dish it goes into.',
+        confirmLabel: 'Save anyway',
+        cancelLabel: 'Go back',
+      })
+      if (!ok) {
+        setOpenExtra('recipe')
+        return
       }
     }
 

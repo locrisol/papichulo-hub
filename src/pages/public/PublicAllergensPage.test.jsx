@@ -133,6 +133,39 @@ describe('a dish with nothing in it yet', () => {
     })
 })
 
+// Nothing ever entered for what is in it. A product with no allergen row used
+// to read as none of the fourteen, which is the one answer nobody gave.
+describe('a dish with something in it nobody answered for', () => {
+    it('tells the customer to ask staff rather than saying it has none', async () => {
+        answer({ ...WHOLE, public_product_allergens: { data: [], error: null } })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        expect(await screen.findByText('Plain Rice')).toBeInTheDocument()
+        expect(screen.getByText('Please ask a member of staff')).toBeInTheDocument()
+        expect(screen.queryByText('No declared allergens')).toBeNull()
+    })
+
+    // A pot has nothing to declare. The view says which section a product is
+    // in so the page can tell the two apart.
+    it('still vouches for a dish whose only unanswered part is its pot', async () => {
+        answer({
+            ...WHOLE,
+            public_menu_item_components: { data: [
+                { id: 'k1', menu_item_id: 'm1', product_id: 'p1' },
+                { id: 'k2', menu_item_id: 'm1', product_id: 'pot' },
+            ], error: null },
+            public_products: { data: [
+                { id: 'p1', name: 'Rice', is_mix: false, section: 'Dry' },
+                { id: 'pot', name: 'Dip Pot', is_mix: false, section: 'Packaging' },
+            ], error: null },
+        })
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+
+        expect(await screen.findByText('No declared allergens')).toBeInTheDocument()
+        expect(screen.queryByText('Please ask a member of staff')).toBeNull()
+    })
+})
+
 describe('the allergen page when one read fails', () => {
     it.each([
         'public_product_allergens',

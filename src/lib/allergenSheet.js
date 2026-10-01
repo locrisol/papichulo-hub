@@ -1,4 +1,6 @@
-import { deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens } from '@/lib/allergens'
+import {
+    deriveMenuItemAllergens, deriveProductAllergens, emptyAllergens, neverEntered, neverEnteredInDish,
+} from '@/lib/allergens'
 import { toISODate, todayISO, dayMonth, addMonths } from '@/lib/dates'
 
 // The rows of the allergen sheet for one category.
@@ -63,6 +65,13 @@ function everythingArrived(items, components, products) {
         && components.every(c => (products || []).some(p => p.id === c.product_id))
 }
 
+// And whether everything it was worked out from was ever answered. A product
+// nobody entered allergens for reads as none of the fourteen to the
+// derivation, which is the one answer nobody gave. See neverEntered.
+function everythingAnswered(components, products, recipeLines, allergens) {
+    return neverEnteredInDish(components, products || [], recipeLines || [], allergens || []).length === 0
+}
+
 export function sheetRows(menuItems, allComponents, products, recipeLines, allergens) {
     const rows = []
 
@@ -95,7 +104,8 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
             key: `item:${name}`,
             name,
             order: orderOf(items),
-            complete: everythingArrived(items, all, products),
+            complete: everythingArrived(items, all, products)
+                && everythingAnswered(all, products, recipeLines, allergens),
             // The choices are dropped by deriveMenuItemAllergens itself, so
             // this hands it everything rather than filtering here as well. Two
             // places doing the same job is two places to forget it.
@@ -132,7 +142,9 @@ export function sheetRows(menuItems, allComponents, products, recipeLines, aller
             // After the dishes. These are the things handed over beside them,
             // and a sauce sitting between two dishes reads as a dish.
             order: Infinity,
-            complete: true,
+            // A sauce nobody entered anything for says so here too, rather
+            // than No declared allergens.
+            complete: neverEntered(product, products, recipeLines || [], allergens || []).length === 0,
             allergens: deriveProductAllergens(product, products, recipeLines, allergens)
                 || emptyAllergens(),
         })

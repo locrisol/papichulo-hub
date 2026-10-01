@@ -195,6 +195,32 @@ describe('a deactivated product still in the recipe', () => {
     })
 })
 
+// Nothing ever entered for something in the dish. The panel said Not Present
+// for all of it, which is the one answer nobody gave.
+describe('a component nobody entered allergens for', () => {
+    const WITH_RICE = [BURRITO[0], { id: 'k4', menu_item_id: 'm1', product_id: 'rice', quantity: 0.2, no_quantity: false }]
+
+    it('is named, and nothing it might carry is called Not Present', async () => {
+        useTables(tablesFor({ menu_item_components: WITH_RICE }))
+        showPage()
+        expect(await screen.findByText(/Allergens have not been entered for Rice/)).toBeInTheDocument()
+        expect(await chip('Milk')).toContain('Not known')
+        expect(await chip('Milk')).not.toContain('Not Present')
+        // What is known is still said.
+        expect(await chip('Gluten')).toContain('Contains')
+    })
+
+    it('says Not Present once everything in the dish was answered', async () => {
+        useTables(tablesFor({
+            menu_item_components: WITH_RICE,
+            product_allergens: [...tablesFor().product_allergens, answered('rice')],
+        }))
+        showPage()
+        expect(await chip('Milk')).toContain('Not Present')
+        expect(screen.queryByText(/Allergens have not been entered/)).toBeNull()
+    })
+})
+
 // Its old price is still on it. The menu items list read every product and
 // costed the dish from that price while this page could not find it, so the
 // same dish had a margin on one screen and none on the other.

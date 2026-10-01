@@ -442,6 +442,14 @@ maybe('what each role can see and do', () => {
             if (places?.length) {
                 expect(Object.keys(places[0]).sort()).toEqual(['id', 'name', 'slug'])
             }
+
+            // Since 032, the section, so the page can tell a food product
+            // nobody entered allergens for from a dip pot. Nothing about
+            // buying or counting it.
+            const { data: products } = await anon.from('public_products').select('*').limit(1)
+            if (products?.length) {
+                expect(Object.keys(products[0]).sort()).toEqual(['id', 'is_mix', 'name', 'section'])
+            }
         })
 
         // Reading them is the whole point; changing anything through them is
