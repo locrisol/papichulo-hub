@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -130,41 +130,80 @@ export default function CalendarPage() {
         : (view === 'week' ? addDays(weekStart, 6) : addDays(weekStartOf(viewMonth), 41))
 
 
+    // A reload after the Ticketmaster check swaps the listings underneath what
+    // is on screen rather than blanking it, the same as the roster does after
+    // its first arrival. Set just before that reload and read once by it.
+    const quietly = useRef(false)
+    // The check that is out right now, and for which restaurant, so nothing
+    // asks twice. React runs every effect twice in development, and the second
+    // run waits on the first one's answer rather than sending another.
+    const checking = useRef(null)
+
+    // Ticketmaster at most twice a day. The Arena listing does not change
+    // often enough to justify a call every time somebody opens the page, and
+    // the free tier is generous rather than infinite.
+    //
+    // **After the calendar has drawn, not before it.** It used to be asked
+    // first, so once every twelve hours a manager looked at "Loading the
+    // calendar..." for as long as Ticketmaster took, and for the function's
+    // whole time limit when it hung. What is already in the table is worth
+    // drawing straight away, and the sync is news on top of it.
+    //
+    // Its own effect, so changing the view or the month does not ask again
+    // while the first answer is still out.
+    //
+    // The restaurant, never the venue. The function reads the venue off that
+    // restaurant's own list, so nothing the browser says can point the quota
+    // at a venue of somebody else's choosing.
+    useEffect(() => {
+        if (!activeRestaurant || !canWrite) return undefined
+        const id = activeRestaurant.id
+        const out = checking.current?.id === id ? checking.current.run : null
+        if (!out && !syncIsDue()) return undefined
+        let alive = true
+
+        async function check() {
+            let run = out
+            if (!run) {
+                run = syncEvents(supabase, id)
+                checking.current = { id, run }
+            }
+            setSyncing(true)
+            try {
+                const r = await run
+                markSynced()
+                if (!alive) return
+                if (r.added > 0) {
+                    setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
+                }
+                // Read again whatever it added, and whatever it took off the
+                // waiting list: a reading the feed now covers is dismissed by
+                // the sync, and pressing Keep on it would bring back the very
+                // duplicate the dismissal was there to stop.
+                quietly.current = true
+                setRefresh(n => n + 1)
+            } catch (e) {
+                // A failed sync is not a failed page. What is already in the
+                // table is still worth drawing.
+                if (alive) setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
+            } finally {
+                if (checking.current?.run === run) checking.current = null
+                if (alive) setSyncing(false)
+            }
+        }
+
+        check()
+        return () => { alive = false }
+    }, [activeRestaurant, canWrite])
+
     useEffect(() => {
         if (!activeRestaurant) return undefined
         let alive = true
 
         async function load() {
-            setLoading(true)
+            if (!quietly.current) setLoading(true)
+            quietly.current = false
             setError('')
-
-            // Ticketmaster at most twice a day. The Arena listing does not
-            // change often enough to justify a call every time somebody opens
-            // the page, and the free tier is generous rather than infinite.
-            //
-            // This came over from the Events screen along with everything else.
-            // Deleting that page without carrying the sync would have left the
-            // Arena layer quietly frozen on whatever was last fetched.
-            //
-            // The restaurant, never the venue. The function reads the venue
-            // off that restaurant's own row, so nothing the browser says can
-            // point the quota at a venue of somebody else's choosing.
-            if (canWrite && syncIsDue()) {
-                try {
-                    setSyncing(true)
-                    const r = await syncEvents(supabase, activeRestaurant.id)
-                    markSynced()
-                    if (r.added > 0) {
-                        setNote(`Found ${r.added} new ${r.added === 1 ? 'thing' : 'things'} happening nearby.`)
-                    }
-                } catch (e) {
-                    // A failed sync is not a failed page. What is already in the
-                    // table is still worth drawing.
-                    setError(`Could not check Ticketmaster: ${friendlyError(e)}`)
-                } finally {
-                    setSyncing(false)
-                }
-            }
 
             const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
                 supabase.from('diary_entries').select('*')
