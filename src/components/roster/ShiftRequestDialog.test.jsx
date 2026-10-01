@@ -80,6 +80,40 @@ describe('changing who to ask', () => {
     })
 })
 
+// Only the person asked can answer, so asking somebody with no account left
+// the request waiting on them for good with nobody told.
+describe('somebody with no account', () => {
+    const people = PEOPLE.map(p => ({ ...p, has_login: p.id !== 'cal' }))
+
+    it('is offered under Cannot, and cannot be picked', () => {
+        const onSend = vi.fn()
+        render(
+            <ShiftRequestDialog
+                mine={ANA_WED} theirs={null} meId="ana" weekShifts={WEEK} employees={people}
+                absences={[]} dayNotes={[]} openingHours={null} breakRules={null}
+                onSend={onSend} onClose={() => {}} saving={false}
+            />,
+        )
+        const cal = screen.getByRole('button', { name: /Cal Byrne/ })
+        expect(cal).toBeDisabled()
+        expect(cal).toHaveTextContent('No account')
+    })
+
+    it('cannot be asked for their shift, and says to ask a manager', () => {
+        const onSend = vi.fn()
+        render(
+            <ShiftRequestDialog
+                mine={null} theirs={WEEK[2]} meId="ana" weekShifts={WEEK} employees={people}
+                absences={[]} dayNotes={[]} openingHours={null} breakRules={null}
+                onSend={onSend} onClose={() => {}} saving={false}
+            />,
+        )
+        expect(screen.getByText('Cal Byrne does not have an account, so they cannot answer. Ask a manager instead.'))
+            .toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Send the ask' })).toBeDisabled()
+    })
+})
+
 // Part of a shift has to be part of it. Approving keeps whatever is either
 // side of the hours named, so hours typed outside the shift became hours
 // nobody had been rostered for.

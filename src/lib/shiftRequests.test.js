@@ -247,6 +247,20 @@ describe('shortlist', () => {
         expect(run({ absences: asked }).cannot.find(c => c.person.id === 'cara')).toBeUndefined()
     })
 
+    // Only the person asked can answer, and somebody with no account never
+    // can. The request sat at waiting on them for good, and nobody was told.
+    it('rules out somebody with no account to answer with', () => {
+        const noLogin = people.map(p => (p.id === 'ben' ? { ...p, has_login: false } : { ...p, has_login: true }))
+        const list = run({ employees: noLogin })
+        expect(list.cannot.find(c => c.person.id === 'ben').why).toBe('no_login')
+        expect(list.finishing).toEqual([])
+    })
+
+    // Before the database says either way, nobody is ruled out for it.
+    it('rules nobody out when it is not known who has an account', () => {
+        expect(run().finishing.map(f => f.person.id)).toEqual(['ben'])
+    })
+
     it('never offers the asker themselves', () => {
         const all = run()
         const everyone = [...all.finishing, ...all.free, ...all.cannot]

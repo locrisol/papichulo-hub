@@ -111,7 +111,9 @@ feed has stopped answering, instead of it looking like a quiet fortnight.
 Redeploy `nearby-events` and `read-listings` after it.
 `029` is **not run yet**. It is the roster, swaps and time off after the
 second round of the audit. A swap for part of a shift has to name hours
-inside that shift, because approving one that did not invented hours.
+inside that shift, because approving one that did not invented hours. A swap
+cannot be asked of somebody with no account, who could never answer it, and
+`roster_colleagues` says who has one.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other

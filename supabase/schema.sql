@@ -2261,11 +2261,12 @@ $$;
 
 -- A swap request says what the two people agreed, and only that. A new one
 -- starts as asked, gives a shift of the asker's own and takes one of the
--- person asked, and any part of a shift it names is inside that shift. After
--- that the two of them can answer it or take it back and nothing else. Whose
--- shift is whose is checked when it is made and never at approval, because
--- approving moves the shifts before it marks the request approved; the
--- manager's desk checks it, and the hours, before offering Approve.
+-- person asked, who has an account to answer with, and any part of a shift it
+-- names is inside that shift. After that the two of them can answer it or take
+-- it back and nothing else. Whose shift is whose is checked when it is made
+-- and never at approval, because approving moves the shifts before it marks
+-- the request approved; the manager's desk checks it, and the hours, before
+-- offering Approve.
 CREATE OR REPLACE FUNCTION "public"."shift_request_transition_guard"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_temp'
@@ -2344,6 +2345,16 @@ begin
                and e.restaurant_id = new.restaurant_id
         ) then
             raise exception 'You can only ask somebody at your own restaurant';
+        end if;
+
+        -- Only the person asked can answer, and somebody with no account
+        -- never will, so the request would wait on them for good.
+        if not exists (
+            select 1 from public.employees e
+              join public.users u on u.id = e.user_id and u.is_active
+             where e.id = new.to_employee_id
+        ) then
+            raise exception 'They do not have an account, so they cannot answer. Ask a manager instead.';
         end if;
 
         return new;
@@ -3735,7 +3746,10 @@ CREATE OR REPLACE VIEW "public"."roster_colleagues" AS
     "p"."colour" AS "position_colour",
     "e"."sort_order",
     "e"."started_on",
-    "e"."ended_on"
+    "e"."ended_on",
+    (EXISTS ( SELECT 1
+           FROM "public"."users" "u"
+          WHERE (("u"."id" = "e"."user_id") AND "u"."is_active"))) AS "has_login"
    FROM ("public"."employees" "e"
      LEFT JOIN "public"."positions" "p" ON (("p"."id" = "e"."position_id")))
   WHERE (("e"."restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text"));
@@ -3918,7 +3932,7 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
   WHERE ("is_active" = true);
 
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
-COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
+COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
 
 -- The day each thing on a checklist was last done. The third kind, and the
 -- opposite of the two above: it is a security invoker view, so it reads

@@ -120,6 +120,32 @@ maybe('what the people in a swap can do to it', () => {
         expect(answer, NOT_RUN_029).toMatch(/must be within the shift/)
     })
 
+    // Only the person asked can answer, and somebody with no account never
+    // will. No shift is named, so even without the guard it could never be
+    // saved.
+    it('refuses asking somebody with no account', async () => {
+        const { data, error } = await employee
+            .from('roster_colleagues').select('id, has_login').eq('has_login', false).limit(1)
+        expect(error?.message || '', NOT_RUN_029).toBe('')
+        const nobody = data?.[0]
+        if (!nobody) return console.warn('Everybody at the test restaurant has an account.')
+
+        const answer = await said(employee.from('shift_requests').insert({
+            restaurant_id: restaurantId,
+            from_employee_id: me,
+            to_employee_id: nobody.id,
+        }))
+        expect(answer, NOT_RUN_029).toMatch(/do not have an account/)
+    })
+
+    it('tells staff whether a colleague has an account, and nothing about the account', async () => {
+        const { data, error } = await employee.from('roster_colleagues').select('*').limit(1)
+        expect(error).toBeNull()
+        if (!data?.length) return console.warn('No colleagues to look at.')
+        expect(Object.keys(data[0]), NOT_RUN_029).toContain('has_login')
+        expect(Object.keys(data[0])).not.toContain('user_id')
+    })
+
     it('refuses asking somebody who does not work here', async () => {
         const answer = await said(employee.from('shift_requests').insert({
             restaurant_id: restaurantId,

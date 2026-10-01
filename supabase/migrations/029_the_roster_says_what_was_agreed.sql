@@ -7,7 +7,32 @@
 -- My shifts refuses it now and so does this. Measured from the shift's own
 -- start, so a shift running to midnight or past it is measured the way it runs.
 --
+-- A swap cannot be asked of somebody with no account. Only the person asked
+-- can answer, and somebody who cannot sign in never will, so the request sat
+-- at waiting on them for good and nobody was told. roster_colleagues now says
+-- whether each person has an account, a yes or no and never the account
+-- itself, so My shifts can say so before anybody asks.
+--
 -- Safe to run twice.
+
+create or replace view public.roster_colleagues as
+ select e.id,
+    e.restaurant_id,
+    e.full_name,
+    e.position_id,
+    p.name as position_name,
+    p.colour as position_colour,
+    e.sort_order,
+    e.started_on,
+    e.ended_on,
+    (exists ( select 1
+           from public.users u
+          where u.id = e.user_id and u.is_active)) as has_login
+   from public.employees e
+     left join public.positions p on p.id = e.position_id
+  where e.restaurant_id = public.get_my_restaurant_id() or public.get_my_role() = 'super_admin'::text;
+
+comment on view public.roster_colleagues is 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
 
 create or replace function public.shift_request_transition_guard() returns trigger
     language plpgsql security definer
@@ -87,6 +112,16 @@ begin
                and e.restaurant_id = new.restaurant_id
         ) then
             raise exception 'You can only ask somebody at your own restaurant';
+        end if;
+
+        -- Only the person asked can answer, and somebody with no account
+        -- never will, so the request would wait on them for good.
+        if not exists (
+            select 1 from public.employees e
+              join public.users u on u.id = e.user_id and u.is_active
+             where e.id = new.to_employee_id
+        ) then
+            raise exception 'They do not have an account, so they cannot answer. Ask a manager instead.';
         end if;
 
         return new;

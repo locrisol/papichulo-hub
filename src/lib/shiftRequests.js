@@ -310,7 +310,12 @@ export function hoursChange(request, shifts, breakRules) {
 //
 //   finishing   in that day and free for the hours you are giving
 //   free        nothing on at all
-//   cannot      already working those hours, or down as away
+//   cannot      already working those hours, down as away, or with no account
+//
+// No account is in there because only the person asked can answer, and
+// somebody who cannot sign in never will: the request sat at waiting on them
+// for good and nobody was told. has_login comes from roster_colleagues, and
+// until the database says false nobody is ruled out for it.
 export function shortlist({ date, window, employees, shifts, absences, askerId }) {
     const groups = { finishing: [], free: [], cannot: [] }
 
@@ -321,13 +326,14 @@ export function shortlist({ date, window, employees, shifts, absences, askerId }
             .filter(s => s.employee_id === person.id && s.shift_date === date)
             .sort((a, b) => toMinutes(a.starts_at) - toMinutes(b.starts_at))
 
+        const noLogin = person.has_login === false
         const away = !!wholeDayOn(absences, person.id, date)
         const clash = window
             ? theirs.some(s => overlaps({ from: s.starts_at, to: s.ends_at }, window))
             : false
 
-        if (away || clash) {
-            groups.cannot.push({ person, shifts: theirs, why: away ? 'away' : 'clash' })
+        if (noLogin || away || clash) {
+            groups.cannot.push({ person, shifts: theirs, why: noLogin ? 'no_login' : away ? 'away' : 'clash' })
         } else if (theirs.length === 0) {
             groups.free.push({ person, shifts: theirs })
         } else {

@@ -120,8 +120,15 @@ export default function ShiftRequestDialog({
         return ''
     }
 
+    // Only they can answer, and without an account they never will. Opened off
+    // their shift the shortlist is never shown, so it is said here instead.
+    const askingNobody = employees.find(e => e.id === toEmployeeId)?.has_login === false
+
     const problem = (() => {
         if (!toEmployeeId) return 'Pick who you are asking.'
+        if (askingNobody) {
+            return `${nameOf(toEmployeeId)} does not have an account, so they cannot answer. Ask a manager instead.`
+        }
         return windowSays(givePart, giveShift, giveFrom, giveTo, 'giving')
             || windowSays(takePart, takeShift, takeFrom, takeTo, 'asking for')
     })()
@@ -210,7 +217,7 @@ export default function ShiftRequestDialog({
                         />
                         <Group
                             title="Cannot"
-                            hint="Already on those hours, or down as away."
+                            hint="Already on those hours, down as away, or with no account to answer with."
                             entries={list.cannot}
                             chosen={toEmployeeId}
                             onPick={pickWho}
@@ -385,6 +392,8 @@ function Group({ title, hint, entries, chosen, onPick, hoursOn, colourOf, shut =
                         <span className="ml-auto text-xs text-muted text-right">
                             {entry.why === 'away'
                                 ? <span className={`${badge} bg-gray-200 text-gray-700`}>Not available</span>
+                                : entry.why === 'no_login'
+                                ? <span className={`${badge} bg-gray-200 text-gray-700`}>No account</span>
                                 : entry.shifts.length === 0
                                     ? 'Nothing on'
                                     : entry.shifts.map(s => (
