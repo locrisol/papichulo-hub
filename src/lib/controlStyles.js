@@ -96,6 +96,19 @@ export const compactField =
     'w-full bg-white border border-border rounded-lg px-2 py-2 text-sm text-gray-900 '
     + 'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent'
 
+// A box that is filled in and cannot be typed in: a field locked until Edit is
+// pressed, or a figure that comes from somewhere else, like the total of an
+// invoice read in from the supplier's document.
+//
+// The same box greyed, rather than the value as loose text, so it reads as the
+// field it is. LockedField and the invoice form each had this written out and
+// each said it matched the other, which is the second copy.
+//
+// No width, padding or text size. The caller adds those to match the boxes
+// beside it, and two classes for one property on an element are settled by
+// stylesheet order, not by the order they are written.
+export const lockedField = 'border border-border rounded-lg bg-app-bg text-muted cursor-not-allowed'
+
 // Something went wrong.
 //
 // Red 700 rather than 600, which is what the majority already used and the one

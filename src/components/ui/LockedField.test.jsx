@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import LockedField from './LockedField'
+import { lockedField } from '@/lib/controlStyles'
 
 // A box in a form that is really being typed into, which is the only way to
 // catch this: the bug was that every keystroke was fed back in as the value.
@@ -42,6 +43,13 @@ describe('what is locked and what is not', () => {
         )
         expect(screen.getByRole('textbox', { name: 'First day, locked' }))
             .toHaveValue('17 September 2026')
+    })
+
+    // The greyed box is shared with anything else shown and not typed in, so
+    // the two cannot drift apart.
+    it('is greyed with the shared locked style', () => {
+        render(<Box start="Aoife" />)
+        expect(screen.getByRole('textbox', { name: 'Name, locked' }).className).toContain(lockedField)
     })
 })
 

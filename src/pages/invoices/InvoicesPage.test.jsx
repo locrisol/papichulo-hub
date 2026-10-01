@@ -4,6 +4,7 @@ import { screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockSupabase, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf } from '@/lib/dates'
+import { lockedField } from '@/lib/controlStyles'
 
 // The week's list, and what it says about a document that was read in.
 //
@@ -31,6 +32,22 @@ const tables = {
                 id: 'i3', supplier_id: 's1', invoice_date: DAY, total_amount: 58.2, category: 'packaging',
                 invoice_number: null, document_type: 'invoice', notes: 'typed from the docket',
                 suppliers: { name: 'Hand Typed Ltd' }, invoice_lines: [],
+            },
+            // Read off the paper, line by line.
+            {
+                id: 'i4', supplier_id: 's1', invoice_date: DAY, total_amount: 442.46, category: 'food',
+                invoice_number: '45690932', document_type: 'invoice', entry_method: 'parsed',
+                suppliers: { name: 'Test Supplier' },
+                invoice_lines: [
+                    { category: 'food', line_total: 400, vat_amount: 0, deposit_amount: 0 },
+                    { category: 'packaging', line_total: 34.52, vat_amount: 7.94, deposit_amount: 0 },
+                ],
+            },
+            {
+                id: 'i5', supplier_id: 's1', invoice_date: DAY, total_amount: -22.34, category: 'food',
+                invoice_number: 'C45699999', document_type: 'credit', entry_method: 'parsed',
+                suppliers: { name: 'Test Supplier' },
+                invoice_lines: [{ category: 'food', line_total: -18.16, vat_amount: -4.18, deposit_amount: 0 }],
             },
         ],
         error: null,
@@ -170,5 +187,64 @@ describe('deleting a document with delivery problems on it', () => {
         await pressDelete('Invoice 45448455')
         expect(asked.mock.calls[0][0].message)
             .toBe('It will be taken off the week straight away and off the cost dashboard with it.')
+    })
+})
+
+// A document read in line by line is costed from its lines, on the cost
+// dashboard and the report alike. A total or a category typed over the top of
+// it changed this list and nothing else, so for these the two are fixed, and a
+// shortage goes on Delivery problems where it does come off the week.
+describe('editing a document that was read in', () => {
+    // Each chain the page built for a table, in the order it asked.
+    const updates = () => db.from.mock.results
+        .map(r => r.value)
+        .filter(chain => chain.update.mock.calls.length)
+        .map(chain => chain.update.mock.calls[0][0])
+
+    async function edit(text) {
+        renderWithRouter(<InvoicesPage />)
+        const row = (await screen.findAllByText(text))[1].closest('tr')
+        await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
+        return screen.getByRole('dialog')
+    }
+
+    it('shows the total and the category as fixed, and says where a shortage goes', async () => {
+        const dialog = await edit('Invoice 45690932')
+
+        expect(within(dialog).queryByPlaceholderText('0.00')).not.toBeInTheDocument()
+        expect(within(dialog).queryByRole('button', { name: 'Packaging' })).not.toBeInTheDocument()
+        expect(within(dialog).getByDisplayValue('€442.46')).toBeDisabled()
+        // Greyed the same way as a locked field anywhere else.
+        expect(within(dialog).getByDisplayValue('€442.46').className).toContain(lockedField)
+        expect(within(dialog).getByRole('link', { name: 'Delivery problems' }))
+            .toHaveAttribute('href', '/invoices/claims')
+    })
+
+    it('saves the date and the notes and leaves the total and the category alone', async () => {
+        const dialog = await edit('Invoice 45690932')
+        await userEvent.type(within(dialog).getByPlaceholderText('Optional note'), 'checked')
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(updates()).toHaveLength(1))
+        expect(updates()[0]).toEqual({
+            supplier_id: 's1', invoice_date: DAY, week_start: weekStartOf(DAY), notes: 'checked',
+        })
+    })
+
+    // A credit note is stored below zero, and the rule that a total is above
+    // zero refused every save of one, date and notes included.
+    it('lets a credit note that was read in be corrected', async () => {
+        const dialog = await edit('Credit note C45699999')
+        await userEvent.type(within(dialog).getByPlaceholderText('Optional note'), 'two cases')
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+        await waitFor(() => expect(updates()).toHaveLength(1))
+        expect(updates()[0]).toMatchObject({ notes: 'two cases' })
+        expect(updates()[0]).not.toHaveProperty('total_amount')
+    })
+
+    it('still lets a total typed by hand be corrected', async () => {
+        const dialog = await edit('Hand Typed Ltd')
+        expect(within(dialog).getByPlaceholderText('0.00')).toHaveValue('58.2')
     })
 })

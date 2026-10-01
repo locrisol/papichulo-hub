@@ -170,6 +170,16 @@ export function storedTotals(lines) {
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 }
 
+// Whether an invoice is costed from its lines rather than from its total.
+//
+// The same test the cost view makes: one line with a category, and the
+// header's total and category are not read for the week's cost at all. So
+// typing over either one changed the Invoices list and nothing the cost
+// dashboard or the report is worked out from.
+export function costedByLine(invoice) {
+    return (invoice?.invoice_lines || []).some(l => l.category)
+}
+
 // What an invoice was spent on, category by category, VAT and deposit included.
 //
 // An invoice read off a document knows the answer line by line, and one label

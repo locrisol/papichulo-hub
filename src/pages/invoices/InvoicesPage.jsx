@@ -13,7 +13,7 @@ import InvoiceForm from '@/components/invoices/InvoiceForm'
 import { useConfirm } from '@/context/confirm'
 import Modal from '@/components/ui/Modal'
 import {
-    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn,
+    INVOICE_SUMMARY_CARDS, invoiceCategory, groupByDay, invoiceSplit, mainCategory, spentIn, costedByLine,
 } from '@/lib/invoiceCategories'
 import CategoryBadges from '@/components/invoices/CategoryBadges'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
@@ -37,8 +37,13 @@ function emptyForm() {
 
 // One set of rules for both, so an invoice cannot be edited into a state it
 // could never have been created in.
-function validate(f) {
+//
+// Fixed is a document read in line by line, whose total and category are not
+// on the form to check (see costedByLine). A credit note is one of those, and
+// its total is below zero, so checking it refused every correction to one.
+function validate(f, { fixed = false } = {}) {
     if (!f.supplierId) return 'Pick a supplier'
+    if (fixed) return null
     if (!f.category) return 'Pick a category'
     const amount = parseFloat(f.totalAmount)
     if (isNaN(amount) || amount <= 0) return 'The total has to be a number above zero'
@@ -78,12 +83,15 @@ function deleteWords(waiting, kept) {
 // week_start is worked back out from the date every time rather than kept as it
 // was, so moving an invoice to a different day moves it into the right week too
 // instead of leaving it filed under the old one and wrong on the cost dashboard.
-function invoicePayload(f) {
+//
+// A document read in keeps the total and category it was read with, because
+// the money is costed from its lines and a figure typed over the top would
+// only change this list.
+function invoicePayload(f, { fixed = false } = {}) {
     return {
         supplier_id: f.supplierId,
         invoice_date: f.invoiceDate,
-        total_amount: parseFloat(f.totalAmount),
-        category: f.category,
+        ...(fixed ? {} : { total_amount: parseFloat(f.totalAmount), category: f.category }),
         week_start: weekStartOf(f.invoiceDate),
         notes: f.notes.trim() || null,
     }
@@ -333,18 +341,20 @@ export default function InvoicesPage() {
         e.preventDefault()
         setEditProblem(""); setSuccess("")
 
-        const problem = validate(editForm)
+        const fixed = costedByLine(editingInvoice)
+        const problem = validate(editForm, { fixed })
         if (problem) { setEditProblem(problem); return }
 
         // The same check on the way through. Correcting a date or an amount can
         // land an invoice exactly on top of another one, and itself does not
-        // count, which is what editingId is for.
-        if (!await pastDuplicate(editForm, editingId)) return
+        // count, which is what editingId is for. Not for a document read in:
+        // its number already keeps it from going in twice.
+        if (!fixed && !await pastDuplicate(editForm, editingId)) return
 
         setSaving(true)
         const { error: e1 } = await supabase
             .from('invoices')
-            .update(invoicePayload(editForm))
+            .update(invoicePayload(editForm, { fixed }))
             .eq('id', editingId)
         setSaving(false)
 
@@ -658,6 +668,7 @@ export default function InvoicesPage() {
                             suppliers={suppliers}
                             problem={editProblem}
                             weekStart={weekStartOf(editForm.invoiceDate)}
+                            readIn={costedByLine(editingInvoice) ? editingInvoice : null}
                         />
                     </div>
                 </Modal>

@@ -1,8 +1,11 @@
-import { labelClass, fieldClass, primaryButton } from '@/lib/controlStyles'
+import { Link } from 'react-router-dom'
+import { labelClass, fieldClass, lockedField, primaryButton, hintClass } from '@/lib/controlStyles'
 import { INVOICE_CATEGORIES } from '@/lib/invoiceCategories'
 import { numberField } from '@/lib/numberInput'
 import { shortDate } from '@/lib/dates'
+import { fmtMoney } from '@/lib/format'
 import ErrorBanner from '@/components/ui/ErrorBanner'
+import CategoryBadges from '@/components/invoices/CategoryBadges'
 
 // The add and edit form for an invoice.
 //
@@ -13,6 +16,10 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 //
 // The week is worked out from the invoice date rather than typed, so it always
 // matches the sales week and cannot be set to something that disagrees with it.
+//
+// readIn is a document read in line by line. Its total and category are shown
+// and not offered, because its cost comes from its lines: a total typed over
+// it changed the Invoices list and nothing on the cost dashboard or the report.
 export default function InvoiceForm({
     formData,
     onChange,
@@ -23,6 +30,7 @@ export default function InvoiceForm({
     suppliers,
     problem,
     weekStart,
+    readIn = null,
 }) {
 
     return (
@@ -47,21 +55,25 @@ export default function InvoiceForm({
                     are choosing, and on a phone it is one tap instead of two. */}
                 <div>
                     <label className={labelClass}>Category</label>
-                    <div className="flex flex-wrap gap-2">
-                        {INVOICE_CATEGORIES.map(c => (
-                            <button
-                                key={c.value}
-                                type="button"
-                                onClick={() => onChange('category', c.value)}
-                                aria-pressed={formData.category === c.value}
-                                className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                                    formData.category === c.value ? c.solid : `${c.soft} hover:brightness-95`
-                                }`}
-                            >
-                                {c.label}
-                            </button>
-                        ))}
-                    </div>
+                    {readIn ? (
+                        <CategoryBadges invoice={readIn} />
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {INVOICE_CATEGORIES.map(c => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    onClick={() => onChange('category', c.value)}
+                                    aria-pressed={formData.category === c.value}
+                                    className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                        formData.category === c.value ? c.solid : `${c.soft} hover:brightness-95`
+                                    }`}
+                                >
+                                    {c.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -93,16 +105,39 @@ export default function InvoiceForm({
                 </div>
                 <div>
                     <label className={labelClass}>Total</label>
-                    <input
-                        {...numberField({
-                            value: formData.totalAmount,
-                            onChange: v => onChange('totalAmount', v),
-                        })}
-                        className={`${fieldClass} text-right`}
-                        placeholder="0.00"
-                    />
+                    {/* Greyed the way a locked field is everywhere else, so it
+                        reads as the same box and not as a line of writing. */}
+                    {readIn ? (
+                        <input
+                            type="text"
+                            value={fmtMoney(readIn.total_amount)}
+                            disabled
+                            readOnly
+                            aria-label="Total, from the document"
+                            className={`${lockedField} w-full px-3 py-2.5 text-base text-right`}
+                        />
+                    ) : (
+                        <input
+                            {...numberField({
+                                value: formData.totalAmount,
+                                onChange: v => onChange('totalAmount', v),
+                            })}
+                            className={`${fieldClass} text-right`}
+                            placeholder="0.00"
+                        />
+                    )}
                 </div>
             </div>
+
+            {readIn && (
+                <p className={`${hintClass} mb-3`}>
+                    This was read from the supplier's document, so the total and category come from its
+                    lines. To claim for something missing or overcharged, log it in{' '}
+                    <Link to="/invoices/claims" className="font-semibold text-accent-ink underline">
+                        Delivery problems
+                    </Link>.
+                </p>
+            )}
 
             <div className="mb-3">
                 <label className={labelClass}>Notes</label>
