@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -16,6 +16,7 @@ import { mainCategory } from '@/lib/invoiceCategories'
 import { creditSettles, sentWeeks } from '@/lib/invoiceClaims'
 import { orderByUse, USE_WINDOW_DAYS } from '@/lib/supplierOrder'
 import { codeRow, seenAgain } from '@/lib/priceEvents'
+import { readToDecide } from '@/lib/invoiceReview'
 import {
     card, cardHeader, pageTitle, primaryButton, secondaryButton, hintClass,
 } from '@/lib/controlStyles'
@@ -36,8 +37,16 @@ import StillMissing from '@/components/invoices/StillMissing'
 // one says which restaurant it lands in, which week, and what it comes to split
 // by category, because those are the three things that are invisible
 // afterwards. A file that does not add up cannot be imported at all.
+//
+// **After a batch, Review opens whenever anything is waiting on it**, from this
+// batch or an earlier one (his answers of 30 September). Not while a file is
+// still on the page, because leaving would throw it away: then it says how many
+// lines are waiting and gives the way there.
+
+const ON_REVIEW = 'Below is everything waiting for a decision, from this import and any before it.'
 
 export default function InvoiceImportPage() {
+    const navigate = useNavigate()
     const { user } = useAuth()
     const { activeRestaurant, restaurants } = useRestaurant()
     const restaurantId = activeRestaurant?.id
@@ -47,6 +56,8 @@ export default function InvoiceImportPage() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [said, setSaid] = useState('')
+    // Lines waiting on Review, for the link beside what was said.
+    const [onReview, setOnReview] = useState(0)
     const [known, setKnown] = useState(null)
     const [linking, setLinking] = useState(null)
     const [fillingIn, setFillingIn] = useState(null)
@@ -199,6 +210,7 @@ export default function InvoiceImportPage() {
         setReading(true)
         setError('')
         setSaid('')
+        setOnReview(0)
 
         // One at a time on purpose. Twenty PDF engines at once on a laptop is
         // how a browser tab stops answering, and the whole batch is a few
@@ -260,7 +272,10 @@ export default function InvoiceImportPage() {
     async function importAll() {
         setSaving(true)
         setError('')
+        setSaid('')
+        setOnReview(0)
         let done = 0
+        let failed = null
 
         // The documents go in date order, so a credit note is never written
         // before the invoice it credits and the reference can be resolved as it
@@ -281,17 +296,47 @@ export default function InvoiceImportPage() {
         const seen = new Map()
 
         for (const file of inOrder) {
-            const failed = await writeDocument(file, seen)
-            if (failed) { setError(failed); break }
+            failed = await writeDocument(file, seen)
+            if (failed) break
             done += 1
             setFiles(all => all.filter(f => f.key !== file.key))
         }
 
-        const failedCodes = await writeCodes(seen)
+        failed = failed || await writeCodes(seen)
         setSaving(false)
         readAgain()
-        if (failedCodes) { setError(failedCodes); return }
-        if (done) setSaid(`${done} ${done === 1 ? 'document' : 'documents'} imported.`)
+        const imported = `${done} ${done === 1 ? 'document' : 'documents'} imported.`
+        // Something went wrong part of the way, so it stays where the files
+        // are and says what went in.
+        if (failed) {
+            setError(failed)
+            if (done) setSaid(imported)
+            return
+        }
+        if (done) await thenReview(imported, stillNeeded(cards) - done)
+    }
+
+    // Whether anything is waiting on Review, and Review if it is. `left` is
+    // how many files are still on the page that are worth staying for. Import
+    // waits until every file chosen has been read, and nothing more can be
+    // chosen while it imports, so the cards it was pressed over are all there
+    // are.
+    async function thenReview(already, left) {
+        const { lines, error: e1 } = await readToDecide(restaurantId)
+        if (e1) {
+            setSaid(already)
+            setError(`What is waiting on Review could not be read: ${friendlyError(e1)}`)
+            return
+        }
+        const waiting = lines.length
+        if (waiting && !left) {
+            navigate('/invoices/review', { state: { said: `${already} ${ON_REVIEW}` } })
+            return
+        }
+        setOnReview(waiting)
+        setSaid(waiting
+            ? `${already} ${waiting} ${waiting === 1 ? 'line is' : 'lines are'} waiting on Review.`
+            : `${already} Nothing needs a decision.`)
     }
 
     async function writeCodes(seen) {
@@ -476,6 +521,7 @@ export default function InvoiceImportPage() {
 
         setFillingIn(null)
         readAgain()
+        const left = stillNeeded(cards.filter(f => f.key !== file.key))
         setFiles(all => all.filter(f => f.key !== file.key))
         // The typed row is that document now, number and all, so a credit
         // against it in the same batch stops waiting and settles the claim.
@@ -485,15 +531,17 @@ export default function InvoiceImportPage() {
                 ? { ...h, invoice_number: doc.number, total_amount: documentTotal(doc) }
                 : h)),
         }))
-        setSaid(claim
+        await thenReview(claim
             ? `Filled in. ${claim.amount.toFixed(2)} is on the claims list as a shortage.`
-            : 'Filled in.')
+            : 'Filled in.', left)
         return null
     }
 
     async function run(work) {
         setSaving(true)
         setError('')
+        setSaid('')
+        setOnReview(0)
         const failed = await work()
         setSaving(false)
         if (failed) setError(failed)
@@ -518,7 +566,17 @@ export default function InvoiceImportPage() {
             </div>
 
             {error && <ErrorBanner className="mb-4">{error}</ErrorBanner>}
-            {said && <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">{said}</div>}
+            {said && (
+                <div className="bg-green-50 text-green-700 text-sm rounded-lg p-3 mb-4">
+                    {said}
+                    {onReview > 0 && (
+                        <>
+                            {' '}
+                            <Link to="/invoices/review" className="font-bold underline">Open Review</Link>
+                        </>
+                    )}
+                </div>
+            )}
 
             <div className={`${card} mb-6 overflow-hidden`}>
                 <div className={cardHeader}>The files</div>
@@ -535,7 +593,7 @@ export default function InvoiceImportPage() {
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             type="button"
-                            disabled={!known || reading || stale}
+                            disabled={!known || reading || stale || saving}
                             onClick={() => picker.current?.click()}
                             className={primaryButton()}
                         >
@@ -596,9 +654,13 @@ export default function InvoiceImportPage() {
                             {ready.length === 1 ? 'document' : 'documents'} ready,{' '}
                             {fmtMoney(waiting)} in all.
                         </p>
+                        {/* Not while a file is still being read, or Review could
+                            open over it and it would be lost. Not before the
+                            lists are read again either: the old ones are how a
+                            second batch went wrong. */}
                         <button
                             type="button"
-                            disabled={!ready.length || saving}
+                            disabled={!ready.length || saving || reading || stale}
                             onClick={importAll}
                             className={primaryButton('md', 'good')}
                         >
@@ -640,6 +702,14 @@ function placedNow(file, known) {
     if (!file.doc || !known || file.where?.what !== 'known' || file.blocks?.length) return file
     const place = placeDocument(file.doc, known.held.filter(h => h.supplier_id === file.where.supplierId))
     return { ...file, place, state: stateOf({ where: file.where, place, blocks: file.blocks }) }
+}
+
+// The cards worth staying on the page for. A document already in the Hub has
+// nothing left to do, so a folder with some of last week's in it still opens
+// Review. One that cannot be read or is the other restaurant's is kept, so
+// nobody misses that it did not go in.
+function stillNeeded(cards) {
+    return cards.filter(f => f.state !== 'already_here').length
 }
 
 function stateOf({ where, place, blocks }) {

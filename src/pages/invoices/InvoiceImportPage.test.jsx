@@ -32,7 +32,12 @@ const RICE = line('777001', 'BASMATI RICE 1X5KG', 14.5)
 const BEANS = line('777002', 'BLACK BEANS 1X5KG', 9.2)
 
 let DOCS
-vi.mock('@/lib/pdfText', () => ({ readPdfText: vi.fn(file => Promise.resolve({ items: file.name })) }))
+// A file that takes its time to read, for what can be pressed meanwhile.
+let slow
+vi.mock('@/lib/pdfText', () => ({
+    readPdfText: vi.fn(file => (file.name === 'slow.pdf' ? slow.promise : Promise.resolve())
+        .then(() => ({ items: file.name }))),
+}))
 vi.mock('@/lib/invoiceImport', async () => ({
     ...(await vi.importActual('@/lib/invoiceImport')),
     readDocument: items => DOCS[items] || null,
@@ -164,6 +169,7 @@ beforeEach(() => {
     writes = []
     failing = new Set()
     DOCS = {}
+    slow = { promise: Promise.resolve() }
     tables = {
         supplier_accounts: [{ id: 'a1', supplier_id: 's1', restaurant_id: 'r1', account_no: ACCOUNT }],
         suppliers: [{ id: 's1', name: 'Sysco Ireland', category: 'food', is_active: true }],
@@ -238,5 +244,94 @@ describe('a second batch in the same visit', () => {
             .toBeInTheDocument()
         expect(screen.getByText(/1 document imported/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Choose the PDFs' })).toBeDisabled()
+    })
+})
+
+// His answers of 30 September: after an import Review shows everything
+// waiting, and if anything is waiting it opens, whether this batch left it or
+// an earlier one did.
+describe('after an import', () => {
+    const SAID_ON_REVIEW = 'Below is everything waiting for a decision, from this import and any before it.'
+
+    it('opens Review when the batch left lines to decide', async () => {
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+    })
+
+    it('opens Review when only lines from an earlier import are waiting', async () => {
+        tables.invoices.push({
+            id: 'old', restaurant_id: 'r1', supplier_id: 's1', invoice_number: '44000001',
+            invoice_date: '2026-09-14', document_type: 'invoice', total_amount: 9.2,
+        })
+        tables.invoice_lines.push({ id: 'old-1', invoice_id: 'old', supplier_code: '777002', line_total: 9.2, decision: null })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+    })
+
+    it('stays and says so when nothing needs a decision', async () => {
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [RICE])
+        renderImport()
+        await choose('a.pdf')
+        await importThem()
+        expect(await screen.findByText('1 document imported. Nothing needs a decision.')).toBeInTheDocument()
+    })
+
+    // Leaving would throw away a file that still needs something.
+    it('stays while a file is still on the page, and gives the way to Review', async () => {
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
+        renderImport()
+        await choose('a.pdf', 'junk.pdf')
+        await importThem()
+        expect(await screen.findByText(/1 document imported. 1 line is waiting on Review./)).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Open Review' })).toHaveAttribute('href', '/invoices/review')
+    })
+
+    // Pressed with three of twenty read, Review opened and the other
+    // seventeen were lost without a word.
+    it('waits until every file chosen has been read', async () => {
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
+        DOCS['slow.pdf'] = doc('45000002', '2026-09-29', [RICE])
+        let release
+        slow = { promise: new Promise(resolve => { release = resolve }) }
+        renderImport()
+        await choose('a.pdf', 'slow.pdf')
+        expect(await within(cardOf('a.pdf')).findByText('Ready to import')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Import them' })).toBeDisabled()
+
+        release()
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Import them' })).toBeEnabled())
+    })
+
+    it('opens Review over a document that is already here', async () => {
+        tables.invoices.push({
+            id: 'old', restaurant_id: 'r1', supplier_id: 's1', invoice_number: '44000001',
+            invoice_date: '2026-09-14', document_type: 'invoice', total_amount: 14.5,
+        })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
+        DOCS['old.pdf'] = doc('44000001', '2026-09-14', [RICE])
+        renderImport()
+        await choose('a.pdf', 'old.pdf')
+        expect(await within(cardOf('old.pdf')).findByText('Already here')).toBeInTheDocument()
+        await importThem()
+        expect(await screen.findByText(`On Review: 1 document imported. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
+    })
+
+    it('opens Review once the last file is filled in', async () => {
+        tables.invoices.push({
+            id: 'typed', restaurant_id: 'r1', supplier_id: 's1', invoice_number: null,
+            invoice_date: '2026-09-28', document_type: 'invoice', total_amount: 9.2,
+        })
+        DOCS['a.pdf'] = doc('45000001', '2026-09-28', [BEANS])
+        renderImport()
+        await choose('a.pdf')
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill that one in' }))
+        await userEvent.click(await screen.findByRole('button', { name: 'Fill it in' }))
+        expect(await screen.findByText(`On Review: Filled in. ${SAID_ON_REVIEW}`)).toBeInTheDocument()
     })
 })

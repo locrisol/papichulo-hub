@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase, everyRow } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
@@ -68,14 +68,22 @@ export default function InvoiceReviewPage() {
     const { user } = useAuth()
     const { activeRestaurant } = useRestaurant()
     const confirm = useConfirm()
+    const location = useLocation()
+    const navigate = useNavigate()
     const restaurantId = activeRestaurant?.id
 
     const [data, setData] = useState(null)
     const [error, setError] = useState('')
-    const [said, setSaid] = useState('')
+    // Opened by an import, which says what went in.
+    const [said, setSaid] = useState(() => location.state?.said || '')
     const [busy, setBusy] = useState('')
     const [matching, setMatching] = useState(null)
     const [refresh, setRefresh] = useState(0)
+
+    // Said once. Left in the history, a reload would say it again.
+    useEffect(() => {
+        if (location.state?.said) navigate(location.pathname, { replace: true, state: null })
+    }, [location, navigate])
 
     useEffect(() => {
         if (!restaurantId) return

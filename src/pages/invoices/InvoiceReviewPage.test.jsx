@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { makeQuery, renderWithRouter } from '@/test/helpers'
 
 // Review over lines that were imported some time ago. Invented figures.
@@ -92,5 +93,17 @@ describe('what it knows about each code', () => {
         renderWithRouter(<InvoiceReviewPage />)
         expect(await screen.findByText('Nothing to decide')).toBeInTheDocument()
         expect(screen.queryByText('Never bought before')).toBeNull()
+    })
+})
+
+describe('opened by an import', () => {
+    it('says what went in', async () => {
+        tables.invoice_lines = [line('l1', '777001', 'BASMATI RICE', 14.5)]
+        render(
+            <MemoryRouter initialEntries={[{ pathname: '/invoices/review', state: { said: '3 documents imported.' } }]}>
+                <InvoiceReviewPage />
+            </MemoryRouter>,
+        )
+        expect(await screen.findByText('3 documents imported.')).toBeInTheDocument()
     })
 })
