@@ -61,6 +61,17 @@ describe('what the allergen answer depends on', () => {
     })
 })
 
+describe('today, to the database', () => {
+    // The database's own date is UTC, and the app writes the date the phone
+    // shows. From midnight to one in the morning in summer those are two days,
+    // so waste an employee had just logged vanished from their own list the
+    // moment it was saved. Live agreed with the file, so only this would say.
+    it('is the date in Ireland, never the server date', () => {
+        const code = schema.split('\n').filter(line => !line.trim().startsWith('--')).join('\n')
+        expect(code).not.toMatch(/current_date/i)
+    })
+})
+
 describe('the nightly photo job', () => {
     // It keeps a photo while its round is open, and finds the round from the
     // third folder of the path. Pinned against where the app puts the photo,

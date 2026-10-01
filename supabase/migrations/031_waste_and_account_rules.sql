@@ -1,4 +1,5 @@
--- Who may write waste, found by the audit of 28 September.
+-- Who may write waste, and which day an employee sees, both found by the
+-- audit of 28 September.
 --
 -- Safe to run twice.
 
@@ -37,6 +38,25 @@ create policy "waste_logs_update_delete" on public.waste_logs
         (select public.get_my_role()) = 'super_admin'
         or ((select public.get_my_role()) in ('owner', 'store_manager')
             and restaurant_id = (select public.get_my_restaurant_id()))
+    );
+
+
+-- 2. An employee's waste for today is today in Ireland.
+--
+-- An employee sees what was logged today, so two people do not log the same
+-- dropped tray twice. Today was the database's own date, which is UTC, while
+-- the app writes the date the phone shows. From midnight to one in the
+-- morning in summer those are two different days, so waste logged then
+-- vanished from the list the moment it was saved.
+
+drop policy if exists "waste_logs_select_today" on public.waste_logs;
+create policy "waste_logs_select_today" on public.waste_logs
+    for select
+    to authenticated
+    using (
+        (select public.get_my_role()) = 'employee'
+        and restaurant_id = (select public.get_my_restaurant_id())
+        and log_date = (now() at time zone 'Europe/Dublin')::date
     );
 
 notify pgrst, 'reload schema';

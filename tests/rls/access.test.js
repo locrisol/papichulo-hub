@@ -186,6 +186,18 @@ maybe('what each role can see and do', () => {
             expect(count).toBeGreaterThan(0)
         })
 
+        // Today's, so two people do not log the same thing twice, and since
+        // 031 today is the date in Ireland, which is the date the app writes.
+        // On a day nobody has logged waste there is nothing to look at and it
+        // passes, so it only stops the rule getting wider. Which date counts
+        // as today is pinned in src/test/schema.test.js.
+        it('sees only the waste logged today in Ireland', async () => {
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+            const { data, error } = await employee.from('waste_logs').select('log_date, restaurant_id')
+            expect(error).toBeNull()
+            expect((data || []).filter(w => w.log_date !== today || w.restaurant_id !== ownRestaurantId)).toEqual([])
+        })
+
         it('is refused when writing a MIX recipe', async () => {
             const refused = await writeRefused(employee, 'mix_recipes', {
                 mix_product_id: NOBODY,
