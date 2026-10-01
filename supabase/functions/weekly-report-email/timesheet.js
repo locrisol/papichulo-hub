@@ -172,6 +172,24 @@ function awayOn(absences, employeeId, date) {
     return null
 }
 
+// Only part of the day: somebody who went home sick at three, or came in at
+// twelve after the dentist. The app's own isPartDay, written out again because
+// this folder cannot import it.
+function partOf(away) {
+    return Boolean(away && (away.can_work_from || away.can_work_to))
+}
+
+// What a day away is called. A part day says so, or a day with six hours
+// worked on it reads as a day off sick. The plain text half uses it whole; the
+// HTML half puts the label in a mark and the part of the day after it, see
+// awayLine. The PDF uses the app's own copy, and a test holds the two to the
+// same words.
+export function awayWords(day) {
+    const look = AWAY_LOOK[day?.away]
+    if (!look) return ''
+    return day.part ? `${look.label}, part of the day` : look.label
+}
+
 // One person's pay period, worked out here rather than trusted from the caller.
 //
 // The function reads the rows out of the database and hands them over as they
@@ -219,6 +237,7 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
                 // The kind rather than the whole row: nothing downstream needs
                 // the dates of a run, only what this one day was.
                 away: away ? away.kind : null,
+                part: partOf(away),
             }
         }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
 
@@ -226,9 +245,12 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
-        const daysOf = kind => dates.filter(d => {
+        // Whole days and part days apart. Somebody who worked until three and
+        // went home sick was paid for six hours and was sick for part of one
+        // day, and counting that as a day sick tells payroll she lost the lot.
+        const daysOf = (kind, part) => dates.filter(d => {
             const away = awayOn(absences, person.id, d)
-            return away && away.kind === kind
+            return away && away.kind === kind && partOf(away) === part
         }).length
 
         const week = [inWeek(0), inWeek(1)]
@@ -252,8 +274,10 @@ export function personPeriod({ people = [], entries = [], absences = [], dates =
             trial: ofKind('trial'),
             training: ofKind('training'),
             // Days, not hours. The Hub never asks for hours on a sick day.
-            sickDays: daysOf('sick'),
-            unpaidDays: daysOf('unpaid'),
+            sickDays: daysOf('sick', false),
+            unpaidDays: daysOf('unpaid', false),
+            sickParts: daysOf('sick', true),
+            unpaidParts: daysOf('unpaid', true),
         }
     }).filter(person => person.days.length > 0 || person.holiday > 0)
 }
@@ -405,7 +429,8 @@ export function timesheetEmail({
         Clock in and clock out as the till recorded them, to the second.&#32;Worked is week one
         plus week two.&#32;Bank holiday hours are inside it and said again so you can see them.
         Holiday is apart and is not inside anything.&#32;Days off sick and on unpaid leave are
-        counted in days, because no hours are recorded against them.&#32;Hours only: nothing here
+        counted in days, because no hours are recorded against them.&#32;Part of a day is counted
+        as a part day, and any hours worked that day are inside Worked.&#32;Hours only: nothing here
         is money.
     </div>`)}
 
@@ -463,7 +488,9 @@ function marksFor(person) {
     if (person.trial > 0) out.push(mark(KIND_LOOK.trial, `Trial ${hours(person.trial)} h`))
     if (person.training > 0) out.push(mark(KIND_LOOK.training, `Training ${hours(person.training)} h`))
     if (person.sickDays > 0) out.push(mark(AWAY_LOOK.sick, `${plural(person.sickDays, 'day')} sick`))
+    if (person.sickParts > 0) out.push(mark(AWAY_LOOK.sick, `${plural(person.sickParts, 'part day')} sick`))
     if (person.unpaidDays > 0) out.push(mark(AWAY_LOOK.unpaid, `${plural(person.unpaidDays, 'day')} unpaid`))
+    if (person.unpaidParts > 0) out.push(mark(AWAY_LOOK.unpaid, `${plural(person.unpaidParts, 'part day')} unpaid`))
     return out.length
         ? `<div style="padding-top:3px;line-height:1.9;">${out.join('&#32;')}</div>`
         : ''
@@ -527,7 +554,9 @@ function personBlock(person, weeks) {
         person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
         person.training > 0 ? `${hours(person.training)} training` : '',
         person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
+        person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
         person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
+        person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
     ].filter(Boolean).join(' &middot; ')
 
     const band = `<tr><td style="background:${DARK};padding:10px ${SIDE}px;">
@@ -586,9 +615,14 @@ function dayLine(day) {
         </div>`
     }).join('')
 
-    const body = times
+    // A day that has times and is also one of the two counted kinds says so
+    // under the times, on its own line so it never widens the row on a phone.
+    // Without it the summary counted a day nobody could find.
+    const counted = times && day.away && COUNTED_DAYS.includes(day.away) ? awayLine(day) : ''
+
+    const body = (times && times + counted)
         || (day.away && AWAY_LOOK[day.away]
-            ? `<div style="padding-top:2px;">${mark(AWAY_LOOK[day.away])}</div>`
+            ? awayLine(day)
             : `<div style="font-size:13px;color:${MUTED};">Nothing worked</div>`)
 
     // His own words, under the times they belong to and marked as his.
@@ -610,6 +644,16 @@ function dayLine(day) {
             ${day.hours > 0 ? `${hours(day.hours)} h` : ''}
         </td>
     </tr>`
+}
+
+// The mark for a day away. A part day says so after the mark rather than
+// inside it: a mark cannot break, and "At the other restaurant, part of the
+// day" in one piece is wider than a phone gives the mail.
+function awayLine(day) {
+    const part = day.part
+        ? `&#32;<span style="font-size:13px;color:${INK};">part of the day</span>`
+        : ''
+    return `<div style="padding-top:2px;">${mark(AWAY_LOOK[day.away])}${part}</div>`
 }
 
 // What every colour means, once, at the bottom.
@@ -648,7 +692,9 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
             person.trial > 0 ? `${hours(person.trial)} on trial shifts` : '',
             person.training > 0 ? `${hours(person.training)} training` : '',
             person.sickDays > 0 ? `${plural(person.sickDays, 'day')} off sick` : '',
+            person.sickParts > 0 ? `${plural(person.sickParts, 'part day')} off sick` : '',
             person.unpaidDays > 0 ? `${plural(person.unpaidDays, 'day')} unpaid` : '',
+            person.unpaidParts > 0 ? `${plural(person.unpaidParts, 'part day')} unpaid` : '',
         ].filter(Boolean).join(', ')
 
         lines.push(`${person.name}: ${hours(person.worked)} h${apart ? ` (${apart})` : ''}`)
@@ -662,13 +708,16 @@ function asText({ restaurantName, period, weeks, people, T, test, comment }) {
                 const head = `    ${dayWords(day.date)}${day.bankHoliday ? ' (bank holiday)' : ''}`
                 if (!day.spans.length) {
                     const away = day.away && AWAY_LOOK[day.away]
-                    lines.push(`${head}: ${away ? away.label.toLowerCase() : 'nothing worked'}`)
+                    lines.push(`${head}: ${away ? awayWords(day).toLowerCase() : 'nothing worked'}`)
                 }
                 for (const span of day.spans) {
                     const kind = span.kind && KIND_LOOK[span.kind]
                         ? ` (${KIND_LOOK[span.kind].label.toLowerCase()})`
                         : ''
                     lines.push(`${head}: ${clock(span.starts_at)} to ${clock(span.ends_at)}${kind}  ${hours(span.hours)} h`)
+                }
+                if (day.spans.length && COUNTED_DAYS.includes(day.away)) {
+                    lines.push(`      ${awayWords(day).toLowerCase()}`)
                 }
                 for (const words of day.notes) lines.push(`      ${words}`)
             }

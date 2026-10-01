@@ -22,7 +22,7 @@ import { num } from '@/lib/format'
 import { spanHours, toSeconds } from '@/lib/clock'
 import { toMinutes, shiftMinutes } from '@/lib/roster'
 import {
-    wholeDayOn, absenceDays, holidayHoursInWeek, kindOf as absenceKind,
+    wholeDayOn, absenceDays, holidayHoursInWeek, isPartDay, kindOf as absenceKind,
 } from '@/lib/absences'
 import { bankHolidayOn } from '@/lib/bankHolidays'
 
@@ -591,6 +591,14 @@ export const BANK_LOOK = { label: 'Bank holiday', ink: '#8A6A18', wash: '#FBF4E2
 // meant to be keyed into a payroll would be noise.
 export const COUNTED_DAYS = ['sick', 'unpaid']
 
+// What a day's mark says. A part day says so, or a day with six hours worked
+// on it reads as a day off sick. Copied into the function like the marks are.
+export function awayWords(day) {
+    const look = AWAY_LOOK[day?.away]
+    if (!look) return ''
+    return day.part ? `${look.label}, part of the day` : look.label
+}
+
 // The same fortnight the mail works out, worked out again here.
 //
 // **Deliberately a second implementation**, the same as the bank holidays are:
@@ -635,6 +643,7 @@ export function personPeriod({
                 hours: spans.reduce((t, e) => t + num(e.hours), 0),
                 bankHoliday: Boolean(bankHolidayOn(date)),
                 away: away ? away.kind : null,
+                part: isPartDay(away),
             }
         }).filter(day => day.spans.length > 0 || day.notes.length > 0 || day.away)
 
@@ -642,9 +651,12 @@ export function personPeriod({
         const ofKind = kind => days.reduce((t, d) => (
             t + d.spans.reduce((n, s) => (s.kind === kind ? n + num(s.hours) : n), 0)
         ), 0)
-        const daysOf = kind => dates.filter(d => {
+        // Whole days and part days apart. Somebody who worked until three and
+        // went home sick was paid for six hours and was sick for part of one
+        // day, and counting that as a day sick tells payroll she lost the lot.
+        const daysOf = (kind, part) => dates.filter(d => {
             const away = awayOn(person.id, d)
-            return away && away.kind === kind
+            return away && away.kind === kind && isPartDay(away) === part
         }).length
 
         const week = [inWeek(0), inWeek(1)]
@@ -661,8 +673,10 @@ export function personPeriod({
             holiday: holidayHoursInWeek(absences, person.id, dates),
             trial: ofKind('trial'),
             training: ofKind('training'),
-            sickDays: daysOf('sick'),
-            unpaidDays: daysOf('unpaid'),
+            sickDays: daysOf('sick', false),
+            unpaidDays: daysOf('unpaid', false),
+            sickParts: daysOf('sick', true),
+            unpaidParts: daysOf('unpaid', true),
         }
     }).filter(person => person.days.length > 0 || person.holiday > 0)
 }

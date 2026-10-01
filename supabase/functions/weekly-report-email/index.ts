@@ -616,8 +616,10 @@ async function sendTimesheet({
             .select('employee_id, work_date, starts_at, ends_at, hours, kind, note')
             .eq('restaurant_id', forRestaurant)
             .gte('work_date', period).lte('work_date', periodEnd),
+        // The two part day times as well, or somebody who worked until three
+        // and went home sick reads as a whole day off sick.
         admin.from('absences')
-            .select('employee_id, kind, status, starts_on, ends_on, hours')
+            .select('employee_id, kind, status, starts_on, ends_on, hours, can_work_from, can_work_to')
             .eq('restaurant_id', forRestaurant)
             .lte('starts_on', periodEnd).gte('ends_on', period),
     ])

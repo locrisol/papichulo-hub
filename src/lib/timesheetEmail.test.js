@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
     timesheetEmail, personPeriod, holidayHoursInWeek, bankHolidays, bankHolidayOn,
     clock, hours, dayWords, weekWords, periodWords, addDays, hoursPdfPath,
-    AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS,
+    AWAY_LOOK, KIND_LOOK, BANK_LOOK, COUNTED_DAYS, awayWords,
 } from '../../supabase/functions/weekly-report-email/timesheet'
 import { readFileSync } from 'node:fs'
 import { bankHolidays as appBankHolidays } from '@/lib/bankHolidays'
@@ -10,7 +10,7 @@ import { ABSENCE_KINDS } from '@/lib/absences'
 import {
     KINDS, personPeriod as appPersonPeriod,
     AWAY_LOOK as appAway, KIND_LOOK as appKind, BANK_LOOK as appBank,
-    COUNTED_DAYS as appCounted,
+    COUNTED_DAYS as appCounted, awayWords as appAwayWords,
 } from '@/lib/timesheet'
 
 // The pay period the design was drawn against: Sunday 25 October to Saturday
@@ -146,6 +146,97 @@ describe('a day off does not disappear any more', () => {
     })
 })
 
+// Worked nine to three and went home sick, put in as off sick with "can work
+// until 15:00". The six hours are worked hours, and the sick part is part of a
+// day. It used to reach the accountant as a whole day sick beside six worked
+// hours, and no day in the breakdown said which one it was.
+describe('going home sick part way through a day', () => {
+    const homeSick = (over = {}) => ([{
+        employee_id: 'e1', kind: 'sick', status: 'approved',
+        starts_on: '2026-11-03', ends_on: '2026-11-03', can_work_to: '15:00:00', ...over,
+    }])
+
+    it('is not counted as a whole day sick', () => {
+        const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
+        expect(first.sickDays).toBe(0)
+        expect(first.sickParts).toBe(1)
+        expect(first.worked).toBeCloseTo(19.38, 2)
+    })
+
+    it('marks the day it happened, beside the times', () => {
+        const [first] = personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES })
+        const day = first.days.find(d => d.date === '2026-11-03')
+        expect(day.away).toBe('sick')
+        expect(day.part).toBe(true)
+        expect(day.spans).toHaveLength(1)
+    })
+
+    // The day must not vanish just because it is only part of one: that is the
+    // 23 September bug coming back by another door.
+    it('keeps a part day with no times on it', () => {
+        const [first] = personPeriod({
+            people: [aoife], entries: [], dates: DATES,
+            absences: homeSick({ can_work_to: null, can_work_from: '15:00:00' }),
+        })
+        expect(first.days.find(d => d.date === '2026-11-03')).toBeTruthy()
+        expect(first.sickParts).toBe(1)
+        expect(first.sickDays).toBe(0)
+    })
+
+    it('counts part of a day of unpaid leave the same way', () => {
+        const [first] = personPeriod({
+            people: [aoife], entries, absences: homeSick({ kind: 'unpaid' }), dates: DATES,
+        })
+        expect(first.unpaidDays).toBe(0)
+        expect(first.unpaidParts).toBe(1)
+    })
+
+    it('says part of a day in the mail, never a whole one', () => {
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({ people: [aoife], entries, absences: homeSick(), dates: DATES }),
+        })
+        expect(mail.html).toContain('1 part day sick')
+        expect(mail.html).not.toContain('1 day sick')
+        expect(mail.html).toMatch(/>Off sick<\/span>&#32;<span[^>]*>part of the day<\/span>/)
+        expect(mail.text).toContain('off sick, part of the day')
+    })
+
+    // A mark cannot break. "At the other restaurant, part of the day" in one
+    // piece is wider than his phone gives the mail, and one line too wide is
+    // what makes the Gmail app shrink every box in it.
+    it('never makes a mark longer than the longest label', () => {
+        const looks = [...Object.values(AWAY_LOOK), ...Object.values(KIND_LOOK), BANK_LOOK]
+        const longest = Math.max(...looks.map(look => look.label.length))
+        const mail = timesheetEmail({
+            restaurantName: 'Point Campus',
+            periodStart: PERIOD,
+            people: personPeriod({
+                people: [aoife], entries, dates: DATES,
+                absences: [...homeSick(), {
+                    employee_id: 'e1', kind: 'lent', status: 'approved',
+                    starts_on: '2026-10-29', ends_on: '2026-10-29', can_work_from: '15:00:00',
+                }],
+            }),
+        })
+        const marks = [...mail.html.matchAll(/<span style="display:inline-block;[^"]*">([^<]*)<\/span>/g)]
+            .map(found => found[1])
+        expect(marks).toContain('At the other restaurant')
+        for (const words of marks) expect(words.length).toBeLessThanOrEqual(longest)
+    })
+
+    // The parity test hands both copies the same rows, so it cannot see this:
+    // the function reads its own, and without these two columns every part
+    // day it read would be a whole one.
+    it('is read with the hours it covers', () => {
+        const source = readFileSync('supabase/functions/weekly-report-email/index.ts', 'utf8')
+        const read = /from\('absences'\)\s*\.select\('([^']*)'\)/.exec(source)
+        expect(read?.[1]).toContain('can_work_from')
+        expect(read?.[1]).toContain('can_work_to')
+    })
+})
+
 describe('a trial and a training day', () => {
     const trial = [shift({
         employee_id: 'e1', work_date: '2026-10-29', kind: 'trial',
@@ -191,6 +282,15 @@ describe('the marks match the ones on the screen', () => {
         expect(KIND_LOOK).toEqual(appKind)
         expect(BANK_LOOK).toEqual(appBank)
         expect(COUNTED_DAYS).toEqual(appCounted)
+    })
+
+    it('words a day the same way the paper does, part day or whole', () => {
+        for (const away of Object.keys(AWAY_LOOK)) {
+            for (const part of [false, true]) {
+                expect(awayWords({ away, part })).toBe(appAwayWords({ away, part }))
+            }
+        }
+        expect(awayWords({ away: 'sick', part: true })).toBe('Off sick, part of the day')
     })
 
     it('calls a trial and a training day what the app calls them', () => {
@@ -437,6 +537,11 @@ describe('the browser and the function agree about a period', () => {
         {
             employee_id: 'e1', kind: 'holiday', status: 'requested',
             starts_on: '2026-11-05', ends_on: '2026-11-05', hours: 8,
+        },
+        // Went home sick at three, on a day with a shift on it.
+        {
+            employee_id: 'e1', kind: 'sick', status: 'approved',
+            starts_on: '2026-11-03', ends_on: '2026-11-03', can_work_to: '15:00:00',
         },
     ]
     const withKinds = [

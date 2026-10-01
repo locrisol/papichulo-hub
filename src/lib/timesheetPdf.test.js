@@ -117,6 +117,28 @@ describe('the summary headings fit their own columns', () => {
     })
 })
 
+// Worked nine to three and went home sick. The summary used to say a whole day
+// sick beside six worked hours, and no day on the page said which one.
+describe('a day somebody went home sick part way through', () => {
+    it('says part of the day beside the times, and never a whole day', async () => {
+        const mine = personPeriod({
+            people: [{ id: 'e1', full_name: 'Aoife Byrne' }],
+            entries: [shift({ employee_id: 'e1', work_date: '2026-11-03', starts_at: '09:00:00', ends_at: '15:00:00', hours: 6 })],
+            absences: [{
+                employee_id: 'e1', kind: 'sick', status: 'approved',
+                starts_on: '2026-11-03', ends_on: '2026-11-03', can_work_to: '15:00:00',
+            }],
+            dates: DATES,
+        })
+        const doc = await timesheetPdf({ restaurant, periodStart: PERIOD, people: mine, save: false })
+        const all = Array.from({ length: doc.getNumberOfPages() }, (_, i) => drawnOn(doc, i + 1)).join('')
+
+        expect(all).toContain('OFF SICK, PART OF THE DAY')
+        expect(all).toContain('1 PART DAY SICK')
+        expect(all).not.toContain('1 DAY SICK')
+    })
+})
+
 describe('a person is kept in one piece', () => {
     // The rule the stock take and the allergen sheets already follow. Two days
     // stranded at the foot of a page, with the name overleaf, is a page nobody
