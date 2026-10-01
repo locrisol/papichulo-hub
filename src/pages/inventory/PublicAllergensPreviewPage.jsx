@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, everyRow } from '@/lib/supabase'
 import { sheetRows, everyReadArrived, reprintDue, productsWithARow } from '@/lib/allergenSheet'
 import { stampDate } from '@/lib/dates'
 import { friendlyError } from '@/lib/errors'
@@ -164,18 +164,22 @@ export default function PublicAllergensPreviewPage() {
     // All six or nothing. It used to print whatever arrived, and a failed read
     // of the allergens came out as a grid with no marks in it, which reads as
     // none of the fourteen. That paper sits on the counter for months.
+    //
+    // And all of each, a page at a time in an order that cannot tie, for the
+    // same reason as the customer page: past a thousand lines a dish lost one
+    // and printed whole without its allergens.
     async function readSheet() {
         const [changedRes, ...reads] = await Promise.all([
             // The date the form carries, which is the day anything on it last
             // changed. It was the newest allergen row, which says nothing about
             // a new dish or a changed recipe.
             supabase.rpc('allergens_changed_at'),
-            supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
-            supabase.from('menu_items').select('*').eq('is_active', true).order('name'),
-            supabase.from('menu_item_components').select('*'),
-            supabase.from('products').select('*').order('name'),
-            supabase.from('mix_recipes').select('*'),
-            supabase.from('product_allergens').select('*'),
+            everyRow(() => supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order').order('id')),
+            everyRow(() => supabase.from('menu_items').select('*').eq('is_active', true).order('name').order('id')),
+            everyRow(() => supabase.from('menu_item_components').select('*').order('id')),
+            everyRow(() => supabase.from('products').select('*').order('name').order('id')),
+            everyRow(() => supabase.from('mix_recipes').select('*').order('id')),
+            everyRow(() => supabase.from('product_allergens').select('*').order('product_id')),
         ])
         if (changedRes.error || !everyReadArrived(reads)) return null
 

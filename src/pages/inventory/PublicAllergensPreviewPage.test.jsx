@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockSupabase, renderWithRouter } from '@/test/helpers'
+import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
 
 // The printed allergen sheet, when one of its reads fails.
 //
@@ -13,7 +13,11 @@ import { mockSupabase, renderWithRouter } from '@/test/helpers'
 // arrived.
 
 const db = mockSupabase({})
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 
 vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: { id: 'u1', full_name: 'A Manager', role: 'store_manager' } }) }))
 
@@ -65,15 +69,10 @@ const WHOLE = {
 
 const FAILED = { data: null, error: { message: 'Failed to fetch' } }
 
+// Each read answers the way the API does: a thousand rows at most, or the
+// page asked for. See makeQuery.
 function answer(tables) {
-    db.from.mockImplementation(table => {
-        const chain = {}
-        for (const step of ['select', 'eq', 'order']) chain[step] = vi.fn(() => chain)
-        const result = tables[table] || { data: [], error: null }
-        chain.maybeSingle = vi.fn(() => Promise.resolve(result))
-        chain.then = (res, rej) => Promise.resolve(result).then(res, rej)
-        return chain
-    })
+    db.from.mockImplementation(table => makeQuery(tables[table] || { data: [], error: null }))
 }
 
 // What the two database functions answer: when anything on the sheet last
@@ -159,6 +158,37 @@ describe('printing the allergen sheet', () => {
         await waitFor(() => expect(saved).toHaveLength(1))
         expect(drawnText).toContain('Plain Rice')
         expect(drawnText).toContain('Please ask a member of staff')
+    })
+
+    // The database hands back a thousand rows at most and says nothing when
+    // it stops. The cheese past the first thousand lines was lost, and with
+    // the rice answered the row printed whole with no mark for milk.
+    it('reads every line, so the milk past the first thousand is marked', async () => {
+        answer({
+            ...WHOLE,
+            menu_items: { data: [
+                { id: 'm1', name: 'Plain Rice', category_id: 'c1' },
+                { id: 'm2', name: 'Cheesy Rice', category_id: 'c1' },
+            ], error: null },
+            menu_item_components: { data: [
+                { id: 'a', menu_item_id: 'm2', product_id: 'p1' },
+                ...Array.from({ length: 1000 }, (_, i) => ({ id: `f${i}`, menu_item_id: 'm1', product_id: 'p1' })),
+                { id: 'z', menu_item_id: 'm2', product_id: 'p2' },
+            ], error: null },
+            products: { data: [
+                { id: 'p1', name: 'Rice', is_mix: false },
+                { id: 'p2', name: 'Grated Cheese', is_mix: false },
+            ], error: null },
+            product_allergens: { data: [{ product_id: 'p1' }, { product_id: 'p2', milk: 'contains' }], error: null },
+        })
+        const me = userEvent.setup()
+        renderWithRouter(<PublicAllergensPreviewPage />)
+
+        await me.click(button())
+
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(drawnText).toContain('Cheesy Rice')
+        expect(drawnText).toContain('X')
     })
 
     it('leaves a dish that is whole unmarked', async () => {

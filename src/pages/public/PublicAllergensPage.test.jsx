@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { mockSupabase, renderWithRouter } from '@/test/helpers'
+import { makeQuery, mockSupabase, renderWithRouter } from '@/test/helpers'
 
 // The page a customer opens from the QR code, when one of its reads fails.
 //
@@ -14,7 +14,11 @@ import { mockSupabase, renderWithRouter } from '@/test/helpers'
 // them. One failed read now means no rows at all.
 
 const db = mockSupabase({})
-vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
+// The real everyRow, paging through the mock the way it pages through the API.
+vi.mock('@/lib/supabase', async importOriginal => ({
+    everyRow: (await importOriginal()).everyRow,
+    supabase: new Proxy({}, { get: (_, k) => db[k] }),
+}))
 
 const { default: PublicAllergensPage } = await import('./PublicAllergensPage')
 
@@ -33,15 +37,10 @@ const WHOLE = {
 
 const FAILED = { data: null, error: { message: 'Failed to fetch' } }
 
+// Each read answers the way the API does: a thousand rows at most, or the
+// page asked for. See makeQuery.
 function answer(tables) {
-    db.from.mockImplementation(table => {
-        const chain = {}
-        for (const step of ['select', 'eq', 'order']) chain[step] = vi.fn(() => chain)
-        const result = tables[table] || { data: [], error: null }
-        chain.maybeSingle = vi.fn(() => Promise.resolve(result))
-        chain.then = (res, rej) => Promise.resolve(result).then(res, rej)
-        return chain
-    })
+    db.from.mockImplementation(table => makeQuery(tables[table] || { data: [], error: null }))
 }
 
 // When anything on the sheet last changed, as allergens_changed_at() answers.
@@ -55,6 +54,37 @@ beforeEach(() => {
 })
 
 const ASK_STAFF = /We cannot show allergen information right now\. Please ask a member of staff before ordering\./
+
+// A thousand lines for one dish and two for another, one at each end. The
+// database hands back a thousand rows at most and says nothing when it stops,
+// so the cheese past the first thousand was lost, and with the rice answered
+// the row looked whole with no milk on it.
+const PAST_A_THOUSAND = {
+    ...WHOLE,
+    public_menu_items: { data: [
+        { id: 'm1', name: 'Plain Rice', category_id: 'c1' },
+        { id: 'm2', name: 'Cheesy Rice', category_id: 'c1' },
+    ], error: null },
+    public_menu_item_components: { data: [
+        { id: 'a', menu_item_id: 'm2', product_id: 'p1' },
+        ...Array.from({ length: 1000 }, (_, i) => ({ id: `f${i}`, menu_item_id: 'm1', product_id: 'p1' })),
+        { id: 'z', menu_item_id: 'm2', product_id: 'p2' },
+    ], error: null },
+    public_products: { data: [
+        { id: 'p1', name: 'Rice', is_mix: false },
+        { id: 'p2', name: 'Grated Cheese', is_mix: false },
+    ], error: null },
+    public_product_allergens: { data: [{ product_id: 'p1' }, { product_id: 'p2', milk: 'contains' }], error: null },
+}
+
+describe('a menu past a thousand lines', () => {
+    it('reads every line, so the milk past the first thousand is on the row', async () => {
+        answer(PAST_A_THOUSAND)
+        renderWithRouter(<PublicAllergensPage slugOverride="point-campus" />)
+        const row = (await screen.findByText('Cheesy Rice')).closest('button')
+        expect(within(row).getByText('Milk')).toBeInTheDocument()
+    })
+})
 
 describe('the allergen page when everything arrives', () => {
     // The control. Without it the tests below could pass on a page that never
