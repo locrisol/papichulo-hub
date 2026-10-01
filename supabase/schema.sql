@@ -3848,8 +3848,9 @@ ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
 
 -- Everybody who works here reads what is on, because a catering job matters
 -- most to the person who has to make it. Private is the exception and answers
--- only to the person who wrote it.
-CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )))));
+-- only to the person who wrote it, and only while their account is switched
+-- on, the same as every other rule.
+CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL))));
 
 -- Managers and above write. A store manager or an owner can only put an entry
 -- on their own restaurant, so restaurant_ids has to be contained by the one

@@ -1,4 +1,5 @@
--- Staff get their restaurant without its money or its mail addresses.
+-- Staff get their restaurant without its money or its mail addresses, and a
+-- switched off account stops reading its own private diary entries.
 --
 -- Found by the audit of 28 September. Every page an employee opened read the
 -- whole restaurant row, and restaurants_select_own let them: the food, labour
@@ -10,10 +11,10 @@
 -- name, the opening hours, the break and roster rules, and whether city events
 -- are watched. Their policy on the table goes in 034.
 --
--- This one only adds, so it can be run any time before the branch is merged.
--- The site as it is still reads the table and the new one reads the view, so
--- staff can open the Hub with either. 034 takes the table away from them, and
--- is run once the new site is live.
+-- The view only adds, so this can be run any time before the branch is
+-- merged. The site as it is still reads the table and the new one reads the
+-- view, so staff can open the Hub with either. 034 takes the table away from
+-- them, and is run once the new site is live.
 --
 -- Safe to run twice.
 
@@ -35,5 +36,23 @@ comment on view public.staff_restaurants is 'Your restaurant, as far as anybody 
 -- owner. Reading only, and only for people signed in. See 021.
 revoke all on public.staff_restaurants from anon, authenticated, public;
 grant select on public.staff_restaurants to authenticated;
+
+-- A switched off account no longer reads its own private diary entries.
+-- Every other rule refuses an account that is not active, through
+-- get_my_role(), and this one only asked who wrote the entry. A manager who
+-- has left could still read what they kept private. Nobody switched on loses
+-- anything, so this can go in at any time too.
+
+drop policy if exists "diary_entries_select" on public.diary_entries;
+create policy "diary_entries_select" on public.diary_entries
+    for select
+    to authenticated
+    using (
+        (scope = 'all_sites' and (select public.get_my_role()) is not null)
+        or (scope = 'sites' and ((select public.get_my_role()) = 'super_admin'
+            or (select public.get_my_restaurant_id()) = any (restaurant_ids)))
+        or (scope = 'private' and created_by = (select auth.uid())
+            and (select public.get_my_role()) is not null)
+    );
 
 notify pgrst, 'reload schema';

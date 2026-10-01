@@ -159,7 +159,9 @@ branch is merged**, or the new page asks customers to see staff about every
 dish that comes in a pot.
 `033` is **not run yet**. Staff read their restaurant through a new view,
 `staff_restaurants`, with the name, opening hours, break and roster rules and
-nothing else. It only adds, so **run it any time before merging**.
+nothing else. It also stops a switched off account reading its own private
+diary entries; nobody still working loses anything. Neither change breaks the
+site as it is, so **run it any time before merging**.
 `034` is **not run yet**. Staff lose their read of the restaurants table,
 which carries the cost targets, the default hourly rate and the report and
 payroll addresses, and of their own row on the team list, which carries their

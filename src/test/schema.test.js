@@ -140,6 +140,20 @@ describe('what staff are given of their own record on the team', () => {
     })
 })
 
+describe('a switched off account', () => {
+    // get_my_role() answers nothing for an account that is not active, which
+    // is how every rule refuses a leaver the night after their last day. A
+    // rule that only asks auth.uid() skips that check.
+    it('reads none of its own private diary entries', () => {
+        const select = policiesOn('diary_entries')
+            .find(p => p.startsWith('CREATE POLICY "diary_entries_select"')) || ''
+        // Private is the last of the three scopes in the rule.
+        const own = select.slice(select.indexOf(`("scope" = 'private'::"text")`))
+        expect(own, 'found no private scope in diary_entries_select').toContain('"auth"."uid"')
+        expect(own).toContain('( SELECT "public"."get_my_role"() ) IS NOT NULL')
+    })
+})
+
 describe('the nightly photo job', () => {
     // It keeps a photo while its round is open, and finds the round from the
     // third folder of the path. Pinned against where the app puts the photo,
