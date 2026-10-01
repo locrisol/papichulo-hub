@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
-    endpoint, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
+    endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
     isServiceRole, roleOf, refusalFor,
 } from '../../supabase/functions/read-listings/reading'
@@ -456,6 +456,56 @@ describe('what survives the check', () => {
 
     it('copes with an answer that found nothing', () => {
         expect(eventsFrom(answer([]), WHEN).rows).toEqual([])
+    })
+})
+
+// A page still showing last year's "Sat 4th Oct", read in a year when the 4th
+// is a Sunday, comes back as a real date inside the window. The day of the week
+// the page wrote is the one thing that can catch it, and it catches the model's
+// own sums going wrong on "Fri" or "tomorrow" as well.
+describe('the day of the week the page gave', () => {
+    it('drops a row whose day disagrees with its date', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Wrong day', date: '2026-11-21', weekday: 'Fri' },
+            { name: 'Right day', date: '2026-11-21', weekday: 'Sat' },
+            { name: 'Written out', date: '2026-11-20', weekday: 'Friday' },
+            { name: 'Shouted', date: '2026-11-19', weekday: 'THURS.' },
+            { name: 'No day given', date: '2026-11-22' },
+        ]), WHEN)
+        expect(rows.map(r => r.name)).toEqual(['Right day', 'Written out', 'Shouted', 'No day given'])
+    })
+
+    // Dropped, and counted so the log can say so. A model that started working
+    // the day out for itself would otherwise lose true rows with nothing said.
+    it('counts what it dropped for the day', () => {
+        const out = eventsFrom(answer([
+            { name: 'Wrong day', date: '2026-11-21', weekday: 'Fri' },
+            { name: 'Also wrong', date: '2026-11-22', weekday: 'Mon' },
+            { name: 'Right day', date: '2026-11-21', weekday: 'Sat' },
+        ]), WHEN)
+        expect(out.wrongDay).toBe(2)
+        expect(eventsFrom(answer([{ name: 'Right day', date: '2026-11-21', weekday: 'Sat' }]), WHEN).wrongDay).toBe(0)
+    })
+
+    // One day it can read is a day it can check. "Tomorrow" names none, and
+    // "Fri to Sun" names the last day as well as the first.
+    it('leaves alone a day it cannot read for certain', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Tomorrow', date: '2026-11-21', weekday: 'Tomorrow' },
+            { name: 'Weekend', date: '2026-11-20', ends: '2026-11-22', weekday: 'Fri to Sun' },
+        ]), WHEN)
+        expect(rows).toHaveLength(2)
+    })
+
+    // Copied off the page and never worked out. A day the model worked out
+    // for itself would only ever agree with its own date, right or wrong.
+    it('asks for the day as the page wrote it', () => {
+        expect(SCHEMA.properties.events.items.properties.weekday).toBeTruthy()
+        for (const key of ['date', 'title']) {
+            const prompt = promptFor('x', { from: '2026-11-01', to: '2026-12-06', today: '2026-11-01', key })
+            expect(prompt).toContain('day of the week')
+            expect(prompt).toContain('Never work it out')
+        }
     })
 })
 

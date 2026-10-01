@@ -212,7 +212,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     const reading = place.reading_key || 'date'
 
     const answer = await ask(key, promptFor(text, { from, to, today: from, key: reading }))
-    const { rows, refused } = eventsFrom(answer, {
+    const { rows, refused, wrongDay } = eventsFrom(answer, {
         placeId: place.id,
         url: place.page_url,
         from,
@@ -222,6 +222,7 @@ async function readOne(admin: Admin, place: Place, key: string, now: Date) {
     })
 
     if (refused) throw new Error(refused)
+    if (wrongDay) console.log('read-listings', place.name, `${wrongDay} left out, the day of the week did not match the date`)
 
     // **What the feed already knows, the reading does not repeat.**
     //

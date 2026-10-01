@@ -205,6 +205,13 @@ export function joinPages(texts) {
 //
 // Nothing about us goes in it. Not the restaurant, not the place, not why we
 // are asking. The page is public and the question is about the page.
+//
+// **The day of the week is copied, never worked out.** It is there to be
+// checked against the date (see dayOfWeek), and a day the model worked out for
+// itself would only ever agree with its own date, right or wrong.
+const WEEKDAY_RULE = '- If the page gives the day of the week, copy it into weekday exactly as written, '
+    + 'such as Sat. Never work it out yourself.'
+
 export function promptFor(text, { from, to, today, key = 'date' } = {}) {
     if (key === 'title') return filmPrompt(text, { from, to, today })
 
@@ -221,6 +228,7 @@ export function promptFor(text, { from, to, today, key = 'date' } = {}) {
         '  being available are not events, however many days they are listed on.',
         '- Use the date the event happens, not the date it goes on sale.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM, and only if one is stated.',
+        WEEKDAY_RULE,
         '- If several start times are listed for one day, use the earliest.',
         '- If something runs over several days, give the first day and the last day.',
         '- Use the name as written on the page. Do not summarise it.',
@@ -254,6 +262,7 @@ function filmPrompt(text, { from, to, today }) {
         '- The date is the first day that film is listed as showing.',
         '- The time is its earliest showing on that first day, if one is stated.',
         '- Dates are YYYY-MM-DD. Times are 24 hour, HH:MM.',
+        WEEKDAY_RULE,
         '- Use the title as written. Do not add the year, the rating or the format.',
         '- If a film has no date against it anywhere, leave it out.',
         '- Leave ends and where empty.',
@@ -278,6 +287,10 @@ export const SCHEMA = {
                     ends: { type: 'string' },
                     time: { type: 'string' },
                     where: { type: 'string' },
+                    weekday: {
+                        type: 'string',
+                        description: 'The day of the week exactly as the page writes it, or empty if it does not.',
+                    },
                 },
                 required: ['name', 'date'],
             },
@@ -301,6 +314,31 @@ function realDate(value) {
     const d = new Date(`${value}T00:00:00Z`)
     if (isNaN(d)) return false
     return d.toISOString().slice(0, 10) === value
+}
+
+// The day of the week a page wrote, 0 for Sunday as getUTCDay counts, or null.
+//
+// Checked against the date because a date can be real, inside the window and
+// still wrong. A page still showing last year's "Sat 4th Oct" with no year on
+// it is read as this year's 4 October, which is a Sunday, and the model's own
+// sums can slip the same way on "Fri" or "tomorrow". The weekday is the one
+// thing on the page that can catch either.
+//
+// Only one day named is a day that can be checked. "Tomorrow" names none, and
+// "Fri to Sun" names the last day as well as the first, so neither is judged
+// and the row stands on its date as it did before.
+const WEEKDAYS = [
+    /^sun(day)?$/, /^mon(day)?$/, /^tue(s|sday)?$/, /^wed(s|nesday)?$/,
+    /^thu(r|rs|rsday)?$/, /^fri(day)?$/, /^sat(urday)?$/,
+]
+
+function dayOfWeek(text) {
+    const named = new Set(
+        String(text || '').toLowerCase().split(/[^a-z]+/)
+            .map(word => WEEKDAYS.findIndex(day => day.test(word)))
+            .filter(n => n >= 0),
+    )
+    return named.size === 1 ? [...named][0] : null
 }
 
 // A time, and only one whole time.
@@ -403,6 +441,7 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
     const list = Array.isArray(parsed?.events) ? parsed.events : []
     const seen = new Set()
     const rows = []
+    let wrongDay = 0
 
     for (const one of list) {
         if (rows.length >= MOST_ROWS) break
@@ -413,6 +452,18 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
         const date = String(one?.date || '').trim()
         if (!realDate(date)) continue
         if (to && date > to) continue
+
+        // A Saturday on the page that is a Sunday on the calendar is a date
+        // read wrong, and nothing else here would notice. See dayOfWeek.
+        //
+        // Counted, so the log says how many went this way. Models are poor at
+        // working out a weekday, and one that started filling it in itself
+        // would lose true rows here with nothing said.
+        const day = dayOfWeek(one?.weekday)
+        if (day !== null && new Date(`${date}T00:00:00Z`).getUTCDay() !== day) {
+            wrongDay += 1
+            continue
+        }
 
         let ends = String(one?.ends || '').trim()
         if (ends && (!realDate(ends) || ends < date)) ends = ''
@@ -458,7 +509,7 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
         })
     }
 
-    return { rows, refused: '' }
+    return { rows, refused: '', wrongDay }
 }
 
 // ---------------------------------------------------------- who is calling
