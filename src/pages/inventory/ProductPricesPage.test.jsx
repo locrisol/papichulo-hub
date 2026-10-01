@@ -134,4 +134,24 @@ describe('typing a price', () => {
         await waitFor(() => expect(events()).toHaveLength(1))
         expect(events()[0]).toMatchObject({ reason: 'created', price_per_unit: 2.3, previous_per_unit: null })
     })
+
+    // The import saves every code it meets. A price typed here with one of
+    // those codes left the code pointing at nothing, and its line on Review
+    // went on asking.
+    it('points a code the invoices already met at the price typed with it', async () => {
+        tables.product_supplier_prices = []
+        const clicker = open()
+        await clicker.click(await screen.findByRole('button', { name: '+ Add Price' }))
+
+        await clicker.selectOptions(screen.getByRole('combobox'), 's1')
+        await clicker.type(box(screen, 'Supplier Code (optional)'), '483508')
+        await clicker.type(box(screen, 'Price per Case (€)'), '11.5')
+        await clicker.type(box(screen, 'Units per Case (KG)'), '5')
+        await clicker.click(screen.getByRole('button', { name: 'Add Price' }))
+
+        await waitFor(() => expect(written.some(w => w.table === 'supplier_codes')).toBe(true))
+        const price = written.find(w => w.table === 'product_supplier_prices')
+        expect(written.find(w => w.table === 'supplier_codes'))
+            .toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
+    })
 })

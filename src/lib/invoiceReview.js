@@ -9,6 +9,7 @@
 
 import { supabase, everyRow } from '@/lib/supabase'
 import { voidedBy, sentBack } from '@/lib/invoiceClaims'
+import { friendlyError } from '@/lib/errors'
 
 // Every line nobody has decided yet, less the ones that ask nothing.
 //
@@ -67,4 +68,37 @@ export async function readToDecide(restaurantId, { upTo = null } = {}) {
     const error = lines.error || credits.error || notStock.error || null
     if (error) return { lines: null, error }
     return { lines: stillToDecide(lines.data, credits.data, notStock.data), error: null }
+}
+
+// A code the invoices already know, with nothing behind it, means this price
+// from now on.
+//
+// The import saves every code it meets, so a price typed with a code, on the
+// product form or the Prices page, carried the code while the code itself
+// still pointed at nothing: a product made from a line on Review left that
+// line asking under Never bought before. Only a code with no price, and only a
+// price no code means yet, since a price belongs to one code: anything already
+// joined is Review's to move, not a form's.
+//
+// The price is saved by then, so this says what did not happen rather than
+// stopping anything: a sentence, or null.
+export async function claimCode(price, restaurantId) {
+    const code = price?.supplier_code?.trim()
+    if (!code || !price.supplier_id) return null
+    const missed = err => `The price was saved, but invoices with code ${code} will not find it yet: `
+        + `${friendlyError(err)} Match the code on Review instead.`
+
+    const { data: taken, error: readErr } = await supabase.from('supplier_codes')
+        .select('id').eq('price_id', price.id).limit(1)
+    if (readErr) return missed(readErr)
+    if (taken?.length) return null
+
+    const { error: codeErr } = await supabase.from('supplier_codes')
+        .update({ price_id: price.id })
+        .eq('restaurant_id', restaurantId)
+        .eq('supplier_id', price.supplier_id)
+        .eq('supplier_code', code)
+        .is('price_id', null)
+        .eq('ignored', false)
+    return codeErr ? missed(codeErr) : null
 }

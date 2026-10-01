@@ -19,7 +19,7 @@ vi.mock('@/lib/supabase', async () => ({
     supabase: new Proxy({}, { get: (_, k) => db[k] }),
 }))
 
-const { stillToDecide, readToDecide } = await import('./invoiceReview')
+const { stillToDecide, readToDecide, claimCode } = await import('./invoiceReview')
 
 const invoice = (id, date, extra = {}) => ({
     id, invoice_number: `I${id}`, invoice_date: date, supplier_id: 's1',
@@ -121,5 +121,37 @@ describe('reading them', () => {
         const { lines, error } = await readToDecide('r1')
         expect(lines).toBeNull()
         expect(error).toEqual({ message: 'no' })
+    })
+})
+
+describe('a price typed with a code', () => {
+    const price = { id: 'pr9', supplier_id: 's1', supplier_code: ' 777002 ' }
+
+    it('points the code the invoices met at it, if the code means nothing yet', async () => {
+        expect(await claimCode(price, 'r1')).toBeNull()
+        const q = asked.filter(a => a.table === 'supplier_codes')[1].q
+        expect(q.update).toHaveBeenCalledWith({ price_id: 'pr9' })
+        expect(q.eq).toHaveBeenCalledWith('restaurant_id', 'r1')
+        expect(q.eq).toHaveBeenCalledWith('supplier_id', 's1')
+        expect(q.eq).toHaveBeenCalledWith('supplier_code', '777002')
+        expect(q.is).toHaveBeenCalledWith('price_id', null)
+        expect(q.eq).toHaveBeenCalledWith('ignored', false)
+    })
+
+    // A price belongs to one code.
+    it('leaves alone a price a code already means', async () => {
+        tables.supplier_codes = [{ id: 'c1' }]
+        expect(await claimCode(price, 'r1')).toBeNull()
+        expect(asked.filter(a => a.table === 'supplier_codes')).toHaveLength(1)
+    })
+
+    it('does nothing for a price with no code', async () => {
+        expect(await claimCode({ id: 'pr9', supplier_id: 's1', supplier_code: '' }, 'r1')).toBeNull()
+        expect(asked).toHaveLength(0)
+    })
+
+    it('says so when it could not, and where to do it instead', async () => {
+        tables['supplier_codes:error'] = { message: 'Failed to fetch' }
+        expect(await claimCode(price, 'r1')).toMatch(/^The price was saved, but invoices with code 777002 will not find it yet: .* Match the code on Review instead\.$/)
     })
 })

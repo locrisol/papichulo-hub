@@ -782,6 +782,7 @@ function ReviewRow({
                                 code: line.code,
                                 pricePerCase: line.price_per_case,
                                 unitsPerCase: row.wantedUnits,
+                                back: '/invoices/review',
                             })}
                             className={rowButton()}
                         >

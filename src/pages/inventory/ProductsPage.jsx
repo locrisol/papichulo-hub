@@ -23,6 +23,7 @@ import { sectionColour, productInk, DRINK_COLOUR } from '@/lib/sections'
 import ProductForm from '@/components/inventory/ProductForm'
 import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
+import { claimCode } from '@/lib/invoiceReview'
 import { matches } from '@/lib/search'
 import { orderFormats } from '@/lib/countUnits'
 import {
@@ -185,6 +186,9 @@ export default function ProductsPage() {
   // render, and the same snapshot decides that the form should be open at all.
   const [params] = useSearchParams()
   const [fromLink] = useState(() => prefillFrom(params))
+  // Where saving the product the link asked for goes back to. Only that one:
+  // the form closed, the next product added is an ordinary one.
+  const backTo = useRef(fromLink?.back || null)
 
   const [priceForm, setPriceForm] = useState(() => ({ ...EMPTY_PRICE, ...(fromLink?.price || {}) }))
   const [priceErrors, setPriceErrors] = useState({})
@@ -461,7 +465,7 @@ export default function ProductsPage() {
   // The form wrote prices and recorded nothing, so that line stayed where an
   // invoice last left it. typedPriceEvent says when there is nothing to
   // record. The price is saved by then, so a failure here is said on the page
-  // rather than stopping the save.
+  // rather than stopping the save: a sentence, or null.
   async function recordPrice(productId, saved, before) {
     const event = typedPriceEvent({ id: productId }, saved, {
       before,
@@ -469,9 +473,18 @@ export default function ProductsPage() {
       userId: user?.id,
       at: new Date().toISOString(),
     })
-    if (!event) return
+    if (!event) return null
     const { error: eventErr } = await supabase.from('product_price_events').insert(event)
-    if (eventErr) setError(`The price was saved, but the price history was not updated: ${friendlyError(eventErr)}`)
+    return eventErr ? `The price was saved, but the price history was not updated: ${friendlyError(eventErr)}` : null
+  }
+
+  // After a price is saved: its point on the chart, and the code the invoices
+  // know it by (see claimCode). What did not happen, in sentences.
+  async function afterPrice(productId, saved, before) {
+    return [
+      await recordPrice(productId, saved, before),
+      await claimCode(saved, activeRestaurant.id),
+    ].filter(Boolean)
   }
 
   function getSupplierName(supplierId) {
@@ -768,7 +781,8 @@ export default function ProductsPage() {
           return
         }
 
-        await recordPrice(editingProduct.id, saved, existing || null)
+        const notes = await afterPrice(editingProduct.id, saved, existing || null)
+        if (notes.length) setError(notes.join(' '))
 
         if (saved) {
           const packsErr = await replacePacks(saved.id)
@@ -855,6 +869,8 @@ export default function ProductsPage() {
       // with the form, and a product with no allergen row reads to a customer
       // as having none of the fourteen.
       const missed = []
+      // Things that happened after the price, that it is worth knowing did not.
+      const notes = []
 
       // The first price on a product is the preferred one, since it is the
       // only one. The same rule the prices screen uses.
@@ -878,7 +894,7 @@ export default function ProductsPage() {
           // The packs typed in go with it, since they have nothing to hang off.
           if (formats.packs.length > 0) missed.push({ ...packsMissed, error: priceErr })
         } else {
-          await recordPrice(data.id, newPrice, null)
+          notes.push(...await afterPrice(data.id, newPrice, null))
 
           // The packs, which belong to the price rather than to the product and
           // so have to wait for it the same way the recipe waits for the product.
@@ -921,13 +937,21 @@ export default function ProductsPage() {
         }
       }
 
-      if (missed.length > 0) setError(savedButNot(data.name, missed))
+      const said = [missed.length > 0 ? savedButNot(data.name, missed) : '', ...notes].filter(Boolean)
+      if (said.length) setError(said.join(' '))
+      // Read before resetForm, which forgets it.
+      const back = backTo.current
       refresh()
       resetForm()
+      // Made from a line on Review, which is where the rest of that line is
+      // decided. Not when anything did not save: the page says what and
+      // where, and leaving would take that away.
+      if (back && !said.length) navigate(back)
     }
   }
 
   function resetForm() {
+    backTo.current = null
     setFormProblem('')
     setFormData({
       name: '', section: 'Freezer', also_in: [], held_for: '', category: 'ingredient',

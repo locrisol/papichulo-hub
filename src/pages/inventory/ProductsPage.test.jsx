@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { act, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Routes, Route } from 'react-router-dom'
 import { heldQuery, makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { onAllergensChanged } from '@/lib/allergensChanged'
 import { emptyAllergens } from '@/lib/allergens'
@@ -45,6 +46,7 @@ const db = {
         // one row in the table being edited, so it is that one.
         q.update = vi.fn(row => {
             written.push({ table, how: 'update', row })
+            if (refused === table) return makeQuery({ data: null, error: WEAK_SIGNAL })
             return makeQuery({ data: { ...(tables[table] || [])[0], ...row }, error: null })
         })
         q.delete = vi.fn(() => {
@@ -752,5 +754,82 @@ describe('telling the sidebar', () => {
         await me.click((await screen.findAllByRole('button', { name: 'Deactivate' }))[0])
 
         await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    })
+})
+
+// "Make it a new product" on Review. The import had already saved the code
+// with nothing behind it, so the new price carried the code and the code still
+// pointed at nothing: the line went on asking under Never bought before.
+describe('a product made from a line on Review', () => {
+    const LINK = '/catalogue/products?new=1&name=Black%20Beans&section=Dry&unit=KG'
+        + '&supplier=s1&code=777002&perCase=9.2&perPack=5&back=%2Finvoices%2Freview'
+
+    function openIt() {
+        tables.products = []
+        tables.product_supplier_prices = []
+        renderWithRouter(
+            <Routes>
+                <Route path="/catalogue/products" element={<ProductsPage />} />
+                <Route path="/invoices/review" element={<p>On Review</p>} />
+            </Routes>,
+            { route: LINK },
+        )
+        return userEvent.setup()
+    }
+
+    async function makeIt() {
+        const clicker = openIt()
+        const form = within((await screen.findByText('New Product')).parentElement)
+        await clicker.click(form.getByRole('button', { name: 'Add Product' }))
+        return form
+    }
+
+    it('points the code the invoice carried at the new price', async () => {
+        await makeIt()
+        await waitFor(() => expect(written.some(w => w.table === 'supplier_codes')).toBe(true))
+        const price = written.find(w => w.table === 'product_supplier_prices' && w.how === 'insert')
+        expect(price.row).toMatchObject({ supplier_id: 's1', supplier_code: '777002' })
+        const pointed = written.find(w => w.table === 'supplier_codes')
+        expect(pointed).toMatchObject({ how: 'update', row: { price_id: `new${written.indexOf(price) + 1}` } })
+    })
+
+    // A price belongs to one code. One a code already means is left alone
+    // when the product is edited.
+    it('leaves a price alone when a code already means it', async () => {
+        tables.supplier_codes = [{ id: 'c1', price_id: 'pr1', supplier_code: '483508' }]
+        const clicker = userEvent.setup()
+        const dialog = await editPeppers(clicker)
+        await clicker.click(dialog.getByRole('button', { name: 'Save changes' }))
+        // The dialog closes after everything the save does, the code included.
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+        expect(written.filter(w => w.table === 'supplier_codes')).toHaveLength(0)
+    })
+
+    // The page used to go back to Review anyway, and the line was still there
+    // with nothing on screen to say why.
+    it('stays and says so when the code could not be pointed at it', async () => {
+        refused = 'supplier_codes'
+        await makeIt()
+        expect(await screen.findByText(/invoices with code 777002 will not find it yet/)).toBeInTheDocument()
+        expect(screen.queryByText('On Review')).toBeNull()
+    })
+
+    it('goes back to Review for that product only, not the next one added', async () => {
+        const clicker = openIt()
+        const form = within((await screen.findByText('New Product')).parentElement)
+        await clicker.click(form.getByRole('button', { name: 'Cancel' }))
+
+        await clicker.click(await screen.findByRole('button', { name: '+ Add Product' }))
+        const next = within(screen.getByText('New Product').parentElement)
+        await clicker.type(box(next, 'Name'), 'Red Onions')
+        await clicker.click(next.getByRole('button', { name: 'Add Product' }))
+        await waitFor(() => expect(written.some(w => w.table === 'products' && w.how === 'insert')).toBe(true))
+        await waitFor(() => expect(screen.queryByText('New Product')).toBeNull())
+        expect(screen.queryByText('On Review')).toBeNull()
+    })
+
+    it('goes back to Review once it is saved', async () => {
+        await makeIt()
+        expect(await screen.findByText('On Review')).toBeInTheDocument()
     })
 })
