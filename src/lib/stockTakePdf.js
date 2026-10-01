@@ -1,4 +1,4 @@
-import { fmtMoney, fmtQty } from '@/lib/format'
+import { fmtMoney, fmtQty, fmtUnitCost } from '@/lib/format'
 import { countName } from '@/lib/products'
 import { sectionColour, MIX_COLOUR } from '@/lib/sections'
 import { bySection, summarise } from '@/lib/stockTakeSummary'
@@ -610,7 +610,10 @@ export async function exportStockTakePdf({ session, restaurant, products, lines,
                 pdf.setTextColor(40)
             }
             pdf.text(`${fmtQty(qty)} ${product.unit}`, colQtyRight, y, { align: 'right' })
-            pdf.text(unitCost != null ? fmtMoney(unitCost) : '—', colCostRight, y, { align: 'right' })
+            // Four places, like every other unit cost in the Hub. At two a
+            // tortilla at 0.3033 read 0.30 beside a line of 30.33, and the
+            // sheet did not multiply out for anybody checking it by hand.
+            pdf.text(fmtUnitCost(unitCost), colCostRight, y, { align: 'right' })
             pdf.text(fmtMoney(value), colTotalRight, y, { align: 'right' })
             y += 5.4 + nameExtra
 
