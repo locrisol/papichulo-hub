@@ -62,6 +62,31 @@ export function shiftMinutes(startsAt, endsAt) {
     return to > from ? to - from : to + 1440 - from
 }
 
+// When a shift ends, in minutes from the start of the day it began on.
+//
+// Every comparison of an end time goes through this rather than toMinutes on
+// its own. A shift dragged to the right edge of the day view ends at 00:00,
+// and read as nought that is a shift finishing before it starts: the roster
+// printed its finishing time instead of Closing, the calendar feed had it
+// ending that morning, and a swap beside it lost somebody's evening. Measured
+// from the start, the way shiftMinutes already measures a shift's length, it
+// ends at 1440, which is midnight that night.
+export function endMinutes(shift) {
+    const from = toMinutes(shift?.starts_at)
+    if (from < 0) return -1
+    return from + shiftMinutes(shift.starts_at, shift.ends_at)
+}
+
+// When the store shuts, the same way. A late night for a concert can be saved
+// as closing at 00:00 or 01:00, which is that night and not that morning, and
+// read as the morning every shift that day ran past it.
+export function closeMinutes(dayHours) {
+    const open = toMinutes(dayHours?.open)
+    const close = toMinutes(dayHours?.close)
+    if (open < 0 || close < 0) return -1
+    return close <= open ? close + 1440 : close
+}
+
 // What a shift is worth, in hours.
 //
 // The break is not subtracted. Breaks here are paid, which is what the
@@ -131,11 +156,15 @@ export function hoursForDay(openingHours, date) {
 // Both are worth marking. An opening shift is somebody letting themselves in to
 // a dark building, and a closing shift is the one that runs long, which is the
 // whole reason the end time is not printed.
+//
+// The finish and the close are both read as the night they belong to, so a
+// shift to midnight closes a store that shuts at eleven. The calendar feed has
+// its own copy of this in roster-calendar/ics.js, and a test runs both.
 export function shiftEdges(shift, dayHours) {
     if (!dayHours) return { opening: false, closing: false }
     return {
         opening: toMinutes(shift.starts_at) < toMinutes(dayHours.open),
-        closing: toMinutes(shift.ends_at) > toMinutes(dayHours.close),
+        closing: endMinutes(shift) > closeMinutes(dayHours),
     }
 }
 

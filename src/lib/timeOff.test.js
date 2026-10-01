@@ -114,6 +114,14 @@ describe('which shifts it lands on', () => {
     it('is not bothered by a day outside the dates', () => {
         expect(hitsShift(week, shift('2026-09-21', '09:00', '17:00'))).toBe(false)
     })
+
+    // A shift to midnight ends that night. Read as nought, it finished before
+    // twenty past anything and never clashed with anybody leaving early.
+    it('sees a shift to midnight run past somebody finishing at eight', () => {
+        const part = ask({ kind: 'day_off', starts_on: '2026-09-26', ends_on: '2026-09-26', can_work_to: '20:00' })
+        expect(hitsShift(part, shift('2026-09-26', '17:00', '00:00:00'))).toBe(true)
+        expect(hitsShift(part, shift('2026-09-26', '17:00', '01:30'))).toBe(true)
+    })
 })
 
 describe('what a freed day leaves behind', () => {
@@ -142,6 +150,18 @@ describe('what a freed day leaves behind', () => {
         // shouting about.
         expect(isCovered({ date: '2026-09-14', starts_at: '08:30', ends_at: '15:00' },
             [shift('2026-09-14', '11:00', '15:00', 'e2')])).toBe(true)
+    })
+
+    it('counts a shift to midnight as covering the evening', () => {
+        expect(isCovered({ date: '2026-09-26', starts_at: '18:00', ends_at: '22:00' },
+            [shift('2026-09-26', '17:00', '00:00', 'e2')])).toBe(true)
+    })
+
+    it('counts the evening of a gap that ran to midnight as still there to cover', () => {
+        expect(isCovered({ date: '2026-09-26', starts_at: '17:00', ends_at: '00:00' },
+            [shift('2026-09-26', '21:00', '23:00', 'e2')])).toBe(true)
+        expect(isCovered({ date: '2026-09-26', starts_at: '17:00', ends_at: '00:00' },
+            [shift('2026-09-26', '09:00', '13:00', 'e2')])).toBe(false)
     })
 
     it('does not count a shift that finished before the gap started', () => {

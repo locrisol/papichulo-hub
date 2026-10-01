@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fullDayRun, fullDayWords, dayHoursFor } from '@/lib/workRun'
+import { fullDayRun, fullDayWords, dayHoursFor, closedTheNightBefore } from '@/lib/workRun'
 
 const shift = (date, starts_at, ends_at, employee_id = 'e1') =>
     ({ shift_date: date, starts_at, ends_at, employee_id })
@@ -43,11 +43,50 @@ describe('what makes a day a full one', () => {
         expect(isFull([shift(DAY, '10:00', '14:00'), shift(DAY, '17:00', '21:00')])).toBe(true)
     })
 
+    // Read as nought, a finish at midnight was before every closing time
+    // there is, so a day open to midnight was never a full one.
+    it('counts a day that runs to midnight', () => {
+        const late = { hoursFor: () => ({ open: '12:00', close: '23:00' }) }
+        expect(fullDayRun([shift(DAY, '12:00', '00:00')], 'e1', DAY, late).todayIsFull).toBe(true)
+        const midnight = { hoursFor: () => ({ open: '12:00', close: '00:00' }) }
+        expect(fullDayRun([shift(DAY, '12:00', '00:00')], 'e1', DAY, midnight).todayIsFull).toBe(true)
+        expect(fullDayRun([shift(DAY, '12:00', '22:00')], 'e1', DAY, midnight).todayIsFull).toBe(false)
+    })
+
     it('calls nothing full where the day has no opening hours', () => {
         // Rather than quietly meaning something else.
         expect(fullDayRun([openToClose(DAY)], 'e1', DAY, { hoursFor: () => null }).todayIsFull)
             .toBe(false)
         expect(fullDayRun([openToClose(DAY)], 'e1', DAY).todayIsFull).toBe(false)
+    })
+})
+
+// Who closed the night before, said on the day view so opening them at half
+// eight is not decided blind.
+describe('who closed last night', () => {
+    const SUN = '2026-09-27'
+    const SAT = '2026-09-26'
+    const saturday = () => ({ open: '12:00', close: '23:00' })
+
+    it('names somebody who was on until midnight', () => {
+        const closed = closedTheNightBefore([shift(SAT, '17:00', '00:00')], SUN, saturday)
+        expect(closed.e1).toEqual({ starts_at: '17:00', ends_at: '00:00' })
+    })
+
+    // The whole of the day, for somebody on twice. Compared as text, 13:00
+    // came after 00:00 and the day read as finishing at one.
+    it('gives the whole day for somebody on twice, to its real finish', () => {
+        const closed = closedTheNightBefore(
+            [shift(SAT, '09:00', '13:00'), shift(SAT, '17:00', '00:00')], SUN, saturday)
+        expect(closed.e1).toEqual({ starts_at: '09:00', ends_at: '00:00' })
+    })
+
+    it('leaves out somebody who finished before closing', () => {
+        expect(closedTheNightBefore([shift(SAT, '12:00', '20:00')], SUN, saturday)).toEqual({})
+    })
+
+    it('leaves out a closing shift on any other day', () => {
+        expect(closedTheNightBefore([shift('2026-09-25', '17:00', '00:00')], SUN, saturday)).toEqual({})
     })
 })
 

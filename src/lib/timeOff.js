@@ -8,7 +8,7 @@
 //
 // No React in here, so all of it can be tested.
 
-import { toMinutes, shortTime } from '@/lib/roster'
+import { toMinutes, endMinutes, shortTime } from '@/lib/roster'
 import { coversDate, isPartDay } from '@/lib/absences'
 
 // Part of a day rather than the whole of it. It lives with the other questions
@@ -108,9 +108,11 @@ export function hitsShift(absence, shift) {
     if (!coversDate(absence, shift.shift_date)) return false
     if (!isPartDay(absence)) return true
 
+    // The end as the night it belongs to, so a shift to midnight runs past
+    // somebody who can only work until eight. See endMinutes.
     const starts = toMinutes(shift.starts_at)
-    const ends = toMinutes(shift.ends_at)
-    if (starts < 0 || ends < 0) return false
+    const ends = endMinutes(shift)
+    if (starts < 0 || toMinutes(shift.ends_at) < 0) return false
 
     const canFrom = absence.can_work_from ? toMinutes(absence.can_work_from) : -Infinity
     const canTo = absence.can_work_to ? toMinutes(absence.can_work_to) : Infinity
@@ -137,16 +139,18 @@ export function asCleared(shift) {
 // Anybody at all, and not the same length either. Somebody covering four of the
 // six hours is a manager's judgement to make and not a thing to keep shouting
 // about, so any overlap on the day counts as covered.
+//
+// Both ends are read as the night they belong to, the gap's and the shift's,
+// so an evening to midnight is still an evening. See endMinutes.
 export function isCovered(gap, shifts) {
     const starts = toMinutes(gap.starts_at)
-    const ends = toMinutes(gap.ends_at)
+    const ends = endMinutes(gap)
 
     return (shifts || []).some(s => {
         if (s.shift_date !== gap.date) return false
         const from = toMinutes(s.starts_at)
-        const to = toMinutes(s.ends_at)
-        if (from < 0 || to < 0) return false
-        return from < ends && to > starts
+        if (from < 0 || toMinutes(s.ends_at) < 0) return false
+        return from < ends && endMinutes(s) > starts
     })
 }
 

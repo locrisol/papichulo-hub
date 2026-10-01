@@ -15,10 +15,9 @@ import DateStepper from '@/components/ui/DateStepper'
 import {
     sortEmployees, isWorkingOn, nextSortOrder, employeeProblem, employeeNote, employeeRow, EMPTY_EMPLOYEE,
 } from '@/lib/team'
-import { fullDayRun, fullDayWords } from '@/lib/workRun'
+import { fullDayRun, fullDayWords, closedTheNightBefore } from '@/lib/workRun'
 import {
     hoursForDate, totals, publishState, findOverlaps, fmtHours, shortTime, breakFor, shiftHours,
-    shiftEdges,
 } from '@/lib/roster'
 import { checkWeek, findingsByEmployee, aboutThisWeek, overlapFindings } from '@/lib/workRules'
 import { openGaps, asCleared } from '@/lib/timeOff'
@@ -352,39 +351,16 @@ export default function RosterPage() {
         weekHoursByEmployee[s.employee_id] = (weekHoursByEmployee[s.employee_id] || 0) + shiftHours(s)
     }
 
-    // Who closed the night before.
-    //
-    // Said quietly and nothing more. Closing at eleven and opening at half
-    // eight is legal and sometimes it is what somebody wants, so this does not
-    // block it, warn about it or make it any harder to do. It just means you
-    // are not deciding it blind.
-    //
-    // Both lists, because the day before the first day of the week is in the
-    // week before, which is why those are fetched at all.
-    const yesterday = addDays(date, -1)
-    const yesterdayHours = hoursOn(yesterday)
-    // Whether they closed, and the whole of what they did yesterday.
+    // Who closed the night before, and the whole of what they did yesterday.
     //
     // The row says only that they closed. The hover says the shift, because
     // "closed last night" is a different weight of fact depending on whether it
     // was four hours or twelve, and that is the bit you want before deciding to
     // open them this morning.
-    const closedLastNight = {}
-    for (const s of [...shifts, ...nearbyShifts]) {
-        if (s.shift_date !== yesterday) continue
-        if (!shiftEdges(s, yesterdayHours).closing) continue
-        closedLastNight[s.employee_id] = { starts_at: s.starts_at, ends_at: s.ends_at }
-    }
-
-    // Their whole day, for somebody on twice: the first start and the last
-    // finish, so a split day reads as the day it was rather than as its second
-    // half.
-    for (const s of [...shifts, ...nearbyShifts]) {
-        const closed = closedLastNight[s.employee_id]
-        if (!closed || s.shift_date !== yesterday) continue
-        if (s.starts_at < closed.starts_at) closed.starts_at = s.starts_at
-        if (s.ends_at > closed.ends_at) closed.ends_at = s.ends_at
-    }
+    //
+    // Both lists, because the day before the first day of the week is in the
+    // week before, which is why those are fetched at all.
+    const closedLastNight = closedTheNightBefore([...shifts, ...nearbyShifts], date, hoursOn)
     // How many full days in a row each of them is on, said as a finding rather
     // than as another line under their name.
     //

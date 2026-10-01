@@ -352,6 +352,62 @@ describe('shifts that changed hands after the ask', () => {
     })
 })
 
+// A shift that ends at midnight ends that night, and every sum about a request
+// has to read it that way. Read as nought it was a shift finishing before it
+// started, and approving a swap next to it deleted somebody's evening.
+describe('a shift to midnight', () => {
+    const SAT = '2026-09-26'
+    const maria = shift('m1', 'maria', SAT, '17:00:00', '00:00:00')
+    const ben = shift('b1', 'ben', SAT, '12:00:00', '17:00:00')
+
+    it('keeps her evening when Ben gives her his afternoon', () => {
+        const request = { from_employee_id: 'ben', to_employee_id: 'maria', give_shift_id: 'b1' }
+        const { shifts } = weekAfter(request, [maria, ben])
+        const hers = shifts.filter(s => s.employee_id === 'maria')
+
+        expect(hers).toHaveLength(1)
+        expect(hers[0].starts_at).toBe('12:00:00')
+        expect(hers[0].ends_at).toBe('00:00:00')
+        expect(hoursFor(shifts, 'maria')).toBe(12)
+    })
+
+    it('hands over only the part she gives', () => {
+        const request = {
+            from_employee_id: 'maria', to_employee_id: 'ben',
+            give_shift_id: 'm1', give_from: '17:00', give_to: '20:00',
+        }
+        const { shifts } = weekAfter(request, [maria])
+        const hers = shifts.filter(s => s.employee_id === 'maria')
+
+        expect(hers).toHaveLength(1)
+        expect(hers[0].starts_at).toBe('20:00')
+        expect(hers[0].ends_at).toBe('00:00:00')
+        expect(hoursFor(shifts, 'ben')).toBe(3)
+    })
+
+    it('hands over the end of it', () => {
+        const request = {
+            from_employee_id: 'maria', to_employee_id: 'ben',
+            give_shift_id: 'm1', give_from: '20:00', give_to: '00:00',
+        }
+        const { shifts } = weekAfter(request, [maria])
+        expect(hoursFor(shifts, 'maria')).toBe(3)
+        expect(hoursFor(shifts, 'ben')).toBe(4)
+    })
+
+    it('counts somebody on until midnight as busy that evening', () => {
+        const list = shortlist({
+            date: SAT,
+            window: { from: '20:00', to: '22:00' },
+            employees: [{ id: 'maria', full_name: 'Maria' }],
+            shifts: [maria],
+            absences: [],
+            askerId: 'ana',
+        })
+        expect(list.cannot.map(c => c.person.id)).toEqual(['maria'])
+    })
+})
+
 // Ana has 12:00 to 17:00 and is giving part of it. Approving keeps whatever is
 // either side of the hours named, so hours outside the shift came out as hours
 // nobody was rostered for: 15:00 to 19:00 left her 12:00 to 15:00 and gave Ben

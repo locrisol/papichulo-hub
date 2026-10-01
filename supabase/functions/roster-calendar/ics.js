@@ -84,11 +84,18 @@ export function stamp(date, time) {
     return `${String(date).replace(/-/g, '')}T${String(time).slice(0, 5).replace(':', '')}00`
 }
 
-// The day after, so a shift that closes the store can run to midnight.
+// The day after, so a shift that closes the store can run to midnight, and one
+// that runs past midnight ends on the morning it really ends.
 export function nextDay(date) {
     const d = new Date(`${date}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 1)
     return d.toISOString().slice(0, 10)
+}
+
+// "HH:MM" or "HH:MM:SS" to minutes past midnight.
+function minutes(time) {
+    const [h, m] = String(time ?? '').split(':').map(Number)
+    return h * 60 + m
 }
 
 // When a shift starts and finishes in the calendar.
@@ -97,12 +104,16 @@ export function nextDay(date) {
 // roster never prints that time because somebody would leave on it, and putting
 // it in a private diary would be the same promise made quietly. Midnight says
 // the evening is gone without giving anybody a number to hold you to.
+//
+// Any other shift that finishes at or before it starts ends the next morning.
+// Dated the same day, the event finished before it began, which a calendar
+// either drops or shows wrong.
 export function eventTimes(shift) {
     const start = stamp(shift.date, shift.start)
-    const end = shift.closesStore
-        ? stamp(nextDay(shift.date), '00:00')
-        : stamp(shift.date, shift.end)
-    return { start, end }
+    if (shift.closesStore) return { start, end: stamp(nextDay(shift.date), '00:00') }
+
+    const overnight = minutes(shift.end) <= minutes(shift.start)
+    return { start, end: stamp(overnight ? nextDay(shift.date) : shift.date, shift.end) }
 }
 
 // The whole feed.
@@ -180,11 +191,17 @@ export function hoursForDate(openingHours, dayNote, date) {
 }
 
 // Does this shift finish after the store shuts?
+//
+// The same rule as shiftEdges in lib/roster.js, and a test runs both. The
+// finish and the close are read as the night they belong to: a shift to 00:00
+// ends at midnight that night, not that morning, and a store closing at 01:00
+// for a concert closes after the evening rather than before lunch.
 export function closesStore(shift, dayHours) {
     if (!dayHours) return false
-    const minutes = t => {
-        const [h, m] = String(t).split(':').map(Number)
-        return h * 60 + m
-    }
-    return minutes(shift.ends_at) > minutes(dayHours.close)
+    const ends = minutes(shift.ends_at)
+    // Without a start there is nothing to measure the night from, so the end
+    // is taken as it stands.
+    const end = shift.starts_at && ends <= minutes(shift.starts_at) ? ends + 1440 : ends
+    const close = minutes(dayHours.close)
+    return end > (close <= minutes(dayHours.open) ? close + 1440 : close)
 }

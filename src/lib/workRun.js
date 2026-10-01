@@ -1,4 +1,4 @@
-import { shiftHours, toMinutes } from '@/lib/roster'
+import { shiftHours, toMinutes, endMinutes, closeMinutes, shiftEdges } from '@/lib/roster'
 import { addDays } from '@/lib/dates'
 
 // How hard somebody has been going, in the days right before this one.
@@ -26,13 +26,49 @@ import { addDays } from '@/lib/dates'
 // Their earliest start and latest finish, so somebody on twice in a day counts
 // as having covered it. A split shift with the middle out is still a day that
 // began at opening and ended at closing.
+//
+// The finish and the close are read as the night they belong to, so a day
+// open to midnight can be a full one. See endMinutes.
 function coversTheDay(theirShifts, dayHours) {
     if (!dayHours?.open || !dayHours?.close || theirShifts.length === 0) return false
 
     const starts = Math.min(...theirShifts.map(s => toMinutes(s.starts_at)))
-    const ends = Math.max(...theirShifts.map(s => toMinutes(s.ends_at)))
+    const ends = Math.max(...theirShifts.map(endMinutes))
 
-    return starts <= toMinutes(dayHours.open) && ends >= toMinutes(dayHours.close)
+    return starts <= toMinutes(dayHours.open) && ends >= closeMinutes(dayHours)
+}
+
+// Who closed the night before a date, and the whole of their day.
+//
+// Said quietly on the day view and nothing more. Closing at eleven and
+// opening at half eight is legal and sometimes it is what somebody wants, so
+// this does not block it, warn about it or make it any harder to do. It just
+// means you are not deciding it blind.
+//
+// The whole day, for somebody on twice: the first start and the last finish,
+// so a split day reads as the day it was rather than as its second half.
+// Compared by the minute and not as text, because as text 13:00 comes after
+// 00:00 and a day that ran to midnight read as finishing at one.
+export function closedTheNightBefore(shifts, date, hoursFor) {
+    const yesterday = addDays(date, -1)
+    const theirs = (shifts || []).filter(s => s.shift_date === yesterday)
+    const hours = hoursFor ? hoursFor(yesterday) : null
+
+    const closed = {}
+    for (const s of theirs) {
+        if (!shiftEdges(s, hours).closing) continue
+        closed[s.employee_id] = { starts_at: s.starts_at, ends_at: s.ends_at }
+    }
+
+    for (const s of theirs) {
+        const day = closed[s.employee_id]
+        if (!day) continue
+        const ends = endMinutes(day)
+        if (toMinutes(s.starts_at) < toMinutes(day.starts_at)) day.starts_at = s.starts_at
+        if (endMinutes(s) > ends) day.ends_at = s.ends_at
+    }
+
+    return closed
 }
 
 export function shiftsOn(shifts, employeeId, date) {

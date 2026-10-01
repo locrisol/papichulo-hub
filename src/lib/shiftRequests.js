@@ -8,7 +8,7 @@
 // Nothing here writes anything. It works out what the week would look like, and
 // the manager's screen is the only thing allowed to make it true.
 
-import { toMinutes, shiftHours, shiftMinutes, breakFor } from '@/lib/roster'
+import { toMinutes, endMinutes, shiftHours, shiftMinutes, breakFor } from '@/lib/roster'
 import { wholeDayOn } from '@/lib/absences'
 
 export const REQUEST_STATES = {
@@ -99,20 +99,35 @@ export function windowsFit(request, findShift) {
         && fits(request?.take_shift_id, request?.take_from, request?.take_to)
 }
 
+// A stretch of hours as minutes from the start of its day, with a finish at or
+// before the start read as that night. 17:00 to 00:00 is 1020 to 1440, not
+// 1020 to nought, which is a stretch that finishes before it starts. See
+// endMinutes, which does the same for a shift.
+function span(from, to) {
+    const start = toMinutes(from)
+    return [start, start + shiftMinutes(from, to)]
+}
+
 function overlaps(a, b) {
-    return toMinutes(a.from) < toMinutes(b.to) && toMinutes(b.from) < toMinutes(a.to)
+    const [aFrom, aTo] = span(a.from, a.to)
+    const [bFrom, bTo] = span(b.from, b.to)
+    return aFrom < bTo && bFrom < aTo
 }
 
 // What is left of a shift once a window is taken out of it. Nothing, one piece,
 // or two if the window was somewhere in the middle.
+//
+// The window is placed on the shift's own night, so the last hours of a shift
+// that runs past midnight are after its start rather than before it.
 function pieces(shift, window) {
+    const [start, end] = span(shift.starts_at, shift.ends_at)
+    let from = toMinutes(window.from)
+    if (from < start) from += 1440
+    const to = from + shiftMinutes(window.from, window.to)
+
     const out = []
-    if (toMinutes(window.from) > toMinutes(shift.starts_at)) {
-        out.push({ starts_at: shift.starts_at, ends_at: window.from })
-    }
-    if (toMinutes(window.to) < toMinutes(shift.ends_at)) {
-        out.push({ starts_at: window.to, ends_at: shift.ends_at })
-    }
+    if (from > start) out.push({ starts_at: shift.starts_at, ends_at: window.from })
+    if (to < end) out.push({ starts_at: window.to, ends_at: shift.ends_at })
     return out
 }
 
@@ -144,10 +159,13 @@ function joinUp(rows, breakRules, keepIds) {
     if (keepIds?.size) spare.sort((a, b) => (keepIds.has(b) ? 1 : 0) - (keepIds.has(a) ? 1 : 0))
     const out = []
 
+    // Finishes compared as the night they belong to. As plain minutes a shift
+    // to midnight finished at nought, so joining it to the afternoon before it
+    // kept the afternoon's finish and the evening was gone.
     for (const row of rows) {
         const last = out[out.length - 1]
-        if (last && toMinutes(row.starts_at) <= toMinutes(last.ends_at)) {
-            if (toMinutes(row.ends_at) > toMinutes(last.ends_at)) last.ends_at = row.ends_at
+        if (last && toMinutes(row.starts_at) <= endMinutes(last)) {
+            if (endMinutes(row) > endMinutes(last)) last.ends_at = row.ends_at
             continue
         }
         out.push({ ...row, id: null })
@@ -316,10 +334,11 @@ export function shortlist({ date, window, employees, shifts, absences, askerId }
 // means their shift and the offer meet.
 export function gapTo(shifts, window) {
     if (!window || !shifts?.length) return Infinity
+    const [from, to] = span(window.from, window.to)
     let best = Infinity
     for (const s of shifts) {
-        const before = toMinutes(window.from) - toMinutes(s.ends_at)
-        const after = toMinutes(s.starts_at) - toMinutes(window.to)
+        const before = from - endMinutes(s)
+        const after = toMinutes(s.starts_at) - to
         const gap = Math.min(before >= 0 ? before : Infinity, after >= 0 ? after : Infinity)
         if (gap < best) best = gap
     }

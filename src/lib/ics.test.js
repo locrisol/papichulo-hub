@@ -3,7 +3,7 @@ import {
     foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
     hoursForDate as feedHours, closesStore, TZID,
 } from '../../supabase/functions/roster-calendar/ics'
-import { hoursForDate as appHours } from '@/lib/roster'
+import { hoursForDate as appHours, shiftEdges } from '@/lib/roster'
 
 const shift = (extra = {}) => ({
     id: 'abc',
@@ -95,6 +95,18 @@ describe('eventTimes', () => {
         expect(eventTimes(shift({ date: '2026-08-31', closesStore: true })).end)
             .toBe('20260901T000000')
     })
+
+    // A shift that ends at or after midnight ends the next morning. Dated the
+    // same day, the event finished before it started, which a calendar either
+    // drops or shows wrong.
+    it('ends a shift that runs past midnight on the next day', () => {
+        expect(eventTimes(shift({ date: '2026-10-03', start: '18:00', end: '00:00' }))).toEqual({
+            start: '20261003T180000',
+            end: '20261004T000000',
+        })
+        expect(eventTimes(shift({ date: '2026-10-03', start: '18:00', end: '02:00' })).end)
+            .toBe('20261004T020000')
+    })
 })
 
 describe('buildIcs', () => {
@@ -175,6 +187,39 @@ describe('closesStore', () => {
     it('is false when nobody has said when the store shuts', () => {
         expect(closesStore({ ends_at: '23:00' }, null)).toBe(false)
     })
+
+    it('reads a finish at midnight or after as that night', () => {
+        const saturday = { open: '12:00', close: '23:00' }
+        expect(closesStore({ starts_at: '17:00:00', ends_at: '00:00:00' }, saturday)).toBe(true)
+        expect(closesStore({ starts_at: '18:00:00', ends_at: '02:00:00' }, saturday)).toBe(true)
+    })
+})
+
+// Whether a shift closes the store is decided twice: in the app, which prints
+// Closing, and in the feed, which runs the event to midnight. Two answers for
+// the same shift would put a finishing time in somebody's diary that the
+// roster deliberately hides.
+describe('the two copies of the closing rule agree', () => {
+    const saturday = { open: '12:00', close: '23:00' }
+    const late = { open: '12:00', close: '01:00' }
+    const cases = [
+        ['an ordinary finish', '09:00:00', '17:00:00', saturday],
+        ['a finish after closing', '17:00:00', '23:30:00', saturday],
+        ['a finish exactly at closing', '17:00:00', '23:00:00', saturday],
+        ['a finish at midnight', '17:00:00', '00:00:00', saturday],
+        ['a finish after midnight', '18:00:00', '02:00:00', saturday],
+        ['a day shift on a late night', '12:00:00', '17:00:00', late],
+        ['midnight on a late night', '18:00:00', '00:00:00', late],
+        ['after a late close', '18:00:00', '01:30:00', late],
+        ['no hours at all', '17:00:00', '00:00:00', null],
+    ]
+
+    for (const [name, starts_at, ends_at, hours] of cases) {
+        it(name, () => {
+            expect(closesStore({ starts_at, ends_at }, hours))
+                .toBe(shiftEdges({ starts_at, ends_at }, hours).closing)
+        })
+    }
 })
 
 // The rule for a day's hours exists twice: once in the app and once in the file
