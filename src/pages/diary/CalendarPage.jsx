@@ -206,7 +206,10 @@ export default function CalendarPage() {
             setError('')
 
             const [diary, eventRes, notes, places, nearRes, pendRes] = await Promise.all([
-                supabase.from('diary_entries').select('*')
+                // Staff read the view, which leaves out where each entry is
+                // on Google and who wrote it. A manager reads the table,
+                // because Edit needs to know who wrote a private entry.
+                supabase.from(canWrite ? 'diary_entries' : 'staff_diary').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),

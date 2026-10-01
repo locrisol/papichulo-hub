@@ -1,7 +1,6 @@
 -- Staff get only what their screens use, through views that leave the rest
--- out, and a switched off account stops reading its own private diary entries.
--- His rule of 1 October: the database sends staff a cut-down of only what
--- they need to see.
+-- out. His rule of 1 October: the database sends staff a cut-down of only
+-- what they need to see.
 --
 -- Found by the audit of 28 September. Every page an employee opened read the
 -- whole restaurant row, and restaurants_select_own let them: the food, labour
@@ -38,24 +37,6 @@ comment on view public.staff_restaurants is 'Your restaurant, as far as anybody 
 -- owner. Reading only, and only for people signed in. See 021.
 revoke all on public.staff_restaurants from anon, authenticated, public;
 grant select on public.staff_restaurants to authenticated;
-
--- A switched off account no longer reads its own private diary entries.
--- Every other rule refuses an account that is not active, through
--- get_my_role(), and this one only asked who wrote the entry. A manager who
--- has left could still read what they kept private. Nobody switched on loses
--- anything, so this can go in at any time too.
-
-drop policy if exists "diary_entries_select" on public.diary_entries;
-create policy "diary_entries_select" on public.diary_entries
-    for select
-    to authenticated
-    using (
-        (scope = 'all_sites' and (select public.get_my_role()) is not null)
-        or (scope = 'sites' and ((select public.get_my_role()) = 'super_admin'
-            or (select public.get_my_restaurant_id()) = any (restaurant_ids)))
-        or (scope = 'private' and created_by = (select auth.uid())
-            and (select public.get_my_role()) is not null)
-    );
 
 -- Staff read their own delivery problems through my_claims: the notes they
 -- took at the door, with no euros. Once a manager matches one to a line it
@@ -126,5 +107,40 @@ comment on view public.staff_products is 'The products, as far as a count and th
 
 revoke all on public.staff_products from anon, authenticated, public;
 grant select on public.staff_products to authenticated;
+
+-- Staff read what is on through staff_diary: every column the calendar and
+-- My shifts show, and not where each entry is on Google or who wrote it. The
+-- Google ids are what the calendar function acts on, and 034 already takes
+-- the calendar ids themselves off the restaurant for staff. The same entries
+-- as the table gives them today: the group's, their restaurant's, and their
+-- own private ones. Their read of the table goes in 034.
+
+create or replace view public.staff_diary as
+ select d.id,
+    d.kind,
+    d.title,
+    d.scope,
+    d.restaurant_ids,
+    d.starts_on,
+    d.ends_on,
+    d.starts_at,
+    d.ends_at,
+    d.location,
+    d.contact_name,
+    d.contact_detail,
+    d.note,
+    d.status,
+    d.labels,
+    d.google_synced_at
+   from public.diary_entries d
+  where (d.scope = 'all_sites' and (select public.get_my_role()) is not null)
+     or (d.scope = 'sites' and (select public.get_my_restaurant_id()) = any (d.restaurant_ids))
+     or (d.scope = 'private' and d.created_by = (select auth.uid())
+         and (select public.get_my_role()) is not null);
+
+comment on view public.staff_diary is 'What is on, as the calendar and My shifts show it to staff: the group''s entries, your restaurant''s and your own private ones, with who to contact and whether it is on Google. Not where each one is on Google or who wrote it, which stay on diary_entries for the managers and the calendar function. A switched off account reads nothing.';
+
+revoke all on public.staff_diary from anon, authenticated, public;
+grant select on public.staff_diary to authenticated;
 
 notify pgrst, 'reload schema';

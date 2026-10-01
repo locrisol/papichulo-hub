@@ -197,6 +197,15 @@ describe('my own week', () => {
         expect(asked()).not.toContain('restaurants')
     })
 
+    // What is on comes from staff_diary, without where each entry is on
+    // Google or who wrote it.
+    it('reads what is on from the staff view', async () => {
+        renderWithRouter(<MyShiftsPage />)
+        await screen.findByText('Ana Test')
+        expect(asked()).toContain('staff_diary')
+        expect(asked()).not.toContain('diary_entries')
+    })
+
     // The employees row carries their hourly rate and whatever a manager
     // wrote about them in Notes, so it is not read at all.
     it('finds me on the roster without reading the employees table', async () => {

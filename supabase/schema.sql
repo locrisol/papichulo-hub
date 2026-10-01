@@ -3880,10 +3880,13 @@ CREATE POLICY "events_delete_super_admin_only" ON "public"."events" AS RESTRICTI
 ALTER TABLE "public"."diary_entries" ENABLE ROW LEVEL SECURITY;
 
 -- Everybody who works here reads what is on, because a catering job matters
--- most to the person who has to make it. Private is the exception and answers
--- only to the person who wrote it, and only while their account is switched
--- on, the same as every other rule.
-CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids")))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL))));
+-- most to the person who has to make it. Staff read it through staff_diary
+-- (with the views, below), which leaves out where each entry is on Google and
+-- who wrote it, so the group's and the restaurant's entries answer here only
+-- to managers. Private is the exception and answers only to the person who
+-- wrote it, and only while their account is switched on, the same as every
+-- other rule.
+CREATE POLICY "diary_entries_select" ON "public"."diary_entries" FOR SELECT TO "authenticated" USING (((("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))) OR (("scope" = 'sites'::"text") AND ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids"))))) OR (("scope" = 'private'::"text") AND ("created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL))));
 
 -- Managers and above write. A store manager or an owner can only put an entry
 -- on their own restaurant, so restaurant_ids has to be contained by the one
@@ -3921,7 +3924,8 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- addresses its mail goes to. my_claims gives them the delivery problems they
 -- logged without what each was worth, and roster_asks which shifts somebody
 -- has asked about, without the request. staff_products gives them the
--- products without the notes or the weight loss. They read past row level
+-- products without the notes or the weight loss, and staff_diary what is on
+-- without where each entry is on Google. They read past row level
 -- security on purpose and their own where clause is the wall between the two
 -- restaurants, which is covered by the database tests.
 --
@@ -4039,6 +4043,29 @@ CREATE OR REPLACE VIEW "public"."staff_products" AS
     "p"."is_active"
    FROM "public"."products" "p"
   WHERE (( SELECT "public"."get_my_role"() ) IS NOT NULL);
+
+-- The same entries the table gave staff before 034: the group's, their
+-- restaurant's and their own private ones, and nothing for an account
+-- switched off.
+CREATE OR REPLACE VIEW "public"."staff_diary" AS
+ SELECT "d"."id",
+    "d"."kind",
+    "d"."title",
+    "d"."scope",
+    "d"."restaurant_ids",
+    "d"."starts_on",
+    "d"."ends_on",
+    "d"."starts_at",
+    "d"."ends_at",
+    "d"."location",
+    "d"."contact_name",
+    "d"."contact_detail",
+    "d"."note",
+    "d"."status",
+    "d"."labels",
+    "d"."google_synced_at"
+   FROM "public"."diary_entries" "d"
+  WHERE ((("d"."scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)) OR (("d"."scope" = 'sites'::"text") AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("d"."restaurant_ids"))) OR (("d"."scope" = 'private'::"text") AND ("d"."created_by" = ( SELECT "auth"."uid"() )) AND (( SELECT "public"."get_my_role"() ) IS NOT NULL)));
 
 -- Yours and at your restaurant, so an account switched off reads nothing,
 -- the same as every rule that asks get_my_role.
@@ -4228,6 +4255,7 @@ COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant someb
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';
 COMMENT ON VIEW "public"."my_claims" IS 'The delivery problems you logged at the door, at your restaurant, as Delivery problems shows them to staff: what it was, how many, the docket and whether it is still waiting. Not what it was worth, what came back or the invoice it was matched to, which stay on invoice_line_claims for the managers. A switched off account reads nothing.';
+COMMENT ON VIEW "public"."staff_diary" IS 'What is on, as the calendar and My shifts show it to staff: the group''s entries, your restaurant''s and your own private ones, with who to contact and whether it is on Google. Not where each one is on Google or who wrote it, which stay on diary_entries for the managers and the calendar function. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_products" IS 'The products, as far as a count and the Waste page need them: the name, where it is kept, its unit, whether it is a MIX and what a batch makes, whose it is and whether it is still in use. Not the notes, the weight loss, what one piece weighs or how often it is counted, which stay on the products table for the managers. A switched off account reads nothing.';
 COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
@@ -4259,6 +4287,7 @@ revoke all on public.staff_restaurants        from anon, authenticated, public;
 revoke all on public.my_claims                from anon, authenticated, public;
 revoke all on public.roster_asks              from anon, authenticated, public;
 revoke all on public.staff_products           from anon, authenticated, public;
+revoke all on public.staff_diary              from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
@@ -4269,6 +4298,7 @@ grant select on public.staff_restaurants        to authenticated;
 grant select on public.my_claims                to authenticated;
 grant select on public.roster_asks              to authenticated;
 grant select on public.staff_products           to authenticated;
+grant select on public.staff_diary              to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;

@@ -291,6 +291,34 @@ describe('what staff are given of the products', () => {
     })
 })
 
+describe('what staff are given of the diary', () => {
+    // What is on, through staff_diary, without where each entry is on Google
+    // or who wrote it. The Google ids are what the calendar function acts on,
+    // and neither is on any staff screen.
+    it('leaves out the Google ids and who wrote it', () => {
+        const view = viewNamed('staff_diary')
+        expect(view, 'staff_diary is not in schema.sql').toContain('"public"."diary_entries"')
+        for (const column of ['google_event_ids', 'created_by', 'created_at', 'updated_at']) {
+            expect(view.slice(0, view.indexOf('FROM')), `staff_diary hands over ${column}`).not.toContain(`"d"."${column}"`)
+        }
+        expect(view).toContain('( SELECT "public"."get_my_restaurant_id"() ) = ANY ("d"."restaurant_ids")')
+        expect(view).toContain('( SELECT "public"."get_my_role"() ) IS NOT NULL')
+        readOnlyForStaff('staff_diary')
+    })
+
+    // Their own private entries stay, and answer only to who wrote them.
+    // Nothing else in the table answers to anybody below a manager.
+    it('gives an employee no read of the group or site entries in the table', () => {
+        const select = policiesOn('diary_entries')
+            .find(p => p.startsWith('CREATE POLICY "diary_entries_select"')) || ''
+        const shared = select.slice(0, select.indexOf(`("scope" = 'private'::"text")`))
+        expect(shared, 'found no shared scopes in diary_entries_select').toContain(`'all_sites'`)
+        expect(shared).not.toContain('IS NOT NULL')
+        expect(shared).toContain(`("scope" = 'all_sites'::"text") AND (( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"]))`)
+        expect(shared).toContain(`(( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND (( SELECT "public"."get_my_restaurant_id"() ) = ANY ("restaurant_ids"))`)
+    })
+})
+
 describe('a switched off account', () => {
     // get_my_role() answers nothing for an account that is not active, which
     // is how every rule refuses a leaver the night after their last day. A
@@ -302,6 +330,17 @@ describe('a switched off account', () => {
         const own = select.slice(select.indexOf(`("scope" = 'private'::"text")`))
         expect(own, 'found no private scope in diary_entries_select').toContain('"auth"."uid"')
         expect(own).toContain('( SELECT "public"."get_my_role"() ) IS NOT NULL')
+    })
+})
+
+// 033 says it is safe to run twice, and the second time can come after 034.
+// So it may only add. A rule written in 033 would quietly undo whatever 034
+// narrowed on the same table, and staff would read it all again.
+describe('033, which goes in before the merge', () => {
+    it('writes no rule, so running it again after 034 gives nothing back', () => {
+        const migration = readFileSync('supabase/migrations/033_staff_get_only_what_they_use.sql', 'utf8')
+        const code = migration.split('\n').filter(line => !line.trim().startsWith('--')).join('\n')
+        expect(code.match(/\b(create|drop|alter)\s+policy\s+[^;]*/gi) || []).toEqual([])
     })
 })
 

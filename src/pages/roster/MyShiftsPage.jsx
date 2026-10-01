@@ -258,10 +258,13 @@ export default function MyShiftsPage() {
                 // is the one person not told about it.
                 //
                 // No restaurant filter and no filter on who it is for. Both are
-                // the scope, and the policy in the database reads it: a private
-                // entry belongs to whoever wrote it and never comes back here
-                // at all.
-                supabase.from('diary_entries').select('*')
+                // the scope, and the view reads it: a private entry belongs to
+                // whoever wrote it and never comes back to anybody else.
+                //
+                // staff_diary rather than the table, for a manager too, since
+                // nobody changes an entry here. It leaves out where each one
+                // is on Google and who wrote it.
+                supabase.from('staff_diary').select('*')
                     .lte('starts_on', to)
                     .or(`ends_on.gte.${from},and(ends_on.is.null,starts_on.gte.${from})`)
                     .order('starts_on'),

@@ -175,4 +175,28 @@ create policy "products_select" on public.products
     to authenticated
     using ((select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']));
 
+-- Staff stop reading the group's and their restaurant's diary entries off
+-- the table, which carries where each is on Google, the ids the calendar
+-- function acts on, and who wrote it. Since 033 the calendar and My shifts
+-- read staff_diary. Their own private entries stay, as before.
+--
+-- It also stops a switched off account reading its own private entries.
+-- Every other rule refuses an account that is not active, through
+-- get_my_role(), and this one only asked who wrote the entry, so a manager
+-- who had left could still read what they kept private.
+
+drop policy if exists "diary_entries_select" on public.diary_entries;
+create policy "diary_entries_select" on public.diary_entries
+    for select
+    to authenticated
+    using (
+        (scope = 'all_sites'
+            and (select public.get_my_role()) = any (array['super_admin', 'owner', 'store_manager']))
+        or (scope = 'sites' and ((select public.get_my_role()) = 'super_admin'
+            or ((select public.get_my_role()) = any (array['owner', 'store_manager'])
+                and (select public.get_my_restaurant_id()) = any (restaurant_ids))))
+        or (scope = 'private' and created_by = (select auth.uid())
+            and (select public.get_my_role()) is not null)
+    );
+
 notify pgrst, 'reload schema';

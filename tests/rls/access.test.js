@@ -362,6 +362,30 @@ maybe('what each role can see and do', () => {
             expect(data?.note).toBe(noted[0].note)
         })
 
+        // Since 034. What is on comes from staff_diary, without where each
+        // entry is on Google, which the calendar function acts on, or who
+        // wrote it. Their own private entries, if they ever kept one as a
+        // manager, are all the table still gives them.
+        it('reads what is on without the Google ids or who wrote it', async () => {
+            const { data: shared, error } = await employee.from('diary_entries').select('id, scope')
+            expect(error).toBeNull()
+            expect((shared || []).filter(e => e.scope !== 'private'), 'an employee read the diary table').toEqual([])
+
+            const { data, error: viewError } = await employee.from('staff_diary').select('*')
+            expect(viewError?.message || '', 'staff_diary is missing, so 033 has not been run').toBe('')
+            if (data?.length) {
+                for (const hidden of ['google_event_ids', 'created_by']) {
+                    expect(Object.keys(data[0]), `staff_diary is handing over ${hidden}`).not.toContain(hidden)
+                }
+            }
+
+            // Everything for the group and for their own restaurant, as before.
+            const { data: all } = await superadmin.from('diary_entries').select('id')
+                .or(`scope.eq.all_sites,and(scope.eq.sites,restaurant_ids.cs.{${ownRestaurantId}})`)
+            expect((data || []).filter(e => e.scope !== 'private').map(e => e.id).sort())
+                .toEqual((all || []).map(e => e.id).sort())
+        })
+
         // Since 034. A swap between two other people is theirs: who asked
         // whom, the hours and the message. My shifts reads their own whole,
         // and of everybody else's only which shifts were asked about, from
@@ -593,6 +617,12 @@ maybe('what each role can see and do', () => {
                 .select('notes, weight_loss_pct, piece_weight, count_frequency').limit(1)
             expect(error).toBeNull()
             expect(data.length).toBeGreaterThan(0)
+        })
+
+        // The calendar's Edit, and the Google ids the calendar function keeps.
+        it('still reads the diary table, the Google ids included', async () => {
+            const { error } = await manager.from('diary_entries').select('id, google_event_ids, created_by').limit(1)
+            expect(error).toBeNull()
         })
 
         // The roster itself, drafts and every note included.
@@ -850,7 +880,7 @@ maybe('what each role can see and do', () => {
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants', 'my_claims', 'roster_asks', 'staff_products', 'staff_diary']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -877,6 +907,8 @@ maybe('what each role can see and do', () => {
                 'roster_asks can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'staff_products', 'id', { name: 'x' }),
                 'staff_products can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_diary', 'id', { title: 'x' }),
+                'staff_diary can be changed by an employee').toBe(true)
         })
     })
 

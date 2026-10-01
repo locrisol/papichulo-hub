@@ -159,6 +159,7 @@ async function openAs(who) {
     user = { id: 'u1', role: who, restaurant_id: 'r1' }
     db = mockSupabase({
         diary_entries: { data: [CATERING], error: null },
+        staff_diary: { data: [CATERING], error: null },
         restaurants: { data: who === 'employee' ? [] : [{ ...POINT, google_calendar_id: 'cal@example.test' }], error: null },
         staff_restaurants: { data: [POINT], error: null },
     })
@@ -183,5 +184,23 @@ describe('the restaurant names on the calendar', () => {
         expect(screen.queryByText('No restaurant')).toBeNull()
         expect(db.calls).toContain('restaurants')
         expect(db.calls).not.toContain('staff_restaurants')
+    })
+})
+
+// The diary itself. Staff read staff_diary, which leaves out where each entry
+// is on Google and who wrote it: neither is on any staff screen, and the
+// Google ids are what the calendar function acts on. A manager reads the
+// table, because Edit needs to know who wrote a private entry.
+describe('the diary on the calendar', () => {
+    it('comes from the staff view for an employee', async () => {
+        await openAs('employee')
+        expect(db.calls).toContain('staff_diary')
+        expect(db.calls).not.toContain('diary_entries')
+    })
+
+    it('comes from the table for a manager', async () => {
+        await openAs('store_manager')
+        expect(db.calls).toContain('diary_entries')
+        expect(db.calls).not.toContain('staff_diary')
     })
 })
