@@ -16,11 +16,25 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
         + `${compact ? 'px-1 py-0.5 text-[0.6875rem]' : 'px-1.5 py-1 text-xs'} `
         + 'leading-tight font-semibold truncate'
 
+    // Struck through when it is called off, with the reason in the tooltip and
+    // in the listing when it is opened. A night called off stays on the
+    // calendar so whoever looks learns it is off, rather than wondering where
+    // it went.
+    //
+    // **A night the feed stopped listing is said instead**, because it may
+    // still be on: we worked it out, Ticketmaster never said so, and a line
+    // through it reads as called off. My shifts draws this chip too, on a
+    // phone, where a tooltip is never seen.
+    const off = offWords(item.off)
+    const struck = item.off === 'cancelled' ? 'line-through' : ''
+    const said = item.off === 'withdrawn' ? ` (${off})` : ''
+    const title = off ? `${item.title} (${off})` : item.title
+
     const inside = (
         <>
             {item.time && <span className="tabular-nums font-bold">{item.time}</span>}
             {item.time && ' '}
-            {item.title}
+            {item.title}{said}
         </>
     )
 
@@ -30,13 +44,6 @@ export default function DiaryChip({ item, onOpen, canEdit = true, compact = fals
     // says something the colour cannot: a model read it off a page and no
     // person has looked at it yet.
     const edge = item.checked === false ? kindDash(item.kind) : ''
-
-    // Struck through, with the reason in the tooltip and in the listing when
-    // it is opened. A night called off stays on the calendar so whoever looks
-    // learns it is off, rather than wondering where it went.
-    const off = offWords(item.off)
-    const struck = off ? 'line-through' : ''
-    const title = off ? `${item.title} (${off})` : item.title
 
     // A delivery belongs to the day it was ticked onto, so it is not a button
     // here. Pressing it would have to take you somewhere else to change it, and

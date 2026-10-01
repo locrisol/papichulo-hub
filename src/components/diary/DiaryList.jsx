@@ -24,7 +24,8 @@ function Row({ item, restaurants, onOpen, canEdit }) {
     const edge = kindChip(item.kind).split(' ').find(c => c.startsWith('border-l-')) || 'border-l-gray-400'
     const tint = kindTag(item.kind)
     // A listing that is not going ahead says so the way a diary entry's own
-    // status does, beside the kind, and its name is struck through.
+    // status does, beside the kind. Only a cancelled one is struck through: one
+    // the feed stopped listing may still be on. See DiaryChip.
     const off = offWords(item.off)
 
     const inside = (
@@ -39,7 +40,7 @@ function Row({ item, restaurants, onOpen, canEdit }) {
             </div>
 
             <div className="flex-1 min-w-0">
-                <p className={`text-sm font-bold text-gray-900 break-words ${off ? 'line-through' : ''}`}>{item.title}</p>
+                <p className={`text-sm font-bold text-gray-900 break-words ${item.off === 'cancelled' ? 'line-through' : ''}`}>{item.title}</p>
                 <p className="text-xs text-muted mt-0.5">
                     {entry ? timeLabel(entry) : (item.time || 'All day')}
                     {entry?.location && ` · ${entry.location}`}

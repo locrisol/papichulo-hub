@@ -139,8 +139,9 @@ export function irishDate(now = new Date()) {
 }
 
 // Statuses that mean a night is not going ahead. Ticketmaster spells it
-// canceled; the other spelling costs nothing to accept.
-const OFF = ['cancelled', 'canceled']
+// canceled; the other spelling costs nothing to accept. withdrawn is ours,
+// see goneBetween.
+const OFF = ['cancelled', 'canceled', 'withdrawn']
 
 // How many nights we hold from a feed that are still to come and still on.
 export function stillToCome(rows, today) {
@@ -159,6 +160,40 @@ export function emptyProblem(stillOn) {
     const n = Number(stillOn) || 0
     if (n === 0) return null
     return `Ticketmaster returned no events, but ${n} ${n === 1 ? 'was' : 'were'} still coming up.`
+}
+
+// Whether an answer holds everything Ticketmaster has for the venue.
+//
+// It asks for two hundred at a time and reads one page. A busy venue with more
+// than that would be cut short, and everything after the last one returned
+// would look as if it had been taken down. An empty answer is never whole
+// either: a venue id that stopped working answers exactly like a quiet venue.
+export function wholeAnswer(payload) {
+    const got = payload?._embedded?.events?.length || 0
+    const total = Number(payload?.page?.totalElements)
+    return got > 0 && Number.isFinite(total) && total <= got
+}
+
+// The dates between which a night missing from this answer has been taken
+// down, or null when the answer cannot say.
+//
+// **Nothing used to go.** A show Ticketmaster withdrew, or moved somewhere we
+// do not watch, kept its old date and its on sale status for ever, and
+// last_seen_at was written by every sync and read by nothing. Now a night
+// still to come that a whole answer no longer lists is marked withdrawn, which
+// the roster and the calendar say as "No longer listed". The next answer that
+// lists it again writes its real status back over that, so nothing is lost by
+// being wrong.
+//
+// After today and never today, in Irish dates: the window starts at this
+// minute, so tonight's show is missing from an evening sync simply because it
+// has started. And before the last day of the window, which ends at this
+// minute six months on.
+export function goneBetween(payload, now = new Date()) {
+    if (!wholeAnswer(payload)) return null
+    const end = new Date(now)
+    end.setUTCDate(end.getUTCDate() + DAYS_AHEAD)
+    return { after: irishDate(now), before: irishDate(end) }
 }
 
 // A failure carrying a sentence that is safe to keep and to show.

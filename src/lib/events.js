@@ -70,6 +70,10 @@ export function statusNote(status) {
             return { text: 'Cancelled, so this is an ordinary night after all', tone: 'bad' }
         case 'postponed':
             return { text: 'Postponed, so the date may still move', tone: 'warn' }
+        // Ours, not Ticketmaster's: the feed stopped listing a night that is
+        // still to come. See offFor in lib/nearby.
+        case 'withdrawn':
+            return { text: 'No longer listed on Ticketmaster, so it may have been called off', tone: 'warn' }
         case 'rescheduled':
             return { text: 'Rescheduled, so check the date is still this one', tone: 'warn' }
         default:

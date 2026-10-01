@@ -1630,7 +1630,7 @@ COMMENT ON COLUMN "public"."events"."last_seen_at" IS 'The last sync that still 
 COMMENT ON COLUMN "public"."events"."review" IS 'trusted came from a feed and goes everywhere with nobody asked. found came off a page somebody read and shows on the calendar marked not checked, and stays off the roster until it is kept. kept is one somebody kept. dismissed is one somebody said no to, and it stays in the table precisely so the next read of the same page does not offer it again.';
 COMMENT ON COLUMN "public"."events"."source" IS 'Where the row came from. A feed is trusted because it is the venue itself saying so. A page is a reading of something written for people, which is a different kind of fact and is marked as one.';
 COMMENT ON COLUMN "public"."events"."source_key" IS 'What makes a page read the same event twice, since only a feed hands out an id. Built from the place, the date and a flattened title, so a second read lands on the row that is already there and a dismissal is remembered.';
-COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, cancelled, postponed, rescheduled. Off sale well before the date usually means sold out.';
+COMMENT ON COLUMN "public"."events"."status" IS 'Ticketmaster sale status: onsale, offsale, canceled, postponed, rescheduled. Off sale well before the date usually means sold out. withdrawn is ours rather than Ticketmaster''s: a night still to come that a whole answer from the feed no longer lists, which the roster and the calendar mark as no longer listed until a later answer lists it again and writes its real status back.';
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_pkey" PRIMARY KEY ("id");
 ALTER TABLE ONLY "public"."events"

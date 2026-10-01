@@ -41,6 +41,7 @@ import {
     couldBeSamePlace,
     offFor,
     offWords,
+    markedWords,
     forRoster,
     feedWords,
     feedTrouble,
@@ -833,7 +834,21 @@ describe('a night that is not going ahead', () => {
 
     it('has words for the calendar', () => {
         expect(offWords('cancelled')).toBe('Cancelled')
+        expect(offWords('withdrawn')).toBe('No longer listed')
         expect(offWords('')).toBe('')
+    })
+
+    // Ours, written by the sync when a whole answer no longer lists a night
+    // still to come. It is something we worked out rather than something we
+    // were told, so it stays on the roster and says so. Taken off, a show
+    // still on would leave that night looking quiet with nothing to say why.
+    it('keeps a night the feed no longer lists on the roster, marked', () => {
+        const gone = { ...gig, id: 'e6', status: 'withdrawn' }
+        expect(offFor(gone)).toBe('withdrawn')
+        const rows = forRoster(nearbyRows([gig, gone], pairs, {}))
+        expect(rows.map(r => r.event.id)).toEqual(['e1', 'e6'])
+        expect(markedWords(rows[1], { withPlace: false })).toBe('Kings of Leon (No longer listed)')
+        expect(markedWords(rows[0], { withPlace: false })).toBe('Kings of Leon')
     })
 
     // The calendar shares nearbyRows, and it is the one screen that keeps the

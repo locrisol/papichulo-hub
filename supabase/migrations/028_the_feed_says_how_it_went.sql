@@ -13,6 +13,12 @@
 -- error itself, because a failed fetch names its address and the address
 -- carries the key, and every signed in person can read a place.
 --
+-- A night still to come that the feed stops listing is marked withdrawn, a
+-- status of our own, and the roster says it is no longer listed. Before this a
+-- show taken down without being marked cancelled stayed on its old date as on
+-- sale for ever. It stays on the roster because we worked it out rather than
+-- being told. The column comment says so; there is nothing else to change.
+--
 -- The nearby-events function writes these, so it needs a redeploy. It is safe
 -- either side of that: the function ignores a write that fails, and the app
 -- shows nothing until there is something written. Safe to run twice.
@@ -35,5 +41,7 @@ create or replace function public.audit_ignored_columns() returns text[]
 
 comment on column public.places.feed_synced_at is 'When the Ticketmaster feed last answered for this place, with feed_count saying how many it listed. Shown in settings, and on the roster and the calendar when it is more than two days old, because a feed that stops answering looks exactly like a quiet fortnight.';
 comment on column public.places.feed_problem is 'What went wrong the last time the feed was asked, in a sentence the function wrote, or null when the last sync worked. Never the error itself: a failed fetch names its address, which carries the key, and every signed in person can read this row.';
+
+comment on column public.events.status is 'Ticketmaster sale status: onsale, offsale, canceled, postponed, rescheduled. Off sale well before the date usually means sold out. withdrawn is ours rather than Ticketmaster''s: a night still to come that a whole answer from the feed no longer lists, which the roster and the calendar mark as no longer listed until a later answer lists it again and writes its real status back.';
 
 notify pgrst, 'reload schema';

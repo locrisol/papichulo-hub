@@ -72,3 +72,38 @@ describe('correcting the time of a reading', () => {
         expect(onRename).toHaveBeenCalledWith(FEED, 'Pentangle live', false, '', undefined)
     })
 })
+
+// One thing on near us, opened from the calendar. It is the one screen that
+// keeps a night that is not going ahead, so it is where somebody finds out why.
+
+const arena = { id: 'p1', name: '3Arena' }
+const row = event => ({ event, place: arena, pairing: { walk_minutes: 2 }, kind: 'arena', checked: true })
+
+describe('a night that is not going ahead', () => {
+    it('says Ticketmaster cancelled it, in the spelling Ticketmaster uses', () => {
+        render(<EventModal row={row({ id: 'e1', name: 'Westlife', event_date: '2026-10-16', status: 'canceled' })} onClose={() => {}} />)
+        expect(screen.getByText(/Cancelled, so this is an ordinary night/)).toBeInTheDocument()
+    })
+
+    // The question somebody looking at it will have: is this news or old news.
+    it('says when the feed last listed one it has stopped listing', () => {
+        render(<EventModal
+            row={row({
+                id: 'e2', name: 'Westlife', event_date: '2026-10-16', status: 'withdrawn',
+                last_seen_at: '2026-09-28T05:15:00',
+            })}
+            onClose={() => {}}
+        />)
+        expect(screen.getByText(/No longer listed on Ticketmaster/)).toBeInTheDocument()
+        expect(screen.getByText('Last listed')).toBeInTheDocument()
+        expect(screen.getByText('28/09/2026')).toBeInTheDocument()
+    })
+
+    it('says nothing of the kind about a night still on sale', () => {
+        render(<EventModal
+            row={row({ id: 'e3', name: 'Westlife', event_date: '2026-10-16', status: 'onsale', last_seen_at: '2026-09-28T05:15:00' })}
+            onClose={() => {}}
+        />)
+        expect(screen.queryByText('Last listed')).toBeNull()
+    })
+})

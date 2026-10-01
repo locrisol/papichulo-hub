@@ -621,8 +621,10 @@ export function calendarItems({ entries, nearby, dayNotes, from, to }) {
                 time: event.event_time ? shortTime(event.event_time) : '',
                 allDay: !event.event_time,
                 checked: row.checked !== false,
-                // A night that is not going ahead stays here, struck through.
-                // The roster drops it; this is where somebody finds out why.
+                // A cancelled night stays here, struck through, and the
+                // roster drops it; this is where somebody finds out why. One
+                // the feed stopped listing is said in words here and on the
+                // roster both.
                 off: row.off || '',
                 place: row.place,
                 entry: event,

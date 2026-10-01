@@ -71,6 +71,11 @@ describe('statusNote', () => {
         expect(statusNote('canceled')).toEqual(statusNote('cancelled'))
     })
 
+    it('says when the feed stopped listing it', () => {
+        expect(statusNote('withdrawn').text).toMatch(/no longer listed/i)
+        expect(statusNote('withdrawn').tone).toBe('warn')
+    })
+
     it('does not mind how Ticketmaster capitalises it', () => {
         expect(statusNote('OffSale').text).toBe(statusNote('offsale').text)
     })

@@ -67,30 +67,43 @@ export function dismissed(event) {
 // only knew cancelled. So a 3Arena show called off kept its purple chip on the
 // roster, on the picture sent to the group and on every My shifts, looking
 // exactly like a night that was still on. Both spellings, in any case.
+//
+// withdrawn is ours rather than Ticketmaster's. The sync writes it on a night
+// still to come that a whole answer from the feed no longer lists, which is
+// what a show taken down without being marked cancelled looks like. It is
+// something we worked out rather than something we were told, so it stays
+// everywhere and says so. See goneBetween in the nearby-events function.
 export function offFor(event) {
     const status = String(event?.status || '').toLowerCase()
     if (status === 'cancelled' || status === 'canceled') return 'cancelled'
+    if (status === 'withdrawn') return 'withdrawn'
     return ''
 }
 
-const OFF_WORDS = { cancelled: 'Cancelled' }
+const OFF_WORDS = { cancelled: 'Cancelled', withdrawn: 'No longer listed' }
 
 export function offWords(off) {
     return OFF_WORDS[off] || ''
 }
 
-// What the roster gets, which is everything still going ahead.
+// What the roster gets, which is everything but a cancelled night.
 //
 // The same rule the diary keeps with showsOnRoster: a cancelled catering job
 // stays in the diary and comes off the roster, because the roster is only
 // about who is needed. A manager does not roster for nine thousand people who
 // are not coming.
 //
+// **A night the feed stopped listing stays, marked.** Ticketmaster never said
+// it was off, we worked it out, and a show still on that vanished from the
+// roster would leave the evening looking quiet with nothing to say why. His
+// rule for anything nobody has checked: it shows everywhere, marked, never
+// hidden. See markedWords.
+//
 // Applied where the roster and My shifts load, and **not inside nearbyRows**,
 // which the calendar shares. The calendar keeps the night, struck through, so
 // whoever opens it can see it was called off rather than wonder where it went.
 export function forRoster(rows) {
-    return (rows || []).filter(r => !offFor(r?.event))
+    return (rows || []).filter(r => offFor(r?.event) !== 'cancelled')
 }
 
 // -- Which places a restaurant is actually watching ---------------------
@@ -499,6 +512,18 @@ export function chipWords(row, { short = false, withPlace = true } = {}) {
     const where = elsewhere(row) || (withPlace ? placeName(row?.place, { short }) : '')
     if (!where || !name) return name || where
     return name.toLowerCase().includes(where.toLowerCase()) ? name : `${name} [${where}]`
+}
+
+// The words on a roster chip, with the reason after them when the night may
+// not be going ahead.
+//
+// Only a night the feed stopped listing gets here marked, since a cancelled
+// one is off the roster (forRoster). One place for it, so the week, the day,
+// the picture and the sheet all say it the same way.
+export function markedWords(row, options) {
+    const words = chipWords(row, options)
+    const off = offWords(row?.off)
+    return off ? `${words} (${off})` : words
 }
 
 export function walkWords(minutes, { short = false } = {}) {

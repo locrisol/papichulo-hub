@@ -9,7 +9,7 @@ import {
     mapEvent, discoveryUrl, eventsFrom, isServiceRole, roleOf,
     geohash, venuesUrl, venuesFrom, suggestions, geocodeUrl, pointFrom,
     distanceKm, walkMinutesFor, WALKABLE_MINUTES, sourceKeyFor, pointTyped,
-    irishDate, stillToCome, feedError, feedProblem, emptyProblem,
+    irishDate, stillToCome, feedError, feedProblem, emptyProblem, wholeAnswer, goneBetween,
 } from '../../supabase/functions/nearby-events/discovery'
 import {
     distanceKm as browserDistanceKm, walkMinutesFor as browserWalkMinutesFor,
@@ -476,6 +476,7 @@ describe('how a feed went', () => {
             { event_date: '2026-10-04', status: null },
         ]
         expect(stillToCome(held, '2026-10-01')).toBe(2)
+        expect(stillToCome([...held, { event_date: '2026-10-05', status: 'withdrawn' }], '2026-10-01')).toBe(2)
         expect(stillToCome(null, '2026-10-01')).toBe(0)
     })
 
@@ -510,5 +511,41 @@ describe('how a feed went', () => {
         expect(feedProblem(leak)).not.toContain('SECRET')
         expect(feedProblem(leak)).toBe('Something went wrong bringing the events in.')
         expect(feedProblem(null)).toBe('Something went wrong bringing the events in.')
+    })
+})
+
+// A show Ticketmaster withdrew, or moved somewhere we do not watch, stayed on
+// its old date as on sale for ever: last_seen_at was written and read by
+// nothing. A night missing from a whole answer is marked, and comes back by
+// itself the next time Ticketmaster lists it.
+describe('a night the feed no longer lists', () => {
+    const event = id => ({ id, name: 'A night', dates: { start: { localDate: '2026-11-05' } } })
+    const answer = (n, total) => ({
+        _embedded: { events: Array.from({ length: n }, (_, i) => event(`e${i}`)) },
+        page: { size: 200, totalElements: total, totalPages: 1, number: 0 },
+    })
+
+    it('trusts only an answer that holds everything Ticketmaster has', () => {
+        expect(wholeAnswer(answer(92, 92))).toBe(true)
+        // Cut short at two hundred: everything after the last one would read
+        // as taken down.
+        expect(wholeAnswer(answer(200, 240))).toBe(false)
+    })
+
+    // A refusal is caught before this, but an empty answer is a venue id that
+    // stopped working as often as a quiet venue, so it never takes anything down.
+    it('takes nothing down on an empty answer, or one with no count on it', () => {
+        expect(wholeAnswer(answer(0, 0))).toBe(false)
+        expect(wholeAnswer({ _embedded: { events: [event('e1')] } })).toBe(false)
+        expect(wholeAnswer(null)).toBe(false)
+    })
+
+    // The window starts at this minute, so tonight's show can be missing from
+    // an evening sync because it has started. Only from tomorrow on, in Irish
+    // dates, and never past the end of what was asked for.
+    it('looks only from tomorrow to the end of the window', () => {
+        const at = new Date('2026-09-30T23:30:00Z')
+        expect(goneBetween(answer(5, 5), at)).toEqual({ after: '2026-10-01', before: '2027-03-30' })
+        expect(goneBetween(answer(200, 240), at)).toBe(null)
     })
 })

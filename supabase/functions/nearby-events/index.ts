@@ -54,7 +54,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
     discoveryUrl, eventsFrom, isServiceRole, roleOf, sourceKeyFor,
     geocodeUrl, pointFrom, pointTyped, venuesUrl, venuesFrom, suggestions, refusalFor,
-    irishDate, stillToCome, emptyProblem, feedError, feedProblem,
+    irishDate, stillToCome, emptyProblem, feedError, feedProblem, goneBetween,
 } from './discovery.js'
 
 // Asked of OpenStreetMap once when somebody adds a restaurant. They ask for a
@@ -94,7 +94,8 @@ type Place = { id: string; name: string; ticketmaster_venue_id: string | null }
 //
 // Nothing ever deletes. An event that has dropped out of Ticketmaster because
 // it has happened is exactly the one worth keeping: the API forgets, so our
-// table has to be the memory.
+// table has to be the memory. One that drops out before it has happened is
+// marked rather than deleted, further down.
 //
 // The place is written onto every row, which is what decides who sees it: a
 // restaurant sees a listing if it is near the place the listing is at. Before
@@ -111,7 +112,8 @@ async function syncOne(admin: Admin, place: Place, key: string) {
         throw feedError(`Ticketmaster said no (${res.status}).`)
     }
 
-    const fetched = eventsFrom(await res.json())
+    const payload = await res.json()
+    const fetched = eventsFrom(payload)
 
     // Nothing is usually a quiet venue. It is a problem when we hold nights
     // there that Ticketmaster itself listed and that are still to come, which
@@ -151,6 +153,31 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     if (error) {
         console.error('nearby-events', place.name, error.message)
         throw feedError('The events could not be saved.')
+    }
+
+    // **A night still to come that this answer no longer lists is marked.**
+    // See goneBetween for which nights and why only from a whole answer.
+    //
+    // By the ids that came back rather than by last_seen_at being older than
+    // this run, which reads the same and is not: a second sync running at the
+    // same moment writes its own time over ours, and every row it touched
+    // would have read as gone.
+    //
+    // Not a night already marked off, which keeps a cancellation saying
+    // cancelled once Ticketmaster stops listing it.
+    const gone = goneBetween(payload, new Date(now))
+    if (gone) {
+        const { data: taken } = await admin
+            .from('events')
+            .update({ status: 'withdrawn' })
+            .eq('place_id', place.id)
+            .eq('source', 'ticketmaster')
+            .gt('event_date', gone.after)
+            .lt('event_date', gone.before)
+            .or('status.is.null,status.not.in.(canceled,cancelled,withdrawn)')
+            .not('ticketmaster_id', 'in', `(${fetched.map(e => `"${e.ticketmaster_id}"`).join(',')})`)
+            .select('id')
+        if (taken?.length) console.log('nearby-events', place.name, `${taken.length} no longer listed`)
     }
 
     // **A reading of a night this feed now covers is superseded by it.**
