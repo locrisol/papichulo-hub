@@ -11,6 +11,7 @@ import { shortDate } from '@/lib/dates'
 const DELIVERED = '2026-09-26'
 const DELIVERY_WEEK = '2026-09-20'
 const NOTED_WEEK = '2026-09-27'
+const WEEK_AFTER = '2026-10-04'
 
 const CLAIM = {
     id: 'c1', restaurant_id: 'r1', supplier_id: 's1', kind: 'short', what: 'COKE ZERO 24X330ML',
@@ -73,28 +74,31 @@ describe('putting a note from the door against its line', () => {
         expect(await screen.findByText('€22.34 is coming off the week that delivery landed in.')).toBeInTheDocument()
     })
 
-    // A week is closed once its report is sent. The money stays in the week
-    // the note was written, and the screen says why.
-    it('leaves it where it was when that week\'s report has been sent, and says so', async () => {
+    // A week is closed once its report is sent, and money put into it is in
+    // no report at all. So it comes off the first week whose report has not
+    // gone out, and says which delivery it is from. His decision of 1 October.
+    it('moves it to the first week still open when that week\'s report has been sent, and says so', async () => {
         tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' }]
         const { row } = await attach()
         expect(row).toMatchObject({ amount: 22.34, counted_week: NOTED_WEEK })
         expect(await screen.findByText(
             `The report for the week of ${shortDate(DELIVERY_WEEK)} has already been sent, `
-            + `so €22.34 is coming off the week of ${shortDate(NOTED_WEEK)} instead.`,
+            + `so €22.34 is coming off the week of ${shortDate(NOTED_WEEK)} instead, `
+            + `shown as from the delivery in the week of ${shortDate(DELIVERY_WEEK)}.`,
         )).toBeInTheDocument()
     })
 
-    // The usual case: written at the door on the day, so already in the
-    // delivery's week. Nothing moves, and "instead" of itself would be wrong.
-    it('says the money is in no report when the note is in a week already sent', async () => {
+    // Written at the door on the day, so already in the delivery's week. With
+    // that week sent it used to stay there, in no report at all.
+    it('skips every week already sent, wherever the note was written', async () => {
         tables.invoice_line_claims = [{ ...CLAIM, raised_on: DELIVERED, counted_week: DELIVERY_WEEK }]
-        tables.weekly_reports = [{ id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' }]
+        tables.weekly_reports = [
+            { id: 'w1', restaurant_id: 'r1', week_start: DELIVERY_WEEK, status: 'published' },
+            { id: 'w2', restaurant_id: 'r1', week_start: NOTED_WEEK, status: 'published' },
+            { id: 'w3', restaurant_id: 'r2', week_start: WEEK_AFTER, status: 'published' },
+        ]
         const { row } = await attach()
-        expect(row).toMatchObject({ amount: 22.34, counted_week: DELIVERY_WEEK })
-        expect(await screen.findByText(
-            `The report for the week of ${shortDate(DELIVERY_WEEK)} has already been sent, so €22.34 is not in it.`,
-        )).toBeInTheDocument()
+        expect(row).toMatchObject({ amount: 22.34, counted_week: WEEK_AFTER })
     })
 
     it('still moves it when that week\'s report is only a draft', async () => {

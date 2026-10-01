@@ -4209,11 +4209,14 @@ COMMENT ON VIEW "public"."labour_by_day" IS 'What labour cost, per day, for ever
 -- printed.
 --
 -- The third arm is the claims, and **the claim is the one place money coming
--- back is taken off, always in the week the delivery happened**: the whole ask
--- while it is open, what actually came back once it is settled. A credit note
--- that settles a claim is kept and matched and does not count on its own, which
--- is what counts_in_cost is for. It comes off once, and it never moves between
--- weeks because the credit happened to be dated the Monday after.
+-- back is taken off, in the week the delivery happened**: the whole ask while
+-- it is open, what actually came back once it is settled. A credit note that
+-- settles a claim is kept and matched and does not count on its own, which is
+-- what counts_in_cost is for. It comes off once, and it never moves between
+-- weeks because the credit happened to be dated the Monday after. The one
+-- exception is a delivery whose week's report had already gone out when the
+-- claim got its money: it comes off the first week still open instead, or it
+-- would be in no report at all (claimWeek in lib/invoiceClaims.js).
 --
 -- security_invoker on purpose, the same case as labour_by_day: everything
 -- underneath already decides who sees what by restaurant and the view has

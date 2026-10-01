@@ -4,7 +4,7 @@ import {
     CLAIM_KINDS, NOT_LOGGED, claimKind, emptyDoorClaim, doorClaimProblem, doorClaimPayload,
     claimAmount, claimBalance, claimIsOpen, claimTakesOff, claimCandidates, claimMatch,
     creditSettles, creditTakenBack, voidedBy, sentBack, chasingList, isLate, claimsForWeek, bySupplier,
-    attachedWeek,
+    claimWeek, sentWeeks,
 } from '@/lib/invoiceClaims'
 
 const LINE = {
@@ -414,6 +414,38 @@ describe('when the credit note turns up', () => {
         })
         expect(claimKind(out.extra.kind).label).toBe('No reason logged')
     })
+
+    // The credit often comes after the delivery's report has gone out, and
+    // money put into a week already sent is in no report at all.
+    it('puts money nobody logged into the first week still open', () => {
+        const out = creditSettles({
+            credit: { ...credit, goodsTotal: -90 }, against: invoice,
+            claims: [claim({ invoice_id: 'i1' })], supplierId: 's1', restaurantId: 'r1',
+            sent: ['2026-09-13'],
+        })
+        expect(out.extra).toMatchObject({ amount: 20.02, counted_week: '2026-09-20' })
+    })
+
+    // A note from the door nobody put against a line has no money on it
+    // until its credit comes, so the credit is when its week is decided, the
+    // same way as putting it against a line on Delivery problems.
+    it('gives a note from the door the delivery\'s week when it first gets money', () => {
+        const door = claim({ invoice_id: null, docket_number: '45612214', amount: null, counted_week: '2026-09-20', raised_on: '2026-09-20' })
+        const open = creditSettles({ credit, against: invoice, claims: [door], supplierId: 's1' })
+        expect(open.settle[0].patch).toMatchObject({ amount: 69.98, counted_week: '2026-09-13' })
+
+        const sent = creditSettles({ credit, against: invoice, claims: [door], supplierId: 's1', sent: ['2026-09-13', '2026-09-20'] })
+        expect(sent.settle[0].patch).toMatchObject({ amount: 69.98, counted_week: '2026-09-27' })
+    })
+
+    // One already put against its line had its week decided then, and its
+    // money has been coming off it since.
+    it('leaves the week of a claim that already had money on it', () => {
+        const out = creditSettles({
+            credit, against: invoice, claims: [claim({ invoice_id: 'i1' })], supplierId: 's1', sent: ['2026-09-13'],
+        })
+        expect(out.settle[0].patch).not.toHaveProperty('counted_week')
+    })
 })
 
 describe('the claim that carries the money, week by week', () => {
@@ -696,22 +728,56 @@ describe('how a supplier does on claims', () => {
     })
 })
 
-// A Saturday delivery, short a case, written down at the door on the Sunday,
-// which is already the next week.
-describe('attachedWeek', () => {
-    const claim = { counted_week: '2026-09-27', raised_on: '2026-09-27' }
-    const invoice = { invoice_date: '2026-09-26' }
-
+// A Saturday delivery, short a case. Its money comes off the week it landed
+// in, unless that week's report has gone out: then off the first week whose
+// report has not, so it is in a report at all. His decision of 1 October.
+describe('claimWeek', () => {
     it('is the week the delivery landed in', () => {
-        expect(attachedWeek(claim, invoice)).toEqual({ week: '2026-09-20', delivered: '2026-09-20', moved: true })
+        expect(claimWeek('2026-09-26', [])).toEqual({ week: '2026-09-20', delivered: '2026-09-20', moved: false })
     })
 
-    it('stays where the note was written once that week has been sent', () => {
-        expect(attachedWeek(claim, invoice, { deliveryWeekSent: true }))
-            .toEqual({ week: '2026-09-27', delivered: '2026-09-20', moved: false })
+    it('is the next week when the report for the delivery\'s week has been sent', () => {
+        expect(claimWeek('2026-09-26', ['2026-09-20']))
+            .toEqual({ week: '2026-09-27', delivered: '2026-09-20', moved: true })
     })
 
-    it('falls back to the day it was raised for a note with no week on it', () => {
-        expect(attachedWeek({ raised_on: '2026-09-28' }, invoice, { deliveryWeekSent: true }).week).toBe('2026-09-27')
+    it('skips every week whose report has gone out', () => {
+        expect(claimWeek('2026-09-26', ['2026-09-27', '2026-09-20', '2026-10-04']).week).toBe('2026-10-11')
+    })
+
+    // A gap is a week nobody has sent, so it is open.
+    it('stops at the first week not sent, even with sent weeks after it', () => {
+        expect(claimWeek('2026-09-26', ['2026-09-20', '2026-10-04']).week).toBe('2026-09-27')
+    })
+
+    it('takes no notice of weeks sent before the delivery', () => {
+        expect(claimWeek('2026-09-26', ['2026-09-13'])).toMatchObject({ week: '2026-09-20', moved: false })
+    })
+})
+
+// The weeks whose report is published, which is what closes a week. A draft
+// does not.
+describe('sentWeeks', () => {
+    function client(answer) {
+        const asked = []
+        const query = {
+            select: c => { asked.push(['select', c]); return query },
+            eq: (c, v) => { asked.push(['eq', c, v]); return query },
+            then: (resolve, reject) => Promise.resolve(answer).then(resolve, reject),
+        }
+        return { asked, from: t => { asked.push(['from', t]); return query } }
+    }
+
+    it('reads the published weeks of one restaurant', async () => {
+        const db = client({ data: [{ week_start: '2026-09-20' }, { week_start: '2026-09-27' }], error: null })
+        expect(await sentWeeks(db, 'r1')).toEqual({ weeks: ['2026-09-20', '2026-09-27'], error: null })
+        expect(db.asked).toEqual(expect.arrayContaining([
+            ['from', 'weekly_reports'], ['eq', 'restaurant_id', 'r1'], ['eq', 'status', 'published'],
+        ]))
+    })
+
+    it('hands the error back rather than a week with nothing sent', async () => {
+        const failed = { message: 'Failed to fetch' }
+        expect(await sentWeeks(client({ data: null, error: failed }), 'r1')).toEqual({ weeks: null, error: failed })
     })
 })

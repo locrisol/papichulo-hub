@@ -4,13 +4,13 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { useRestaurant } from '@/context/restaurant'
 import { fmtMoney } from '@/lib/format'
-import { todayISO, shortDate, fullDate, addDays, weekStartOf } from '@/lib/dates'
+import { todayISO, shortDate, fullDate, addDays } from '@/lib/dates'
 import { orderByUse } from '@/lib/supplierOrder'
 import { numberField } from '@/lib/numberInput'
 import { friendlyError } from '@/lib/errors'
 import { can, MANAGERS } from '@/lib/access'
 import {
-    claimKind, doorClaimPayload, claimAmount, claimIsOpen, attachedWeek,
+    claimKind, doorClaimPayload, claimAmount, claimIsOpen, claimWeek, sentWeeks,
     claimCandidates, claimMatch, chasingList, isLate, LATE_AFTER_DAYS, bySupplier,
 } from '@/lib/invoiceClaims'
 import {
@@ -146,16 +146,11 @@ export default function ClaimsPage() {
         setBusy(claim.id)
         setError('')
 
-        // Whether the delivery's week has gone out already. See attachedWeek.
-        const { data: report, error: e0 } = await supabase.from('weekly_reports')
-            .select('status')
-            .eq('restaurant_id', restaurantId)
-            .eq('week_start', weekStartOf(invoice.invoice_date))
-            .maybeSingle()
+        // Which weeks have gone out already, so the money lands in a report.
+        // See claimWeek.
+        const { weeks: sent, error: e0 } = await sentWeeks(supabase, restaurantId)
         if (e0) { setBusy(''); setError(friendlyError(e0)); return }
-        const { week, delivered, moved } = attachedWeek(claim, invoice, {
-            deliveryWeekSent: report?.status === 'published',
-        })
+        const { week, delivered, moved } = claimWeek(invoice.invoice_date, sent)
 
         const { error: e1 } = await supabase.from('invoice_line_claims')
             .update({
@@ -169,13 +164,12 @@ export default function ClaimsPage() {
 
         setBusy('')
         if (e1) { setError(friendlyError(e1)); return }
-        // A note written at the door on the day is already in the delivery's
-        // week, which is the usual case. When that report has gone out nothing
-        // moves, so saying it comes off that same week "instead" would be wrong.
-        const sent = `The report for the week of ${shortDate(delivered)} has already been sent`
-        if (moved) setSaid(`${fmtMoney(amount)} is coming off the week that delivery landed in.`)
-        else if (week === delivered) setSaid(`${sent}, so ${fmtMoney(amount)} is not in it.`)
-        else setSaid(`${sent}, so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead.`)
+        if (!moved) setSaid(`${fmtMoney(amount)} is coming off the week that delivery landed in.`)
+        else {
+            setSaid(`The report for the week of ${shortDate(delivered)} has already been sent, `
+                + `so ${fmtMoney(amount)} is coming off the week of ${shortDate(week)} instead, `
+                + `shown as from the delivery in the week of ${shortDate(delivered)}.`)
+        }
         setRefresh(n => n + 1)
     }
 
