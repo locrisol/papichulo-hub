@@ -4,7 +4,7 @@ import { useAuth } from '@/context/auth'
 import { useConfirm } from '@/context/confirm'
 import { useRestaurant } from '@/context/restaurant'
 import { friendlyError } from '@/lib/errors'
-import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate } from '@/lib/dates'
+import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate } from '@/lib/dates'
 import { periodOf } from '@/lib/payPeriod'
 import { fmtMoney } from '@/lib/format'
 import { settleTime } from '@/lib/clock'
@@ -769,9 +769,14 @@ export default function TimesheetPage() {
                                         ? `Saved at ${savedAt.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}`
                                         : 'Saves as you type'}
                         </span>
+                        {/* The day it was sent here, read off the timestamp,
+                            and never the first ten characters of it: the
+                            database gives it back in UTC, so a send just after
+                            midnight in summer said the day before. The send
+                            dialog already reads it this way. */}
                         <span className="text-muted">
                             {' '}&middot;{' '}
-                            {filedAt ? `Sent ${shortDate(String(filedAt).slice(0, 10))}` : 'Not sent yet'}
+                            {filedAt ? `Sent ${shortDate(toISODate(new Date(filedAt)))}` : 'Not sent yet'}
                         </span>
                     </p>
                 </div>

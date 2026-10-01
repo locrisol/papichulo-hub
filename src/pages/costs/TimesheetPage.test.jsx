@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { todayISO, weekStartOf, addDays } from '@/lib/dates'
+import process from 'node:process'
+import { todayISO, weekStartOf, addDays, shortDate } from '@/lib/dates'
 
 // The page opens on last week, because a timesheet is filled in once the week
 // has finished and the till's report for it exists.
@@ -94,6 +95,7 @@ beforeEach(() => {
     rows.timesheet_entries = []
     rows.roster_shifts = []
     rows.sales_records = []
+    rows.timesheet_weeks = []
 })
 
 describe('typing into a cell with nothing in it', () => {
@@ -446,6 +448,27 @@ describe('saying that it saved', () => {
         // And it says so where you are looking, beside the week's total,
         // rather than only at the top of a table you have scrolled past.
         expect(screen.getByText('Not saved')).toBeInTheDocument()
+    })
+})
+
+describe('when the hours were sent', () => {
+    // The database hands the time back in UTC. Sent at half past midnight
+    // Irish summer time on the 28th, it is still the 27th in UTC, and the line
+    // used to cut the date off that and say the 27th. Pinned to Irish time so
+    // the test means the same on any machine.
+    const was = process.env.TZ
+    beforeAll(() => { process.env.TZ = 'Europe/Dublin' })
+    afterAll(() => {
+        if (was === undefined) delete process.env.TZ
+        else process.env.TZ = was
+    })
+
+    it('says the day it was sent here, not the day it was in UTC', async () => {
+        rows.timesheet_weeks = [{ imported_at: null, filed_at: '2026-09-27T23:30:00+00:00' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        expect(screen.getByText(`Sent ${shortDate('2026-09-28')}`, { exact: false })).toBeInTheDocument()
     })
 })
 
