@@ -50,6 +50,7 @@ describe('the shared helpers are declared in one place', () => {
         fmtMoney: 'lib/format.js',
         fmtQty: 'lib/format.js',
         fmtPct: 'lib/format.js',
+        namesList: 'lib/format.js',
         toISODate: 'lib/dates.js',
         todayISO: 'lib/dates.js',
         weekStartOf: 'lib/dates.js',

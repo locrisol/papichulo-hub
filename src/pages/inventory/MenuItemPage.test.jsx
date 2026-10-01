@@ -194,3 +194,62 @@ describe('a deactivated product still in the recipe', () => {
         expect(offered.some(t => t.includes('Old Beans'))).toBe(false)
     })
 })
+
+// Its old price is still on it. The menu items list read every product and
+// costed the dish from that price while this page could not find it, so the
+// same dish had a margin on one screen and none on the other.
+describe('the cost of a dish with a deactivated product in it', () => {
+    const PRICED = [
+        { id: 'pr1', product_id: 'tortilla', restaurant_id: 'r1', is_preferred: true, price_per_unit: '0.30' },
+        { id: 'pr2', product_id: 'beans', restaurant_id: 'r1', is_preferred: true, price_per_unit: '2.00' },
+        { id: 'pr3', product_id: 'cream', restaurant_id: 'r1', is_preferred: true, price_per_unit: '4.00' },
+    ]
+
+    function costLine() {
+        return screen.getByText('Cost').parentElement.textContent
+    }
+
+    it('is not worked out, and the page says which product to replace', async () => {
+        useTables(tablesFor({
+            menu_item_components: [
+                BURRITO[0],
+                { id: 'k3', menu_item_id: 'm1', product_id: 'beans', quantity: 0.1, no_quantity: false },
+            ],
+            product_supplier_prices: PRICED,
+        }))
+        showPage()
+        expect(await screen.findByText(/Old Beans is deactivated/)).toBeInTheDocument()
+        expect(costLine()).not.toContain('€')
+    })
+
+    it('names one inside a recipe the dish uses', async () => {
+        useTables(tablesFor({ product_supplier_prices: PRICED }))
+        showPage()
+        expect(await screen.findByText(/Old Cream is deactivated/)).toBeInTheDocument()
+    })
+
+    // Rice has no price at all. Replacing the beans would not bring the cost
+    // back, so the page must not promise that it would.
+    it('says a missing price as well, when there is one', async () => {
+        useTables(tablesFor({
+            menu_item_components: [
+                BURRITO[0],
+                { id: 'k3', menu_item_id: 'm1', product_id: 'beans', quantity: 0.1, no_quantity: false },
+                { id: 'k4', menu_item_id: 'm1', product_id: 'rice', quantity: 0.2, no_quantity: false },
+            ],
+            product_supplier_prices: PRICED,
+        }))
+        showPage()
+        const note = await screen.findByText(/Old Beans is deactivated/)
+        expect(note.textContent).toMatch(/Some components have no preferred price/)
+        expect(note.textContent).not.toMatch(/to see the cost/)
+    })
+
+    it('is worked out once the dish has nothing deactivated in it', async () => {
+        useTables(tablesFor({ menu_item_components: [BURRITO[0]], product_supplier_prices: PRICED }))
+        showPage()
+        await screen.findByText('Derived Allergens')
+        expect(costLine()).toContain('€0.30')
+        expect(screen.queryByText(/is deactivated/)).toBeNull()
+    })
+})

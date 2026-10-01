@@ -33,7 +33,7 @@
 // so it is plain figures and words, nothing the mail would have to work out
 // again. The mail cannot import anything from the app.
 
-import { num, fmtMoney, fmtQty } from '@/lib/format'
+import { num, fmtMoney, fmtQty, namesList } from '@/lib/format'
 import { renumberPlan } from '@/lib/priceEvents'
 import { addDays, dayMonth } from '@/lib/dates'
 import { samePrice, sameWords, SAME_WORDS, byPieceWeight } from '@/lib/invoiceImport'
@@ -817,9 +817,6 @@ const docCount = (invoices, credits) => [
     invoices ? `${invoices} ${invoices === 1 ? 'invoice' : 'invoices'}` : '',
     credits ? `${credits} credit ${credits === 1 ? 'note' : 'notes'}` : '',
 ].filter(Boolean).join(' and ')
-
-const namesList = names => (names.length < 2 ? names.join('')
-    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
 export function readFrom(documents = []) {
     const read = new Map()

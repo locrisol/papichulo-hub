@@ -2,12 +2,12 @@ import { useState, useEffect, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
-import { calculateMixCost } from '@/lib/mixCost'
+import { calculateMixCost, costInside, deactivatedIn } from '@/lib/mixCost'
 import RecipeIngredientForm from '@/components/inventory/RecipeIngredientForm'
 import Modal from '@/components/ui/Modal'
 import { friendlyError } from '@/lib/errors'
-import { fmtMoney, fmtUnitCost } from '@/lib/format'
-import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton } from '@/lib/controlStyles'
+import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
+import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton, badge } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import { canBeIngredient } from '@/lib/products'
 import { numberField } from '@/lib/numberInput'
@@ -30,6 +30,24 @@ import ErrorBanner from '@/components/ui/ErrorBanner'
 // An ingredient can itself be a MIX, so the calculation recurses. A recipe that
 // ends up pointing back at itself stops cleanly instead of looping forever, and
 // that guard is in lib/mixCost.js rather than here.
+
+// An ingredient's name, written once for the phone card and the table.
+//
+// A deactivated one is still on the recipe, so it is named and marked rather
+// than called missing; it has no cost until it is replaced. Missing product is
+// kept for one that cannot be found at all.
+function IngredientName({ ingredient }) {
+  if (!ingredient) return <span className="text-red-600">Missing product</span>
+  return (
+    <>
+      {ingredient.name}
+      {ingredient.is_active === false && (
+        <span className={`${badge} ml-2 bg-red-200 text-red-800`}>Inactive</span>
+      )}
+    </>
+  )
+}
+
 export default function RecipePage() {
   const { id } = useParams()
   const { activeRestaurant } = useRestaurant()
@@ -82,17 +100,19 @@ export default function RecipePage() {
 
 
 
+  // Every product, switched off or not, and this MIX among them. A deactivated
+  // ingredient is still on the recipe, so it has to be found to be named;
+  // read only the active ones and it was called a missing product. A recipe
+  // that comes back round to this MIX is caught by the cost's own guard and
+  // said as such. What can be picked is narrowed further down.
   const fetchProducts = useCallback(async () => {
-    // Ingredients are any active product except the MIX itself (no self-reference)
     const { data } = await supabase
       .from('products')
       .select('*')
-      .eq('is_active', true)
-      .neq('id', id)
       .order('name')
 
     if (data) setProducts(data)
-    }, [id])
+    }, [])
 
 
 
@@ -145,10 +165,9 @@ export default function RecipePage() {
   function getIngredientUnitCost(ingredientProduct) {
     // Uses the recursive helper. For raw ingredients it returns the preferred
     // price. For MIX ingredients it recursively computes the per-unit cost
-    // from the nested recipe.
-    if (!ingredientProduct) return null
-    const result = calculateMixCost(ingredientProduct, products, recipeLines, prices)
-    return result.cost
+    // from the nested recipe. A deactivated one has none, the same as in the
+    // total below.
+    return costInside(ingredientProduct, products, recipeLines, prices)
   }
 
   function getLineCost(line) {
@@ -159,13 +178,15 @@ export default function RecipePage() {
   }
 
   // Ingredients available in the dropdown: all active products except those
-  // already added to this recipe (unless we're editing that specific line).
+  // already added to this recipe (unless we're editing that specific line),
+  // and never the MIX itself.
   //
   // Drinks and cleaning are left out, which is canBeIngredient's business. A
   // line already on the recipe still shows whatever it is, because hiding one
   // that is really there would leave a cost nobody could account for.
   const availableProducts = products.filter(p => {
     if (editingLine && editingLine.ingredient_product_id === p.id) return true
+    if (p.id === id || p.is_active === false) return false
     if (!canBeIngredient(p)) return false
     return !recipeLines.some(l => l.ingredient_product_id === p.id && l.mix_product_id === id)
   })
@@ -314,12 +335,22 @@ export default function RecipePage() {
       ? result.cost * batchYield
       : null
 
+    // Named so somebody knows what to replace, however deep it sits.
+    const deactivated = deactivatedIn(
+      recipeLines.filter(l => l.mix_product_id === id).map(l => l.ingredient_product_id),
+      products, recipeLines)
+
     return {
       perUnit: result.cost,
       total,
       batchYield,
       status: result.status,
       missing: result.missing || [],
+      deactivated,
+      // Whether anything else is missing as well, a price or a recipe. Then
+      // replacing the deactivated ones would not bring the cost back, and the
+      // note must not say it would.
+      stillUnset: (result.missing || []).some(m => !deactivated.some(p => p.id === m)),
     }
   })()
 
@@ -431,7 +462,7 @@ export default function RecipePage() {
                 <div key={line.id} className="rounded-lg border border-border bg-white p-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-sm font-semibold text-gray-900">
-                      {ingredient ? ingredient.name : <span className="text-red-600">Missing product</span>}
+                      <IngredientName ingredient={ingredient} />
                     </span>
                     <span className="text-base font-semibold text-gray-900 whitespace-nowrap tabular-nums">
                       {lineCost !== null ? fmtMoney(lineCost) : '—'}
@@ -481,7 +512,7 @@ export default function RecipePage() {
                     <Fragment key={line.id}>
                       <tr className={`border-b border-border ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                         <td className="px-4 py-3 font-medium text-gray-900">
-                          {ingredient ? ingredient.name : <span className="text-red-600">Missing product</span>}
+                          <IngredientName ingredient={ingredient} />
                         </td>
                         <td className="px-4 py-3 text-gray-700">
                           {parseFloat(line.quantity)} {ingredient?.unit || ''}
@@ -549,7 +580,14 @@ export default function RecipePage() {
                   </span>
                 </div>
               </div>
-              {summary.status === 'missing_price' && (
+              {summary.status === 'missing_price' && summary.deactivated.length > 0 && (
+                <p className="text-xs text-amber-700 mt-3">
+                  {namesList(summary.deactivated.map(p => p.name))} {summary.deactivated.length === 1 ? 'is' : 'are'} deactivated.
+                  Replace {summary.deactivated.length === 1 ? 'it' : 'them'} in this recipe, or in the recipe
+                  that uses {summary.deactivated.length === 1 ? 'it' : 'them'}{summary.stillUnset ? '.' : ', to see the cost.'}
+                </p>
+              )}
+              {summary.status === 'missing_price' && (summary.deactivated.length === 0 || summary.stillUnset) && (
                 <p className="text-xs text-amber-700 mt-3">
                   Some ingredients (or nested MIX ingredients) have no preferred price set for {activeRestaurant?.name}. The cost above cannot be calculated until all ingredient prices are configured.
                 </p>

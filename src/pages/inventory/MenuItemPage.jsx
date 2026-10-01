@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useRestaurant } from '@/context/restaurant'
-import { calculateMixCost, menuItemCost } from '@/lib/mixCost'
+import { menuItemCost, costInside, deactivatedIn, missingIn } from '@/lib/mixCost'
 import { deriveMenuItemAllergens, ALLERGEN_KEYS } from '@/lib/allergens'
 import { friendlyError } from '@/lib/errors'
 import { canBeMenuComponent } from '@/lib/products'
@@ -13,7 +13,7 @@ import AddOptions from '@/components/inventory/AddOptions'
 import ProductSelect from '@/components/ui/ProductSelect'
 import QuantityInUnit from '@/components/ui/QuantityInUnit'
 import { numberField } from '@/lib/numberInput'
-import { fmtMoney, fmtUnitCost } from '@/lib/format'
+import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
 
@@ -422,6 +422,17 @@ export default function MenuItemPage() {
   // Derived numbers
   const totalCost = menuItemCost(components, products, recipeLines, prices)
 
+  // What is deactivated and standing in the way of the cost, on the dish or
+  // inside a recipe it uses, named so somebody knows what to replace. Not the
+  // ones used but not measured, which add nothing to the cost either way.
+  const costed = components.filter(c => !c.no_quantity).map(c => c.product_id)
+  const deactivated = totalCost === null ? deactivatedIn(costed, products, recipeLines) : []
+  // And whether anything else is in the way too: a price or a recipe still to
+  // be set. Then replacing the deactivated ones would not bring the cost back,
+  // and the note must not say it would.
+  const stillUnset = totalCost === null
+    && missingIn(costed, products, recipeLines, prices).some(m => !deactivated.some(p => p.id === m))
+
   const grossPrice = item ? parseFloat(item.selling_price) : 0
   const vatRate = item ? parseFloat(item.vat_rate) : 0
   const netPrice = grossPrice / (1 + vatRate / 100)
@@ -441,13 +452,13 @@ export default function MenuItemPage() {
     return products.find(p => p.id === productId)
   }
 
+  // Through the same rule as the total, so a deactivated line has no cost of
+  // its own either rather than a figure the total then refuses to add up.
   function getLineCost(component) {
     if (component.no_quantity) return null
-    const product = getProduct(component.product_id)
-    if (!product) return null
-    const result = calculateMixCost(product, products, recipeLines, prices)
-    if (result.cost === null) return null
-    return parseFloat(component.quantity) * result.cost
+    const unitCost = costInside(getProduct(component.product_id), products, recipeLines, prices)
+    if (unitCost === null) return null
+    return parseFloat(component.quantity) * unitCost
   }
 
   // The sheet names already in use in the category this item is in, and who is
@@ -534,9 +545,7 @@ export default function MenuItemPage() {
   })()
 
   function getIngredientUnitCost(product) {
-    if (!product) return null
-    const result = calculateMixCost(product, products, recipeLines, prices)
-    return result.cost
+    return costInside(product, products, recipeLines, prices)
   }
 
   if (loading) return <div className="text-sm text-gray-500">Loading menu item...</div>
@@ -859,7 +868,12 @@ export default function MenuItemPage() {
         </div>
         {totalCost === null && components.length > 0 && (
           <p className="text-xs text-amber-700 mt-3">
-            Some components have no preferred price (raw products) or no complete recipe (MIX products) for {activeRestaurant?.name}. The cost and margin cannot be calculated until all are configured.
+            {deactivated.length > 0
+              && `${namesList(deactivated.map(p => p.name))} ${deactivated.length === 1 ? 'is' : 'are'} deactivated. `
+                + `Replace ${deactivated.length === 1 ? 'it' : 'them'} on this dish, or in the recipe that uses `
+                + `${deactivated.length === 1 ? 'it' : 'them'}${stillUnset ? '. ' : ', to see the cost and margin.'}`}
+            {(deactivated.length === 0 || stillUnset)
+              && `Some components have no preferred price (raw products) or no complete recipe (MIX products) for ${activeRestaurant?.name}. The cost and margin cannot be calculated until all are configured.`}
           </p>
         )}
       </div>
@@ -1102,11 +1116,12 @@ function ComponentForm({
 function ComponentChips({ product, component }) {
   return (
     <>
-      {/* Still on the dish and still counted, but nobody can pick it for
-          anything new, so it wants replacing. Its name is shown rather than
-          Missing product, which is kept for one that cannot be found at all. */}
+      {/* Still on the dish and its allergens still count, but it has no cost
+          and nobody can pick it for anything new, so it wants replacing. Its
+          name is shown rather than Missing product, which is kept for one
+          that cannot be found at all. */}
       {product?.is_active === false && (
-        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">Inactive</span>
+        <span className={`${badge} ml-2 bg-red-200 text-red-800`}>Inactive</span>
       )}
       {product?.is_mix && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">MIX</span>}
       {component.choice_group && (

@@ -830,7 +830,10 @@ export default function ProductsPage() {
     if (product.is_active) {
       const ok = await confirm({
         title: `Deactivate ${product.name}?`,
-        message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new.',
+        // The cost part is said here because it is the surprise. Its old
+        // price is not used for anything made with it, see lib/mixCost.
+        message: 'It stays on every recipe and every count that already used it, and it cannot be picked for anything new. '
+          + 'A recipe or dish still using it has no cost until it is replaced.',
         confirmLabel: 'Deactivate it',
         tone: 'danger',
         dangerNote: 'You can turn it back on at any time.',

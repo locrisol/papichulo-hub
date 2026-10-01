@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num } from '@/lib/format'
+import { fmtMoney, fmtQty, fmtUnitCost, fmtPct, num, namesList } from '@/lib/format'
 
 describe('fmtMoney', () => {
   it('formats a value over 1000 with a thousands separator and 2 decimals', () => {
@@ -124,5 +124,18 @@ describe('num', () => {
         expect(num(undefined)).toBe(0)
         expect(num('')).toBe(0)
         expect(num('not a number')).toBe(0)
+    })
+})
+
+describe('namesList', () => {
+    it('says names the way a sentence does', () => {
+        expect(namesList(['Lime'])).toBe('Lime')
+        expect(namesList(['Lime', 'Salt'])).toBe('Lime and Salt')
+        expect(namesList(['Lime', 'Salt', 'Cream'])).toBe('Lime, Salt and Cream')
+    })
+
+    it('says nothing for nothing', () => {
+        expect(namesList([])).toBe('')
+        expect(namesList(undefined)).toBe('')
     })
 })
