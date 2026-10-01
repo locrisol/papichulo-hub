@@ -439,12 +439,27 @@ describe('what survives the check', () => {
     })
 
     // A page that suddenly offers four hundred events has become something
-    // else, and the right answer to that is to stop rather than fill the table.
-    it('never writes more than the cap from one page', () => {
-        const many = Array.from({ length: MOST_ROWS + 20 }, (_, i) => ({
-            name: `Gig ${i}`,
-            date: '2026-11-19',
-        }))
+    // else, and the right answer to that is to write nothing and be noticed.
+    // Filing the first forty looked like an ordinary week and said nothing.
+    const gigs = (count, date = '2026-11-19', called = 'Gig') =>
+        Array.from({ length: count }, (_, i) => ({ name: `${called} ${i}`, date }))
+
+    it('writes nothing from a page offering more than the cap, and says why', () => {
+        const out = eventsFrom(answer(gigs(MOST_ROWS + 1)), WHEN)
+        expect(out.rows).toEqual([])
+        expect(out.refused).toContain(String(MOST_ROWS + 1))
+    })
+
+    it('still writes a page of exactly the cap', () => {
+        const out = eventsFrom(answer(gigs(MOST_ROWS)), WHEN)
+        expect(out.rows).toHaveLength(MOST_ROWS)
+        expect(out.refused).toBe('')
+    })
+
+    // Counted after the checks, so rows that were never going to be written,
+    // outside the window or the same thing twice, do not get a page refused.
+    it('counts only what would be written', () => {
+        const many = [...gigs(MOST_ROWS), ...gigs(20, '2026-10-01', 'Old')]
         expect(eventsFrom(answer(many), WHEN).rows).toHaveLength(MOST_ROWS)
     })
 

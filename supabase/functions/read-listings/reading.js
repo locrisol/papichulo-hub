@@ -419,9 +419,20 @@ export function sourceKeyFor(date, name, key = 'date') {
 // because a wrong end date on a roster is a band across half a month.
 export const LONGEST_RUN_DAYS = 60
 
-// Nothing ever writes more than this from one page. A page that suddenly
+// Nothing ever writes more than this from one place. A page that suddenly
 // offers four hundred events has changed into something else, and the right
 // answer to that is to write nothing and be noticed.
+//
+// It used to keep the first forty and carry on, which wrote whatever happened
+// to come first on a page that had stopped making sense and showed "40 found"
+// on the settings screen, the same as a busy week. Refused now, so the read
+// fails like any other: the log says how many it offered, the place keeps its
+// last good read, and Read the pages now names it as one that could not be
+// read.
+//
+// Counted after the checks, so rows that were never going to be written do not
+// get a page refused. All the pages of a place count together, since they are
+// read and written as one.
 export const MOST_ROWS = 40
 
 // Everything the model said, minus everything that cannot be true.
@@ -444,8 +455,6 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
     let wrongDay = 0
 
     for (const one of list) {
-        if (rows.length >= MOST_ROWS) break
-
         const name = cleanName(one?.name)
         if (!name) continue
 
@@ -507,6 +516,13 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
             venue: cleanName(one?.where) || null,
             category: null,
         })
+    }
+
+    if (rows.length > MOST_ROWS) {
+        return {
+            rows: [],
+            refused: `it offered ${rows.length} events, more than the ${MOST_ROWS} one place may add, so nothing was written`,
+        }
     }
 
     return { rows, refused: '', wrongDay }
