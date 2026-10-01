@@ -130,7 +130,7 @@ describe('a day off does not disappear any more', () => {
     })
 
     it('ignores an absence nobody approved', () => {
-        const pending = off('sick', '2026-10-28').map(a => ({ ...a, status: 'pending' }))
+        const pending = off('sick', '2026-10-28').map(a => ({ ...a, status: 'requested' }))
         const [first] = personPeriod({
             people: [aoife], entries, absences: pending, dates: DATES,
         })
@@ -232,7 +232,7 @@ describe('what a holiday is worth inside the period', () => {
     })
 
     it('ignores a holiday nobody has approved', () => {
-        const pending = away(21).map(a => ({ ...a, status: 'pending' }))
+        const pending = away(21).map(a => ({ ...a, status: 'requested' }))
         expect(holidayHoursInWeek(pending, 'e1', DATES)).toBe(0)
     })
 })
@@ -431,6 +431,12 @@ describe('the browser and the function agree about a period', () => {
         {
             employee_id: 'e1', kind: 'unpaid', status: 'approved',
             starts_on: '2026-11-04', ends_on: '2026-11-04',
+        },
+        // A holiday a manager put hours on before answering it. The mail
+        // leaves it out, so the PDF attached to the mail has to as well.
+        {
+            employee_id: 'e1', kind: 'holiday', status: 'requested',
+            starts_on: '2026-11-05', ends_on: '2026-11-05', hours: 8,
         },
     ]
     const withKinds = [

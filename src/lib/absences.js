@@ -186,13 +186,20 @@ export function absenceProblem(form) {
 // built, and two weeks either side of a holiday would then quietly disagree
 // about how much of it each one owned. Split evenly, the pieces always add back
 // up to the number on the payslip.
+//
+// **Approved holidays only**, the same two lines as the copy in the payroll
+// mail's function. It used to skip only a declined one, so a manager who typed
+// hours onto a holiday before answering it had them counted on the timesheet
+// and in the PDF, and not in the mail the PDF went out with. A request nobody
+// has answered is not time off yet, which is what absencesOn says above.
 export function holidayHoursInWeek(absences, employeeId, weekDates) {
     const dates = weekDates || []
     let total = 0
 
     for (const absence of absences || []) {
         if (absence.employee_id !== employeeId) continue
-        if (absence.status === 'declined') continue
+        if (absence.kind !== 'holiday') continue
+        if (absence.status && absence.status !== 'approved') continue
         if (absence.hours == null) continue
 
         const hours = Number(absence.hours)

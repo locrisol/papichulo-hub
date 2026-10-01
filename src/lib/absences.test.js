@@ -247,6 +247,20 @@ describe('holidayHoursInWeek', () => {
         expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
     })
 
+    // A request nobody has answered is not time off yet. The payroll mail
+    // already left these out and the PDF attached to it did not, so the two
+    // could disagree about the same holiday.
+    it('leaves out one still waiting for approval, even with hours on it', () => {
+        const off = [away({ hours: 20, status: 'requested' })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
+    // Only a holiday carries hours. A figure on any other kind is not holiday.
+    it('leaves out hours on anything that is not a holiday', () => {
+        const off = [away({ kind: 'unpaid', hours: 20 })]
+        expect(holidayHoursInWeek(off, 'e1', WEEK)).toBe(0)
+    })
+
     // A day off with no hours on it is not a holiday anybody is counting.
     it('leaves out anything with no hours recorded', () => {
         const off = [away({ kind: 'day_off', hours: null })]
