@@ -5,7 +5,7 @@ import { friendlyError } from '@/lib/errors'
 import { fullDate, shortDate } from '@/lib/dates'
 import { fmtHours } from '@/lib/roster'
 import { shortClock } from '@/lib/clock'
-import { readTimesheet, fileFits, insideWeek } from '@/lib/timesheetImport'
+import { readTimesheet, fileFits, insideWeek, sameTimeWho } from '@/lib/timesheetImport'
 import { planImport } from '@/lib/timesheet'
 import Modal from '@/components/ui/Modal'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -174,6 +174,7 @@ export default function ImportDialog({
             hours: read.shifts.reduce((t, s) => t + (Number(s.hours) || 0), 0),
             breaks: read.breaks.length,
             breakHours: read.breakHours,
+            sameTime: read.sameTime,
             filled: plan.filled,
             rosterReplaced: plan.rosterReplaced,
             nudged: plan.nudged,
@@ -381,6 +382,10 @@ function otherWeeks(read) {
     return `the weeks of ${weeks.slice(0, -1).join(', ')} and ${weeks[weeks.length - 1]}`
 }
 
+function sameTimeWords(count) {
+    return `${count} ${count === 1 ? 'line' : 'lines'} dropped with the same clock in and clock out time`
+}
+
 function Ready({ plan, read }) {
     return (
         <div>
@@ -397,6 +402,12 @@ function Ready({ plan, read }) {
                         {read.breaks.length} break lines dropped, worth {fmtHours(read.breakHours)} hours.
                         Breaks are paid here.
                     </Line>
+                )}
+                {/* No work at all, and kept they came to 24 hours each. Said
+                    rather than dropped quietly, and named, because one may be
+                    somebody whose real shift the till never caught. */}
+                {read.sameTime.length > 0 && (
+                    <Line>{sameTimeWords(read.sameTime.length)}: {sameTimeWho(read.sameTime)}.</Line>
                 )}
                 {/* A file often covers more than one week: his real export ran
                     the 6th to the 19th. Only the week on screen is written to,
@@ -436,6 +447,9 @@ function Done({ result, people }) {
                     <Line tick>
                         {result.breaks} break lines dropped, worth {fmtHours(result.breakHours)} hours
                     </Line>
+                )}
+                {result.sameTime.length > 0 && (
+                    <Line tick>{sameTimeWords(result.sameTime.length)}: {sameTimeWho(result.sameTime)}</Line>
                 )}
                 {result.ignored > 0 && <Line quiet>{result.ignored} lines skipped, not people</Line>}
             </ul>

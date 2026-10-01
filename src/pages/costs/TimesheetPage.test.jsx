@@ -554,6 +554,38 @@ describe('a clock in with no clock out', () => {
     })
 })
 
+// An end at or before the start is the next morning, so a start and an end the
+// same were saved as 24 hours, which went to the accountant like any other.
+describe('a start and a finish at the same time', () => {
+    const SAID = 'A shift cannot start and finish at the same time.'
+
+    it('is not saved, and the figure goes back', async () => {
+        rows.timesheet_entries = [{ ...off_the_till, source: 'typed' }]
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.clear(boxes()[1])
+        await userEvent.type(boxes()[1], '090000')
+        await userEvent.tab()
+
+        await waitFor(() => expect(screen.getByText(SAID)).toBeInTheDocument())
+        expect(updated).toHaveLength(0)
+        expect(boxes()[1]).toHaveValue('17:00:00')
+    })
+
+    it('is not saved as a new row either', async () => {
+        render(<TimesheetPage />)
+        await waitFor(() => expect(boxes().length).toBeGreaterThan(0))
+
+        await userEvent.type(boxes()[1], '0900')
+        await userEvent.type(boxes()[0], '0900')
+        await userEvent.tab()
+
+        await waitFor(() => expect(screen.getByText(SAID)).toBeInTheDocument())
+        expect(inserted).toHaveLength(0)
+    })
+})
+
 describe('saying that it saved', () => {
     // The same three words the report page uses, because it is the same
     // promise: no Save button on either, both write when you leave a box, and

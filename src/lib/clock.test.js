@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    toSeconds, spanSeconds, spanHours, shortClock, maskTime, settleTime, irishOffset,
+    toSeconds, spanSeconds, spanHours, shortClock, maskTime, settleTime, irishOffset, noLength,
 } from '@/lib/clock'
 
 // What the box shows after each key press, which is the thing being designed.
@@ -202,5 +202,24 @@ describe('leaving the box', () => {
         for (const typed of ['9', '930', '250', '1158', '115804', '235959', '0']) {
             expect(toSeconds(settleTime(typed)), typed).toBeGreaterThanOrEqual(0)
         }
+    })
+})
+
+// An end at or before the start is the next morning, so a start and a finish
+// the same came to 24 hours. Asked before anything is saved.
+describe('a span with no length', () => {
+    it('is a start and a finish at the same moment, however it is written', () => {
+        expect(noLength('09:00:00', '09:00:00')).toBe(true)
+        expect(noLength('09:00', '09:00:00')).toBe(true)
+    })
+
+    it('is not a span a second long, or one past midnight', () => {
+        expect(noLength('09:00:00', '09:00:01')).toBe(false)
+        expect(noLength('17:00:00', '00:00:00')).toBe(false)
+    })
+
+    it('is not a clock in still waiting for its clock out', () => {
+        expect(noLength('09:00:00', null)).toBe(false)
+        expect(noLength(null, null)).toBe(false)
     })
 })

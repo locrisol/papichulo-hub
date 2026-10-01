@@ -36,6 +36,11 @@
 -- was published again. Now the row keeps what went out in published_as, and
 -- roster_published serves the week as staff were told it.
 --
+-- A shift or a timesheet row cannot start and finish at the same time. An
+-- end at or before the start is read as the next morning everywhere hours are
+-- worked out, so 09:00 to 09:00 by mistake came to 24 hours: in the labour
+-- cost, the report and the hours mail to the accountant.
+--
 -- Safe to run twice.
 
 create or replace view public.roster_colleagues as
@@ -368,5 +373,28 @@ comment on view public.roster_published is 'The week as it went out to staff, at
 -- this the database would let an employee delete shifts through it.
 revoke all on public.roster_published from anon, authenticated, public;
 grant select on public.roster_published to authenticated;
+
+-- No length at all. If a row like that is already saved, this stops and says
+-- so in words rather than with the check's own error, and the README says how
+-- to find them. An empty end passes: a clock in still waiting for its clock
+-- out is a different thing.
+do $$
+begin
+    if not exists (select 1 from pg_constraint where conname = 'timesheet_entries_not_zero_length') then
+        if exists (select 1 from public.timesheet_entries where starts_at = ends_at) then
+            raise exception 'Some timesheet rows start and finish at the same time. Put them right first, then run this again.';
+        end if;
+        alter table public.timesheet_entries add constraint timesheet_entries_not_zero_length
+            check (starts_at is null or ends_at is null or starts_at <> ends_at);
+    end if;
+
+    if not exists (select 1 from pg_constraint where conname = 'roster_shifts_not_zero_length') then
+        if exists (select 1 from public.roster_shifts where starts_at = ends_at) then
+            raise exception 'Some roster shifts start and finish at the same time. Put them right first, then run this again.';
+        end if;
+        alter table public.roster_shifts add constraint roster_shifts_not_zero_length
+            check (starts_at <> ends_at);
+    end if;
+end $$;
 
 notify pgrst, 'reload schema';

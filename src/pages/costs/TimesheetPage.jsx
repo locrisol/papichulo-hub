@@ -8,7 +8,7 @@ import { can, RESTAURANT_CONFIG } from '@/lib/access'
 import { todayISO, weekStartOf, weekDates, addDays, shortDate, fullDate, toISODate } from '@/lib/dates'
 import { periodOf } from '@/lib/payPeriod'
 import { fmtMoney } from '@/lib/format'
-import { settleTime } from '@/lib/clock'
+import { settleTime, noLength } from '@/lib/clock'
 import {
     personWeek, weekTotals, unanswered, cameFromTill, labourPercent, STATE_KEYS,
 } from '@/lib/timesheet'
@@ -50,6 +50,10 @@ const VIEWS = [
 // Where this screen lives. Not this week: a timesheet is filled in once the
 // week has finished and the till's report for it exists.
 const lastWeekStart = () => addDays(weekStartOf(todayISO()), -7)
+
+// A start and a finish at the same time read as 24 hours, so it is never
+// saved. See noLength.
+const SAME_TIME = 'A shift cannot start and finish at the same time.'
 
 // A list of people, read out the way somebody would say it.
 function names(waiting) {
@@ -380,6 +384,13 @@ export default function TimesheetPage() {
             // box. The box already holds what was typed.
             const stored = entries.find(e => e.id === entry.id) || entry
             if (stored[field] === value) { stopTyping(entry.id, field); return }
+            // Refused like a write the database said no to, with the figure
+            // put back. See noLength.
+            if (noLength(next.starts_at, next.ends_at)) {
+                finish(null, SAME_TIME)
+                stopTyping(entry.id, field)
+                return
+            }
             return save(entry.id, { [field]: value, ...changedByHand(entry) }, field)
         }
 
@@ -389,6 +400,10 @@ export default function TimesheetPage() {
 
         // Nothing typed at all, so there is nothing to keep.
         if (!start && !end) { forget(person, cell); return }
+
+        // Left in the boxes to be put right, since nothing was saved to go
+        // back to.
+        if (noLength(start, end)) { finish(null, SAME_TIME); return }
 
         // A row needs a start. Typing the out time first is legitimate and
         // rare, so the draft holds it and waits rather than inventing one.

@@ -971,6 +971,13 @@ CREATE TABLE IF NOT EXISTS "public"."timesheet_entries" (
         OR ("btrim"(COALESCE("note", ''::"text")) <> ''::"text")
         OR ("kind" <> 'worked'::"text")
         OR ("source" = 'corrected'::"text")
+    ),
+    -- Never the same time at both ends. An end at or before the start is the
+    -- next morning, so 09:00 to 09:00 typed by mistake, or a till stamping in
+    -- and out on the same second, was worth 24 hours in the hours column, the
+    -- labour cost and the pay mail. An empty end passes.
+    CONSTRAINT "timesheet_entries_not_zero_length" CHECK (
+        ("starts_at" IS NULL) OR ("ends_at" IS NULL) OR ("starts_at" <> "ends_at")
     )
 );
 
@@ -1289,7 +1296,11 @@ CREATE TABLE IF NOT EXISTS "public"."roster_shifts" (
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "published_as" "jsonb"
+    "published_as" "jsonb",
+    -- The same as on the timesheet: an end at or before the start is the next
+    -- morning, so a shift that starts and finishes at the same time was 24
+    -- hours. The dialog refuses one, and this is for whatever else writes here.
+    CONSTRAINT "roster_shifts_not_zero_length" CHECK (("starts_at" <> "ends_at"))
 );
 
 COMMENT ON TABLE "public"."roster_shifts" IS 'One row per shift. The whole roster is this table read a week at a time.';

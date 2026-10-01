@@ -147,3 +147,13 @@ export function settleTime(raw) {
     while (parts.length < 3) parts.push('00')
     return parts.map(part => part.padStart(2, '0')).join(':')
 }
+
+// Whether a span starts and finishes at the same moment, which is no work at
+// all. spanSeconds reads an end at or before the start as the next morning, so
+// left alone 09:00 to 09:00 typed by mistake, or a till stamping in and out on
+// the same second, came to 24 hours. The database refuses one; the timesheet
+// and the till upload ask this first, so it can be said in words.
+export function noLength(from, to) {
+    const start = toSeconds(from)
+    return start >= 0 && start === toSeconds(to)
+}

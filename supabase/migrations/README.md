@@ -121,8 +121,11 @@ of a day stays theirs, the same as the mail, which tells nobody about it. A shif
 its week went out stays on that person's My shifts and phone calendar as it
 went out, until the week is published again: `roster_shifts.published_as`
 keeps that copy and the `roster_published` view serves it, with a shift's note
-only for that person and the managers. **Run it before the branch is
-merged**:
+only for that person and the managers. A shift or a timesheet row can no
+longer start and finish at the same time, which came to 24 hours. If one is
+already saved, 029 stops and says so; `select * from timesheet_entries where
+starts_at = ends_at`, and the same on `roster_shifts`, finds it to put right
+first. **Run it before the branch is merged**:
 the roster calls that function to answer time off, and until it exists the
 answer buttons only show an error. My shifts reads `roster_published`, so
 without 029 every employee's home page fails to load as well. Redeploy
