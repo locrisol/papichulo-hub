@@ -251,11 +251,23 @@ async function placesFor(admin: Admin, restaurantId: string): Promise<Place[]> {
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
 
-    if (error) throw new Error('Could not read the places this restaurant watches.')
+    if (error) throw feedError('Could not read the places this restaurant watches.')
 
     return (data || [])
         .map(row => row.place as unknown as Place)
         .filter(p => p && p.ticketmaster_venue_id)
+}
+
+// What to write in the log about an error: what kind it was and the sentence
+// for it, and never the error itself.
+//
+// **The key is in the address of every request to Ticketmaster**, because the
+// Discovery API takes it nowhere else, and a fetch that fails names the
+// address it was fetching. Logged as it came, a dropped connection put the key
+// in the function log. The kind is enough to tell a timeout from a refusal.
+function said(err: unknown, problem: string) {
+    const kind = (err as { name?: string })?.name || 'Error'
+    return `${kind}: ${problem}`
 }
 
 // How the last sync of a place went, written where the roster, the calendar
@@ -285,8 +297,9 @@ async function syncRestaurant(admin: Admin, restaurantId: string, key: string) {
             // One place refusing must not stop the others. It is written on
             // the place as well as in the log, because the log is somewhere
             // nobody looks and a broken feed otherwise looks like a quiet one.
-            console.error('nearby-events', place.name, err)
-            await noteOn(admin, place, { feed_problem: feedProblem(err) })
+            const problem = feedProblem(err)
+            console.error('nearby-events', place.name, said(err, problem))
+            await noteOn(admin, place, { feed_problem: problem })
             failures.push(place.name)
         }
     }
@@ -332,7 +345,7 @@ Deno.serve(async (request) => {
                 // A restaurant near nothing ticketed is not news and not a failure.
                 if (out.places > 0) done.push({ restaurant: shop.name, ...out })
             } catch (err) {
-                console.error('nearby-events', shop.name, err)
+                console.error('nearby-events', shop.name, said(err, feedProblem(err)))
                 done.push({ restaurant: shop.name, error: 'Could not read the places it watches.' })
             }
         }
@@ -439,7 +452,9 @@ Deno.serve(async (request) => {
         if (!res) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
         if (!res.ok) return json({ error: `Ticketmaster said no (${res.status}).` }, 502)
 
-        const found = suggestions(point, venuesFrom(await res.json()))
+        const answer = await res.json().catch(() => null)
+        if (!answer) return json({ error: 'Ticketmaster did not answer. Try again in a minute.' }, 502)
+        const found = suggestions(point, venuesFrom(answer))
 
         // The ones already on this restaurant's list are left out. Offering
         // somebody a place they are already watching is offering them a
@@ -469,7 +484,10 @@ Deno.serve(async (request) => {
         if (out.places === 0) return json({ added: 0, total: 0, why: 'nothing ticketed near this one' })
         return json(out)
     } catch (err) {
-        console.error('nearby-events', err)
-        return json({ error: String(err) }, 502)
+        // The sentence this function wrote, never the error as it came. See
+        // said.
+        const problem = feedProblem(err)
+        console.error('nearby-events', said(err, problem))
+        return json({ error: problem }, 502)
     }
 })
