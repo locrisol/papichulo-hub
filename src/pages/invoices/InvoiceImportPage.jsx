@@ -55,19 +55,32 @@ export default function InvoiceImportPage() {
     // Bumped after anything goes in, so the list of what is still to
     // download is read again and the documents just imported drop off it.
     const [checked, setChecked] = useState(0)
+    // Bumped after anything goes in, so the lists below are read again, and
+    // true until they are back.
+    const [reread, setReread] = useState(0)
+    const [stale, setStale] = useState(false)
+    const loadedFor = useRef(null)
     const picker = useRef(null)
 
-    // Everything the matching needs, read once. A batch of twenty files asking
-    // for the same four lists twenty times is twenty times the waiting for
-    // exactly the same answer.
+    // Everything the matching needs, read once per batch rather than once per
+    // file. A batch of twenty files asking for the same four lists twenty
+    // times is twenty times the waiting for exactly the same answer.
+    //
+    // **Read again after every batch and every fill in.** Read only when the
+    // page opened, a second batch in the same visit worked from lists that
+    // did not have the first one in them: a document imported a minute ago
+    // showed as ready to go in again, and a code first seen in it looked new,
+    // so adding it a second time failed after an import that had worked.
     useEffect(() => {
         if (!restaurantId) return
         let alive = true
 
         async function load() {
             // See the comment on the same line in ClaimsPage: a banner that is
-            // never cleared outlives the thing it was about.
-            setError('')
+            // never cleared outlives the thing it was about. Only for another
+            // restaurant, though: read again after a batch, the banner may be
+            // saying what went wrong in it.
+            if (loadedFor.current !== restaurantId) setError('')
             // Every invoice ever held, every price and code, and every list
             // pasted all grow past a thousand rows, which is as many as one
             // read hands back, so they are read a page at a time. An invoice
@@ -93,7 +106,18 @@ export default function InvoiceImportPage() {
 
             if (!alive) return
             const failed = [accounts, suppliers, prices, codes, held, documents].map(r => r.error).find(Boolean)
+            if (failed && loadedFor.current === restaurantId) {
+                // Read again after a batch: said after whatever the batch
+                // said, and nothing more is read off a file, because the old
+                // lists are exactly what went wrong before.
+                const again = 'The lists the import works from could not be read again, so nothing '
+                    + `more can go in until they are. ${friendlyError(failed)} Reload the page to try again.`
+                setError(said => (said ? `${said} ${again}` : again))
+                return
+            }
             if (failed) { setError(friendlyError(failed)); return }
+            loadedFor.current = restaurantId
+            setStale(false)
 
             // In the order the Invoices page offers them, most used first.
             const recent = addDays(todayISO(), -USE_WINDOW_DAYS)
@@ -112,7 +136,14 @@ export default function InvoiceImportPage() {
 
         load()
         return () => { alive = false }
-    }, [restaurantId])
+    }, [restaurantId, reread])
+
+    // After a write, nothing more is read off a file until the lists have it.
+    function readAgain() {
+        setStale(true)
+        setReread(n => n + 1)
+        setChecked(n => n + 1)
+    }
 
     // One file, from bytes to a card.
     //
@@ -210,7 +241,8 @@ export default function InvoiceImportPage() {
     // the credit in against a total that already has it taken off. So the card
     // says which one to fill in, and once it is filled in the credit settles the
     // shortage the fill in turns into a claim.
-    const cards = useMemo(() => files.map(file => {
+    const cards = useMemo(() => files.map(read => {
+        const file = placedNow(read, known)
         if (file.state !== 'ready' || file.doc?.kind !== 'credit' || allowed.has(file.key)) return file
         const others = files.filter(f => f.key !== file.key)
         const onHand = creditOnHandEntry(file.doc, {
@@ -257,9 +289,9 @@ export default function InvoiceImportPage() {
 
         const failedCodes = await writeCodes(seen)
         setSaving(false)
+        readAgain()
         if (failedCodes) { setError(failedCodes); return }
         if (done) setSaid(`${done} ${done === 1 ? 'document' : 'documents'} imported.`)
-        setChecked(n => n + 1)
     }
 
     async function writeCodes(seen) {
@@ -443,7 +475,7 @@ export default function InvoiceImportPage() {
         }
 
         setFillingIn(null)
-        setChecked(n => n + 1)
+        readAgain()
         setFiles(all => all.filter(f => f.key !== file.key))
         // The typed row is that document now, number and all, so a credit
         // against it in the same batch stops waiting and settles the claim.
@@ -503,7 +535,7 @@ export default function InvoiceImportPage() {
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             type="button"
-                            disabled={!known || reading}
+                            disabled={!known || reading || stale}
                             onClick={() => picker.current?.click()}
                             className={primaryButton()}
                         >
@@ -599,6 +631,15 @@ function placeOf(doc, known, restaurantId, restaurants) {
         }
     }
     return where
+}
+
+// Where a file stands against what is in the Hub now rather than when it was
+// read. A document imported or filled in since is already here, and a typed
+// invoice filled in by another file is no longer one waiting to be.
+function placedNow(file, known) {
+    if (!file.doc || !known || file.where?.what !== 'known' || file.blocks?.length) return file
+    const place = placeDocument(file.doc, known.held.filter(h => h.supplier_id === file.where.supplierId))
+    return { ...file, place, state: stateOf({ where: file.where, place, blocks: file.blocks }) }
 }
 
 function stateOf({ where, place, blocks }) {
