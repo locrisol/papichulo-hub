@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { renderWithRouter, tableOf } from '@/test/helpers'
+import { makeQuery, renderWithRouter, tableOf } from '@/test/helpers'
 import { emptyAllergens } from '@/lib/allergens'
+import { onAllergensChanged } from '@/lib/allergensChanged'
 
 // One product's fourteen. The boxes open at Not Present so only the ones that
 // apply need changing, but until something is saved that is a starting point
@@ -62,5 +64,44 @@ describe('a MIX with a recipe', () => {
         show(SALSA, [])
         expect(await screen.findByText(/Nothing has been saved for House Salsa yet/)).toBeInTheDocument()
         expect(screen.queryByText(/come from the products in its recipe/)).toBeNull()
+    })
+})
+
+// The red count on Products is worked out in the sidebar, which has no other
+// way of knowing a save happened on this page.
+describe('saving', () => {
+    it('tells the sidebar, so the count on Products goes down straight away', async () => {
+        const me = userEvent.setup()
+        const heard = vi.fn()
+        const stop = onAllergensChanged(heard)
+        try {
+            show(RICE, [])
+            await me.click(await screen.findByRole('button', { name: 'Save Allergens' }))
+            await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+        } finally {
+            stop()
+        }
+    })
+
+    it('tells it nothing when the save did not go through', async () => {
+        const me = userEvent.setup()
+        const heard = vi.fn()
+        const stop = onAllergensChanged(heard)
+        try {
+            show(RICE, [])
+            const answer = db.from.getMockImplementation()
+            db.from.mockImplementation(table => {
+                const q = answer(table)
+                if (table === 'product_allergens') {
+                    q.upsert = vi.fn(() => makeQuery({ data: null, error: { message: 'Failed to fetch' } }))
+                }
+                return q
+            })
+            await me.click(await screen.findByRole('button', { name: 'Save Allergens' }))
+            await screen.findByRole('alert')
+            expect(heard).not.toHaveBeenCalled()
+        } finally {
+            stop()
+        }
     })
 })

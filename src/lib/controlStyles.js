@@ -307,6 +307,57 @@ export function rowButton(tone = 'plain') {
 export const badge =
     'inline-block px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
 
+// The little count at the end of an item in the sidebar: requests waiting on
+// Roster, products with allergens not set on Products.
+//
+// The roster's was written inside AppLayout, and a second one was coming, with
+// more planned after it. Here so they are one size and one shape, and only the
+// colour says which kind it is.
+//
+//   waiting   amber, something waiting on you. Its white number is about 2.1
+//             to 1, which fails for text this size. Kept as it was for now;
+//             the plan for the rest of the sidebar counts gives it a dark
+//             number instead.
+//   urgent    red, something already wrong that a customer could be told.
+//             red-600 is the one that works both ways: the white number on it
+//             is 4.8 to 1, and the disc is 3 to 1 against the sidebar green.
+//             red-700 makes a better number and a disc that sinks into the
+//             green at 2.2.
+//
+// relative because the count carries words for a screen reader beside the
+// number, and those are absolutely placed. Without a positioned parent they
+// are placed against the whole page, and a sidebar item low enough down can
+// stretch it.
+export function navBadge(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-500 text-white',
+        urgent: 'bg-red-600 text-white',
+    }[tone] || 'bg-amber-500 text-white'
+
+    return `relative ${colour} text-[0.65rem] font-bold min-w-[1.15rem] h-[1.15rem] px-1 `
+        + 'rounded-full grid place-items-center flex-shrink-0'
+}
+
+// The same counts as a dot on the menu button, for a phone. The sidebar is a
+// drawer there, so none of its counts show until it is opened, and this says
+// there is something in it. The tones are navBadge's, and the most urgent one
+// present wins.
+//
+// A shape with no number, so it needs 3 to 1 against what is around it, which
+// is the white ring. red-600 is 4.8. The roster count's own amber-500 is about
+// 2.1, so waiting is one step darker here: amber-600 is 3.2 and still reads as
+// the same amber. The ring keeps it apart from the lines of the icon under it.
+//
+// The button it sits on has to be relative, and carries the words for it.
+export function menuDot(tone = 'waiting') {
+    const colour = {
+        waiting: 'bg-amber-600',
+        urgent: 'bg-red-600',
+    }[tone] || 'bg-amber-600'
+
+    return `absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-white ${colour}`
+}
+
 // "This week" and "Today", which jump back to now. They read as selected when
 // you are already there, so they need an on and an off state.
 // What that button should say.

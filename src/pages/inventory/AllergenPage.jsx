@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 import { ALLERGENS, emptyAllergens } from '@/lib/allergens'
+import { allergensChanged } from '@/lib/allergensChanged'
 import AllergenPicker from '@/components/inventory/AllergenPicker'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -139,6 +140,9 @@ export default function AllergenPage() {
       setFormProblem(friendlyError(error))
     } else {
       setSavedMessage('Saved')
+      // So the red count on Products in the sidebar goes down now, rather
+      // than on the next page change.
+      allergensChanged()
       // Refetch so the "Last updated" timestamp shown is the one
       // Postgres actually stored, not the client-side timestamp.
       loadAll()

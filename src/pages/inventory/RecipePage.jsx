@@ -11,6 +11,7 @@ import { fmtMoney, fmtUnitCost, namesList } from '@/lib/format'
 import { tableHeadRow, tableCard, card, rowButton, captionClass, fieldClass, pageTitle, primaryButton, badge } from '@/lib/controlStyles'
 import { useConfirm } from '@/context/confirm'
 import { canBeIngredient } from '@/lib/products'
+import { allergensChanged } from '@/lib/allergensChanged'
 import { numberField } from '@/lib/numberInput'
 import BackButton from '@/components/ui/BackButton'
 import ErrorBanner from '@/components/ui/ErrorBanner'
@@ -237,6 +238,9 @@ export default function RecipePage() {
       notes: formData.notes || null,
     }
 
+    // A MIX's allergens come from what goes into it, so a line in, out or
+    // changed can change the red count on Products in the sidebar. Each one
+    // says so, rather than leaving it until the next page change.
     if (editingLine) {
       const { error } = await supabase
         .from('mix_recipes')
@@ -244,7 +248,7 @@ export default function RecipePage() {
         .eq('id', editingLine.id)
 
       if (error) setFormProblem(friendlyError(error))
-      else { fetchRecipeLines(); resetForm() }
+      else { fetchRecipeLines(); allergensChanged(); resetForm() }
     } else {
       const { error } = await supabase
         .from('mix_recipes')
@@ -253,6 +257,7 @@ export default function RecipePage() {
       if (error) setFormProblem(friendlyError(error))
       else {
         fetchRecipeLines()
+        allergensChanged()
         setFormData(emptyForm())
         setErrors({})
         // Form stays open for rapid bulk entry. User clicks Done to close.
@@ -300,7 +305,7 @@ export default function RecipePage() {
       .eq('id', line.id)
 
     if (error) setError(friendlyError(error))
-    else fetchRecipeLines()
+    else { fetchRecipeLines(); allergensChanged() }
   }
 
   async function saveBatchYield() {

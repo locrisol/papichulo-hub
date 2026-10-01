@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { renderWithRouter, tableOf } from '@/test/helpers'
+import { onAllergensChanged } from '@/lib/allergensChanged'
 
 // The recipe behind a house sauce, with one ingredient that has since been
 // deactivated. Its old price is still on it. The products list read every
@@ -100,5 +101,43 @@ describe('a recipe with nothing deactivated in it', () => {
         await screen.findAllByText('Lime')
         expect(screen.getByText(/^Cost per/).nextElementSibling.textContent).toContain('€')
         expect(screen.queryByText(/is deactivated/)).toBeNull()
+    })
+})
+
+// A MIX is answered by what goes into it, and one with no recipe has nothing
+// to work its allergens out from. So changing the recipe can change the red
+// count on Products, and the sidebar has no other way of knowing.
+describe('changing the recipe', () => {
+    let heard
+    let stop
+    beforeEach(() => {
+        heard = vi.fn()
+        stop = onAllergensChanged(heard)
+        return () => stop()
+    })
+
+    it('tells the sidebar when an ingredient goes in', async () => {
+        useTables([])
+        const me = userEvent.setup()
+        showPage()
+        await me.click(await screen.findByRole('button', { name: '+ Add Ingredient' }))
+        await me.click(screen.getByPlaceholderText('Select an ingredient...'))
+        await me.pointer({
+            keys: '[MouseLeft]',
+            target: screen.getAllByRole('option').find(o => o.textContent.includes('Salt')),
+        })
+        await me.type(screen.getByText('Quantity').parentElement.querySelector('input'), '1')
+        await me.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    })
+
+    it('tells the sidebar when an ingredient comes out', async () => {
+        useTables([WITH_OLD_CREAM[0]])
+        const me = userEvent.setup()
+        showPage()
+        await me.click((await screen.findAllByRole('button', { name: 'Remove' }))[0])
+
+        await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
     })
 })
