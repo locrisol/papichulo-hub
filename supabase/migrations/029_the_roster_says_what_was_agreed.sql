@@ -29,6 +29,13 @@
 -- And their own part of a day stays theirs to answer, the same as the mail,
 -- which tells nobody about it.
 --
+-- A shift changed in a published week stays on that person's My shifts and
+-- phone calendar, as it was when it went out. Changing a published shift
+-- takes it back to a draft, so the roster can say the week has changed, and
+-- staff could only read published rows, so the shift vanished until the week
+-- was published again. Now the row keeps what went out in published_as, and
+-- roster_published serves the week as staff were told it.
+--
 -- Safe to run twice.
 
 create or replace view public.roster_colleagues as
@@ -266,5 +273,100 @@ grant execute on function public.absence_answer_guard() to service_role;
 create or replace trigger absences_answer_guard
     before update on public.absences
     for each row execute function public.absence_answer_guard();
+
+alter table public.roster_shifts add column if not exists published_as jsonb;
+
+comment on column public.roster_shifts.published_as is 'The shift as staff were last shown it, while it has changes nobody has been told about: who, the day, the times, the position, the break and the note. Kept by a trigger when a published shift is changed and cleared when it is published again. Null when the row is what went out, or it never went out. roster_published serves it, so a changed shift does not vanish from somebody''s week and phone.';
+comment on column public.roster_shifts.published_at is 'When this shift became visible to staff. Null means it is a draft, or has been changed since the week went out, and only managers can see it as it stands; staff go on seeing published_as. Stamped on every shift in the week when the week is published, so a shift added afterwards is unpublished on its own and the screen can say there are changes nobody has been told about.';
+
+create or replace function public.roster_shift_keeps_what_went_out() returns trigger
+    language plpgsql
+    set search_path to 'public', 'pg_temp'
+    as $$
+begin
+    if tg_op = 'INSERT' or new.published_at is not null then
+        -- New, or published as it stands: the row is what staff see.
+        new.published_as := null;
+    elsif old.published_at is not null then
+        -- Published until this change, so what went out is the old row.
+        new.published_as := jsonb_build_object(
+            'employee_id', old.employee_id,
+            'shift_date', old.shift_date,
+            'starts_at', old.starts_at,
+            'ends_at', old.ends_at,
+            'position_id', old.position_id,
+            'break_minutes', old.break_minutes,
+            'note', old.note,
+            'published_at', old.published_at
+        );
+    else
+        -- Changed again before going out again. What went out has not moved.
+        new.published_as := old.published_as;
+    end if;
+    return new;
+end $$;
+
+revoke all on function public.roster_shift_keeps_what_went_out() from public, anon, authenticated, service_role;
+grant execute on function public.roster_shift_keeps_what_went_out() to service_role;
+
+create or replace trigger roster_shifts_keep_what_went_out
+    before insert or update on public.roster_shifts
+    for each row execute function public.roster_shift_keeps_what_went_out();
+
+-- A shift's note only for the person it is on, and for the managers. It is
+-- the manager's word about that person, no staff screen shows a colleague's,
+-- and the phone calendar already gives each person their own. The helpers
+-- are asked once for the whole read rather than once a row, the same as the
+-- policies since 002.
+create or replace view public.roster_published as
+ select s.id,
+    s.restaurant_id,
+        case
+            when s.published_at is not null then s.employee_id
+            else (s.published_as ->> 'employee_id')::uuid
+        end as employee_id,
+        case
+            when s.published_at is not null then s.shift_date
+            else (s.published_as ->> 'shift_date')::date
+        end as shift_date,
+        case
+            when s.published_at is not null then s.starts_at
+            else (s.published_as ->> 'starts_at')::time without time zone
+        end as starts_at,
+        case
+            when s.published_at is not null then s.ends_at
+            else (s.published_as ->> 'ends_at')::time without time zone
+        end as ends_at,
+        case
+            when s.published_at is not null then s.position_id
+            else (s.published_as ->> 'position_id')::uuid
+        end as position_id,
+        case
+            when s.published_at is not null then s.break_minutes
+            else (s.published_as ->> 'break_minutes')::integer
+        end as break_minutes,
+        case
+            when (select public.get_my_role()) = any (array['super_admin'::text, 'owner'::text, 'store_manager'::text])
+              or (case
+                      when s.published_at is not null then s.employee_id
+                      else (s.published_as ->> 'employee_id')::uuid
+                  end) = (select public.get_my_employee_id())
+            then (case
+                      when s.published_at is not null then s.note
+                      else s.published_as ->> 'note'
+                  end)
+            else null::text
+        end as note,
+    coalesce(s.published_at, (s.published_as ->> 'published_at')::timestamp with time zone) as published_at
+   from public.roster_shifts s
+  where (s.published_at is not null or s.published_as is not null)
+    and (s.restaurant_id = (select public.get_my_restaurant_id()) or (select public.get_my_role()) = 'super_admin'::text);
+
+comment on view public.roster_published is 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. My shifts reads this rather than roster_shifts.';
+
+-- Read only, the same as every other view: it reads one table, so without
+-- this the database would let an employee delete shifts through it.
+revoke all on public.roster_published from anon, authenticated, public;
+grant select on public.roster_published to authenticated;
 
 notify pgrst, 'reload schema';

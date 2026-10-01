@@ -27,7 +27,7 @@
 // poor way to find out.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { buildIcs, hoursForDate, closesStore } from './ics.js'
+import { buildIcs, hoursForDate, closesStore, publishedFor } from './ics.js'
 
 // The key that can read past row level security, under whichever name this
 // project's runtime gives it.
@@ -87,10 +87,14 @@ Deno.serve(async (request) => {
     const [restaurantRes, shiftsRes, notesRes] = await Promise.all([
         supabase.from('restaurants').select('name, opening_hours')
             .eq('id', employee.restaurant_id).maybeSingle(),
+        // Theirs, and any shift changed since its week went out, because the
+        // copy that went out may name them when the row no longer does.
+        // publishedFor below keeps only what they were last shown as theirs.
+        // Their own restaurant's, or it read every changed shift at both.
         supabase.from('roster_shifts')
-            .select('id, shift_date, starts_at, ends_at, note')
-            .eq('employee_id', employee.id)
-            .not('published_at', 'is', null)
+            .select('id, employee_id, shift_date, starts_at, ends_at, note, published_at, published_as')
+            .eq('restaurant_id', employee.restaurant_id)
+            .or(`employee_id.eq.${employee.id},published_as.not.is.null`)
             .gte('shift_date', from).lte('shift_date', to)
             .order('shift_date'),
         supabase.from('day_notes')
@@ -109,7 +113,11 @@ Deno.serve(async (request) => {
     // own diary. They know what they do. The restaurant is on the event as its
     // location, so a phone showing Work at Point Campus has said everything
     // there is to say, and the positions no longer have to be fetched at all.
-    const events = (shiftsRes.data || []).map(s => {
+    //
+    // As they were last shown them. A shift changed after the week went out
+    // is a draft until the week goes out again, and it used to drop out of
+    // their phone in the meantime, as though they were off.
+    const events = publishedFor(shiftsRes.data, employee.id).map(s => {
         const hours = hoursForDate(restaurant?.opening_hours, noteFor(s.shift_date), s.shift_date)
         return {
             id: s.id,

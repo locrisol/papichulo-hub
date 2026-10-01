@@ -100,7 +100,12 @@ export function dayOf(at) {
 }
 
 // Columns nobody needs to see move.
-const NOISE = new Set(['updated_at', 'created_at'])
+//
+// published_as is the roster's own copy of a shift as it went out, eight values
+// long. It moves on the first change after a week is published and again when
+// it goes out, so every such change came with eight lines of it, and the times
+// and the published date beside it already say what happened.
+const NOISE = new Set(['updated_at', 'created_at', 'published_as'])
 
 export function tableWords(name) {
     if (!name) return 'Something'

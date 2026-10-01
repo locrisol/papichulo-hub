@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
-    foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs,
+    foldLine, escapeIcs, stamp, nextDay, eventTimes, buildIcs, asPublished, publishedFor,
     hoursForDate as feedHours, closesStore, TZID,
     bankHolidays as feedBankHolidays, bankHolidayOn as feedBankHolidayOn,
 } from '../../supabase/functions/roster-calendar/ics'
@@ -218,6 +219,61 @@ describe('buildIcs', () => {
         expect(many.match(/BEGIN:VEVENT/g)).toHaveLength(3)
         expect(buildIcs({ calendarName: 'S', shifts: [], now })).not.toContain('BEGIN:VEVENT')
         expect(buildIcs({ calendarName: 'S', shifts: null, now })).not.toContain('BEGIN:VEVENT')
+    })
+})
+
+// Changing a shift after the week went out takes it back to a draft, and the
+// feed only served published shifts, so the event dropped out of somebody's
+// phone until the week was published again. The row now carries what went
+// out, and the feed serves that.
+describe('asPublished', () => {
+    const changed = {
+        id: 's1', employee_id: 'e2', shift_date: '2026-10-10', starts_at: '13:00:00', ends_at: '21:00:00',
+        note: 'moved', published_at: null,
+        published_as: {
+            employee_id: 'e1', shift_date: '2026-10-10', starts_at: '12:00:00', ends_at: '20:00:00',
+            note: null, published_at: '2026-10-01T09:00:00Z',
+        },
+    }
+
+    it('is the shift as it went out, while it has changes nobody was told about', () => {
+        expect(asPublished(changed)).toMatchObject({
+            id: 's1', employee_id: 'e1', shift_date: '2026-10-10',
+            starts_at: '12:00:00', ends_at: '20:00:00', note: null,
+        })
+    })
+
+    it('is the shift itself once it is published as it stands', () => {
+        const live = { ...changed, published_at: '2026-10-02T09:00:00Z', published_as: null }
+        expect(asPublished(live)).toMatchObject({ employee_id: 'e2', starts_at: '13:00:00', note: 'moved' })
+    })
+
+    it('is nothing for a shift that never went out', () => {
+        expect(asPublished({ ...changed, published_as: null })).toBeNull()
+    })
+
+    // Moved from e1 to e2 in the draft: still e1's on their phone until the
+    // week goes out again, and not on e2's yet.
+    it('keeps a moved shift with whoever it went out to', () => {
+        const draft = { id: 's2', employee_id: 'e1', shift_date: '2026-10-11', published_at: null, published_as: null }
+        expect(publishedFor([changed, draft], 'e1').map(s => s.id)).toEqual(['s1'])
+        expect(publishedFor([changed, draft], 'e2')).toEqual([])
+    })
+
+    it('is what the feed serves, read with the copy that went out', () => {
+        const source = readFileSync('supabase/functions/roster-calendar/index.ts', 'utf8')
+        expect(source).toMatch(/\.select\('[^']*\bpublished_as\b[^']*'\)/)
+        expect(source).toContain('publishedFor(shiftsRes.data, employee.id)')
+        expect(source).not.toContain(".not('published_at', 'is', null)")
+    })
+
+    // Every changed shift is read, whoever it is on, so the copy that went out
+    // can be checked for their name. Their own restaurant's only: without it
+    // the feed read every changed shift at both restaurants.
+    it('reads the changed shifts at their own restaurant only', () => {
+        const source = readFileSync('supabase/functions/roster-calendar/index.ts', 'utf8')
+        const shifts = source.slice(source.indexOf(".from('roster_shifts')"), source.indexOf(".from('day_notes')"))
+        expect(shifts).toContain(".eq('restaurant_id', employee.restaurant_id)")
     })
 })
 

@@ -1288,14 +1288,16 @@ CREATE TABLE IF NOT EXISTS "public"."roster_shifts" (
     "published_at" timestamp with time zone,
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "published_as" "jsonb"
 );
 
 COMMENT ON TABLE "public"."roster_shifts" IS 'One row per shift. The whole roster is this table read a week at a time.';
+COMMENT ON COLUMN "public"."roster_shifts"."published_as" IS 'The shift as staff were last shown it, while it has changes nobody has been told about: who, the day, the times, the position, the break and the note. Kept by a trigger when a published shift is changed and cleared when it is published again. Null when the row is what went out, or it never went out. roster_published serves it, so a changed shift does not vanish from somebody''s week and phone.';
 COMMENT ON COLUMN "public"."roster_shifts"."break_is_manual" IS 'True once somebody has typed a different break. After that, changing the times leaves it alone rather than quietly putting the ladder value back over the top of a deliberate decision.';
 COMMENT ON COLUMN "public"."roster_shifts"."break_minutes" IS 'What the ladder gave this shift, worked out when it was saved rather than every time it is read. A restaurant that changes its ladder in June does not rewrite what was printed in March. Paid and never deducted.';
 COMMENT ON COLUMN "public"."roster_shifts"."ends_at" IS 'Kept as a real time even when it is after closing. The screen and everything shared out of it print "Closing" instead, so nobody reads a time off a roster and leaves on it, but the number underneath is what the hours and the cost are worked out from and it has to be exact.';
-COMMENT ON COLUMN "public"."roster_shifts"."published_at" IS 'When this shift became visible to staff. Null means it is still a draft and only managers can see it. Stamped on every shift in the week when the week is published, so a shift added afterwards is unpublished on its own and the screen can say there are changes nobody has been told about.';
+COMMENT ON COLUMN "public"."roster_shifts"."published_at" IS 'When this shift became visible to staff. Null means it is a draft, or has been changed since the week went out, and only managers can see it as it stands; staff go on seeing published_as. Stamped on every shift in the week when the week is published, so a shift added afterwards is unpublished on its own and the screen can say there are changes nobody has been told about.';
 COMMENT ON COLUMN "public"."roster_shifts"."shift_date" IS 'The day the shift starts. A shift that runs past midnight belongs to the day it began on, which is how anybody working one would describe it. It has never happened here and it costs nothing to handle.';
 ALTER TABLE ONLY "public"."roster_shifts"
     ADD CONSTRAINT "roster_shifts_pkey" PRIMARY KEY ("id");
@@ -2484,6 +2486,40 @@ begin
     return new;
 end $$;
 
+-- What staff were last shown of a shift, kept while it has changes nobody has
+-- been told about. Changing a published shift takes it back to a draft, so
+-- the roster can say the week has changed since it went out, and staff could
+-- only read published rows, so the shift vanished from their week and their
+-- phone until the week was published again. Now the old version is kept on
+-- the row and roster_published serves it. Not only for the API: it is the
+-- row describing itself, so it holds however the row is changed.
+CREATE OR REPLACE FUNCTION "public"."roster_shift_keeps_what_went_out"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+begin
+    if tg_op = 'INSERT' or new.published_at is not null then
+        -- New, or published as it stands: the row is what staff see.
+        new.published_as := null;
+    elsif old.published_at is not null then
+        -- Published until this change, so what went out is the old row.
+        new.published_as := jsonb_build_object(
+            'employee_id', old.employee_id,
+            'shift_date', old.shift_date,
+            'starts_at', old.starts_at,
+            'ends_at', old.ends_at,
+            'position_id', old.position_id,
+            'break_minutes', old.break_minutes,
+            'note', old.note,
+            'published_at', old.published_at
+        );
+    else
+        -- Changed again before going out again. What went out has not moved.
+        new.published_as := old.published_as;
+    end if;
+    return new;
+end $$;
+
 CREATE OR REPLACE FUNCTION "public"."record_logins"() RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'auth', 'pg_temp'
@@ -3300,6 +3336,8 @@ revoke all on function "public"."record_truncate"() from public, anon, authentic
 grant execute on function "public"."record_truncate"() to service_role;
 revoke all on function "public"."restaurant_settings_guard"() from public, anon, authenticated, service_role;
 grant execute on function "public"."restaurant_settings_guard"() to service_role;
+revoke all on function "public"."roster_shift_keeps_what_went_out"() from public, anon, authenticated, service_role;
+grant execute on function "public"."roster_shift_keeps_what_went_out"() to service_role;
 revoke all on function "public"."row_label"("tbl" "text", "row_data" "jsonb") from public, anon, authenticated, service_role;
 grant execute on function "public"."row_label"("tbl" "text", "row_data" "jsonb") to service_role;
 revoke all on function "public"."sales_platform_key"() from public, anon, authenticated, service_role;
@@ -3819,7 +3857,10 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 --
 -- roster_colleagues and roster_away let staff see who they are working with
 -- and who is off, without their pay rate, date of birth, immigration status,
--- or the reason somebody is away. They read past row level security on
+-- or the reason somebody is away. roster_published is the week as it went
+-- out, so a shift changed since is shown to staff as it was rather than as
+-- the draft the manager is working on, and a shift's note only to the person
+-- it is on and to the managers. They read past row level security on
 -- purpose and their own where clause is the wall between the two
 -- restaurants, which is covered by the database tests.
 --
@@ -3855,6 +3896,49 @@ CREATE OR REPLACE VIEW "public"."roster_away" AS
     "can_work_to"
    FROM "public"."absences" "a"
   WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
+
+CREATE OR REPLACE VIEW "public"."roster_published" AS
+ SELECT "s"."id",
+    "s"."restaurant_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."employee_id"
+            ELSE (("s"."published_as" ->> 'employee_id'::"text"))::"uuid"
+        END AS "employee_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END AS "shift_date",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."starts_at"
+            ELSE (("s"."published_as" ->> 'starts_at'::"text"))::time without time zone
+        END AS "starts_at",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."ends_at"
+            ELSE (("s"."published_as" ->> 'ends_at'::"text"))::time without time zone
+        END AS "ends_at",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."position_id"
+            ELSE (("s"."published_as" ->> 'position_id'::"text"))::"uuid"
+        END AS "position_id",
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."break_minutes"
+            ELSE (("s"."published_as" ->> 'break_minutes'::"text"))::integer
+        END AS "break_minutes",
+        CASE
+            WHEN ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['super_admin'::"text", 'owner'::"text", 'store_manager'::"text"])) OR (
+            CASE
+                WHEN ("s"."published_at" IS NOT NULL) THEN "s"."employee_id"
+                ELSE (("s"."published_as" ->> 'employee_id'::"text"))::"uuid"
+            END = ( SELECT "public"."get_my_employee_id"() ))) THEN
+            CASE
+                WHEN ("s"."published_at" IS NOT NULL) THEN "s"."note"
+                ELSE ("s"."published_as" ->> 'note'::"text")
+            END
+            ELSE NULL::"text"
+        END AS "note",
+    COALESCE("s"."published_at", (("s"."published_as" ->> 'published_at'::"text"))::timestamp with time zone) AS "published_at"
+   FROM "public"."roster_shifts" "s"
+  WHERE ((("s"."published_at" IS NOT NULL) OR ("s"."published_as" IS NOT NULL)) AND (("s"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")));
 
 -- What labour cost, per day, for everything that asks: the cost dashboard, the
 -- report and the weekly report. None of them has to know the answer comes from
@@ -4022,6 +4106,7 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
    FROM "public"."restaurants" "r"
   WHERE ("is_active" = true);
 
+COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
 
@@ -4048,11 +4133,13 @@ COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticke
 -- lines here.
 revoke all on public.roster_colleagues        from anon, authenticated, public;
 revoke all on public.roster_away              from anon, authenticated, public;
+revoke all on public.roster_published         from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
 grant select on public.roster_colleagues        to authenticated;
 grant select on public.roster_away              to authenticated;
+grant select on public.roster_published         to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;
@@ -4266,6 +4353,7 @@ CREATE OR REPLACE TRIGGER "product_supplier_prices_updated_at" BEFORE UPDATE ON 
 CREATE OR REPLACE TRIGGER "product_allergens_updated_at" BEFORE UPDATE ON "public"."product_allergens" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "sales_platforms_key" BEFORE INSERT OR UPDATE ON "public"."sales_platforms" FOR EACH ROW EXECUTE FUNCTION "public"."sales_platform_key"();
 CREATE OR REPLACE TRIGGER "roster_shifts_updated_at" BEFORE UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+CREATE OR REPLACE TRIGGER "roster_shifts_keep_what_went_out" BEFORE INSERT OR UPDATE ON "public"."roster_shifts" FOR EACH ROW EXECUTE FUNCTION "public"."roster_shift_keeps_what_went_out"();
 CREATE OR REPLACE TRIGGER "timesheet_entries_updated_at" BEFORE UPDATE ON "public"."timesheet_entries" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "timesheet_weeks_updated_at" BEFORE UPDATE ON "public"."timesheet_weeks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
 CREATE OR REPLACE TRIGGER "day_notes_updated_at" BEFORE UPDATE ON "public"."day_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();

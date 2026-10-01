@@ -117,10 +117,21 @@ cannot be asked of somebody with no account, who could never answer it, and
 `answer_time_off()`, which frees the shifts and writes the answer together,
 and only for a request still waiting. A store manager can no longer answer
 their own holiday or day off; an owner or the super admin does. Their own part
-of a day stays theirs, the same as the mail, which tells nobody about it.
-**Run it before the branch is merged**:
+of a day stays theirs, the same as the mail, which tells nobody about it. A shift changed after
+its week went out stays on that person's My shifts and phone calendar as it
+went out, until the week is published again: `roster_shifts.published_as`
+keeps that copy and the `roster_published` view serves it, with a shift's note
+only for that person and the managers. **Run it before the branch is
+merged**:
 the roster calls that function to answer time off, and until it exists the
-answer buttons only show an error.
+answer buttons only show an error. My shifts reads `roster_published`, so
+without 029 every employee's home page fails to load as well. Redeploy
+`roster-calendar` and `roster-email` only after 029 is run, never before:
+both read `published_as`, and without it the phone calendars come back empty
+and the time off mail stops saying when somebody is rostered. Once 029 is
+run, publish again any week that says "Changed since it went out". A shift
+changed before 029 has no copy kept, so it stays off My shifts and the phone
+until its week goes out again.
 `030` is **not run yet**. It works a timesheet row's hours out in real time
 from the date, so a shift on the night the clocks go back or forward comes to
 the hours really worked rather than what the clock face says. Every other

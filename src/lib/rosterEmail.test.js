@@ -99,6 +99,16 @@ describe('somebody asked', () => {
         expect(mail.text).not.toContain('rostered on')
     })
 
+    // Changing a shift after the week went out takes it back to a draft, and
+    // the function only looked at published shifts, so moving somebody's
+    // Saturday an hour told the managers they were not rostered that day.
+    it('counts a shift changed since the week went out', () => {
+        const source = readFileSync('supabase/functions/roster-email/index.ts', 'utf8')
+        const clashes = source.slice(source.indexOf('const { data: clashes }'), source.indexOf('const mail = requestEmail('))
+        expect(clashes).toContain(".or('published_at.not.is.null,published_as.not.is.null')")
+        expect(clashes).not.toContain(".not('published_at', 'is', null)")
+    })
+
     it('carries their note through escaped', () => {
         const mail = requestEmail({
             ...base,

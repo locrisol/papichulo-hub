@@ -477,13 +477,14 @@ maybe('what each role can see and do', () => {
         })
     })
 
-    // roster_colleagues and roster_away read past row level security on
-    // purpose, because a policy picks rows and cannot pick columns, and these
-    // exist to show a colleague's name and position without their pay rate,
-    // date of birth or immigration status. That makes the where clause written
+    // roster_colleagues, roster_away and roster_published read past row level
+    // security on purpose, because a policy picks rows and cannot pick
+    // columns, and these exist to show a colleague's name and position without
+    // their pay rate, date of birth or immigration status, and the week as it
+    // went out rather than the draft. That makes the where clause written
     // inside each view the only wall between the two restaurants, and nothing
     // was checking it was still there.
-    describe('the two staff views', () => {
+    describe('the staff views', () => {
         it('roster_colleagues never hands over pay or personal details', async () => {
             const { data } = await employee.from('roster_colleagues').select('*').limit(1)
             if (data?.length) {
@@ -506,16 +507,33 @@ maybe('what each role can see and do', () => {
             }
         })
 
-        it('neither view shows the other restaurant', async () => {
-            for (const view of ['roster_colleagues', 'roster_away']) {
+        // The week as it went out, which My shifts and nothing else reads.
+        it('roster_published is there to read', async () => {
+            const { error } = await employee.from('roster_published').select('id').limit(1)
+            expect(error?.message || '', 'roster_published is missing, so 029 has not been run').toBe('')
+        })
+
+        // A shift's note is the manager's word about that person, and no
+        // staff screen shows a colleague's. The view gives each person their
+        // own and nobody else's.
+        it('roster_published gives an employee the notes on their own shifts only', async () => {
+            const { data: me } = await employee.rpc('get_my_employee_id')
+            const { data, error } = await employee.from('roster_published').select('employee_id, note')
+            expect(error?.message || '', 'roster_published is missing, so 029 has not been run').toBe('')
+            const told = (data || []).filter(r => r.employee_id !== me && r.note !== null)
+            expect(told, 'roster_published hands an employee the notes on other shifts').toHaveLength(0)
+        })
+
+        it('no view shows the other restaurant', async () => {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published']) {
                 const { data } = await employee.from(view).select('restaurant_id')
                 const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
                 expect(strays, `${view} leaked rows from another restaurant`).toHaveLength(0)
             }
         })
 
-        it('neither view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away']) {
+        it('no view answers to somebody not signed in', async () => {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -524,11 +542,16 @@ maybe('what each role can see and do', () => {
         // roster_away reads one table, so the database would write through
         // it as its owner. Until 021 any employee could delete or move a
         // colleague's approved holiday this way.
-        it('neither view can be written through', async () => {
+        //
+        // roster_published reads one table too. Through it an employee could
+        // otherwise delete any shift at their restaurant.
+        it('no view can be written through', async () => {
             expect(await changesRefused(employee, 'roster_away', 'employee_id', { starts_on: '2026-01-01' }),
                 'roster_away can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'roster_colleagues', 'id', { full_name: 'x' }),
                 'roster_colleagues can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'roster_published', 'id', { restaurant_id: NOBODY }),
+                'roster_published can be changed by an employee').toBe(true)
         })
     })
 

@@ -672,11 +672,15 @@ Deno.serve(async (request) => {
 
             // The one thing the request itself does not say: they are already
             // rostered for some of it.
+            //
+            // Published, or changed since the week went out. A change takes a
+            // shift back to a draft, and moving somebody's Saturday an hour
+            // used to tell the managers they were not on that day at all.
             const { data: clashes } = await admin
                 .from('roster_shifts')
                 .select('shift_date, starts_at, ends_at')
                 .eq('employee_id', employee.id)
-                .not('published_at', 'is', null)
+                .or('published_at.not.is.null,published_as.not.is.null')
                 .gte('shift_date', absence.starts_on)
                 .lte('shift_date', absence.ends_on || absence.starts_on)
                 .order('shift_date')

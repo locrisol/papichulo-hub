@@ -50,9 +50,11 @@ import TimeOffCard from '@/components/roster/TimeOffCard'
 //              about is literally the same object. On a phone it is a grid of
 //              bars, because the table is 64rem wide and a phone is 23.
 //
-// Published only, and at their own restaurant. The database holds an employee
-// to that, and the page asks for it as well, because a manager on the roster
-// can read the drafts and they are not what went out.
+// Published only, and at their own restaurant: the week as it went out, from
+// roster_published, with a shift changed since still shown as it was. A
+// manager on the roster can read the drafts on the table, and they are not
+// what went out.
+
 // What is on this week, for the phone.
 //
 // Only the days that have something, because a list of seven headings with
@@ -169,9 +171,10 @@ export default function MyShiftsPage() {
         const missing = shiftIdsOf(asks).filter(id => !ids.includes(id))
         if (missing.length === 0) { setAskShifts([]); return }
 
-        // Published only, the same as the week, so a manager's card says
-        // nothing an employee's could not.
-        const { data: rows } = await supabase.from('roster_shifts')
+        // As it went out, the same as the week, so a manager's card says
+        // nothing an employee's could not, and a shift changed since is still
+        // there to say what the request is about.
+        const { data: rows } = await supabase.from('roster_published')
             .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
             .in('id', missing)
             .not('published_at', 'is', null)
@@ -203,12 +206,25 @@ export default function MyShiftsPage() {
             const [
                 shiftRes, mateRes, noteRes, diaryRes, awayRes, restRes, eventRes, nearRes, offRes,
             ] = await Promise.all([
-                // The published week at their own restaurant, said here and
-                // not left to the policy. The policy is what an employee gets,
-                // but a manager can read the drafts and a super admin every
-                // restaurant, and a store manager on the roster saw next
-                // week's draft as though it had gone out.
-                supabase.from('roster_shifts').select('*')
+                // The week as it went out, at their own restaurant.
+                //
+                // roster_published rather than the table. Changing a shift
+                // after the week went out takes it back to a draft, and a
+                // draft is not theirs to read, so the shift used to vanish
+                // from here until the week was published again. The view
+                // gives it as it was when it went out, and never gives a
+                // draft, which the table hands a manager: a store manager on
+                // the roster saw next week's draft as though it had gone out.
+                //
+                // Published and their own restaurant are said here as well as
+                // in the view, so the page does not lean on how the view is
+                // written, and because a super admin's view is every
+                // restaurant's.
+                //
+                // The columns the week shows and nothing else, the same as
+                // every other read staff make.
+                supabase.from('roster_published')
+                    .select('id, employee_id, shift_date, starts_at, ends_at, break_minutes')
                     .eq('restaurant_id', mine.restaurant_id)
                     .not('published_at', 'is', null)
                     .gte('shift_date', from).lte('shift_date', to)

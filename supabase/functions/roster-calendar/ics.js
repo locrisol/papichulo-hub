@@ -115,6 +115,28 @@ function minutes(time) {
     return h * 60 + m
 }
 
+// A shift as its person was last shown it.
+//
+// Changing a shift after the week went out takes it back to a draft, so the
+// roster can say the week has changed since. The feed only served published
+// shifts, so the event dropped out of somebody's phone at the next refresh, as
+// though they were off, until the week went out again. The row keeps what went
+// out in published_as until then, and that is what goes in the feed. Nothing
+// for a shift that has never gone out at all.
+export function asPublished(shift) {
+    if (!shift) return null
+    if (shift.published_at) return shift
+    if (!shift.published_as) return null
+    return { ...shift, ...shift.published_as }
+}
+
+// Somebody's own shifts, as they were last shown them. A shift moved to
+// somebody else since the week went out is still theirs until it goes out
+// again, and one moved to them is not theirs yet.
+export function publishedFor(rows, employeeId) {
+    return (rows || []).map(asPublished).filter(s => s && s.employee_id === employeeId)
+}
+
 // When a shift starts and finishes in the calendar.
 //
 // A closing shift runs to midnight rather than to its real finishing time. The

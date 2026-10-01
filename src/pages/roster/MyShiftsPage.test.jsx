@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { mockSupabase, makeQuery, renderWithRouter } from '@/test/helpers'
 import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 
@@ -64,13 +64,58 @@ describe('the week on My shifts', () => {
 
     it('shows only what has been published, at their own restaurant', async () => {
         const plain = db.from
-        db.from = vi.fn(table => (table === 'roster_shifts' ? filtered(shifts) : plain(table)))
+        db.from = vi.fn(table => (['roster_shifts', 'roster_published'].includes(table) ? filtered(shifts) : plain(table)))
 
         renderWithRouter(<MyShiftsPage />)
 
         expect(await screen.findByText('09:00 to 17:00')).toBeInTheDocument()
         expect(screen.queryByText('10:00 to 14:00')).toBeNull()
         expect(screen.queryByText(/12:00 to 20:00/)).toBeNull()
+    })
+})
+
+// Changing a shift after the week went out takes it back to a draft, so the
+// manager can see there are changes nobody has been told about. Staff could
+// only read published rows, so Ana's Monday vanished from her week and her
+// phone until the week was published again. roster_published is the week as
+// it went out, with a changed shift still as it was then.
+describe('a shift changed after the week went out', () => {
+    it('is still on their week, as it was when it went out', async () => {
+        const monday = addDays(weekStartOf(todayISO()), 1)
+        const asItWent = {
+            id: 's1', restaurant_id: 'r1', employee_id: 'e1', shift_date: monday,
+            starts_at: '09:00:00', ends_at: '17:00:00', break_minutes: 30, note: null,
+            published_at: '2026-09-01T10:00:00Z',
+        }
+        const plain = db.from
+        db.from = vi.fn(table => {
+            if (table === 'roster_published') return filtered([asItWent])
+            if (table === 'roster_shifts') return filtered([])
+            return plain(table)
+        })
+
+        renderWithRouter(<MyShiftsPage />)
+        expect(await screen.findByText('09:00 to 17:00')).toBeInTheDocument()
+    })
+
+    // Staff get the columns their screen uses and nothing else, so the page
+    // names them rather than asking for the lot.
+    it('asks for the columns it shows, not every one', async () => {
+        const asked = []
+        const plain = db.from
+        db.from = vi.fn(table => {
+            if (table !== 'roster_published') return plain(table)
+            const query = filtered([])
+            asked.push(query)
+            return query
+        })
+
+        renderWithRouter(<MyShiftsPage />)
+        await waitFor(() => expect(asked.length).toBeGreaterThan(0))
+        for (const query of asked) {
+            expect(query.select).toHaveBeenCalled()
+            expect(query.select.mock.calls[0][0]).not.toContain('*')
+        }
     })
 })
 
