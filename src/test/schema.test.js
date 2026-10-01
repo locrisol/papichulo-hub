@@ -331,9 +331,35 @@ describe('how far back and ahead staff see the team', () => {
         return Math.min(...found)
     }
 
-    it.each(['roster_colleagues', 'roster_away'])('%s covers every week My shifts opens', name => {
+    const WINDOWED = ['roster_colleagues', 'roster_away', 'roster_published']
+
+    it.each(WINDOWED)('%s covers every week My shifts opens', name => {
         // The far edge of the furthest week, from any day of this one.
         expect(sqlDays(viewNamed(name))).toBeGreaterThanOrEqual(STAFF_WEEKS * 7 + 6)
+    })
+
+    // One number for all three. A shift is no use without the names on it and
+    // who is off that day, and a wider window on one of them only hands over
+    // more than the page can show.
+    it('gives the team, its time off and the published week the same weeks', () => {
+        const each = WINDOWED.map(name => [...viewNamed(name)
+            .matchAll(/'Europe\/Dublin'::"text"\)\)::"date" [-+] (\d+)\)/g)].map(m => Number(m[1])))
+        each.forEach((days, i) => expect(days.length, `no window in ${WINDOWED[i]}`).toBeGreaterThanOrEqual(2))
+        const days = each.flat()
+        expect(new Set(days).size, `the views do not agree: ${days.join(', ')}`).toBe(1)
+    })
+
+    // roster_published goes by the day each shift was when it went out, which
+    // is a CASE on whether it has changed since, so the window is on that and
+    // not on the day the draft has moved it to.
+    it('roster_published has the window the right way round, on the day as it went out', () => {
+        const view = viewNamed('roster_published')
+        const where = view.slice(view.lastIndexOf('WHERE'))
+        const day = String.raw`\(\(\("now"\(\) AT TIME ZONE 'Europe\/Dublin'::"text"\)\)::"date"`
+        const asItWent = String.raw`CASE\s+WHEN \("s"\."published_at" IS NOT NULL\) THEN "s"\."shift_date"\s+`
+            + String.raw`ELSE \(\("s"\."published_as" ->> 'shift_date'::"text"\)\)::"date"\s+END`
+        expect(where).toMatch(new RegExp(String.raw`${asItWent} >= ${day} - \d+\)`))
+        expect(where).toMatch(new RegExp(String.raw`${asItWent} <= ${day} \+ \d+\)`))
     })
 
     // The number of days is not enough on its own. Written the wrong way

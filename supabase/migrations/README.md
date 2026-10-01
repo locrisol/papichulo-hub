@@ -201,10 +201,11 @@ uses, now that the new site reads only what it needs:
   the Google event ids. The calendar and My shifts read `staff_diary`. It
   also stops a switched off account reading its own private diary entries;
   nobody still working loses anything;
-- the team and its time off outside the weeks My shifts opens.
-  `roster_colleagues` and `roster_away` give nine weeks either side of today,
-  so nobody who left long ago, no old holidays, and no leaving date months
-  before it matters. My shifts steps eight weeks either way;
+- the team, its time off and the published shifts outside the weeks My
+  shifts opens. `roster_colleagues`, `roster_away` and `roster_published`
+  give nine weeks either side of today, so nobody who left long ago, no old
+  holidays, no leaving date months before it matters, and no shifts from
+  rosters long gone. My shifts steps eight weeks either way;
 - the places table, the other restaurant's pairings, and listings that were
   dismissed or are at a place their restaurant does not watch. Only the
   employee side narrows: the rule on deleting a place reads the pairings and

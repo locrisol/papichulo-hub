@@ -4000,6 +4000,10 @@ CREATE OR REPLACE VIEW "public"."roster_away" AS
    FROM "public"."absences" "a"
   WHERE (("status" = 'approved'::"text") AND (("restaurant_id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")) AND ("ends_on" >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63)) AND ("starts_on" <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63)));
 
+-- And the shifts, the same weeks, by the day each one was when it went out.
+-- Every published shift there ever was is history no staff screen shows. The
+-- edge functions read roster_shifts with their own key, so this is My shifts
+-- only, for a manager on the roster as much as for staff.
 CREATE OR REPLACE VIEW "public"."roster_published" AS
  SELECT "s"."id",
     "s"."restaurant_id",
@@ -4041,7 +4045,15 @@ CREATE OR REPLACE VIEW "public"."roster_published" AS
         END AS "note",
     COALESCE("s"."published_at", (("s"."published_as" ->> 'published_at'::"text"))::timestamp with time zone) AS "published_at"
    FROM "public"."roster_shifts" "s"
-  WHERE ((("s"."published_at" IS NOT NULL) OR ("s"."published_as" IS NOT NULL)) AND (("s"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")));
+  WHERE ((("s"."published_at" IS NOT NULL) OR ("s"."published_as" IS NOT NULL)) AND (("s"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) AND (
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END >= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" - 63)) AND (
+        CASE
+            WHEN ("s"."published_at" IS NOT NULL) THEN "s"."shift_date"
+            ELSE (("s"."published_as" ->> 'shift_date'::"text"))::"date"
+        END <= ((("now"() AT TIME ZONE 'Europe/Dublin'::"text"))::"date" + 63)));
 
 -- Only open restaurants, the same as the switcher has always shown, so the
 -- app does not ask and the view has no is_active to be asked about.
@@ -4308,7 +4320,7 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
    FROM "public"."restaurants" "r"
   WHERE ("is_active" = true);
 
-COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. My shifts reads this rather than roster_shifts.';
+COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_asks" IS 'Which shifts at your restaurant somebody has asked about and is still waiting on, for the mark on My shifts: the shift given, the shift asked for and the status. Not who asked whom, the hours or the message, which only the two people in it and the managers read on shift_requests.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. It is also how somebody finds their own name on the roster. Only people on the team at some point from nine weeks before today to nine weeks after, the weeks My shifts opens and one more, and a start or leaving date only when it falls inside them. The employees table itself stays closed, even for their own row, because it carries the hourly rate, the date of birth, the work permission and what a manager wrote in Notes, and a row policy cannot hide a column.';

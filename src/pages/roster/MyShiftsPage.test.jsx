@@ -346,3 +346,33 @@ describe('a request about another week', () => {
         expect(screen.getAllByRole('button', { name: 'Open that week' })).toHaveLength(1)
     })
 })
+
+// roster_published gives staff the weeks My shifts opens and one more, so a
+// shift from before then is not there to read. A request that has been
+// answered shows only while its shift is still to come, and one whose shift
+// cannot be read has nothing left to say: it used to come back as an empty
+// card above the week, for every answered request older than the window.
+describe('a request already answered', () => {
+    const thisWeek = weekStartOf(todayISO())
+    const answered = (id, shiftId) => ({
+        id, restaurant_id: 'r1', from_employee_id: 'e2', to_employee_id: 'e1',
+        give_shift_id: shiftId, take_shift_id: null, status: 'declined', message: null,
+        created_at: '2026-06-01T10:00:00Z',
+    })
+    const coming = {
+        id: 'coming', restaurant_id: 'r1', employee_id: 'e2', shift_date: addDays(thisWeek, 15),
+        starts_at: '12:00:00', ends_at: '20:00:00', break_minutes: 30, note: null,
+        published_at: '2026-09-01T10:00:00Z',
+    }
+
+    it('is left off when its shift is too long ago to read', async () => {
+        tables({ shift_requests: { data: [answered('q1', 'long-ago'), answered('q2', 'coming')], error: null } })
+        const plain = db.from
+        db.from = vi.fn(table => (table === 'roster_published' ? filtered([coming]) : plain(table)))
+
+        renderWithRouter(<MyShiftsPage />)
+
+        expect(await screen.findAllByText('Turned down')).toHaveLength(1)
+        await waitFor(() => expect(screen.getAllByText('Turned down')).toHaveLength(1))
+    })
+})

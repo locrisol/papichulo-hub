@@ -421,12 +421,17 @@ export default function MyShiftsPage() {
     // come**, because otherwise every request either of us has ever been part
     // of piles up above the week for ever, and a list that long is a list
     // nobody reads, including the one line in it that mattered.
+    //
+    // An answered one whose shift cannot be read is left off too.
+    // roster_published only gives the weeks this page opens and one more, so
+    // a shift from before then is not there, and the card would be a name
+    // and a word with nothing under it, for every request ever answered.
     const involving = requests.filter(r => {
         if (r.status === 'withdrawn') return false
         if (r.from_employee_id !== me?.id && r.to_employee_id !== me?.id) return false
         if (LIVE_STATES.includes(r.status)) return true
         const when = requestDate(r, shiftById)
-        return !when || when >= today
+        return !!when && when >= today
     })
 
     async function reload() {

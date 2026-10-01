@@ -13,8 +13,9 @@
 -- Owners, store managers and the super admin keep the whole row through
 -- restaurants_select, which is not touched, and nothing below narrows what a
 -- manager reads off a table. The one thing they see less of is My shifts:
--- roster_colleagues and roster_away keep to the weeks that page opens for
--- whoever opens it, and a manager's own screens read the tables instead.
+-- roster_colleagues, roster_away and roster_published keep to the weeks that
+-- page opens for whoever opens it, and a manager's own screens read the
+-- tables instead.
 --
 -- Safe to run twice.
 
@@ -253,6 +254,70 @@ create or replace view public.roster_away as
     and a.starts_on <= (now() at time zone 'Europe/Dublin')::date + 63;
 
 comment on view public.roster_away is 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. Only time off that touches the weeks from nine before today to nine after, the weeks My shifts opens and one more. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
+
+-- And the shifts themselves, the same weeks. roster_published gave every
+-- published shift there ever was at the restaurant: who worked when, going
+-- back to the first roster. My shifts only opens these weeks, and a request
+-- about a shift outside them is history the page no longer shows. It goes by
+-- the day as the shift went out, the same as the shift_date it hands over,
+-- so a shift a draft has since moved is kept or left out by the day staff
+-- were told. The edge functions read roster_shifts with their own key and
+-- are not touched. The same columns in the same order, so the grants from
+-- 029 stay as they are.
+
+create or replace view public.roster_published as
+ select s.id,
+    s.restaurant_id,
+        case
+            when s.published_at is not null then s.employee_id
+            else (s.published_as ->> 'employee_id')::uuid
+        end as employee_id,
+        case
+            when s.published_at is not null then s.shift_date
+            else (s.published_as ->> 'shift_date')::date
+        end as shift_date,
+        case
+            when s.published_at is not null then s.starts_at
+            else (s.published_as ->> 'starts_at')::time without time zone
+        end as starts_at,
+        case
+            when s.published_at is not null then s.ends_at
+            else (s.published_as ->> 'ends_at')::time without time zone
+        end as ends_at,
+        case
+            when s.published_at is not null then s.position_id
+            else (s.published_as ->> 'position_id')::uuid
+        end as position_id,
+        case
+            when s.published_at is not null then s.break_minutes
+            else (s.published_as ->> 'break_minutes')::integer
+        end as break_minutes,
+        case
+            when (select public.get_my_role()) = any (array['super_admin'::text, 'owner'::text, 'store_manager'::text])
+              or (case
+                      when s.published_at is not null then s.employee_id
+                      else (s.published_as ->> 'employee_id')::uuid
+                  end) = (select public.get_my_employee_id())
+            then (case
+                      when s.published_at is not null then s.note
+                      else s.published_as ->> 'note'
+                  end)
+            else null::text
+        end as note,
+    coalesce(s.published_at, (s.published_as ->> 'published_at')::timestamp with time zone) as published_at
+   from public.roster_shifts s
+  where (s.published_at is not null or s.published_as is not null)
+    and (s.restaurant_id = (select public.get_my_restaurant_id()) or (select public.get_my_role()) = 'super_admin'::text)
+    and (case
+             when s.published_at is not null then s.shift_date
+             else (s.published_as ->> 'shift_date')::date
+         end) >= (now() at time zone 'Europe/Dublin')::date - 63
+    and (case
+             when s.published_at is not null then s.shift_date
+             else (s.published_as ->> 'shift_date')::date
+         end) <= (now() at time zone 'Europe/Dublin')::date + 63;
+
+comment on view public.roster_published is 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. Only shifts from nine weeks before today to nine after, by the day as it went out: the weeks My shifts opens and one more. My shifts reads this rather than roster_shifts.';
 
 -- What is on near us, on the employee side only. Staff stop reading the
 -- places table, which holds each page address, Ticketmaster id, how a page

@@ -45,6 +45,19 @@ async function accountRefusal(client, restaurantId, role) {
     return error?.code ?? null
 }
 
+// The first and last day of the weeks My shifts opens: nine weeks either side
+// of today in Ireland. roster_colleagues, roster_away and roster_published
+// keep to them since 034.
+function myShiftsWeeks() {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
+    const shift = days => {
+        const d = new Date(`${today}T12:00:00Z`)
+        d.setUTCDate(d.getUTCDate() + days)
+        return d.toISOString().slice(0, 10)
+    }
+    return [shift(-63), shift(63)]
+}
+
 if (!run) {
     console.warn('Skipping the database tests: the TEST_ credentials are not set in .env')
 }
@@ -361,13 +374,17 @@ maybe('what each role can see and do', () => {
         })
 
         // What My shifts shows under their own shift. Shown as skipped when
-        // nothing of theirs has a note.
+        // nothing of theirs in the weeks My shifts opens has a note. Only
+        // those weeks: since 034 the view gives no shift outside them, so an
+        // older note would fail with nothing wrong.
         it('still reads the note on their own shifts', async ({ skip }) => {
             const { data: me } = await employee.rpc('get_my_employee_id')
             skip(!me, 'the test employee is not joined to anybody on the team')
+            const [from, to] = myShiftsWeeks()
             const { data: noted } = await manager.from('roster_shifts').select('id, note')
-                .eq('employee_id', me).not('published_at', 'is', null).not('note', 'is', null).limit(1)
-            skip(!noted?.length, 'none of their shifts has a note')
+                .eq('employee_id', me).not('published_at', 'is', null).not('note', 'is', null)
+                .gte('shift_date', from).lte('shift_date', to).limit(1)
+            skip(!noted?.length, 'none of their shifts in the weeks My shifts opens has a note')
             const { data } = await employee.from('roster_published').select('id, note').eq('id', noted[0].id).maybeSingle()
             expect(data?.note).toBe(noted[0].note)
         })
@@ -909,13 +926,7 @@ maybe('what each role can see and do', () => {
         // nobody who left long before, no time off from long ago, and no
         // leaving date or start date that matters to no week they can see.
         it('roster_colleagues and roster_away keep to the weeks My shifts opens', async () => {
-            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
-            const shift = days => {
-                const d = new Date(`${today}T12:00:00Z`)
-                d.setUTCDate(d.getUTCDate() + days)
-                return d.toISOString().slice(0, 10)
-            }
-            const [from, to] = [shift(-63), shift(63)]
+            const [from, to] = myShiftsWeeks()
             const { data: me } = await employee.rpc('get_my_employee_id')
 
             const { data: team, error } = await employee.from('roster_colleagues').select('id, started_on, ended_on')
@@ -941,13 +952,7 @@ maybe('what each role can see and do', () => {
         // test above, so this asks the manager, who reads both tables whole,
         // who and what should be on it.
         it('roster_colleagues and roster_away still give the team and its time off for those weeks', async () => {
-            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Dublin' })
-            const shift = days => {
-                const d = new Date(`${today}T12:00:00Z`)
-                d.setUTCDate(d.getUTCDate() + days)
-                return d.toISOString().slice(0, 10)
-            }
-            const [from, to] = [shift(-63), shift(63)]
+            const [from, to] = myShiftsWeeks()
             const { data: me } = await employee.rpc('get_my_employee_id')
 
             const { data: everyone, error: teamError } = await manager.from('employees')
@@ -996,6 +1001,44 @@ maybe('what each role can see and do', () => {
             expect(error?.message || '', 'roster_published is missing, so 029 has not been run').toBe('')
             const told = (data || []).filter(r => r.employee_id !== me && r.note !== null)
             expect(told, 'roster_published hands an employee the notes on other shifts').toHaveLength(0)
+        })
+
+        // Since 034. The shifts as they went out, for the same weeks as the
+        // team and its time off: nothing from rosters long gone, nothing
+        // months ahead. By the day as it went out, which is the shift_date
+        // the view hands over.
+        it('roster_published keeps to the weeks My shifts opens', async () => {
+            const [from, to] = myShiftsWeeks()
+
+            const { data, error } = await employee.from('roster_published').select('shift_date')
+            expect(error).toBeNull()
+            expect((data || []).filter(s => s.shift_date < from || s.shift_date > to), 'roster_published gives shifts outside the weeks')
+                .toEqual([])
+        })
+
+        // And every shift inside them is still there. A window written the
+        // wrong way round would leave nothing and pass the test above, so the
+        // manager, who reads the table whole, counts what should be: shifts
+        // published as they stand, and shifts changed since by the day they
+        // went out on. Counts, because a busy restaurant passes a thousand.
+        it('roster_published still gives every shift that went out in those weeks', async () => {
+            const [from, to] = myShiftsWeeks()
+
+            const { count: standing, error: e1 } = await manager.from('roster_shifts')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).not('published_at', 'is', null)
+                .gte('shift_date', from).lte('shift_date', to)
+            const { count: changed, error: e2 } = await manager.from('roster_shifts')
+                .select('id', { count: 'exact', head: true })
+                .eq('restaurant_id', ownRestaurantId).is('published_at', null).not('published_as', 'is', null)
+                .gte('published_as->>shift_date', from).lte('published_as->>shift_date', to)
+            expect(e1).toBeNull()
+            expect(e2).toBeNull()
+
+            const { count: seen, error } = await employee.from('roster_published')
+                .select('id', { count: 'exact', head: true })
+            expect(error).toBeNull()
+            expect(seen, 'roster_published does not give exactly the shifts that went out in those weeks').toBe(standing + changed)
         })
 
         it('no view shows the other restaurant', async () => {
