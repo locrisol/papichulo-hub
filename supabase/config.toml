@@ -385,6 +385,12 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# The phone calendar feed. A calendar app has no key to send, so with key
+# checking on every request for the feed is refused and phones quietly stop
+# updating. Written here so a plain `supabase functions deploy` keeps it off.
+[functions.roster-calendar]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

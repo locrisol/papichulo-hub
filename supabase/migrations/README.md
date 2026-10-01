@@ -131,7 +131,11 @@ to answer time off, and until it exists the answer buttons only show an error. M
 without 029 every employee's home page fails to load as well. Redeploy
 `roster-calendar` and `roster-email` only after 029 is run, never before:
 both read `published_as`, and without it the phone calendars come back empty
-and the time off mail stops saying when somebody is rostered. Once 029 is
+and the time off mail stops saying when somebody is rostered. Deploy the
+calendar as `npx supabase functions deploy roster-calendar --no-verify-jwt`,
+then open somebody's plain calendar address (Team, calendar link, Copy the
+plain address) in a browser: it should download a file starting
+`BEGIN:VCALENDAR`, not say 401. Once 029 is
 run, publish again any week that says "Changed since it went out". A shift
 changed before 029 has no copy kept, so it stays off My shifts and the phone
 until its week goes out again.

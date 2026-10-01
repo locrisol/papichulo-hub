@@ -9,7 +9,8 @@
 // week, not who else is on, and nothing at all about what anybody is paid.
 //
 // It has to be reachable without a key of any kind, because a calendar app has
-// none to send. On the command line that is:
+// none to send. supabase/config.toml says so, so a plain deploy keeps it off;
+// on the command line it is also:
 //
 //   supabase functions deploy roster-calendar --no-verify-jwt
 //

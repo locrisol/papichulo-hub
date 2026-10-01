@@ -388,3 +388,17 @@ describe('every copy knows the same public holidays as the app', () => {
         })
     }
 })
+
+// A calendar app has no key to send. Deployed with key checking on, every
+// request for the feed is refused, and phones keep the last copy they had and
+// quietly stop updating. A plain deploy turns it on unless config.toml says
+// otherwise.
+describe('how the feed is deployed', () => {
+    it('keeps key checking off in config.toml, whatever command deploys it', () => {
+        const config = readFileSync('supabase/config.toml', 'utf8')
+        const start = config.indexOf('[functions.roster-calendar]')
+        expect(start, 'config.toml has no [functions.roster-calendar]').toBeGreaterThan(-1)
+        const section = config.slice(start).split(/\n\[/)[0]
+        expect(section).toMatch(/^verify_jwt = false$/m)
+    })
+})
