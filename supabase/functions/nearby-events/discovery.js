@@ -132,8 +132,17 @@ export function sourceKeyFor(date, name) {
 // they gave it and a run of days they set, and dismissing it lost both with
 // nothing said, since the feed's own row has neither. A kept reading and the
 // feed's listing of the same night can both show; that is the smaller harm.
+//
+// **Not by a night the feed has called off.** Ticketmaster keeps returning a
+// cancelled show, and the venue's page still listing it is exactly what
+// somebody needs to look at, so read-listings saves that reading again on
+// purpose (see notYetKnown there). Dismissing it here undid that on the next
+// sync, and the night dropped off the roster with nothing said.
 export function superseded(readings, fetched) {
-    const covers = new Set((fetched || []).map(e => sourceKeyFor(e.event_date, e.name)).filter(Boolean))
+    const covers = new Set((fetched || [])
+        .filter(e => !OFF.includes(String(e.status || '').toLowerCase()))
+        .map(e => sourceKeyFor(e.event_date, e.name))
+        .filter(Boolean))
     return (readings || [])
         .filter(r => r?.review === 'found' && covers.has(sourceKeyFor(r.event_date, r.name)))
         .map(r => r.id)

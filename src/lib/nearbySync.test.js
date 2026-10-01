@@ -626,6 +626,15 @@ describe('which readings the feed supersedes', () => {
         expect(superseded(null, feed)).toEqual([])
     })
 
+    // The page still listing a night Ticketmaster called off is the reading
+    // read-listings saves again on purpose, for somebody to look at.
+    it('leaves alone a reading of a night the feed has called off', () => {
+        for (const status of ['canceled', 'cancelled', 'Canceled']) {
+            expect(superseded([reading('r4', 'found')], [{ ...feed[0], status }])).toEqual([])
+        }
+        expect(superseded([reading('r5', 'found')], [{ ...feed[0], status: 'onsale' }])).toEqual(['r5'])
+    })
+
     // A page read now keeps a run of days that began before the day it was
     // read and is still on. Asking only for readings that start today or later
     // left those out, so the feed could never retire one.

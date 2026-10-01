@@ -213,8 +213,8 @@ async function syncOne(admin: Admin, place: Place, key: string) {
     // Dismissed rather than deleted. The row is what was read and it stays,
     // which is also what stops next Monday's read offering it all over again.
     //
-    // Only a reading still waiting on somebody, never one they kept. See
-    // superseded.
+    // Only a reading still waiting on somebody, never one they kept, and never
+    // by a night the feed has called off. See superseded.
     const { data: readings } = await admin
         .from('events')
         .select('id, name, event_date, review')
