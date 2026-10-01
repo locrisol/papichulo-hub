@@ -3,7 +3,7 @@ import {
     textFrom, promptFor, answerFrom, eventsFrom, cleanName, sourceKeyFor,
     endpoint, SCHEMA, MOST_TEXT, MOST_NAME, MOST_ROWS, LONGEST_RUN_DAYS,
     dropRepeats, readable, MOST_REPEATS, urlsFor, monthsBetween, joinPages, MOST_ALL_TEXT,
-    isServiceRole, roleOf, refusalFor,
+    isServiceRole, roleOf, refusalFor, watchedAlongside, notYetKnown,
 } from '../../supabase/functions/read-listings/reading'
 import { refusalFor as nearbyRefusalFor } from '../../supabase/functions/nearby-events/discovery'
 import {
@@ -521,6 +521,80 @@ describe('the day of the week the page gave', () => {
             expect(prompt).toContain('day of the week')
             expect(prompt).toContain('Never work it out')
         }
+    })
+})
+
+// Dun Laoghaire watches the council's listings and the Pavilion's own. When
+// both list the same night it was saved twice, offered twice and drawn twice,
+// because the check for what was already there only looked at one place.
+describe('the same show read from two pages', () => {
+    const PAIRINGS = [
+        { restaurant_id: 'dl', place_id: 'council' },
+        { restaurant_id: 'dl', place_id: 'pavilion' },
+        { restaurant_id: 'pc', place_id: 'arena' },
+        { restaurant_id: 'pc', place_id: 'odeon' },
+    ]
+
+    it('knows which places are watched alongside one', () => {
+        expect(watchedAlongside(PAIRINGS, 'pavilion')).toEqual(['council'])
+        expect(watchedAlongside(PAIRINGS, 'arena')).toEqual(['odeon'])
+        expect(watchedAlongside(PAIRINGS, 'nowhere')).toEqual([])
+        expect(watchedAlongside(null, 'council')).toEqual([])
+    })
+
+    // A place two restaurants watch. A night skipped because a page next door
+    // has it is only safe when every restaurant watching this place can see
+    // that page too. Otherwise the one that cannot never sees the night at all.
+    it('only counts a page next door that every restaurant watching this one can see', () => {
+        const shared = [
+            { restaurant_id: 'a', place_id: 'x' },
+            { restaurant_id: 'b', place_id: 'x' },
+            { restaurant_id: 'b', place_id: 'y' },
+        ]
+        expect(watchedAlongside(shared, 'x')).toEqual([])
+        expect(watchedAlongside(shared, 'y')).toEqual(['x'])
+        expect(watchedAlongside([...shared, { restaurant_id: 'a', place_id: 'y' }], 'x')).toEqual(['y'])
+
+        const both = [...PAIRINGS, { restaurant_id: 'pc', place_id: 'council' }]
+        expect(watchedAlongside(both, 'council')).toEqual([])
+    })
+
+    const PAVILION = { ...WHEN, placeId: 'pavilion' }
+
+    it('saves a night once when a page next door already has it', () => {
+        const { rows } = eventsFrom(answer([
+            { name: 'Pentangle', date: '2026-11-19' },
+            { name: 'Lankum', date: '2026-11-20' },
+        ]), PAVILION)
+        const already = [{ place_id: 'council', name: 'PENTANGLE', event_date: '2026-11-19' }]
+        expect(notYetKnown(rows, already, { placeId: 'pavilion' }).map(r => r.name)).toEqual(['Lankum'])
+    })
+
+    it('still saves the same name on another night', () => {
+        const { rows } = eventsFrom(answer([{ name: 'Pentangle', date: '2026-11-19' }]), PAVILION)
+        const already = [{ place_id: 'council', name: 'Pentangle', event_date: '2026-11-26' }]
+        expect(notYetKnown(rows, already, { placeId: 'pavilion' })).toHaveLength(1)
+    })
+
+    // A cinema keeps a film under its title alone. Next door that would be any
+    // night with the same name on it, so next door is matched by the night.
+    const ODEON = { ...WHEN, placeId: 'odeon', key: 'title' }
+    const film = () => eventsFrom(answer([{ name: 'Wicked', date: '2026-11-19' }]), ODEON).rows
+
+    it('matches a page next door by the night even for a cinema', () => {
+        const another = [{ place_id: 'arena', name: 'Wicked', event_date: '2026-11-25' }]
+        expect(notYetKnown(film(), another, { placeId: 'odeon', key: 'title' })).toHaveLength(1)
+        const same = [{ place_id: 'arena', name: 'Wicked', event_date: '2026-11-19' }]
+        expect(notYetKnown(film(), same, { placeId: 'odeon', key: 'title' })).toEqual([])
+    })
+
+    it('still skips what this place already has, the way this place keys it', () => {
+        const seen = [{ place_id: 'odeon', name: 'Wicked', event_date: '2026-11-05' }]
+        expect(notYetKnown(film(), seen, { placeId: 'odeon', key: 'title' })).toEqual([])
+    })
+
+    it('keeps everything when nothing is there yet', () => {
+        expect(notYetKnown(film(), null, { placeId: 'odeon', key: 'title' })).toHaveLength(1)
     })
 })
 

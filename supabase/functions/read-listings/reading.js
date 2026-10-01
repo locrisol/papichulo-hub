@@ -528,6 +528,59 @@ export function eventsFrom(answer, { placeId, url, from, to, now, key = 'date' }
     return { rows, refused: '', wrongDay }
 }
 
+// ---------------------------------------------------------- what is already there
+
+// The other places watched by every restaurant that watches this one.
+//
+// pairings is the switched-on restaurant_places rows, restaurant and place.
+// These are the places whose listings land on the same calendar and the same
+// roster as this one, so they are where the same night read twice would show
+// twice.
+//
+// **Every, not any.** A place can be watched by two restaurants. If only one
+// of them also watches the page next door, a night skipped here because next
+// door has it is a night the other restaurant never sees, and nothing says
+// so. A second chip somebody can dismiss is the better of the two mistakes.
+export function watchedAlongside(pairings, placeId) {
+    const list = pairings || []
+    const restaurants = [...new Set(list.filter(p => p.place_id === placeId).map(p => p.restaurant_id))]
+    const watchedBy = restaurant => new Set(
+        list.filter(p => p.restaurant_id === restaurant && p.place_id !== placeId).map(p => p.place_id),
+    )
+    const [first, ...rest] = restaurants.map(watchedBy)
+    return [...(first || [])].filter(place => rest.every(others => others.has(place)))
+}
+
+// The rows that are not already there, here or on a page next door.
+//
+// **Here** is matched the way this place keys its readings, so a cinema's film
+// it has already seen is skipped whatever day it is seen on. The unique index
+// would stop a second copy anyway; this is what also catches the feed's own row
+// for the same night.
+//
+// **Next door** is matched by the night: the same day and the same name once
+// case and punctuation are flattened. Dun Laoghaire watches both the council's
+// listings and the Pavilion's, and when both carried the same night it was
+// saved twice, offered twice and drawn as two chips. Always by the night, even
+// for a cinema, because a film's title on its own would match any night next
+// door that shares the name.
+//
+// already is the events at this place and the places next door, place_id,
+// name and event_date. What arrived, never the name we chose, the same as the
+// reading key.
+export function notYetKnown(rows, already, { placeId, key = 'date' } = {}) {
+    const here = new Set()
+    const nextDoor = new Set()
+    for (const e of already || []) {
+        if (e.place_id === placeId) here.add(sourceKeyFor(e.event_date, e.name, key))
+        else nextDoor.add(sourceKeyFor(e.event_date, e.name))
+    }
+    here.delete('')
+    nextDoor.delete('')
+
+    return (rows || []).filter(r => !here.has(r.source_key) && !nextDoor.has(sourceKeyFor(r.event_date, r.name)))
+}
+
 // ---------------------------------------------------------- who is calling
 
 // The same two functions nearby-events has, written out again rather than
