@@ -7,6 +7,7 @@ import { DAY_NAMES, dayName } from '@/lib/events'
 import { bankHolidayFor, BANK_HOLIDAY_INK, BANK_HOLIDAY_WASH } from '@/lib/bankHolidays'
 import { card, cardEdge, badge, rowButton, segmentTrack, segmentButton } from '@/lib/controlStyles'
 import JumpButton from '@/components/ui/JumpButton'
+import ErrorBanner from '@/components/ui/ErrorBanner'
 import {
     hoursForDate, endLabel, shortTime, breakLabel, fmtHours, shiftHours, weekRows, toTime,
 } from '@/lib/roster'
@@ -24,7 +25,6 @@ import DateStepper from '@/components/ui/DateStepper'
 import RosterWeek from '@/components/roster/RosterWeek'
 import DiaryChip from '@/components/diary/DiaryChip'
 import DiaryEntryModal from '@/components/diary/DiaryEntryModal'
-import ErrorBanner from '@/components/ui/ErrorBanner'
 import { calendarItems, itemsByDate, showsOnRoster, atRestaurant } from '@/lib/diary'
 import { rosterNearby, NEARBY_FAILED, PAIRING_COLUMNS } from '@/lib/nearby'
 import PresenceGrid from '@/components/roster/PresenceGrid'
@@ -474,6 +474,14 @@ export default function MyShiftsPage() {
 
     if (!ready) {
         return <p className="text-sm text-muted">Loading...</p>
+    }
+
+    // The question of which name is theirs never got an answer, which is not
+    // the same as the answer being nobody. Without this a dropped signal on a
+    // phone read as an account not linked, and sent them to a manager to fix
+    // a setup problem that was not there.
+    if (error && !me) {
+        return <ErrorBanner className="mb-4">{error}</ErrorBanner>
     }
 
     // Somebody with a login but no record on the team list. It happens the day

@@ -119,6 +119,30 @@ describe('a shift changed after the week went out', () => {
     })
 })
 
+// The first thing the page asks is which name on the team list is theirs. If
+// that failed, a dropped signal on a phone say, the page said their account
+// was not linked and to ask a manager, sending both of them after a setup
+// problem that was not there.
+describe('when the page cannot load', () => {
+    it('says it could not load, not that the account is not linked', async () => {
+        tables({ employees: { data: null, error: { message: 'Failed to fetch' } } })
+
+        renderWithRouter(<MyShiftsPage />)
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('Could not reach the server. Check your connection and try again.')
+        expect(screen.queryByText('Not on the team list yet')).toBeNull()
+    })
+
+    it('still says so when the account really is not linked', async () => {
+        tables({ employees: { data: null, error: null } })
+
+        renderWithRouter(<MyShiftsPage />)
+
+        expect(await screen.findByText('Not on the team list yet')).toBeInTheDocument()
+    })
+})
+
 // Taking a request back is a delete the database only allows while it is
 // still waiting. Once a manager had answered it, the delete matched nothing
 // and the page carried on as if it had worked.
