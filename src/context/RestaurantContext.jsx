@@ -52,7 +52,16 @@ export function RestaurantProvider({ children }) {
 
         // Ordered by name so the list in the switcher is always in the same
         // order, and so the last fallback below is always the same restaurant.
-        let query = supabase.from('restaurants').select('*').eq('is_active', true).order('name')
+        //
+        // Staff read staff_restaurants, which is the row without the cost
+        // targets, the default hourly rate or the addresses the report and
+        // the hours are mailed to. Their screens use none of it, and since 034
+        // the database will not give them the table at all, because a row
+        // policy cannot hide a column. The view only holds open restaurants,
+        // so it is not asked which are switched off.
+        let query = role === 'employee'
+            ? supabase.from('staff_restaurants').select('*').order('name')
+            : supabase.from('restaurants').select('*').eq('is_active', true).order('name')
 
         // owners and below only see their own restaurant
         if (role !== 'super_admin') {

@@ -3,8 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { mockSupabase, makeQuery } from '@/test/helpers'
 
+// The whole row for managers and up, and the cut-down view for staff.
 const db = mockSupabase({
-    restaurants: { data: [{ id: 'r1', name: 'Point Campus', is_active: true }], error: null },
+    restaurants: { data: [{ id: 'r1', name: 'Point Campus', is_active: true, hourly_rate: 17 }], error: null },
+    staff_restaurants: { data: [{ id: 'r1', name: 'Point Campus' }], error: null },
 })
 vi.mock('@/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_, k) => db[k] }) }))
 
@@ -123,5 +125,44 @@ describe('an account with no restaurant yet', () => {
         signedIn = { id: 'u0', role: 'super_admin', restaurant_id: null }
         render(tree())
         expect(await screen.findByText('Point Campus')).toBeInTheDocument()
+    })
+})
+
+// Which restaurant row every page is handed, and where it is read from.
+//
+// Staff get staff_restaurants, which leaves out the cost targets, the default
+// hourly rate and the addresses the report and the hours are mailed to. Their
+// screens use none of it, and the database no longer lets them read the
+// table. Everybody above them reads the table, because their screens use all
+// of it.
+describe('where the restaurant is read from', () => {
+    const asked = () => db.from.mock.calls.map(([table], i) => ({ table, query: db.from.mock.results[i].value }))
+    const show = role => {
+        signedIn = { id: 'u1', role, restaurant_id: 'r1' }
+        render(tree())
+    }
+
+    it('reads an employee their restaurant from the staff view, never the table', async () => {
+        show('employee')
+        await screen.findByText('Point Campus')
+        expect(asked().map(a => a.table)).toEqual(['staff_restaurants'])
+    })
+
+    // The view only ever holds restaurants that are open and has no is_active
+    // of its own, so asking it for one is an error and the Hub would not open.
+    it('does not ask the staff view which restaurants are switched off', async () => {
+        show('employee')
+        await screen.findByText('Point Campus')
+        const { query } = asked()[0]
+        expect(query.eq).not.toHaveBeenCalledWith('is_active', true)
+        expect(query.eq).toHaveBeenCalledWith('id', 'r1')
+    })
+
+    it.each(['store_manager', 'owner', 'super_admin'])('reads a %s the whole row', async role => {
+        show(role)
+        await screen.findByText('Point Campus')
+        expect(asked().map(a => a.table)).toEqual(['restaurants'])
+        expect(asked()[0].query.select).toHaveBeenCalledWith('*')
+        expect(asked()[0].query.eq).toHaveBeenCalledWith('is_active', true)
     })
 })

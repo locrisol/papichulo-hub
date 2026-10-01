@@ -6,7 +6,11 @@ import { todayISO, weekStartOf, addDays } from '@/lib/dates'
 
 // My shifts, the page every employee lands on. Invented people.
 
-const ME = { id: 'e1', restaurant_id: 'r1', full_name: 'Ana', position_id: null }
+const ME = { id: 'e1', restaurant_id: 'r1', full_name: 'Ana Test', position_id: null }
+
+const EVERY_DAY = Object.fromEntries(
+    ['0', '1', '2', '3', '4', '5', '6'].map(d => [d, { open: '09:00', close: '21:00' }]),
+)
 const MY_DAY_OFF = {
     id: 'a1', employee_id: 'e1', restaurant_id: 'r1', kind: 'day_off',
     starts_on: '2026-10-12', ends_on: '2026-10-12', status: 'requested',
@@ -23,7 +27,13 @@ const { default: MyShiftsPage } = await import('./MyShiftsPage')
 function tables(extra = {}) {
     answer = {
         employees: { data: ME, error: null },
-        restaurants: { data: { opening_hours: null }, error: null },
+        // What the database gives an employee: nothing from the table, their
+        // own restaurant from the view.
+        restaurants: { data: null, error: null },
+        staff_restaurants: {
+            data: { opening_hours: EVERY_DAY, break_rules: [], roster_rules: {}, watch_city_events: true },
+            error: null,
+        },
         absences: { data: [MY_DAY_OFF], error: null },
         ...extra,
     }
@@ -160,5 +170,17 @@ describe('cancelling a request for time off', () => {
 
         expect(await screen.findByText('This request has already been answered, so it cannot be cancelled.'))
             .toBeInTheDocument()
+    })
+})
+
+// What somebody's own week reads to draw itself. Staff are refused the
+// restaurants table, so the hours and rules come from staff_restaurants, the
+// part of the row their screens use.
+describe('my own week', () => {
+    it('reads the opening hours from the staff view', async () => {
+        renderWithRouter(<MyShiftsPage />)
+        await screen.findByText('Ana Test')
+        expect(screen.getAllByText('Open 09:00 to 21:00')).toHaveLength(7)
+        expect(db.from.mock.calls.map(([table]) => table)).not.toContain('restaurants')
     })
 })

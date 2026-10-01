@@ -92,9 +92,46 @@ maybe('what each role can see and do', () => {
             expect(count).toBe(1)
         })
 
-        it('can read their own restaurant', async () => {
+        // Since 033 through staff_restaurants, and since 034 never the table.
+        // The row carries the cost targets, the default hourly rate and the
+        // addresses the report and the hours are mailed to, and a policy
+        // cannot hide a column, so the table gives them nothing at all.
+        it('can read their own restaurant, through the staff view', async () => {
+            const { data, error } = await employee.from('staff_restaurants').select('id')
+            expect(error).toBeNull()
+            expect((data || []).map(r => r.id)).toEqual([ownRestaurantId])
+        })
+
+        it('cannot read the restaurants table itself', async () => {
             const { count } = await countVisible(employee, 'restaurants')
-            expect(count).toBe(1)
+            expect(count).toBe(0)
+        })
+
+        it('is not given the cost targets, the default rate or the mail addresses', async () => {
+            const { data } = await employee.from('staff_restaurants').select('*').limit(1)
+            expect(data?.length, 'the employee read no restaurant at all').toBe(1)
+            const cols = Object.keys(data[0])
+            for (const hidden of [
+                'food_cost_target', 'labour_cost_target', 'packaging_cost_target', 'hourly_rate',
+                'report_recipients', 'timesheet_recipients', 'mail_from', 'pay_period_start',
+            ]) {
+                expect(cols, `staff_restaurants is handing over ${hidden}`).not.toContain(hidden)
+            }
+
+            const asked = await employee.from('restaurants')
+                .select('food_cost_target, labour_cost_target, packaging_cost_target, hourly_rate, report_recipients, timesheet_recipients')
+            expect(asked.data || []).toHaveLength(0)
+        })
+
+        // What My shifts draws the week with, and what the calendar names the
+        // sites with. Losing either would be quiet: an empty week, or every
+        // entry saying No restaurant.
+        it('still reads what My shifts and the calendar need', async () => {
+            const { data, error } = await employee.from('staff_restaurants')
+                .select('id, name, sort_order, opening_hours, break_rules, roster_rules, watch_city_events')
+                .eq('id', ownRestaurantId).maybeSingle()
+            expect(error).toBeNull()
+            expect(data?.name).toBeTruthy()
         })
 
         it('can read the product catalogue', async () => {
@@ -294,6 +331,16 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        // Theirs in full, unlike staff. The cost dashboard, the timesheet and
+        // the settings page all read these straight off the row.
+        it('still reads the whole of their own restaurant row', async () => {
+            const { data, error } = await manager.from('restaurants')
+                .select('food_cost_target, labour_cost_target, packaging_cost_target, hourly_rate, report_recipients, timesheet_recipients, pay_period_start')
+                .eq('id', ownRestaurantId).single()
+            expect(error).toBeNull()
+            expect(data.food_cost_target).not.toBeUndefined()
+        })
+
         it('reads when the allergen sheet was printed and how often it is due', async () => {
             const { data, error } = await manager.from('restaurants')
                 .select('allergen_sheet_printed_at, allergen_sheet_every_months')
@@ -390,6 +437,14 @@ maybe('what each role can see and do', () => {
             expect(refused).toBe(true)
         })
 
+        it('still reads the whole of their own restaurant row', async () => {
+            const { data, error } = await owner.from('restaurants')
+                .select('food_cost_target, hourly_rate, report_recipients, timesheet_recipients')
+                .eq('id', ownRestaurantId).single()
+            expect(error).toBeNull()
+            expect(data.food_cost_target).not.toBeUndefined()
+        })
+
         it('is refused when creating a restaurant', async () => {
             const refused = await writeRefused(owner, 'restaurants', {
                 name: 'RLS test restaurant, should never exist',
@@ -481,9 +536,10 @@ maybe('what each role can see and do', () => {
     // security on purpose, because a policy picks rows and cannot pick
     // columns, and these exist to show a colleague's name and position without
     // their pay rate, date of birth or immigration status, and the week as it
-    // went out rather than the draft. That makes the where clause written
-    // inside each view the only wall between the two restaurants, and nothing
-    // was checking it was still there.
+    // went out rather than the draft. staff_restaurants is the same kind, for
+    // the restaurant row. That makes the where clause written inside each view
+    // the only wall between the two restaurants, and nothing was checking it
+    // was still there.
     describe('the staff views', () => {
         it('roster_colleagues never hands over pay or personal details', async () => {
             const { data } = await employee.from('roster_colleagues').select('*').limit(1)
@@ -530,10 +586,12 @@ maybe('what each role can see and do', () => {
                 const strays = (data || []).filter(r => r.restaurant_id !== ownRestaurantId)
                 expect(strays, `${view} leaked rows from another restaurant`).toHaveLength(0)
             }
+            const { data } = await employee.from('staff_restaurants').select('id').eq('id', otherRestaurantId)
+            expect(data || [], 'staff_restaurants leaked the other restaurant').toHaveLength(0)
         })
 
         it('no view answers to somebody not signed in', async () => {
-            for (const view of ['roster_colleagues', 'roster_away', 'roster_published']) {
+            for (const view of ['roster_colleagues', 'roster_away', 'roster_published', 'staff_restaurants']) {
                 const { count } = await countVisible(anon, view)
                 expect(count, `${view} is readable by anybody`).toBe(0)
             }
@@ -552,6 +610,8 @@ maybe('what each role can see and do', () => {
                 'roster_colleagues can be changed by an employee').toBe(true)
             expect(await changesRefused(employee, 'roster_published', 'id', { restaurant_id: NOBODY }),
                 'roster_published can be changed by an employee').toBe(true)
+            expect(await changesRefused(employee, 'staff_restaurants', 'id', { name: 'x' }),
+                'staff_restaurants can be changed by an employee').toBe(true)
         })
     })
 

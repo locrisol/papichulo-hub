@@ -3384,9 +3384,10 @@ ALTER TABLE "public"."restaurants" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "restaurants_all_super_admin" ON "public"."restaurants" TO "authenticated" USING ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")) WITH CHECK ((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text"));
 
+-- No employee reads this table. The row carries the cost targets, the
+-- default cost per hour and the addresses the report and the hours are
+-- mailed to, so staff read staff_restaurants instead (with the views, below).
 CREATE POLICY "restaurants_select" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'super_admin'::"text") OR ((( SELECT "public"."get_my_role"() ) = ANY (ARRAY['owner'::"text", 'store_manager'::"text"])) AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))));
-
-CREATE POLICY "restaurants_select_own" ON "public"."restaurants" FOR SELECT TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'employee'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
 CREATE POLICY "restaurants_update_own" ON "public"."restaurants" FOR UPDATE TO "authenticated" USING (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() )))) WITH CHECK (((( SELECT "public"."get_my_role"() ) = 'store_manager'::"text") AND ("id" = ( SELECT "public"."get_my_restaurant_id"() ))));
 
@@ -3871,9 +3872,11 @@ CREATE POLICY "change_log_select" ON "public"."change_log" FOR SELECT TO "authen
 -- or the reason somebody is away. roster_published is the week as it went
 -- out, so a shift changed since is shown to staff as it was rather than as
 -- the draft the manager is working on, and a shift's note only to the person
--- it is on and to the managers. They read past row level security on
--- purpose and their own where clause is the wall between the two
--- restaurants, which is covered by the database tests.
+-- it is on and to the managers. staff_restaurants gives them their own
+-- restaurant without its cost targets, its default cost per hour or the
+-- addresses its mail goes to. They read past row level security on purpose
+-- and their own where clause is the wall between the two restaurants, which
+-- is covered by the database tests.
 --
 -- The public_ views are what a customer scanning the QR code is given. The
 -- tables behind them answer to nobody who is not signed in. No quantity
@@ -3950,6 +3953,19 @@ CREATE OR REPLACE VIEW "public"."roster_published" AS
     COALESCE("s"."published_at", (("s"."published_as" ->> 'published_at'::"text"))::timestamp with time zone) AS "published_at"
    FROM "public"."roster_shifts" "s"
   WHERE ((("s"."published_at" IS NOT NULL) OR ("s"."published_as" IS NOT NULL)) AND (("s"."restaurant_id" = ( SELECT "public"."get_my_restaurant_id"() )) OR (( SELECT "public"."get_my_role"() ) = 'super_admin'::"text")));
+
+-- Only open restaurants, the same as the switcher has always shown, so the
+-- app does not ask and the view has no is_active to be asked about.
+CREATE OR REPLACE VIEW "public"."staff_restaurants" AS
+ SELECT "r"."id",
+    "r"."name",
+    "r"."sort_order",
+    "r"."opening_hours",
+    "r"."break_rules",
+    "r"."roster_rules",
+    "r"."watch_city_events"
+   FROM "public"."restaurants" "r"
+  WHERE (("r"."is_active" = true) AND (("r"."id" = "public"."get_my_restaurant_id"()) OR ("public"."get_my_role"() = 'super_admin'::"text")));
 
 -- What labour cost, per day, for everything that asks: the cost dashboard, the
 -- report and the weekly report. None of them has to know the answer comes from
@@ -4120,6 +4136,7 @@ CREATE OR REPLACE VIEW "public"."public_restaurants" AS
 COMMENT ON VIEW "public"."roster_published" IS 'The week as it went out to staff, at your restaurant: every published shift as it stands, and a shift changed since the week went out as it was then, from published_as. Changing a shift takes it back to a draft so the roster can say so, and without this it vanished from somebody''s week and phone until the week was published again. The note is there only for the person the shift is on and for the managers. My shifts reads this rather than roster_shifts.';
 COMMENT ON VIEW "public"."roster_away" IS 'The days somebody is not there, with no reason attached, the hours they can still work when it is only part of a day, and the shifts a freed day left going spare. The kind, the note and the hours stay on the absences table, which nobody below a manager can read. This is what the staff week greys out, and it reads Not available the same way the picture that goes to the WhatsApp group does.';
 COMMENT ON VIEW "public"."roster_colleagues" IS 'Who works at your restaurant, as far as anybody below a manager is allowed to know: a name, a position and its colour, and whether they have an account to answer a swap with. The employees table itself stays closed, because it carries the hourly rate, the date of birth and the work permission, and a row policy cannot hide a column.';
+COMMENT ON VIEW "public"."staff_restaurants" IS 'Your restaurant, as far as anybody below a manager needs it: the name, the opening hours, the break and roster rules, and whether city events are watched. The restaurants table itself is closed to staff, because it carries the cost targets, the default cost per hour and the addresses the report and the hours are mailed to, and a row policy cannot hide a column.';
 
 -- The day each thing on a checklist was last done. The third kind, and the
 -- opposite of the two above: it is a security invoker view, so it reads
@@ -4145,12 +4162,14 @@ COMMENT ON VIEW "public"."checklist_last_done" IS 'When each task was last ticke
 revoke all on public.roster_colleagues        from anon, authenticated, public;
 revoke all on public.roster_away              from anon, authenticated, public;
 revoke all on public.roster_published         from anon, authenticated, public;
+revoke all on public.staff_restaurants        from anon, authenticated, public;
 revoke all on public.checklist_last_done      from anon, authenticated, public;
 revoke all on public.labour_by_day            from anon, authenticated, public;
 revoke all on public.invoice_cost_by_category from anon, authenticated, public;
 grant select on public.roster_colleagues        to authenticated;
 grant select on public.roster_away              to authenticated;
 grant select on public.roster_published         to authenticated;
+grant select on public.staff_restaurants        to authenticated;
 grant select on public.checklist_last_done      to authenticated;
 grant select on public.labour_by_day            to authenticated;
 grant select on public.invoice_cost_by_category to authenticated;

@@ -3,7 +3,7 @@ import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithRouter, tableOf } from '@/test/helpers'
+import { mockSupabase, renderWithRouter, tableOf } from '@/test/helpers'
 import { todayISO, addDays } from '@/lib/dates'
 
 // The calendar asks Ticketmaster for news at most twice a day. It used to wait
@@ -44,7 +44,9 @@ vi.mock('@/context/restaurant', () => ({
     useRestaurant: () => ({ activeRestaurant: RESTAURANT }),
 }))
 const MANAGER = { id: 'u1', role: 'store_manager', restaurant_id: 'r1' }
-vi.mock('@/context/auth', () => ({ useAuth: () => ({ user: MANAGER }) }))
+// A store manager unless a test says otherwise.
+let user
+vi.mock('@/context/auth', () => ({ useAuth: () => ({ user }) }))
 
 const { default: CalendarPage } = await import('./CalendarPage')
 
@@ -52,6 +54,7 @@ const eventReads = () => db.from.mock.calls.filter(([t]) => t === 'events').leng
 
 beforeEach(() => {
     localStorage.clear()
+    user = MANAGER
     // Ticketmaster has not answered yet, and will not until a test says so.
     answer = null
     db = {
@@ -134,5 +137,51 @@ describe('an entry opened by a store manager', () => {
     it('has Edit when it is only for their own restaurant', async () => {
         const entry = await open('Lunch for twelve')
         expect(within(entry).getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    })
+})
+
+// Where the calendar gets the restaurant names that say which site an entry is
+// for. Staff cannot read the restaurants table, only staff_restaurants, so a
+// page that asks the table for them gets nothing back and every entry reads
+// No restaurant. Invented entries.
+
+const POINT = { ...RESTAURANT, sort_order: 0 }
+
+const CATERING = {
+    id: 'd1', title: 'Catering for the college', kind: 'catering', status: 'confirmed',
+    scope: 'sites', restaurant_ids: ['r1'],
+    starts_on: addDays(todayISO(), 3), ends_on: null, starts_at: null, ends_at: null,
+}
+
+// What the database gives each of them: the table only to a manager, the view
+// to anybody signed in at the restaurant.
+async function openAs(who) {
+    user = { id: 'u1', role: who, restaurant_id: 'r1' }
+    db = mockSupabase({
+        diary_entries: { data: [CATERING], error: null },
+        restaurants: { data: who === 'employee' ? [] : [{ ...POINT, google_calendar_id: 'cal@example.test' }], error: null },
+        staff_restaurants: { data: [POINT], error: null },
+    })
+    // The Ticketmaster check stays out, which has nothing to do with this.
+    db.functions = { invoke: vi.fn(() => new Promise(() => {})) }
+    renderWithRouter(<CalendarPage />)
+    await screen.findByText('Catering for the college')
+}
+
+describe('the restaurant names on the calendar', () => {
+    it('come from the staff view for an employee', async () => {
+        await openAs('employee')
+        expect(screen.queryByText('No restaurant')).toBeNull()
+        expect(db.calls).toContain('staff_restaurants')
+        expect(db.calls).not.toContain('restaurants')
+    })
+
+    // A manager adding an entry is told which restaurant has no Google
+    // calendar yet, which needs the calendar id the view leaves out.
+    it('come from the table for a manager, with the calendar id', async () => {
+        await openAs('store_manager')
+        expect(screen.queryByText('No restaurant')).toBeNull()
+        expect(db.calls).toContain('restaurants')
+        expect(db.calls).not.toContain('staff_restaurants')
     })
 })

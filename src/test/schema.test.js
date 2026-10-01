@@ -90,6 +90,44 @@ describe('today, to the database', () => {
     })
 })
 
+// The policies on one table, each as its whole statement.
+const policiesOn = table => schema.match(
+    new RegExp(String.raw`CREATE POLICY "\w+" ON "public"\."${table}"[^;]*;`, 'g'),
+) || []
+
+describe('what staff are given of their restaurant', () => {
+    // A row policy picks rows and cannot pick columns. So the only way to give
+    // staff their restaurant without its money and its mail addresses is a
+    // view that leaves them out, and no policy on the table for them at all.
+    const start = schema.indexOf('CREATE OR REPLACE VIEW "public"."staff_restaurants"')
+    const view = start < 0 ? '' : schema.slice(start, schema.indexOf(';', start))
+
+    it('has the hours and rules My shifts needs', () => {
+        for (const column of ['opening_hours', 'break_rules', 'roster_rules', 'watch_city_events']) {
+            expect(view, `staff_restaurants has no ${column}`).toContain(`"${column}"`)
+        }
+    })
+
+    it('leaves out the cost targets, the default rate and the mail addresses', () => {
+        for (const column of [
+            'food_cost_target', 'labour_cost_target', 'packaging_cost_target', 'hourly_rate',
+            'report_recipients', 'timesheet_recipients', 'mail_from', 'pay_period_start',
+        ]) {
+            expect(view, `staff_restaurants hands over ${column}`).not.toContain(column)
+        }
+    })
+
+    it('gives an employee no way to read the table itself', () => {
+        const forStaff = policiesOn('restaurants').filter(p => p.includes("'employee'"))
+        expect(forStaff).toEqual([])
+    })
+
+    it('can be read by people signed in and changed by nobody', () => {
+        expect(schema).toMatch(/revoke all on public\.staff_restaurants\s+from anon, authenticated, public;/)
+        expect(schema).toMatch(/grant select on public\.staff_restaurants\s+to authenticated;/)
+    })
+})
+
 describe('the nightly photo job', () => {
     // It keeps a photo while its round is open, and finds the round from the
     // third folder of the path. Pinned against where the app puts the photo,

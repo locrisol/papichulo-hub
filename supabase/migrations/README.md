@@ -157,6 +157,13 @@ on `menu_items` and `menu_categories`. It checks first, and if any of them is
 empty it stops, names the table and changes nothing. **Run it before the
 branch is merged**, or the new page asks customers to see staff about every
 dish that comes in a pot.
+`033` is **not run yet**. Staff read their restaurant through a new view,
+`staff_restaurants`, with the name, opening hours, break and roster rules and
+nothing else. It only adds, so **run it any time before merging**.
+`034` is **not run yet**. Staff lose their read of the restaurants table,
+which carries the cost targets, the default hourly rate and the report and
+payroll addresses. **Run it after merging, once the new site is live**: the
+site before that asks the table, so staff would be told the Hub cannot open.
 
 ## What was here before
 

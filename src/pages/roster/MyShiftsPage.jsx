@@ -255,7 +255,9 @@ export default function MyShiftsPage() {
                 supabase.from('roster_away').select('*')
                     .eq('restaurant_id', mine.restaurant_id)
                     .lte('starts_on', to).gte('ends_on', from),
-                supabase.from('restaurants')
+                // The view rather than the table, which staff cannot read.
+                // It is everything this page needs and nothing about money.
+                supabase.from('staff_restaurants')
                     .select('opening_hours, break_rules, roster_rules, watch_city_events')
                     .eq('id', mine.restaurant_id).maybeSingle(),
                 // What is on near us. Everybody working a concert night needs

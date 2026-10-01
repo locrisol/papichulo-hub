@@ -224,8 +224,14 @@ export default function CalendarPage() {
                 supabase.from('day_notes').select('note_date, extras')
                     .eq('restaurant_id', activeRestaurant.id)
                     .gte('note_date', from).lte('note_date', to),
-                supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
-                    .eq('is_active', true).order('sort_order'),
+                // The names that say which site an entry is for. Staff cannot
+                // read the table, so they get the view, which only holds open
+                // restaurants. A manager needs the calendar id as well, to be
+                // told which restaurant has no Google calendar yet.
+                canWrite
+                    ? supabase.from('restaurants').select('id, name, google_calendar_id, sort_order')
+                        .eq('is_active', true).order('sort_order')
+                    : supabase.from('staff_restaurants').select('id, name, sort_order').order('sort_order'),
                 supabase.from('restaurant_places')
                     .select(PAIRING_COLUMNS)
                     .eq('restaurant_id', activeRestaurant.id)
