@@ -303,14 +303,42 @@ function realDate(value) {
     return d.toISOString().slice(0, 10) === value
 }
 
+// A time, and only one whole time.
+//
+// The prompt asks for 24 hour times and this does not take that on trust. Irish
+// listings pages write 7:30pm, and a model that copied it across rather than
+// turning it into 19:30 used to have it filed as half past seven in the
+// morning, because only the start of the answer was looked at. So an am or a pm
+// is read and turned into the 24 hour time, and anything else after the time
+// drops it: in "7:30 - 10pm" the pm belongs to the end, and guessing which half
+// of the day the start is in is the guess this is here to refuse.
+//
+// A dot works as well as a colon when an am or a pm comes after it, the way
+// 7.30pm is written here. Without one, a dot means the page was copied rather
+// than turned into a 24 hour time, and 7.30 on its own on an Irish page is an
+// evening show, so it is only taken for an hour that can only be the evening.
+// Without an am or a pm the minutes have to be there too, so a bare 19 is not
+// taken as a time.
 function realTime(value) {
-    if (!value) return null
-    const m = /^(\d{1,2}):(\d{2})/.exec(String(value).trim())
+    const text = String(value ?? '').trim().toLowerCase()
+    const m = /^(\d{1,2})(?:([:.])(\d{2})(?::\d{2})?)?\s*(am|pm|a\.m\.?|p\.m\.?)?$/.exec(text)
     if (!m) return null
-    const h = Number(m[1])
-    const min = Number(m[2])
-    if (h < 0 || h > 23 || min < 0 || min > 59) return null
-    return `${String(h).padStart(2, '0')}:${m[2]}`
+
+    const [, hours, mark = '', minutes = '', half = ''] = m
+    let h = Number(hours)
+    const min = Number(minutes || 0)
+    if (min > 59) return null
+
+    if (half) {
+        if (h < 1 || h > 12) return null
+        // 12am is midnight and 12pm is midday, which is the one place the
+        // twelve hour clock does not simply add twelve.
+        h = (h % 12) + (half.startsWith('p') ? 12 : 0)
+    } else if (!minutes || h > 23 || (mark === '.' && h < 13)) {
+        return null
+    }
+
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
 // The name, tidied and nothing more.

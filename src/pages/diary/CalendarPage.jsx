@@ -353,16 +353,24 @@ export default function CalendarPage() {
     // Past dates are renamed too. A week that has been and gone reading
     // differently from the same thing next month is a worse answer than
     // consistency nobody will look at.
-    async function rename(event, to, all = false, until) {
+    //
+    // at is the start time, and only a page reading sends one. Left undefined
+    // for a feed, so its time is never touched here: the sync writes it again
+    // twice a day and a correction would be gone by the evening.
+    async function rename(event, to, all = false, until, at) {
         const name = String(to ?? '').trim()
         const display_name = name && name !== event.name ? name : null
         const ends_on = String(until ?? '').trim() || null
+        const timed = at !== undefined
+        const event_time = String(at ?? '').trim() || null
 
         // The name can go to every date of a residency. **An end date never
-        // does**: six nights of a tour are six one night things, and giving
-        // them all the same last day would draw one band over the lot.
+        // does**, and nor does a start time: six nights of a tour are six one
+        // night things, and giving them all the same last day would draw one
+        // band over the lot.
         const change = { display_name }
-        const mine = { display_name, ends_on }
+        const own = { ends_on, ...(timed ? { event_time } : {}) }
+        const mine = { display_name, ...own }
 
         const where = supabase.from('events')
         const { data, error: failed } = all
@@ -376,10 +384,21 @@ export default function CalendarPage() {
             return
         }
 
-        // The end date only ever lands on the one that was open, so it is
-        // written on its own when the name went to the others.
-        if (all && ends_on !== (event.ends_on ?? null)) {
-            await where.update({ ends_on }).eq('id', event.id)
+        // The end date and the time only ever land on the one that was open, so
+        // they are written on their own when the name went to the others.
+        //
+        // If that second write fails the name has still gone to every date, so
+        // the screen shows the name and says the rest did not save, rather than
+        // drawing an end date and a time the database never got.
+        const ownChanged = ends_on !== (event.ends_on ?? null)
+            || (timed && event_time !== (String(event.event_time || '').slice(0, 5) || null))
+        let ownSaved = true
+        if (all && ownChanged) {
+            const { error: missed } = await where.update(own).eq('id', event.id)
+            if (missed) {
+                setError(`The name was saved, but not the end date or start time. ${friendlyError(missed)}`)
+                ownSaved = false
+            }
         }
 
         const hits = e => (all
@@ -388,7 +407,7 @@ export default function CalendarPage() {
         const patch = e => ({
             ...e,
             display_name,
-            ...(e.id === event.id ? { ends_on } : {}),
+            ...(ownSaved && e.id === event.id ? own : {}),
         })
 
         setEvents(was => was.map(e => (hits(e) ? patch(e) : e)))

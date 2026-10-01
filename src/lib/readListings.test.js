@@ -379,6 +379,36 @@ describe('what survives the check', () => {
         expect(rows.map(r => r.event_time)).toEqual([null, null, '09:30'])
     })
 
+    // Irish listings pages write 7:30pm. A model that copied that across rather
+    // than turning it into 19:30 had it filed as half past seven in the morning.
+    // Anything that is not one whole time is dropped, the same as a bad end
+    // date: in "7:30 - 10pm" the pm belongs to the end, not the start.
+    //
+    // A dot with no am or pm is the page copied rather than a 24 hour time, and
+    // 7.30 on its own on an Irish page is an evening show. Only an hour that
+    // can only be the evening is taken.
+    it.each([
+        ['7:30 PM', '19:30'],
+        ['7:30pm', '19:30'],
+        ['7.30pm', '19:30'],
+        ['7pm', '19:00'],
+        ['7:30 p.m.', '19:30'],
+        ['12:30 AM', '00:30'],
+        ['12:00pm', '12:00'],
+        ['19:30:00', '19:30'],
+        ['19.30', '19:30'],
+        ['7.30', null],
+        ['8.00', null],
+        ['13:30pm', null],
+        ['0:30am', null],
+        ['19', null],
+        ['7:30 - 10pm', null],
+        ['7:30pm doors', null],
+    ])('reads %s as %s', (time, want) => {
+        const { rows } = eventsFrom(answer([{ name: 'Gig', date: '2026-11-19', time }]), WHEN)
+        expect(rows[0].event_time).toBe(want)
+    })
+
     // The same page read twice in one answer, which happens whenever a site
     // lists a thing in a carousel and again in a table.
     it('keeps one row for the same thing said twice', () => {
